@@ -19,6 +19,7 @@ extends Node2D
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_late: float = 0.65   # Phase 3-4
 
 const PLAYER_SIZE := Vector2(36, 36)
+const PLAYER_VISUAL_SIZE := Vector2(56, 56)  # sprite drawn larger than the hitbox
 const PLAYER_X := 130.0
 
 const GATE_WIDTH := 130.0
@@ -26,7 +27,6 @@ const GATE_SPEED := 130.0  # halved for testing — was 260.0
 const WALL_THICKNESS := 14.0
 
 const COLOR_BG := Color(0.10, 0.10, 0.12)
-const COLOR_PLAYER := Color(0.85, 0.85, 0.88)
 const COLOR_GATE := Color(0.32, 0.32, 0.38)
 const COLOR_GATE_BORDER := Color(0.55, 0.55, 0.62)
 const COLOR_WALL := Color(0.62, 0.16, 0.16)
@@ -90,6 +90,7 @@ var flash_color := Color(0, 0, 0, 0)
 var flash_time := 0.0
 const FLASH_DURATION := 0.25
 
+@onready var player_texture: Texture2D = load("res://assets/characters/bluebird_reference_match/south.png")
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
@@ -388,7 +389,7 @@ func _draw() -> void:
 		_draw_centered_text(g.bottom_text, Vector2(g.x + GATE_WIDTH * 0.5, wall_bottom + (view_size.y - wall_bottom) * 0.5), 20)
 
 	if state != State.READY:
-		draw_rect(Rect2(Vector2(PLAYER_X - PLAYER_SIZE.x * 0.5, player_y - PLAYER_SIZE.y * 0.5), PLAYER_SIZE), COLOR_PLAYER)
+		draw_texture_rect(player_texture, Rect2(Vector2(PLAYER_X - PLAYER_VISUAL_SIZE.x * 0.5, player_y - PLAYER_VISUAL_SIZE.y * 0.5), PLAYER_VISUAL_SIZE), false)
 
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		var upcoming_target := _get_upcoming_target()
