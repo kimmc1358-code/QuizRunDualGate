@@ -1,0 +1,89 @@
+[gd_scene format=3 uid="uid://8r3igjacvaeq"]
+
+[ext_resource type="Script" uid="uid://b78ee3k30dqkf" path="res://scripts/Main.gd" id="1"]
+
+[node name="Main" type="Node2D" unique_id=1993625809]
+script = ExtResource("1")
+flap_velocity = -321.0
+gravity = 1300.0
+base_gate_spacing = 800.0
+
+[node name="UI" type="CanvasLayer" parent="." unique_id=397217226]
+
+[node name="ReadyPanel" type="Control" parent="UI" unique_id=1168968718]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="TitleLabel" type="Label" parent="UI/ReadyPanel" unique_id=955030960]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 190.0
+offset_right = 460.0
+offset_bottom = 280.0
+theme_override_font_sizes/font_size = 26
+text = "DUAL GATE
+QUIZ RUNNER
+(Graybox — Flag Explorer, Hard)"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="SubtitleLabel" type="Label" parent="UI/ReadyPanel" unique_id=2070020261]
+layout_mode = 0
+offset_left = 30.0
+offset_top = 310.0
+offset_right = 450.0
+offset_bottom = 440.0
+theme_override_font_sizes/font_size = 16
+text = "HARD MODE — no lives, no invincibility
+Tap to flap. Fly into the box that matches TARGET.
+Wrong box or the center wall = instant Game Over."
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="PlayButton" type="Button" parent="UI/ReadyPanel" unique_id=1925926918]
+layout_mode = 0
+offset_left = 160.0
+offset_top = 500.0
+offset_right = 320.0
+offset_bottom = 560.0
+theme_override_font_sizes/font_size = 22
+text = "PLAY"
+
+[node name="GameOverPanel" type="Control" parent="UI" unique_id=3637394]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="GameOverLabel" type="Label" parent="UI/GameOverPanel" unique_id=544301319]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 260.0
+offset_right = 460.0
+offset_bottom = 320.0
+theme_override_colors/font_color = Color(0.85, 0.25, 0.25, 1)
+theme_override_font_sizes/font_size = 32
+text = "GAME OVER"
+horizontal_alignment = 1
+
+[node name="FinalScoreLabel" type="Label" parent="UI/GameOverPanel" unique_id=341177484]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 330.0
+offset_right = 460.0
+offset_bottom = 380.0
+theme_override_font_sizes/font_size = 22
+text = "SCORE: 0"
+horizontal_alignment = 1
+
+[node name="RestartButton" type="Button" parent="UI/GameOverPanel" unique_id=1410003873]
+layout_mode = 0
+offset_left = 160.0
+offset_top = 470.0
+offset_right = 320.0
+offset_bottom = 530.0
+theme_override_font_sizes/font_size = 22
+text = "RESTART"

@@ -11,13 +11,17 @@ config_version=5
 [application]
 
 config/name="QuizRunDualGate"
+run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
 [display]
 
+window/size/viewport_width=480
+window/size/viewport_height=854
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
+window/handheld/orientation="portrait"
 
 [physics]
 
