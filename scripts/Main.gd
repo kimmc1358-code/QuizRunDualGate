@@ -19,18 +19,53 @@ extends Node2D
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_late: float = 0.65   # Phase 3-4
 
 const PLAYER_SIZE := Vector2(36, 36)
-const PLAYER_VISUAL_SIZE := Vector2(56, 56)  # sprite drawn larger than the hitbox
+const PLAYER_VISUAL_SIZE := Vector2(74, 74)  # sprite drawn larger than the hitbox; matches the east-facing sprite's 84px canvas
 const PLAYER_X := 130.0
+
+# Wing-flap loop: 9 frames (PixelLab keeps the reference pose as frame 0,
+# then 8 generated flap frames), all on a shared 84x84 canvas so switching
+# frames never changes the apparent sprite scale.
+const FLAP_FRAME_DURATION := 0.06
+const FLAP_FRAME_DIR := "res://assets/characters/bluebird_reference_match/flying_flap/east/"
+const FLAP_FRAME_COUNT := 9
 
 const GATE_WIDTH := 130.0
 const GATE_SPEED := 130.0  # halved for testing — was 260.0
 const WALL_THICKNESS := 14.0
 
-const COLOR_BG := Color(0.10, 0.10, 0.12)
+# Parallax sky: solid pastel color base (always seamless — no tiled image to
+# seam-match) with individual cloud sprites drifting right-to-left and
+# respawning off the right edge once fully clear of the left edge, so a cloud
+# is never visibly clipped. Near clouds are bigger/faster/more opaque, far
+# clouds smaller/slower/fainter, for a simple depth cue.
+const CLOUD_TEXTURE_PATHS := [
+	"res://assets/backgrounds/clouds/cloud_a.png",
+	"res://assets/backgrounds/clouds/cloud_b.png",
+	"res://assets/backgrounds/clouds/cloud_c.png",
+]
+const CLOUD_NEAR_COUNT := 3
+const CLOUD_FAR_COUNT := 3
+const CLOUD_NEAR_SPEED := 55.0
+const CLOUD_FAR_SPEED := 18.0
+const CLOUD_NEAR_SCALE_RANGE := Vector2(1.0, 1.3)
+const CLOUD_FAR_SCALE_RANGE := Vector2(0.5, 0.7)
+const CLOUD_NEAR_ALPHA := 0.95
+const CLOUD_FAR_ALPHA := 0.5
+const CLOUD_Y_BAND := Vector2(0.05, 0.85)  # fraction of screen height — spread across most of the sky
+const CLOUD_RESPAWN_MARGIN := Vector2(20.0, 120.0)
+
+# Gate art was reset — placeholder flat rects again pending a new design.
 const COLOR_GATE := Color(0.32, 0.32, 0.38)
 const COLOR_GATE_BORDER := Color(0.55, 0.55, 0.62)
+
+# Sky gradient — colors sampled from the reference (assets/references/sky_gradient),
+# top -> mid -> bottom, drawn as two vertex-colored quads for a smooth blend.
+const COLOR_SKY_TOP := Color(0.0039, 0.4235, 0.9882)
+const COLOR_SKY_MID := Color(0.2392, 0.7137, 0.9922)
+const COLOR_SKY_BOTTOM := Color(0.7843, 0.9569, 0.9804)
 const COLOR_WALL := Color(0.62, 0.16, 0.16)
 const COLOR_TEXT := Color(0.95, 0.95, 0.95)
+const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps HUD text legible over the light sky
 const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
 enum Difficulty { EASY, HARD }
@@ -90,7 +125,13 @@ var flash_color := Color(0, 0, 0, 0)
 var flash_time := 0.0
 const FLASH_DURATION := 0.25
 
-@onready var player_texture: Texture2D = load("res://assets/characters/bluebird_reference_match/south.png")
+var flap_frames: Array[Texture2D] = []
+var flap_frame_index: int = 0
+var flap_timer: float = 0.0
+
+var cloud_textures: Array[Texture2D] = []
+var clouds: Array = []  # each: {texture, x, y, scale, alpha, speed, near}
+
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
@@ -99,10 +140,71 @@ const FLASH_DURATION := 0.25
 
 
 func _ready() -> void:
+	for i in range(FLAP_FRAME_COUNT):
+		flap_frames.append(load(FLAP_FRAME_DIR + str(i) + ".png"))
+	for path in CLOUD_TEXTURE_PATHS:
+		cloud_textures.append(load(path))
+	_init_clouds(get_viewport_rect().size)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	_reset_game()
 	_set_state(State.READY)
+
+
+func _init_clouds(view_size: Vector2) -> void:
+	clouds.clear()
+	for i in range(CLOUD_FAR_COUNT):
+		clouds.append(_make_cloud(view_size, false, randf_range(0.0, view_size.x)))
+	for i in range(CLOUD_NEAR_COUNT):
+		clouds.append(_make_cloud(view_size, true, randf_range(0.0, view_size.x)))
+
+
+func _make_cloud(view_size: Vector2, is_near: bool, start_x: float) -> Dictionary:
+	var scale_range: Vector2 = CLOUD_NEAR_SCALE_RANGE if is_near else CLOUD_FAR_SCALE_RANGE
+	var speed: float = CLOUD_NEAR_SPEED if is_near else CLOUD_FAR_SPEED
+	return {
+		"texture": cloud_textures[randi() % cloud_textures.size()],
+		"x": start_x,
+		"y": randf_range(view_size.y * CLOUD_Y_BAND.x, view_size.y * CLOUD_Y_BAND.y),
+		"scale": randf_range(scale_range.x, scale_range.y),
+		"alpha": CLOUD_NEAR_ALPHA if is_near else CLOUD_FAR_ALPHA,
+		"speed": speed * randf_range(0.85, 1.15),
+		"near": is_near,
+	}
+
+
+func _update_clouds(delta: float, view_size: Vector2) -> void:
+	for c in clouds:
+		c.x -= c.speed * delta
+		var tex_w: float = c.texture.get_width() * c.scale
+		if c.x + tex_w < 0.0:
+			# Fully clear of the left edge — respawn past the right edge so
+			# it's never visibly clipped popping in or out.
+			c.x = view_size.x + randf_range(CLOUD_RESPAWN_MARGIN.x, CLOUD_RESPAWN_MARGIN.y)
+			c.y = randf_range(view_size.y * CLOUD_Y_BAND.x, view_size.y * CLOUD_Y_BAND.y)
+			c.texture = cloud_textures[randi() % cloud_textures.size()]
+
+
+func _draw_sky_gradient(view_size: Vector2) -> void:
+	var mid_y: float = view_size.y * 0.5
+	draw_polygon(
+		PackedVector2Array([Vector2(0, 0), Vector2(view_size.x, 0), Vector2(view_size.x, mid_y), Vector2(0, mid_y)]),
+		PackedColorArray([COLOR_SKY_TOP, COLOR_SKY_TOP, COLOR_SKY_MID, COLOR_SKY_MID])
+	)
+	draw_polygon(
+		PackedVector2Array([Vector2(0, mid_y), Vector2(view_size.x, mid_y), Vector2(view_size.x, view_size.y), Vector2(0, view_size.y)]),
+		PackedColorArray([COLOR_SKY_MID, COLOR_SKY_MID, COLOR_SKY_BOTTOM, COLOR_SKY_BOTTOM])
+	)
+
+
+func _draw_clouds(near: bool) -> void:
+	for c in clouds:
+		if c.near != near:
+			continue
+		var tex: Texture2D = c.texture
+		var cloud_scale: float = c.scale
+		var size: Vector2 = Vector2(tex.get_width(), tex.get_height()) * cloud_scale
+		draw_texture_rect(tex, Rect2(Vector2(c.x, c.y), size), false, Color(1.0, 1.0, 1.0, c.alpha))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -120,12 +222,19 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	# Clouds keep drifting on every screen (menu, playing, game over) for a
+	# lively backdrop, independent of gameplay state.
+	_update_clouds(delta, get_viewport_rect().size)
 	if state == State.PLAYING:
 		_update_playing(delta)
 	elif state == State.COUNTDOWN:
 		_update_countdown(delta)
 	if flash_time > 0.0:
 		flash_time = max(0.0, flash_time - delta)
+	flap_timer += delta
+	while flap_timer >= FLAP_FRAME_DURATION:
+		flap_timer -= FLAP_FRAME_DURATION
+		flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
 	queue_redraw()
 
 
@@ -368,7 +477,9 @@ func _set_state(new_state: int) -> void:
 
 func _draw() -> void:
 	var view_size := get_viewport_rect().size
-	draw_rect(Rect2(Vector2.ZERO, view_size), COLOR_BG)
+	_draw_sky_gradient(view_size)
+	_draw_clouds(false)  # far clouds first, near clouds drawn on top below
+	_draw_clouds(true)
 
 	var wall_top := view_size.y * 0.5 - WALL_THICKNESS * 0.5
 	var wall_bottom := view_size.y * 0.5 + WALL_THICKNESS * 0.5
@@ -389,7 +500,7 @@ func _draw() -> void:
 		_draw_centered_text(g.bottom_text, Vector2(g.x + GATE_WIDTH * 0.5, wall_bottom + (view_size.y - wall_bottom) * 0.5), 20)
 
 	if state != State.READY:
-		draw_texture_rect(player_texture, Rect2(Vector2(PLAYER_X - PLAYER_VISUAL_SIZE.x * 0.5, player_y - PLAYER_VISUAL_SIZE.y * 0.5), PLAYER_VISUAL_SIZE), false)
+		draw_texture_rect(flap_frames[flap_frame_index], Rect2(Vector2(PLAYER_X - PLAYER_VISUAL_SIZE.x * 0.5, player_y - PLAYER_VISUAL_SIZE.y * 0.5), PLAYER_VISUAL_SIZE), false)
 
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		var upcoming_target := _get_upcoming_target()
@@ -433,4 +544,9 @@ func _get_upcoming_target() -> String:
 func _draw_centered_text(text: String, center: Vector2, font_size: int) -> void:
 	var font := ThemeDB.fallback_font
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-	draw_string(font, Vector2(center.x - text_size.x * 0.5, center.y + text_size.y * 0.25), text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, COLOR_TEXT)
+	var pos := Vector2(center.x - text_size.x * 0.5, center.y + text_size.y * 0.25)
+	# Dark outline so the light HUD text still reads over the pastel sky,
+	# not just over the darker gate rects.
+	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		draw_string(font, pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, COLOR_TEXT_OUTLINE)
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, COLOR_TEXT)

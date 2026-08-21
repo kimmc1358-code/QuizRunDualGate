@@ -4,9 +4,6 @@
 
 [node name="Main" type="Node2D" unique_id=1993625809]
 script = ExtResource("1")
-flap_velocity = -321.0
-gravity = 1300.0
-base_gate_spacing = 800.0
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=397217226]
 
@@ -22,6 +19,7 @@ offset_left = 20.0
 offset_top = 190.0
 offset_right = 460.0
 offset_bottom = 280.0
+theme_override_colors/font_color = Color(0.09, 0.12, 0.18, 1)
 theme_override_font_sizes/font_size = 26
 text = "DUAL GATE
 QUIZ RUNNER
@@ -35,6 +33,7 @@ offset_left = 30.0
 offset_top = 310.0
 offset_right = 450.0
 offset_bottom = 440.0
+theme_override_colors/font_color = Color(0.15, 0.19, 0.27, 1)
 theme_override_font_sizes/font_size = 16
 text = "HARD MODE — no lives, no invincibility
 Tap to flap. Fly into the box that matches TARGET.
@@ -75,6 +74,7 @@ offset_left = 20.0
 offset_top = 330.0
 offset_right = 460.0
 offset_bottom = 380.0
+theme_override_colors/font_color = Color(0.09, 0.12, 0.18, 1)
 theme_override_font_sizes/font_size = 22
 text = "SCORE: 0"
 horizontal_alignment = 1
