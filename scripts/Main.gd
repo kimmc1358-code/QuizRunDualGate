@@ -519,7 +519,7 @@ var paused: bool = false
 enum CountdownPhase { READY_TEXT, START_TEXT }
 var countdown_phase: int = CountdownPhase.READY_TEXT
 var countdown_timer: float = 0.0
-const COUNTDOWN_READY_DURATION := 0.6
+const COUNTDOWN_READY_DURATION := 0.9
 const COUNTDOWN_START_DURATION := 0.4
 
 # "READY!" / "START!" countdown pop art — PixelLab-sourced, drawn in place of
@@ -1113,7 +1113,7 @@ func _process(delta: float) -> void:
 	_update_bg_sparkles(delta, view_size)
 	_update_castle(delta, view_size)
 	_update_cloud_mid(delta, view_size)
-	pause_button.visible = state == State.PLAYING and not paused
+	pause_button.visible = state == State.PLAYING or state == State.COUNTDOWN
 	if not paused:
 		if state == State.PLAYING:
 			_update_playing(delta)
@@ -1851,11 +1851,13 @@ func _on_pause_pressed() -> void:
 		return
 	paused = true
 	pause_panel.visible = true
+	pause_button.modulate = Color(1.0, 1.0, 1.0, 0.5)
 
 
 func _on_resume_pressed() -> void:
 	paused = false
 	pause_panel.visible = false
+	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
 
 
 func _on_mute_pressed() -> void:
