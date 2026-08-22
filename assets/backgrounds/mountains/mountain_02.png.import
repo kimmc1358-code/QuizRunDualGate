@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dty5nqt1til4p"
-path="res://.godot/imported/gate_nameplate.png-0c827f6b31538cb7537dd5954e36b74f.ctex"
+uid="uid://hf3yosepv4ck"
+path="res://.godot/imported/mountain_02.png-31577dc720389435da8e79bae905f8e2.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gates/custom_gate/gate_nameplate.png"
-dest_files=["res://.godot/imported/gate_nameplate.png-0c827f6b31538cb7537dd5954e36b74f.ctex"]
+source_file="res://assets/backgrounds/mountains/mountain_02.png"
+dest_files=["res://.godot/imported/mountain_02.png-31577dc720389435da8e79bae905f8e2.ctex"]
 
 [params]
 

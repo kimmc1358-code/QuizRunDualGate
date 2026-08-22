@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://n5qymqnanpft"
-path="res://.godot/imported/gate_pillar_right.png-2c20873ca0b335f157703eb1499b3832.ctex"
+uid="uid://c3d2giu5375xu"
+path="res://.godot/imported/gate_left_back_normal_256.png-394cd5f1bf65c3b6723d8301c67ac667.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gates/custom_gate/gate_pillar_right.png"
-dest_files=["res://.godot/imported/gate_pillar_right.png-2c20873ca0b335f157703eb1499b3832.ctex"]
+source_file="res://assets/gates/gate_glow_256/gate_left_back_normal_256.png"
+dest_files=["res://.godot/imported/gate_left_back_normal_256.png-394cd5f1bf65c3b6723d8301c67ac667.ctex"]
 
 [params]
 

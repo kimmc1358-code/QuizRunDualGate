@@ -50,6 +50,49 @@ offset_bottom = 560.0
 theme_override_font_sizes/font_size = 22
 text = "PLAY"
 
+[node name="PauseButton" type="Button" parent="UI"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 4.0
+offset_right = 44.0
+offset_bottom = 40.0
+theme_override_font_sizes/font_size = 16
+text = "II"
+
+[node name="PausePanel" type="Control" parent="UI"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+
+[node name="Backdrop" type="ColorRect" parent="UI/PausePanel"]
+layout_mode = 0
+offset_right = 480.0
+offset_bottom = 854.0
+color = Color(0, 0, 0, 0.5)
+
+[node name="PausedLabel" type="Label" parent="UI/PausePanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 330.0
+offset_right = 460.0
+offset_bottom = 390.0
+theme_override_colors/font_color = Color(0.95, 0.95, 0.95, 1)
+theme_override_font_sizes/font_size = 32
+text = "PAUSED"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="UI/PausePanel"]
+layout_mode = 0
+offset_left = 160.0
+offset_top = 420.0
+offset_right = 320.0
+offset_bottom = 480.0
+theme_override_font_sizes/font_size = 22
+text = "RESUME"
+
 [node name="GameOverPanel" type="Control" parent="UI" unique_id=3637394]
 visible = false
 layout_mode = 3

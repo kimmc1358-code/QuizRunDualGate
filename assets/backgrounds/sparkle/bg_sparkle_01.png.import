@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bpux0vkjexxeo"
-path="res://.godot/imported/cloud_c.png-a5a6ce6fe6bd0a317cb14bdeed4cd3f5.ctex"
+uid="uid://mjfo5ao1gpoj"
+path="res://.godot/imported/bg_sparkle_01.png-5655ba01bf2d82e43f949063b7ab06eb.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/clouds/cloud_c.png"
-dest_files=["res://.godot/imported/cloud_c.png-a5a6ce6fe6bd0a317cb14bdeed4cd3f5.ctex"]
+source_file="res://assets/backgrounds/sparkle/bg_sparkle_01.png"
+dest_files=["res://.godot/imported/bg_sparkle_01.png-5655ba01bf2d82e43f949063b7ab06eb.ctex"]
 
 [params]
 

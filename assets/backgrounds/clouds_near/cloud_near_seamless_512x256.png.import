@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bqo0wpubrtrow"
-path="res://.godot/imported/gate_pillar_left.png-8c68104534a057d59fb67af66182b91e.ctex"
+uid="uid://co8r4xc21uic4"
+path="res://.godot/imported/cloud_near_seamless_512x256.png-2d0191c617dd8f783baec42d6d9e3e94.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gates/custom_gate/gate_pillar_left.png"
-dest_files=["res://.godot/imported/gate_pillar_left.png-8c68104534a057d59fb67af66182b91e.ctex"]
+source_file="res://assets/backgrounds/clouds_near/cloud_near_seamless_512x256.png"
+dest_files=["res://.godot/imported/cloud_near_seamless_512x256.png-2d0191c617dd8f783baec42d6d9e3e94.ctex"]
 
 [params]
 

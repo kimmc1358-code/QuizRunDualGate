@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://3tds1f83yy7f"
-path="res://.godot/imported/cloud_b.png-333fc0e10b81a594def023c942bfb583.ctex"
+uid="uid://copsaq8ar4pua"
+path="res://.godot/imported/bird_happy_up.png-d8bfad27f1dcedaf5b22bc26e0fbcd66.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/clouds/cloud_b.png"
-dest_files=["res://.godot/imported/cloud_b.png-333fc0e10b81a594def023c942bfb583.ctex"]
+source_file="res://assets/characters/custom_bird/bird_happy_up.png"
+dest_files=["res://.godot/imported/bird_happy_up.png-d8bfad27f1dcedaf5b22bc26e0fbcd66.ctex"]
 
 [params]
 
