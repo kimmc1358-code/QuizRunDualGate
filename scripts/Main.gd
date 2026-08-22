@@ -62,23 +62,41 @@ const GATE_SPEED := 130.0  # halved for testing — was 260.0
 const WALL_THICKNESS := 36.0
 
 # ============================================================
-# Screen layout zones (top -> bottom): HUD bar -> quiz box -> a hard
-# GATE_ZONE_TOP_BUFFER gap -> the gate zone (everything gameplay-visual:
-# gates/wall/bird) -> optionally a fixed control zone at the very bottom
-# (Easy mode only; Hard mode's gate zone just runs to the screen edge).
+# Screen layout zones (top -> bottom): HUD bar -> quiz box -> the gate zone
+# (everything gameplay-visual: gates/wall/bird), starting right at the quiz
+# box's real (non-transparent) bottom edge -> optionally a fixed control
+# zone at the very bottom (Easy mode only; Hard mode's gate zone just runs
+# to the screen edge).
 # These are absolute pixel values, not scaled with screen height, per spec —
 # see _gate_zone_top/_gate_zone_bottom, the only two places that combine
 # them into the actual bounds gate spawning/clamping/drawing use.
 # ============================================================
-const HUD_BAR_HEIGHT := 44.0
+const HUD_BAR_HEIGHT := 100.0
 const HUD_SIDE_MARGIN := 12.0
 const HUD_BAR_COLOR := Color(1.0, 1.0, 1.0, 0.3)
-const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges
-const QUIZ_BOX_TOP_GAP := 8.0        # small cosmetic gap below the HUD bar
-const QUIZ_BOX_HEIGHT := 56.0
+const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallback draw only)
+# Both score_panel.png and quiz_box.png carry a lot of transparent padding
+# around their actual painted frame (wings/clouds stick out unevenly), so a
+# gap of 0 here still looks like a big visual gap on screen — this is
+# negative to pull the quiz box's real artwork up close to the score
+# panel's real bottom edge. See the two PNGs' measured content bounds if
+# retuning: score panel's frame spans y 0.278-0.737 of its canvas, quiz
+# box's spans y 0.231-0.641 of its own (different canvas height).
+const QUIZ_BOX_TOP_GAP := -28.0
+const QUIZ_BOX_HEIGHT := 116.0       # display height; width follows the quiz_box.png source aspect (~3:1 wide banner)
 const QUIZ_BOX_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const QUIZ_BOX_CORNER_RADIUS := 12.0
-const GATE_ZONE_TOP_BUFFER := 24.0   # hard minimum, quiz box bottom -> gate zone top
+# Blank text area inside quiz_box.png sits to the right of the "Q." badge —
+# measured directly off the source PNG (cream box spans roughly x
+# 0.159-0.976, y 0.311-0.559 of the full image).
+const QUIZ_TEXT_CENTER_X_FRAC := 0.567
+const QUIZ_TEXT_CENTER_Y_FRAC := 0.47
+const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.75
+# Same measured content bounds as above, used to find the quiz box's real
+# (non-transparent) bottom edge on screen — see _gate_zone_top, which anchors
+# the gate zone to this instead of the padded bounding box.
+const QUIZ_CONTENT_BOTTOM_FRAC := 0.641
+const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's real bottom edge, if ever wanted again
 const CONTROL_ZONE_HEIGHT := 70.0    # Easy mode only — layout reserved, no buttons wired yet (see README)
 
 # Gate-pass speed boost: on a successful pass, GATE_SPEED is briefly
@@ -152,17 +170,19 @@ const GATE_PILLAR_BOTTOM_LOCAL_Y := 249.0
 const GATE_VISUAL_CLAMP_MARGIN := 1.1
 #
 # The frame's own display size is FIXED, not phase-scaled — it's the
-# container the future flag/number answer art and pass-through FX will be
-# built against, so it can't keep shrinking every phase or that art and
-# those effects would never fit consistently. Only the actual judged
-# target (the translucent zone highlight below) still narrows by phase, as
-# it always has; the frame just shows more empty margin around a tighter
-# highlighted target in later phases instead of resizing itself.
+# container the flag answer art and pass-through FX are built against, so
+# it can't keep shrinking every phase or that art and those effects would
+# never fit consistently. gate_visual_zone_ratio controls how much bigger
+# the frame renders than the zone highlight inside it — left at the
+# original 2.2 (gate size unchanged) per request; the zone itself is grown
+# instead via PHASE_ZONE_MARGIN[0] below. Don't shrink this ratio without
+# also shrinking GATE_FLAG_ICON_WIDTH/HEIGHT — the answer flag sits in the
+# same gap above the zone, and at some point the two start to overlap.
 # Phase 1's zone height (PLAYER_SIZE.y 36 + PHASE_ZONE_MARGIN[0] 60) — the
 # largest/most permissive zone, used as a constant sizing reference so the
 # frame never rescales itself between phases.
 const GATE_VISUAL_REFERENCE_ZONE_HEIGHT := 96.0
-@export_range(1.0, 4.0, 0.05) var gate_visual_zone_ratio: float = 2.2
+@export_range(1.0, 4.0, 0.05) var gate_visual_zone_ratio: float = 1.9
 
 # Sky gradient — colors sampled from the reference
 # (assets/references/sky_gradient/sky_gradient_v2.png), top -> mid -> bottom,
@@ -170,30 +190,68 @@ const GATE_VISUAL_REFERENCE_ZONE_HEIGHT := 96.0
 const COLOR_SKY_TOP := Color(0.0212, 0.4322, 0.9938)
 const COLOR_SKY_MID := Color(0.3670, 0.7912, 0.9892)
 const COLOR_SKY_BOTTOM := Color(0.7104, 0.9909, 0.9595)
-const COLOR_WALL := Color(0.62, 0.16, 0.16)
+# Center divider wall — made fully transparent per request. It's still a
+# real collision hazard (see _resolve_gate — touching this band is instant
+# game over regardless of which lane's flag was correct), just no longer
+# drawn, so it's invisible even though the top/bottom zone split still
+# exists there.
+const COLOR_WALL := Color(0.059, 0.008, 0.31, 0.0)
 const COLOR_TEXT := Color(0.95, 0.95, 0.95)
 const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps HUD text legible over the light sky
 const COLOR_TEXT_DARK := Color(0.09, 0.12, 0.18, 1.0)  # for text drawn over the near-opaque white quiz box, where the light COLOR_TEXT would wash out
 const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
-# Answer text (flag/number) sits inside the gate's decorative frame, above
-# its zone, never touching the pillar's inner walls — see
-# _draw_gate_answer_text. Font auto-shrinks (down to the min) if the text
-# is too wide to fit within GATE_WIDTH minus both side margins.
-const GATE_TEXT_SIDE_MARGIN := 8.0
-const GATE_TEXT_ZONE_GAP := 8.0
-const GATE_TEXT_MAX_FONT_SIZE := 20
-const GATE_TEXT_MIN_FONT_SIZE := 12
+# Answer flag icon sits inside the gate's decorative frame, directly above
+# its zone — positioned so the border's own bottom edge exactly touches the
+# zone's top edge (see _draw_gate_answer_flag), never overlapping it and
+# never leaving a gap either. Flag PNGs are all a unified 256x171 (3:2)
+# frame now (see assets/flags/flags_data.json), so the display size is a
+# rect, not a square — width/height match that same 3:2 ratio so the art
+# is never stretched.
+const GATE_FLAG_ICON_WIDTH := 72.0
+const GATE_FLAG_ICON_HEIGHT := 48.0
+# Border framing the flag, styled to match the gate pillar's own crystal
+# window (gold trim band + thin dark inner outline) — colors sampled
+# directly from assets/gates/gate_glow_256/gate_left_back_normal_256.png
+# so the two read as the same decorative language, not two unrelated pieces.
+const GATE_FLAG_BORDER_THICKNESS := 2.5
+const GATE_FLAG_OUTLINE_THICKNESS := 1.3
+const GATE_FLAG_BORDER_COLOR := Color(0.969, 0.580, 0.016)
+const GATE_FLAG_OUTLINE_COLOR := Color(0.059, 0.008, 0.31)
+# Beveled trim (lighter gold along top/left, darker along bottom/right,
+# same 3D-bevel trick the crystal window itself uses) plus small corner
+# gem accents — the same corner-diamond motif already used on score_panel
+# and quiz_box, reused here so all three UI pieces read as one kit.
+const GATE_FLAG_BORDER_HIGHLIGHT := Color(1.0, 0.82, 0.35)
+const GATE_FLAG_BORDER_SHADOW := Color(0.75, 0.33, 0.0)
+const GATE_FLAG_CORNER_ACCENT_SIZE := 3.4
+const GATE_FLAG_CORNER_ACCENT_COLOR := Color(0.969, 0.580, 0.016)
+const GATE_FLAG_CORNER_ACCENT_HIGHLIGHT := Color(1.0, 0.95, 0.6)
 
-# "COMBO!" popup — a separate, rarer beat on top of the gate-pass FX suite
-# above (which still fires every single pass unconditionally). Only shows
-# on combo milestones (x5, x10, ...), spawned from _resolve_gate right next
-# to where `combo` itself is incremented.
-const FX_COMBO_POPUP_DURATION := 0.45
-const FX_COMBO_POPUP_RISE := 20.0
-const FX_COMBO_POPUP_COLOR := Color(1.0, 0.85, 0.2)
-const FX_COMBO_POPUP_FONT_SIZE := 28
-const FX_COMBO_POPUP_OFFSET := Vector2(0.0, -50.0)  # above the bird's head
+# ============================================================
+# Combo tier popup — an "×N" burst in the gate zone's top-right corner,
+# fired on every successful pass (spawned from _resolve_gate right next to
+# where `combo` itself is incremented), never a persistent HUD element.
+# Entirely independent of the Phase system (gates_passed-based difficulty
+# curve) — this only ever reads `combo`. Four escalating tiers, 25 combo
+# wide each, capped at Tier 4 for anything >= COMBO_TIER_CAP.
+# ============================================================
+const COMBO_FONT_PATH := "res://assets/fonts/Mulmaru.ttf"
+const COMBO_TIER_SIZE := 25
+const COMBO_TIER_CAP := 100
+const COMBO_DISPLAY_MARGIN := Vector2(20.0, 16.0)  # inset from the gate zone's top-right corner
+
+# Indexed by tier (0..3 = Tier 1..Tier 4).
+const COMBO_TIER_DURATIONS := [0.3, 0.35, 0.45, 0.55]
+const COMBO_TIER_FONT_SIZES := [28, 34, 40, 50]
+const COMBO_TIER_PARTICLE_COUNTS := [0, 4, 9, 16]  # fed to _spawn_spark_burst's count_range
+const COMBO_TIER_RISE := [10.0, 14.0, 18.0, 22.0]
+const COMBO_SHAKE_DURATION := 0.12    # Tier 3+ only — much smaller/shorter than the gate-pass impact shake
+const COMBO_SHAKE_PEAK_AMPLITUDE := 2.5  # px, per spec's "2~3px"
+const COMBO_GLOW_DURATION := 0.6      # Tier 4 only — screen-edge glow, roughly matches that tier's popup lifetime
+const COMBO_GLOW_COLOR := Color(1.0, 0.75, 0.25)  # warm gold — no existing "fever time" effect in this project to match, so this is a fresh design
+const COMBO_GLOW_BAND_PX := 36.0
+const COMBO_GLOW_PEAK_ALPHA := 0.22
 
 # ============================================================
 # Sky Background / Parallax Background system. Purely decorative — nothing
@@ -389,13 +447,31 @@ const FX_SCORE_POP_COLOR := Color(1.0, 0.93, 0.6)
 const FX_SCORE_POP_FONT_SIZE := 26
 const FX_SCORE_POP_OFFSET := Vector2(0.0, -18.0)
 
-# 9. Audio hooks — two independent, layerable placeholders (an airy whoosh
-# and a crystalline chime), each its own AudioStreamPlayer so they can
-# overlap. No sound ships yet; drop files at these paths later and they
-# start playing automatically (ResourceLoader.exists guarded) — nothing
-# else here needs to change.
+# 9. Audio hooks — each its own AudioStreamPlayer so they can overlap.
+# Whoosh is still an unfilled placeholder (drop a file at that path and it
+# starts playing automatically, ResourceLoader.exists guarded). Chime plays
+# on every correct gate pass (see _play_gate_success_fx); flap plays once
+# per tap (see _unhandled_input).
 const FX_SOUND_WHOOSH_PATH := "res://assets/audio/gate_whoosh.ogg"
-const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.ogg"
+const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
+const FX_SOUND_FLAP_PATH := "res://assets/audio/bird_flap.wav"
+# Background music — starts once in _ready() and loops for the whole
+# session (menu, playing, game over all keep it going, same as the
+# parallax background), independent of the FX players above. Respects the
+# existing mute button since AudioStreamPlayer defaults to the Master bus,
+# same as every other sound here.
+const BGM_MAIN_PATH := "res://assets/audio/bgm_main.wav"
+# Countdown beat sounds — one played the instant the READY image appears,
+# the other the instant it swaps to START (see _start_countdown and
+# _update_countdown).
+const COUNTDOWN_READY_SOUND_PATH := "res://assets/audio/countdown_ready.mp3"
+const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
+# Failure sound — wrong gate, wall collision, or falling off the bottom of
+# the screen all funnel through the single _game_over() below, so this is
+# the one place it needs to be wired. BGM is stopped (not just paused) at
+# the same time — see _game_over — pending a separate failure-BGM track
+# later; _start_countdown resumes bgm_player for the next run.
+const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
 enum Difficulty { EASY, HARD }
 
@@ -405,7 +481,7 @@ enum Difficulty { EASY, HARD }
 # (not a single float) so the per-phase curve is a one-line change to bring
 # back if wanted later.
 # Easy mode never uses this — the whole lane stays a safe zone (see _resolve_gate).
-const PHASE_ZONE_MARGIN := [60.0, 45.0, 32.0, 20.0]
+const PHASE_ZONE_MARGIN := [90.0, 45.0, 32.0, 20.0]
 
 # Placeholder phase thresholds keyed on gates-passed count — the design doc
 # leaves the real curve open (section 11), tune these once that's decided.
@@ -418,17 +494,13 @@ const PHASE_GATE_THRESHOLDS := [0, 5, 12, 20]
 # reaction-time requirement.
 const REACH_SAFETY_FACTOR := 0.85
 
-# Dummy data: 5~10 confusable country-name pairs (real flag art comes later).
-const QUIZ_PAIRS := [
-	["Korea", "Japan"],
-	["Indonesia", "Monaco"],
-	["Romania", "Chad"],
-	["Ireland", "Ivory Coast"],
-	["New Zealand", "Australia"],
-	["Norway", "Iceland"],
-	["Senegal", "Mali"],
-	["Chile", "Thailand"],
-]
+# Flag Explorer answer database — all 193 UN member states, each record
+# {code, name, image} built by tools/validate_flags_data.ps1's companion
+# pipeline (see assets/flags/flags_data.json). Loaded once in _ready() into
+# flag_records (Array of Dictionaries) + flag_textures (code -> Texture2D),
+# and picked from directly in _spawn_gate — replaces the old QUIZ_PAIRS
+# dummy country-name list entirely.
+const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 
 enum State { READY, COUNTDOWN, PLAYING, GAMEOVER }
 
@@ -449,6 +521,38 @@ var countdown_phase: int = CountdownPhase.READY_TEXT
 var countdown_timer: float = 0.0
 const COUNTDOWN_READY_DURATION := 0.6
 const COUNTDOWN_START_DURATION := 0.4
+
+# "READY!" / "START!" countdown pop art — PixelLab-sourced, drawn in place of
+# the old plain-text draw_string call (see the State.COUNTDOWN block in
+# _draw()). Falls back to the old text if either file is missing.
+const READY_TEXTURE_PATH := "res://assets/ui_assets/Ready.png"
+const START_TEXTURE_PATH := "res://assets/ui_assets/Start.png"
+const COUNTDOWN_IMAGE_WIDTH := 220.0  # display width in px; height follows the source aspect ratio
+
+# Top HUD art: pause (top-left, real Button) / mute (top-right, real Button) /
+# score panel (top-center, drawn — no interaction needed). All PixelLab-
+# sourced, sized to fit inside the existing HUD_BAR_HEIGHT band unchanged.
+const PAUSE_ICON_PATH := "res://assets/ui_assets/pause.png"
+const MUTE_ICON_PATH := "res://assets/ui_assets/mute.png"
+const SCORE_PANEL_PATH := "res://assets/ui_assets/score_panel.png"
+const QUIZ_BOX_TEXTURE_PATH := "res://assets/ui_assets/quiz_box.png"
+const SCORE_PANEL_WIDTH := 240.0            # display width; height follows source aspect
+# Blank number box inside the score panel art sits to the right of the
+# "SCORE" label — measured directly off the source PNG (cream box spans
+# roughly x 0.397-0.869, y 0.356-0.658 of the full image). The number is
+# drawn right-aligned so it hugs the box's right edge instead of centering
+# under the whole panel (which would drift left, under the label).
+const SCORE_NUMBER_RIGHT_FRAC := 0.83       # fraction of panel display width — right edge the digits align to
+const SCORE_NUMBER_Y_FRAC := 0.51           # fraction of panel display height — vertical center of the digits
+const SCORE_NUMBER_FONT_SCALE := 0.22       # fraction of panel display height, used as the digit font size
+const SCORE_NUMBER_DIGIT_SPACING := 3.0     # extra px inserted between digits (score panel's default kerning is tight)
+const SCORE_NUMBER_EMBOLDEN := 0.5          # faux-bold strength (FontVariation) — Mulmaru only ships one weight
+
+# Pause/Mute button press feedback — quick squash-in on press, springy
+# release back to full size. Needs pivot_offset centered on the button (set
+# in _ready) so the scale anchors from the icon's center, not its top-left.
+const BUTTON_PRESS_SCALE := 0.85
+const BUTTON_PRESS_ANIM_DURATION := 0.08
 
 var player_y: float = 0.0
 var player_vel: float = 0.0
@@ -474,6 +578,15 @@ var flap_timer: float = 0.0
 var happy_flap_frames: Array[Texture2D] = []
 var happy_flap_elapsed: float = -1.0  # -1 = inactive; set to 0 on every gate pass, see _play_gate_success_fx
 var sad_face_texture: Texture2D
+var ready_texture: Texture2D
+var start_texture: Texture2D
+var score_panel_texture: Texture2D
+var score_font: Font
+var quiz_box_texture: Texture2D
+var flag_records: Array = []          # [{code, name, image, tier}, ...] — see FLAGS_DATA_PATH
+var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded from flag_records
+var flag_records_by_tier: Dictionary = {}  # tier (int 1-4) -> Array of records, for difficulty-gated spawning
+var muted: bool = false
 
 var gate_left_pillar_textures: Array[Texture2D] = []   # [normal, glow01, glow02, glow03]
 var gate_right_pillar_textures: Array[Texture2D] = []  # [normal, glow01, glow02, glow03]
@@ -501,13 +614,22 @@ var fx_spark_texture: Texture2D
 var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, tint}
 var fx_speed_lines: Array = []       # each: {y_offset, length, elapsed, color}
 var fx_score_pops: Array = []        # each: {pos, elapsed}
-var fx_combo_popups: Array = []      # each: {pos, elapsed} — only spawned on combo milestones, see _resolve_gate
+var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
+var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
 var fx_impact_flashes: Array = []    # each: {pos, radius, elapsed}
 var fx_pending_bursts: Array = []    # each: {delay, gate_center} — burst B + speed streaks fire together once delay elapses
 var fx_shake_elapsed: float = -1.0   # -1 = inactive
 var fx_stretch_elapsed: float = -1.0 # -1 = inactive
+var combo_shake_elapsed: float = -1.0  # -1 = inactive; separate tiny shake for combo Tier 3+, independent of fx_shake_elapsed
+var combo_glow_elapsed: float = -1.0   # -1 = inactive; screen-edge glow for combo Tier 4
+var combo_font: Font
 var fx_sound_whoosh: AudioStreamPlayer
 var fx_sound_chime: AudioStreamPlayer
+var fx_sound_flap: AudioStreamPlayer
+var bgm_player: AudioStreamPlayer
+var fx_sound_countdown_ready: AudioStreamPlayer
+var fx_sound_countdown_start: AudioStreamPlayer
+var fx_sound_gameover: AudioStreamPlayer
 
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
@@ -515,6 +637,7 @@ var fx_sound_chime: AudioStreamPlayer
 @onready var play_button: Button = $UI/ReadyPanel/PlayButton
 @onready var restart_button: Button = $UI/GameOverPanel/RestartButton
 @onready var pause_button: Button = $UI/PauseButton
+@onready var mute_button: Button = $UI/MuteButton
 @onready var pause_panel: Control = $UI/PausePanel
 @onready var resume_button: Button = $UI/PausePanel/ResumeButton
 
@@ -529,6 +652,31 @@ func _ready() -> void:
 		happy_flap_frames.append(load(path))
 	if ResourceLoader.exists(SAD_FACE_PATH):
 		sad_face_texture = load(SAD_FACE_PATH)
+	if ResourceLoader.exists(READY_TEXTURE_PATH):
+		ready_texture = load(READY_TEXTURE_PATH)
+	if ResourceLoader.exists(START_TEXTURE_PATH):
+		start_texture = load(START_TEXTURE_PATH)
+	if ResourceLoader.exists(SCORE_PANEL_PATH):
+		score_panel_texture = load(SCORE_PANEL_PATH)
+	if ResourceLoader.exists(QUIZ_BOX_TEXTURE_PATH):
+		quiz_box_texture = load(QUIZ_BOX_TEXTURE_PATH)
+	_load_flags_data()
+	if ResourceLoader.exists(PAUSE_ICON_PATH):
+		pause_button.icon = load(PAUSE_ICON_PATH)
+		pause_button.text = ""
+		pause_button.expand_icon = true
+	if ResourceLoader.exists(MUTE_ICON_PATH):
+		mute_button.icon = load(MUTE_ICON_PATH)
+		mute_button.text = ""
+		mute_button.expand_icon = true
+	if ResourceLoader.exists(COMBO_FONT_PATH):
+		combo_font = load(COMBO_FONT_PATH)
+	else:
+		combo_font = ThemeDB.fallback_font
+	var score_font_variation := FontVariation.new()
+	score_font_variation.base_font = combo_font
+	score_font_variation.variation_embolden = SCORE_NUMBER_EMBOLDEN
+	score_font = score_font_variation
 	for path in GATE_LEFT_PILLAR_PATHS:
 		gate_left_pillar_textures.append(load(path))
 	for path in GATE_RIGHT_PILLAR_PATHS:
@@ -555,12 +703,68 @@ func _ready() -> void:
 	add_child(fx_sound_chime)
 	if ResourceLoader.exists(FX_SOUND_CHIME_PATH):
 		fx_sound_chime.stream = load(FX_SOUND_CHIME_PATH)
+	fx_sound_flap = AudioStreamPlayer.new()
+	add_child(fx_sound_flap)
+	if ResourceLoader.exists(FX_SOUND_FLAP_PATH):
+		fx_sound_flap.stream = load(FX_SOUND_FLAP_PATH)
+	bgm_player = AudioStreamPlayer.new()
+	add_child(bgm_player)
+	if ResourceLoader.exists(BGM_MAIN_PATH):
+		bgm_player.stream = load(BGM_MAIN_PATH)
+		bgm_player.finished.connect(bgm_player.play)  # manual loop — simpler/more reliable than fiddling with AudioStreamWAV's own loop points
+		bgm_player.play()
+	fx_sound_countdown_ready = AudioStreamPlayer.new()
+	add_child(fx_sound_countdown_ready)
+	if ResourceLoader.exists(COUNTDOWN_READY_SOUND_PATH):
+		fx_sound_countdown_ready.stream = load(COUNTDOWN_READY_SOUND_PATH)
+	fx_sound_countdown_start = AudioStreamPlayer.new()
+	add_child(fx_sound_countdown_start)
+	if ResourceLoader.exists(COUNTDOWN_START_SOUND_PATH):
+		fx_sound_countdown_start.stream = load(COUNTDOWN_START_SOUND_PATH)
+	fx_sound_gameover = AudioStreamPlayer.new()
+	add_child(fx_sound_gameover)
+	if ResourceLoader.exists(FX_SOUND_GAMEOVER_PATH):
+		fx_sound_gameover.stream = load(FX_SOUND_GAMEOVER_PATH)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
+	mute_button.pressed.connect(_on_mute_pressed)
+	pause_button.pivot_offset = pause_button.size * 0.5
+	mute_button.pivot_offset = mute_button.size * 0.5
+	pause_button.button_down.connect(_animate_button_press.bind(pause_button))
+	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
+	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
+	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
 	_reset_game()
 	_set_state(State.READY)
+
+
+# Loads assets/flags/flags_data.json (193 UN member records) and preloads
+# every flag texture up front — 193 tiny 64x64 PNGs is negligible memory,
+# and preloading means _spawn_gate can never hit a mid-run load hitch or a
+# missing-texture gap. See tools/validate_flags_data.ps1 for the offline
+# check that every record's code/name/image is present and 1:1 matched;
+# this just trusts that and loads it.
+func _load_flags_data() -> void:
+	if not ResourceLoader.exists(FLAGS_DATA_PATH):
+		return
+	var file := FileAccess.open(FLAGS_DATA_PATH, FileAccess.READ)
+	if file == null:
+		return
+	var parsed = JSON.parse_string(file.get_as_text())
+	file.close()
+	if parsed == null or not (parsed is Array):
+		return
+	flag_records = parsed
+	for record in flag_records:
+		var tex_path: String = record.image
+		if ResourceLoader.exists(tex_path):
+			flag_textures[record.code] = load(tex_path)
+		var tier: int = record.tier
+		if not flag_records_by_tier.has(tier):
+			flag_records_by_tier[tier] = []
+		flag_records_by_tier[tier].append(record)
 
 
 func _draw_sky_gradient(view_size: Vector2) -> void:
@@ -754,11 +958,15 @@ func _draw_cloud_mid(near: bool) -> void:
 
 
 func _gate_zone_top(view_size: Vector2) -> float:
-	# HUD bar -> quiz box -> hard GATE_ZONE_TOP_BUFFER gap. Absolute pixel
-	# values per spec, not scaled with screen height — only the gate zone
-	# itself (the space between this and _gate_zone_bottom) is what varies
-	# by device.
-	return HUD_BAR_HEIGHT + QUIZ_BOX_TOP_GAP + QUIZ_BOX_HEIGHT + GATE_ZONE_TOP_BUFFER
+	# Anchored to the quiz box's real (non-transparent) bottom edge, not its
+	# padded bounding box — quiz_box.png has a lot of transparent margin, so
+	# using the raw box_top + QUIZ_BOX_HEIGHT would leave a dead gap here and
+	# shrink the gate's actual travel range for no visual reason. The top
+	# gate's frame is separately inset in _spawn_gate (see
+	# _gate_frame_top_overhang) so its own top edge still never crosses this
+	# line — it's allowed to touch it, just not go past it.
+	var quiz_box_top: float = HUD_BAR_HEIGHT + QUIZ_BOX_TOP_GAP
+	return quiz_box_top + QUIZ_BOX_HEIGHT * QUIZ_CONTENT_BOTTOM_FRAC + GATE_ZONE_TOP_BUFFER
 
 
 func _gate_zone_bottom(view_size: Vector2) -> float:
@@ -814,28 +1022,71 @@ func _draw_gate_frame_layer(texture: Texture2D, center_x: float, center_y: float
 	draw_texture_rect(texture, Rect2(top_left, draw_size), false)
 
 
-# Draws a gate's answer text (flag/number) inside its own decorative frame,
-# always on the frame's own "top" side (toward smaller y) — the pillar art
-# is never vertically flipped between lanes, so its top-of-canvas opening
-# faces the same direction (up) whether this is the top-lane or bottom-lane
-# gate; mirroring the text direction per-lane put it down in the bottom
-# lane's floral pillar base instead of at the U's opening. At least
-# GATE_TEXT_ZONE_GAP of clearance from the zone itself keeps the two from
-# ever overlapping, clamped so it never renders above _gate_zone_top (the
-# HUD/quiz-box buffer). Horizontally it never spills past the pillars: font
-# auto-shrinks to fit within GATE_WIDTH minus both GATE_TEXT_SIDE_MARGIN insets.
-func _draw_gate_answer_text(text: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
-	var frame_half: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
-	var zone_center: float = (zone_top + zone_bottom) * 0.5
-	var max_width: float = GATE_WIDTH - GATE_TEXT_SIDE_MARGIN * 2.0
-	var font_size := _fit_font_size(text, max_width, GATE_TEXT_MAX_FONT_SIZE, GATE_TEXT_MIN_FONT_SIZE)
-	var half_text_height: float = font_size * 0.5
+# Draws a gate's answer flag icon inside its own decorative frame, always on
+# the frame's own "top" side (toward smaller y) — the pillar art is never
+# vertically flipped between lanes, so its top-of-canvas opening faces the
+# same direction (up) whether this is the top-lane or bottom-lane gate;
+# mirroring the icon per-lane put it down in the bottom lane's floral pillar
+# base instead of at the U's opening. Anchored so the border's own bottom
+# edge sits exactly on zone_top (touching, never overlapping), clamped only
+# as a safety floor so it can't render above _gate_zone_top (the HUD/quiz-
+# box buffer). code indexes into flag_textures — see _spawn_gate for where
+# top_code/bottom_code are set and code-checked against the quiz box target.
+func _draw_gate_answer_flag(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
+	var texture: Texture2D = flag_textures.get(code)
+	if texture == null:
+		return
 	var center_x: float = gate_x + GATE_WIDTH * 0.5
-	var frame_top: float = zone_center - frame_half
-	var available_bottom: float = zone_top - GATE_TEXT_ZONE_GAP
-	var center_y: float = (frame_top + available_bottom) * 0.5
-	center_y = clampf(center_y, _gate_zone_top(view_size) + half_text_height, available_bottom - half_text_height)
-	_draw_centered_text(text, Vector2(center_x, center_y), font_size)
+	var outline_half_h: float = GATE_FLAG_ICON_HEIGHT * 0.5 + GATE_FLAG_BORDER_THICKNESS + GATE_FLAG_OUTLINE_THICKNESS
+	var center_y: float = maxf(zone_top - outline_half_h, _gate_zone_top(view_size) + outline_half_h)
+
+	var icon_size := Vector2(GATE_FLAG_ICON_WIDTH, GATE_FLAG_ICON_HEIGHT)
+	var icon_top_left := Vector2(center_x, center_y) - icon_size * 0.5
+	var border_size := icon_size + Vector2.ONE * (GATE_FLAG_BORDER_THICKNESS * 2.0)
+	var border_top_left := icon_top_left - Vector2.ONE * GATE_FLAG_BORDER_THICKNESS
+	var outline_size := border_size + Vector2.ONE * (GATE_FLAG_OUTLINE_THICKNESS * 2.0)
+	var outline_top_left := border_top_left - Vector2.ONE * GATE_FLAG_OUTLINE_THICKNESS
+
+	# Dark outline -> gold trim band -> flag art, same layering as the gate
+	# frame's own crystal window (dark outline around a gold-trimmed inset).
+	draw_rect(Rect2(outline_top_left, outline_size), GATE_FLAG_OUTLINE_COLOR)
+	draw_rect(Rect2(border_top_left, border_size), GATE_FLAG_BORDER_COLOR)
+
+	# Bevel the gold band — brighter along top/left, darker along
+	# bottom/right — the same 3D trick the gate's own crystal trim uses,
+	# instead of one flat gold tone.
+	var band_inset: float = GATE_FLAG_BORDER_THICKNESS * 0.5
+	var b_tl: Vector2 = border_top_left + Vector2.ONE * band_inset
+	var b_tr: Vector2 = border_top_left + Vector2(border_size.x - band_inset, band_inset)
+	var b_bl: Vector2 = border_top_left + Vector2(band_inset, border_size.y - band_inset)
+	var b_br: Vector2 = border_top_left + border_size - Vector2.ONE * band_inset
+	draw_line(b_tl, b_tr, GATE_FLAG_BORDER_HIGHLIGHT, GATE_FLAG_BORDER_THICKNESS)
+	draw_line(b_tl, b_bl, GATE_FLAG_BORDER_HIGHLIGHT, GATE_FLAG_BORDER_THICKNESS)
+	draw_line(b_bl, b_br, GATE_FLAG_BORDER_SHADOW, GATE_FLAG_BORDER_THICKNESS)
+	draw_line(b_tr, b_br, GATE_FLAG_BORDER_SHADOW, GATE_FLAG_BORDER_THICKNESS)
+
+	draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
+
+	# Small gem accents at the four outline corners — same corner-diamond
+	# motif as score_panel.png / quiz_box.png, tying this into the rest of
+	# the UI kit.
+	_draw_flag_corner_accent(outline_top_left)
+	_draw_flag_corner_accent(outline_top_left + Vector2(outline_size.x, 0.0))
+	_draw_flag_corner_accent(outline_top_left + Vector2(0.0, outline_size.y))
+	_draw_flag_corner_accent(outline_top_left + outline_size)
+
+
+func _draw_flag_corner_accent(center: Vector2) -> void:
+	var s := GATE_FLAG_CORNER_ACCENT_SIZE
+	var outer := PackedVector2Array([
+		center + Vector2(0, -s), center + Vector2(s, 0), center + Vector2(0, s), center + Vector2(-s, 0),
+	])
+	draw_colored_polygon(outer, GATE_FLAG_CORNER_ACCENT_COLOR)
+	var inner_s := s * 0.45
+	var inner := PackedVector2Array([
+		center + Vector2(0, -inner_s), center + Vector2(inner_s, 0), center + Vector2(0, inner_s), center + Vector2(-inner_s, 0),
+	])
+	draw_colored_polygon(inner, GATE_FLAG_CORNER_ACCENT_HIGHLIGHT)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -850,6 +1101,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		tapped = true
 	if tapped:
 		player_vel = flap_velocity
+		if fx_sound_flap.stream != null:
+			fx_sound_flap.play()
 
 
 func _process(delta: float) -> void:
@@ -883,6 +1136,8 @@ func _update_countdown(delta: float) -> void:
 	if countdown_phase == CountdownPhase.READY_TEXT:
 		countdown_phase = CountdownPhase.START_TEXT
 		countdown_timer = COUNTDOWN_START_DURATION
+		if fx_sound_countdown_start.stream != null:
+			fx_sound_countdown_start.play()
 	else:
 		_set_state(State.PLAYING)
 
@@ -917,6 +1172,8 @@ func _update_playing(delta: float) -> void:
 	elif player_y + half_h > zone_bottom:
 		player_y = zone_bottom - half_h
 		player_vel = 0.0
+		_game_over()
+		return
 
 	if gate_speed_boost_elapsed >= 0.0:
 		gate_speed_boost_elapsed += delta
@@ -938,12 +1195,24 @@ func _update_playing(delta: float) -> void:
 
 
 func _spawn_gate(view_size: Vector2) -> void:
-	var pair: Array = QUIZ_PAIRS[randi() % QUIZ_PAIRS.size()]
-	var target: String = pair[randi() % 2]
-	var other: String = pair[0] if target == pair[1] else pair[1]
+	var phase_index := _get_phase_index(gates_passed)
+
+	# Difficulty curve: phase 0 (tier 1) draws only from the most
+	# internationally famous flags, phase 3 (tier 4) from the least — both
+	# the correct answer and the decoy come from the same tier, so a wrong
+	# choice is never a giveaway just because it "looks less famous."
+	var tier: int = phase_index + 1
+	var pool: Array = flag_records_by_tier.get(tier, flag_records)
+	if pool.size() < 2:
+		pool = flag_records
+	var target_index := randi() % pool.size()
+	var other_index := randi() % (pool.size() - 1)
+	if other_index >= target_index:
+		other_index += 1  # skip target_index so other is always a different country
+	var target: Dictionary = pool[target_index]
+	var other: Dictionary = pool[other_index]
 	var top_correct: bool = randi() % 2 == 0
 
-	var phase_index := _get_phase_index(gates_passed)
 	var wall_center_y := _gate_wall_center_y(view_size)
 	var wall_top := wall_center_y - WALL_THICKNESS * 0.5
 	var wall_bottom := wall_center_y + WALL_THICKNESS * 0.5
@@ -1004,12 +1273,22 @@ func _spawn_gate(view_size: Vector2) -> void:
 		top_zone = _random_zone(top_lane_band_top, wall_top, zone_height)
 		last_zone_center = (bottom_zone.x + bottom_zone.y) * 0.5
 
+	var top_code: String = target.code if top_correct else other.code
+	var bottom_code: String = other.code if top_correct else target.code
+
+	# Code-level correctness check (per spec): the quiz box always shows
+	# target.name, so the gate in the correct lane must carry that exact
+	# same country code, not just a name that happens to match.
+	var correct_lane_code: String = top_code if top_correct else bottom_code
+	assert(correct_lane_code == target.code, "Quiz target code and correct-lane gate code must match")
+
 	gates.append({
 		"x": PLAYER_X + base_gate_spacing,
-		"top_text": target if top_correct else other,
-		"bottom_text": other if top_correct else target,
+		"top_code": top_code,
+		"bottom_code": bottom_code,
 		"top_correct": top_correct,
-		"target": target,
+		"target_code": target.code,
+		"target_name": target.name,
 		"resolved": false,
 		"top_zone_top": top_zone.x,
 		"top_zone_bottom": top_zone.y,
@@ -1102,13 +1381,12 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	if passed:
 		gates_passed += 1
 		combo += 1
-		score += 10 * combo
+		score += 10
 		flash_color = Color(0.3, 0.8, 0.4, 0.35)
 		flash_time = FLASH_DURATION
 		gate_speed_boost_elapsed = 0.0
 		_play_gate_success_fx(g, in_top)
-		if combo % 5 == 0:
-			_spawn_combo_popup()
+		_spawn_combo_popup(view_size)
 	else:
 		_game_over()
 
@@ -1202,11 +1480,33 @@ func _spawn_score_pop(gate_center: Vector2) -> void:
 	})
 
 
-func _spawn_combo_popup() -> void:
-	fx_combo_popups.append({
-		"pos": Vector2(PLAYER_X, player_y) + FX_COMBO_POPUP_OFFSET,
-		"elapsed": 0.0,
-	})
+func _combo_tier(combo_value: int) -> int:
+	# 0-indexed: 1-25 -> Tier 1 (0), 26-50 -> Tier 2 (1), 51-75 -> Tier 3 (2),
+	# 76+ (capped at COMBO_TIER_CAP) -> Tier 4 (3), and it just stays there.
+	var capped: int = mini(combo_value, COMBO_TIER_CAP)
+	var tier: int = (maxi(capped, 1) - 1) / COMBO_TIER_SIZE
+	return clampi(tier, 0, 3)
+
+
+func _combo_display_pos(view_size: Vector2) -> Vector2:
+	return Vector2(view_size.x - COMBO_DISPLAY_MARGIN.x, _gate_zone_top(view_size) + COMBO_DISPLAY_MARGIN.y)
+
+
+func _spawn_combo_popup(view_size: Vector2) -> void:
+	# The "×N" display itself is persistent (drawn every frame combo > 0 in
+	# _draw_combo_popups) — this only re-triggers the punch/bounce and the
+	# one-shot burst effects (particles, Tier 3 shake, Tier 4 glow) on top
+	# of it, it doesn't spawn or replace anything that needs to expire.
+	var tier := _combo_tier(combo)
+	combo_display_punch_elapsed = 0.0
+	var pos := _combo_display_pos(view_size)
+	var particle_count: int = COMBO_TIER_PARTICLE_COUNTS[tier]
+	if particle_count > 0:
+		_spawn_spark_burst(pos, Vector2i(particle_count, particle_count), FX_SPARK_BURST_A_SCALE_RANGE)
+	if tier >= 2:
+		combo_shake_elapsed = 0.0
+	if tier >= 3:
+		combo_glow_elapsed = 0.0
 
 
 func _play_gate_success_sound() -> void:
@@ -1303,9 +1603,11 @@ func _update_fx(delta: float) -> void:
 		p.elapsed += delta
 	fx_score_pops = fx_score_pops.filter(func(p): return p.elapsed < FX_SCORE_POP_DURATION)
 
-	for p in fx_combo_popups:
-		p.elapsed += delta
-	fx_combo_popups = fx_combo_popups.filter(func(p): return p.elapsed < FX_COMBO_POPUP_DURATION)
+	if combo > 0:
+		combo_display_punch_elapsed += delta
+		combo_display_time += delta
+	else:
+		combo_display_time = 0.0
 
 	# Burst B + speed streaks fire together once their shared delay elapses.
 	for b in fx_pending_bursts:
@@ -1321,16 +1623,32 @@ func _update_fx(delta: float) -> void:
 		if fx_stretch_elapsed >= FX_STRETCH_DURATION:
 			fx_stretch_elapsed = -1.0
 
+	# Two independent shake sources (gate-pass impact, combo Tier 3+) summed
+	# into one offset — each decays and clears on its own schedule.
+	var shake_offset := Vector2.ZERO
 	if fx_shake_elapsed >= 0.0:
 		fx_shake_elapsed += delta
 		if fx_shake_elapsed >= FX_SHAKE_DURATION:
 			fx_shake_elapsed = -1.0
-			position = Vector2.ZERO
 		else:
 			# Cubic decay: drops under 1px well before FX_SHAKE_DURATION ends.
 			var t: float = fx_shake_elapsed / FX_SHAKE_DURATION
 			var amp: float = FX_SHAKE_PEAK_AMPLITUDE * pow(1.0 - t, 3) * clampf(successFxIntensity, 0.0, 2.0)
-			position = Vector2(randf_range(-amp, amp), randf_range(-amp, amp))
+			shake_offset += Vector2(randf_range(-amp, amp), randf_range(-amp, amp))
+	if combo_shake_elapsed >= 0.0:
+		combo_shake_elapsed += delta
+		if combo_shake_elapsed >= COMBO_SHAKE_DURATION:
+			combo_shake_elapsed = -1.0
+		else:
+			var t2: float = combo_shake_elapsed / COMBO_SHAKE_DURATION
+			var amp2: float = COMBO_SHAKE_PEAK_AMPLITUDE * pow(1.0 - t2, 3)
+			shake_offset += Vector2(randf_range(-amp2, amp2), randf_range(-amp2, amp2))
+	position = shake_offset
+
+	if combo_glow_elapsed >= 0.0:
+		combo_glow_elapsed += delta
+		if combo_glow_elapsed >= COMBO_GLOW_DURATION:
+			combo_glow_elapsed = -1.0
 
 
 func _draw_speed_lines() -> void:
@@ -1389,47 +1707,112 @@ func _draw_score_pops() -> void:
 		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, main_col)
 
 
-func _draw_combo_popups() -> void:
-	if fx_combo_popups.is_empty():
+func _combo_tier_color(tier: int, elapsed: float) -> Color:
+	match tier:
+		1:
+			return Color(1.0, 0.85, 0.2)  # yellow
+		2:
+			# Orange <-> purple pulse ("주황/보라 계열").
+			var mix: float = (sin(elapsed * TAU * 3.0) + 1.0) * 0.5
+			return Color(1.0, 0.55, 0.15).lerp(Color(0.65, 0.3, 0.85), mix)
+		3:
+			# Rainbow shimmer.
+			var hue: float = fmod(elapsed * 1.6, 1.0)
+			return Color.from_hsv(hue, 0.8, 1.0)
+	return COLOR_TEXT  # Tier 1: plain white
+
+
+func _draw_combo_popups(view_size: Vector2) -> void:
+	if combo <= 0:
 		return
-	var font := ThemeDB.fallback_font
-	var text := "COMBO!"
-	for p in fx_combo_popups:
-		var t: float = p.elapsed / FX_COMBO_POPUP_DURATION
-		var alpha: float = 1.0 - t
-		var font_size: int = int(round(FX_COMBO_POPUP_FONT_SIZE * _pop_scale(t)))
-		var pos: Vector2 = p.pos + Vector2(0.0, -FX_COMBO_POPUP_RISE * t)
-		var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-		var draw_pos := Vector2(pos.x - text_size.x * 0.5, pos.y + text_size.y * 0.25)
-		var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
-		var main_col := Color(FX_COMBO_POPUP_COLOR.r, FX_COMBO_POPUP_COLOR.g, FX_COMBO_POPUP_COLOR.b, alpha)
-		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			draw_string(font, draw_pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, outline_col)
-		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, main_col)
+	var tier := _combo_tier(combo)
+	# Punch: a quick overshoot-then-settle right after each pass (via
+	# _pop_scale), clamped so it holds steady at rest instead of
+	# extrapolating once combo_display_punch_elapsed outlives the punch
+	# window — the "×N" text itself never expires or fades, only this
+	# bounce is momentary. The tiny rise-then-return keeps the resting
+	# position fixed (no permanent drift upward pass after pass).
+	var punch_duration: float = COMBO_TIER_DURATIONS[tier]
+	var t_punch: float = clampf(combo_display_punch_elapsed / punch_duration, 0.0, 1.0)
+	var scale: float = _pop_scale(t_punch)
+	var font_size: int = int(round(COMBO_TIER_FONT_SIZES[tier] * scale))
+	var rise: float = COMBO_TIER_RISE[tier] * sin(t_punch * PI)
+	var pos: Vector2 = _combo_display_pos(view_size) + Vector2(0.0, -rise)
+	var text := "x%d" % combo
+	var col: Color = _combo_tier_color(tier, combo_display_time)
+	var main_col := Color(col.r, col.g, col.b, 1.0)
+	var outline_col := COLOR_TEXT_OUTLINE
+	# Right-anchored to pos.x so it grows toward screen-left as the digit
+	# count changes, always staying inside the gate zone's top-right corner
+	# rather than spilling off the screen edge.
+	var text_size := combo_font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var draw_pos := Vector2(pos.x - text_size.x, pos.y + text_size.y * 0.75)
+	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		draw_string(combo_font, draw_pos + offset, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_col)
+	draw_string(combo_font, draw_pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, main_col)
+
+	# "COMBO!" line below the "×N" at every tier — persistent just like the
+	# number itself (no fade), riding the same punch bounce and tier color.
+	var label := "COMBO!"
+	var label_font_size: int = int(round(COMBO_TIER_FONT_SIZES[tier] * 0.55 * scale))
+	var label_size := combo_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size)
+	var label_pos := Vector2(pos.x - label_size.x, draw_pos.y + text_size.y * 0.7)
+	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		draw_string(combo_font, label_pos + offset, label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size, outline_col)
+	draw_string(combo_font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size, main_col)
+
+
+func _draw_combo_glow(view_size: Vector2) -> void:
+	if combo_glow_elapsed < 0.0:
+		return
+	var t: float = combo_glow_elapsed / COMBO_GLOW_DURATION
+	var pulse: float = 0.6 + 0.4 * sin(combo_glow_elapsed * TAU * 2.0)
+	var alpha: float = COMBO_GLOW_PEAK_ALPHA * (1.0 - t) * pulse
+	if alpha <= 0.0:
+		return
+	var c := Color(COMBO_GLOW_COLOR.r, COMBO_GLOW_COLOR.g, COMBO_GLOW_COLOR.b, alpha)
+	var b := COMBO_GLOW_BAND_PX
+	draw_rect(Rect2(Vector2(0, 0), Vector2(view_size.x, b)), c)
+	draw_rect(Rect2(Vector2(0, view_size.y - b), Vector2(view_size.x, b)), c)
+	draw_rect(Rect2(Vector2(0, 0), Vector2(b, view_size.y)), c)
+	draw_rect(Rect2(Vector2(view_size.x - b, 0), Vector2(b, view_size.y)), c)
 
 
 func _game_over() -> void:
 	state = State.GAMEOVER
+	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
 	final_score_label.text = "SCORE: %d" % score
 	gameover_panel.visible = true
+	bgm_player.stop()
+	if fx_sound_gameover.stream != null:
+		fx_sound_gameover.play()
 
 
 func _on_play_pressed() -> void:
-	# First-ever play for this mode+difficulty: onboarding flow stays as-is,
-	# straight into PLAYING with no READY/START pop-in.
+	# Same READY -> START beat as a retry (see _on_restart_pressed) — first
+	# play used to skip straight to PLAYING, changed per request so every
+	# run start gets the countdown.
 	_reset_game()
-	_set_state(State.PLAYING)
+	_start_countdown()
 
 
 func _on_restart_pressed() -> void:
 	# Retry after onboarding is already done: short READY -> START beat
 	# before gameplay actually starts.
 	_reset_game()
+	_start_countdown()
+
+
+func _start_countdown() -> void:
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
 	_set_state(State.COUNTDOWN)
+	if fx_sound_countdown_ready.stream != null:
+		fx_sound_countdown_ready.play()
+	if bgm_player.stream != null and not bgm_player.playing:
+		bgm_player.play()
 
 
 func _reset_game() -> void:
@@ -1446,12 +1829,15 @@ func _reset_game() -> void:
 	fx_sparks.clear()
 	fx_speed_lines.clear()
 	fx_score_pops.clear()
-	fx_combo_popups.clear()
+	combo_display_punch_elapsed = 0.0
+	combo_display_time = 0.0
 	fx_impact_flashes.clear()
 	fx_pending_bursts.clear()
 	fx_shake_elapsed = -1.0
 	fx_stretch_elapsed = -1.0
 	happy_flap_elapsed = -1.0
+	combo_shake_elapsed = -1.0
+	combo_glow_elapsed = -1.0
 	position = Vector2.ZERO  # in case a restart lands mid-shake
 	paused = false
 	pause_panel.visible = false
@@ -1472,6 +1858,22 @@ func _on_resume_pressed() -> void:
 	pause_panel.visible = false
 
 
+func _on_mute_pressed() -> void:
+	muted = not muted
+	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted)
+	mute_button.modulate = Color(1.0, 1.0, 1.0, 0.5) if muted else Color(1.0, 1.0, 1.0, 1.0)
+
+
+func _animate_button_press(button: Button) -> void:
+	var tween := create_tween()
+	tween.tween_property(button, "scale", Vector2.ONE * BUTTON_PRESS_SCALE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+
+
+func _animate_button_release(button: Button) -> void:
+	var tween := create_tween()
+	tween.tween_property(button, "scale", Vector2.ONE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
 func _set_state(new_state: int) -> void:
 	state = new_state
 	ready_panel.visible = state == State.READY
@@ -1482,12 +1884,23 @@ func _set_state(new_state: int) -> void:
 # zone, per the layer-order spec) ----
 
 func _draw_hud_bar(view_size: Vector2) -> void:
-	draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
 	var mid_y: float = HUD_BAR_HEIGHT * 0.5
-	# PauseButton (a real Control/Button, see scene) occupies the left third;
-	# nothing drawn here for it. Center: score. Right: combo.
-	_draw_centered_text("SCORE %d" % score, Vector2(view_size.x * 0.5, mid_y), 18)
-	_draw_centered_text("x%d" % combo, Vector2(view_size.x - HUD_SIDE_MARGIN - 24.0, mid_y), 18)
+	# PauseButton/MuteButton (real Control/Button nodes, see scene) occupy the
+	# top-left/top-right corners; nothing drawn here for them. Combo lives
+	# entirely in the gate zone's top-right corner as a per-pass effect (see
+	# _draw_combo_popups), not here — this only ever draws the score panel.
+	if score_panel_texture != null:
+		var tex_size := Vector2(score_panel_texture.get_width(), score_panel_texture.get_height())
+		var scale: float = SCORE_PANEL_WIDTH / tex_size.x
+		var draw_size: Vector2 = tex_size * scale
+		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, mid_y - draw_size.y * 0.5)
+		draw_texture_rect(score_panel_texture, Rect2(top_left, draw_size), false)
+		var number_right := Vector2(top_left.x + draw_size.x * SCORE_NUMBER_RIGHT_FRAC, top_left.y + draw_size.y * SCORE_NUMBER_Y_FRAC)
+		var font_size := int(round(draw_size.y * SCORE_NUMBER_FONT_SCALE))
+		_draw_spaced_right_aligned_text("%05d" % score, number_right, font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font)
+	else:
+		draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
+		_draw_centered_text("SCORE %d" % score, Vector2(view_size.x * 0.5, mid_y), 18)
 
 
 func _draw_quiz_box(view_size: Vector2) -> void:
@@ -1495,15 +1908,28 @@ func _draw_quiz_box(view_size: Vector2) -> void:
 	if upcoming_target == "":
 		return
 	var box_top: float = HUD_BAR_HEIGHT + QUIZ_BOX_TOP_GAP
-	var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, QUIZ_BOX_HEIGHT))
-	var style := StyleBoxFlat.new()
-	style.bg_color = QUIZ_BOX_COLOR
-	style.set_corner_radius_all(int(QUIZ_BOX_CORNER_RADIUS))
-	draw_style_box(style, box_rect)
-	var text: String = "TARGET: %s" % upcoming_target
-	var max_width: float = box_rect.size.x - QUIZ_BOX_MARGIN
-	var font_size := _fit_font_size(text, max_width, 22, 14)
-	_draw_centered_text(text, box_rect.get_center(), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0))
+	var text: String = upcoming_target
+	if quiz_box_texture != null:
+		var tex_size := Vector2(quiz_box_texture.get_width(), quiz_box_texture.get_height())
+		var scale: float = QUIZ_BOX_HEIGHT / tex_size.y
+		var draw_size: Vector2 = tex_size * scale
+		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, box_top)
+		draw_texture_rect(quiz_box_texture, Rect2(top_left, draw_size), false)
+		var text_center := Vector2(top_left.x + draw_size.x * QUIZ_TEXT_CENTER_X_FRAC, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
+		var max_width: float = draw_size.x * QUIZ_TEXT_MAX_WIDTH_FRAC
+		var max_font_size: int = int(round(draw_size.y * 0.20))
+		var min_font_size: int = int(round(draw_size.y * 0.10))
+		var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, combo_font)
+		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font)
+	else:
+		var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, QUIZ_BOX_HEIGHT))
+		var style := StyleBoxFlat.new()
+		style.bg_color = QUIZ_BOX_COLOR
+		style.set_corner_radius_all(int(QUIZ_BOX_CORNER_RADIUS))
+		draw_style_box(style, box_rect)
+		var max_width: float = box_rect.size.x - QUIZ_BOX_MARGIN
+		var font_size := _fit_font_size(text, max_width, 22, 14)
+		_draw_centered_text(text, box_rect.get_center(), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0))
 
 
 func _draw() -> void:
@@ -1541,8 +1967,8 @@ func _draw() -> void:
 			draw_rect(Rect2(Vector2(g.x, g.top_zone_top), Vector2(GATE_WIDTH, g.top_zone_bottom - g.top_zone_top)), COLOR_ZONE)
 			draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
 		draw_rect(wall_rect, COLOR_WALL)
-		_draw_gate_answer_text(g.top_text, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
-		_draw_gate_answer_text(g.bottom_text, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
+		_draw_gate_answer_flag(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
+		_draw_gate_answer_flag(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	_draw_speed_lines()  # behind the bird
 
@@ -1579,15 +2005,23 @@ func _draw() -> void:
 	_draw_impact_flashes()
 	_draw_sparks()
 	_draw_score_pops()
-	_draw_combo_popups()
+	_draw_combo_popups(view_size)
+	_draw_combo_glow(view_size)
 
 	if state == State.COUNTDOWN:
+		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
-			_draw_centered_text("READY", Vector2(view_size.x * 0.5, view_size.y * 0.5), 36)
+			if ready_texture != null:
+				_draw_countdown_image(ready_texture, countdown_center, 1.0)
+			else:
+				_draw_centered_text("READY", countdown_center, 36)
 		else:
 			var t: float = 1.0 - (countdown_timer / COUNTDOWN_START_DURATION)
-			var pop_font_size: int = int(round(36.0 * _pop_scale(t)))
-			_draw_centered_text("START", Vector2(view_size.x * 0.5, view_size.y * 0.5), pop_font_size)
+			var pop_scale: float = _pop_scale(t)
+			if start_texture != null:
+				_draw_countdown_image(start_texture, countdown_center, pop_scale)
+			else:
+				_draw_centered_text("START", countdown_center, int(round(36.0 * pop_scale)))
 
 	if flash_time > 0.0:
 		var a: float = flash_color.a * (flash_time / FLASH_DURATION)
@@ -1595,6 +2029,13 @@ func _draw() -> void:
 	# Layer 5 (pause menu / game-over panel) is real Control nodes in the UI
 	# CanvasLayer, which already renders above all of this Node2D's _draw()
 	# content — nothing to do here for it.
+
+
+func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float) -> void:
+	var tex_size := Vector2(texture.get_width(), texture.get_height())
+	var base_scale: float = COUNTDOWN_IMAGE_WIDTH / tex_size.x
+	var draw_size: Vector2 = tex_size * base_scale * scale_mult
+	draw_texture_rect(texture, Rect2(center - draw_size * 0.5, draw_size), false)
 
 
 func _pop_scale(t: float) -> float:
@@ -1610,12 +2051,13 @@ func _pop_scale(t: float) -> float:
 func _get_upcoming_target() -> String:
 	for g in gates:
 		if not g.resolved:
-			return g.target
+			return g.target_name
 	return ""
 
 
-func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE) -> void:
-	var font := ThemeDB.fallback_font
+func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
+	if font == null:
+		font = ThemeDB.fallback_font
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 	var pos := Vector2(center.x - text_size.x * 0.5, center.y + text_size.y * 0.25)
 	# Dark outline so the light default HUD text still reads over the pastel
@@ -1627,8 +2069,45 @@ func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_col
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, fill_color)
 
 
-func _fit_font_size(text: String, max_width: float, max_size: int, min_size: int) -> int:
-	var font := ThemeDB.fallback_font
+func _draw_right_aligned_text(text: String, right_center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
+	if font == null:
+		font = ThemeDB.fallback_font
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var pos := Vector2(right_center.x - text_size.x, right_center.y + text_size.y * 0.25)
+	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		draw_string(font, pos + offset, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+
+
+# Same as _draw_right_aligned_text but inserts extra_spacing px between each
+# character — draw_string has no per-glyph tracking control, so each glyph
+# is measured and placed individually, right-to-left, to add breathing room
+# between the score panel's tightly-kerned digits.
+func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_size: int, extra_spacing: float, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
+	if font == null:
+		font = ThemeDB.fallback_font
+	var char_widths: Array[float] = []
+	var total_width := 0.0
+	for i in range(text.length()):
+		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		char_widths.append(w)
+		total_width += w
+	total_width += extra_spacing * max(0, text.length() - 1)
+	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var cursor_x := right_center.x - total_width
+	var y := right_center.y + text_size.y * 0.25
+	for i in range(text.length()):
+		var ch: String = text[i]
+		var pos := Vector2(cursor_x, y)
+		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+			draw_string(font, pos + offset, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
+		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+		cursor_x += char_widths[i] + extra_spacing
+
+
+func _fit_font_size(text: String, max_width: float, max_size: int, min_size: int, font: Font = null) -> int:
+	if font == null:
+		font = ThemeDB.fallback_font
 	var size := max_size
 	while size > min_size:
 		var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x
