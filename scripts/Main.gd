@@ -18,41 +18,69 @@ extends Node2D
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_early: float = 0.5   # Phase 1-2
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_late: float = 0.65   # Phase 3-4
 
-const PLAYER_SIZE := Vector2(36, 36)  # hitbox — independent of the sprite, unchanged by any art swap
-const PLAYER_VISUAL_SIZE := Vector2(64, 64)  # 1x integer scale of the 64x64 source art
+# Three planned game concepts sharing this same tap/gate mechanic, picked at
+# the mode-select screen (see State.MODE_SELECT/_apply_mode below): SKY (red
+# bird + sky gate, flag quiz), JUNGLE (green dragon + jungle gate, math quiz
+# — not built yet, flag quiz stands in), OCEAN (blue shark + ocean gate, quiz
+# type undecided — flag quiz stands in). ThemeMotion is the gate-pass
+# themed-object particle's motion (see the FX const block further down) —
+# it varies per concept the same way the character/gate art does.
+enum Mode { SKY, JUNGLE, OCEAN }
+enum ThemeMotion { SCATTER, FLUTTER, RISE_SWAY }
+
+const PLAYER_SIZE := Vector2(50, 50)  # hitbox — scaled up a bit alongside PLAYER_VISUAL_SIZE below to keep matching the body size, per request
+const PLAYER_VISUAL_SIZE := Vector2(100, 100)  # on-screen draw size — source art is scaled to this regardless of its own resolution
 const PLAYER_X := 130.0
+const DEBUG_SHOW_HITBOX := true  # outlines the real collision rect over the character — turn off once done tuning PLAYER_SIZE/PLAYER_VISUAL_SIZE
+const DEBUG_HITBOX_COLOR := Color(1.0, 0.0, 1.0, 1.0)  # bright magenta — doesn't occur anywhere else in the game's palette
 
-# Wing-flap loop: user-supplied 3-frame set (up/mid/down), cycled as
-# up -> mid -> down -> mid -> repeat by just listing mid twice — the index
-# cycling below doesn't need to know the sequence isn't 4 unique frames.
-# All three share one 64x64 canvas so swapping frames never shifts the
-# apparent center. ~9 FPS (mid of the requested 8-10 FPS range).
-const FLAP_FRAME_DURATION := 0.11
-const FLAP_FRAME_PATHS := [
-	"res://assets/characters/custom_bird/bird_fly_up.png",
-	"res://assets/characters/custom_bird/bird_fly_mid.png",
-	"res://assets/characters/custom_bird/bird_fly_down.png",
-	"res://assets/characters/custom_bird/bird_fly_mid.png",
+# Character display set — display/animation only, never touches
+# PLAYER_SIZE/physics/collision. fly is a 2x2 spritesheet sliced at runtime
+# (see _slice_spritesheet), happy and sad are single static frames. Frame
+# order for the sheet is left-to-right, top-to-bottom: TL, TR, BL, BR.
+# Indexed by Mode — see _apply_mode, called once at _ready() and again
+# whenever the mode-select screen picks a different mode.
+const MODE_CHARACTER_DIR := [
+	"res://assets/characters/bird_v2/",
+	"res://assets/characters/dragon_green/",
+	"res://assets/characters/shark_blue/",
 ]
+const MODE_CHARACTER_FLY_FILE := ["bird_fly.png", "dragon_fly.png", "shark_swim.png"]
+const MODE_CHARACTER_HAPPY_FILE := ["bird_happy.png", "dragon_happy.png", "shark_happy.png"]
+const MODE_CHARACTER_SAD_FILE := ["bird_sad.png", "dragon_sad.png", "shark_sad.png"]
+const BIRD_FLY_SHEET_COLS := 2
+const BIRD_FLY_SHEET_ROWS := 2
+const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 
-# Gate-pass "happy" expression swap — a separate 3-frame set (same up/mid/
-# down/mid cycle shape as FLAP_FRAME_PATHS above, same PixelLab character/
-# palette, just a new "Happy" state) drawn in place of the normal flap
-# frames for HAPPY_FLAP_DURATION after every successful pass, then reverts
-# on its own. Never touches FLAP_FRAME_PATHS or the normal flap_frame_index/
-# flap_timer cadence — see happy_flap_elapsed in _update_fx/_draw.
-const HAPPY_FLAP_FRAME_PATHS := [
-	"res://assets/characters/custom_bird/bird_happy_up.png",
-	"res://assets/characters/custom_bird/bird_happy_mid.png",
-	"res://assets/characters/custom_bird/bird_happy_down.png",
-	"res://assets/characters/custom_bird/bird_happy_mid.png",
-]
-const HAPPY_FLAP_DURATION := 0.6
+# Measured opaque-pixel bounding-box centers (in each source PNG's own pixel
+# space, out of a 256x256 canvas), converted to a PLAYER_VISUAL_SIZE-space
+# draw offset via (canvas_center(128,128) - measured_center) * (100.0/256.0)
+# — same technique for all three, so switching modes never makes the
+# character visually jump between fly/happy/sad. Re-measure and update
+# rather than guessing if any of this art is ever redrawn.
+const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0)]
+const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0)]
+# Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
+# scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
+# Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
+# bigger or smaller on screen.
+const MODE_VISUAL_SIZE_SCALE := [0.92, 1.0, 1.0]
 
-# Game-over "sad" face — a single static frame (no animation needed, the
-# screen is frozen on GAME OVER anyway), same technique as the happy set:
-# same pose/wings/colors as bird_fly_mid.png, only the expression edited.
-const SAD_FACE_PATH := "res://assets/characters/custom_bird/bird_sad_mid.png"
+# Gate-pass "happy" reaction — visual-only (scale + a small upward draw
+# offset around the bird's existing draw_set_transform center; player_y/
+# PLAYER_X/PLAYER_SIZE and collision are never touched). Driven by the same
+# happy_flap_elapsed timer that already exists to pick the happy texture,
+# so it's automatically synced to the same moment _play_gate_success_fx
+# fires the success sound/sparkles/combo popup. Combines multiplicatively
+# with the existing gate-pass squash (_bird_stretch_scale) rather than
+# replacing it — squash settles in ~0.15s, this pop eases out over the
+# whole HAPPY_FLAP_DURATION, so they layer into one "impact then bounce"
+# motion instead of visually competing.
+const HAPPY_FLAP_DURATION := 0.5
+const HAPPY_POP_ENVELOPE := [Vector2(0.0, 0.0), Vector2(0.24, 1.0), Vector2(1.0, 0.0)]  # peaks ~0.12s in, within the requested 0.10-0.15s
+const HAPPY_POP_SCALE_PEAK := 1.12
+const HAPPY_POP_BOUNCE_HEIGHT := 8.0  # px, screen-space upward draw offset at the envelope's peak
 
 const GATE_WIDTH := 130.0
 const GATE_SPEED := 130.0  # halved for testing — was 260.0
@@ -64,9 +92,9 @@ const WALL_THICKNESS := 36.0
 # ============================================================
 # Screen layout zones (top -> bottom): HUD bar -> quiz box -> the gate zone
 # (everything gameplay-visual: gates/wall/bird), starting right at the quiz
-# box's real (non-transparent) bottom edge -> optionally a fixed control
-# zone at the very bottom (Easy mode only; Hard mode's gate zone just runs
-# to the screen edge).
+# box's real (non-transparent) bottom edge and running all the way to the
+# screen's bottom edge (no reserved control zone — Hard mode is a full-
+# screen-tap game).
 # These are absolute pixel values, not scaled with screen height, per spec —
 # see _gate_zone_top/_gate_zone_bottom, the only two places that combine
 # them into the actual bounds gate spawning/clamping/drawing use.
@@ -97,7 +125,6 @@ const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.75
 # the gate zone to this instead of the padded bounding box.
 const QUIZ_CONTENT_BOTTOM_FRAC := 0.641
 const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's real bottom edge, if ever wanted again
-const CONTROL_ZONE_HEIGHT := 70.0    # Easy mode only — layout reserved, no buttons wired yet (see README)
 
 # Gate-pass speed boost: on a successful pass, GATE_SPEED is briefly
 # multiplied up (all gates scroll faster for an instant, world-rush style)
@@ -125,46 +152,61 @@ const GATE_SPEED_BOOST_DURATION := 0.5   # total seconds (including the hold) to
 # nameplate box — removed after playtesting; quiz answer text is drawn at
 # a fixed position above/below the wall instead (see _draw()).
 #
-# Pillar art (gate_glow_256 set): each side is a 256x256 PNG, pre-split from
-# a single master (gate_normal_256.png) so left+right always land exactly on
-# top of each other with no manual per-layer positioning — verified
-# pixel-identical to the master when composited. Each side also ships 3 glow
-# variants (successively brighter crystals) for the gate-pass flash (see
-# GATE_GLOW_SEQUENCE below); left and right always show the same glow stage
-# together since both are driven by the same elapsed-time lookup
-# (_gate_glow_frame_index). NOTE: the file names say "left_back"/
-# "right_front", but which side renders in front of the bird is a deliberate
-# choice made earlier (bird ducks behind the right pillar, emerges in front
-# of the left) — the FRONT/BACK draw-order comment above reflects the actual
-# behavior, not the file names.
-const GATE_GLOW_DIR := "res://assets/gates/gate_glow_256/"
-const GATE_LEFT_PILLAR_PATHS := [
-	GATE_GLOW_DIR + "gate_left_back_normal_256.png",
-	GATE_GLOW_DIR + "gate_left_back_glow_01_256.png",
-	GATE_GLOW_DIR + "gate_left_back_glow_02_256.png",
-	GATE_GLOW_DIR + "gate_left_back_glow_03_256.png",
+# Ring gate art (gate_ring set): one full ring image split into a left half
+# and a right half, each a 512x512 PNG with its half of the ring positioned
+# on its own canvas so both halves land exactly on top of each other with
+# no manual per-layer positioning (same technique the old pillar set used).
+# NOTE: the same FRONT/BACK draw-order as before still applies — right half
+# is drawn BEHIND the bird, left half drawn AFTER (in FRONT of) the bird, so
+# passing left-to-right the bird ducks behind the right edge of the ring and
+# emerges in front of the left edge, selling the "through the ring" look.
+# Indexed by Mode (see _apply_mode) — each folder holds the same 3 filenames
+# (gate_ring_left/right/base.png), same convention as MODE_CHARACTER_DIR.
+const MODE_GATE_DIR := [
+	"res://assets/gates/gate_ring/",
+	"res://assets/gates/gate_ring_jungle/",
+	"res://assets/gates/gate_ring_ocean/",
 ]
-const GATE_RIGHT_PILLAR_PATHS := [
-	GATE_GLOW_DIR + "gate_right_front_normal_256.png",
-	GATE_GLOW_DIR + "gate_right_front_glow_01_256.png",
-	GATE_GLOW_DIR + "gate_right_front_glow_02_256.png",
-	GATE_GLOW_DIR + "gate_right_front_glow_03_256.png",
-]
-# Gate-pass glow flash: steps through NORMAL -> 01 -> 02 -> 03 -> 02 -> 01 ->
-# NORMAL, each held for the matching GATE_GLOW_STEP_DURATIONS entry before
-# advancing (index 0 = normal, 1-3 = glow stages) — see
-# _gate_glow_frame_index. Adjust these two arrays to retime the flash; they
-# must stay the same length (6 steps between the 7 sequence entries).
-const GATE_GLOW_SEQUENCE := [0, 1, 2, 3, 2, 1, 0]
-const GATE_GLOW_STEP_DURATIONS := [0.06, 0.06, 0.08, 0.08, 0.08, 0.08]
-# Pillar art's own canvas size (gate_glow_256 set is 256x256) and its
-# topmost/lowest opaque pixels (measured bbox on gate_normal_256.png) — the
-# frame's actual edges, above/below the zone center. Used to keep the spawn
-# band inset from the screen edges (see _gate_frame_top_overhang/
+
+# No glow-variant art this time (single normal image per side) — the old
+# texture-swap flash is reproduced instead as a brightness tint (modulate)
+# on the same texture, using the same timing shape/duration as before. See
+# _gate_glow_tint / GATE_GLOW_TINT_ENVELOPE.
+const GATE_GLOW_TINT_COLOR := Color(1.45, 1.55, 1.6, 1.0)  # >1 channels intentionally overexpose the ring art toward a bright white/cyan flash
+const GATE_GLOW_TINT_ENVELOPE := [
+	Vector2(0.0, 0.0), Vector2(0.06, 0.333), Vector2(0.12, 0.667), Vector2(0.20, 1.0),
+	Vector2(0.28, 0.667), Vector2(0.36, 0.333), Vector2(0.44, 0.0),
+]  # same step timing as the old GATE_GLOW_SEQUENCE/GATE_GLOW_STEP_DURATIONS, just interpolated smoothly instead of stepped between 4 discrete textures
+
+# Ring art's own canvas size and its topmost/bottommost opaque pixels
+# (measured bbox on the composited left+right halves) — the frame's actual
+# outer edges, above/below the zone center. Used to keep the spawn band
+# inset from the screen edges (see _gate_frame_top_overhang/
 # _gate_frame_bottom_overhang) so the frame never clips off-screen.
-const GATE_PILLAR_CANVAS_SIZE := 256.0
-const GATE_PILLAR_TOP_LOCAL_Y := 6.0
-const GATE_PILLAR_BOTTOM_LOCAL_Y := 249.0
+const GATE_PILLAR_CANVAS_SIZE := 512.0
+const GATE_PILLAR_TOP_LOCAL_Y := 37.0
+const GATE_PILLAR_BOTTOM_LOCAL_Y := 492.0
+# The ring's inner hole (the actual passable opening), same measurement
+# technique — used to size the judgment zone to the new ring shape instead
+# of the old pillar-frame-tuned PHASE_ZONE_MARGIN value. See
+# _gate_ring_inner_zone_height.
+const GATE_RING_INNER_TOP_LOCAL_Y := 128.0
+const GATE_RING_INNER_BOTTOM_LOCAL_Y := 395.0
+
+# Base pedestal — a separate static image (no left/right split; it never
+# occludes/is occluded by the bird, since the passable opening sits well
+# above it) drawn once, first, behind everything else at each gate so the
+# ring always renders in front of/on top of it. Same 512-canvas convention
+# and same scale_factor as the ring textures, so it scales consistently
+# with gate_visual_zone_ratio. GATE_BASE_OVERLAP_LOCAL pulls the base up a
+# little from an exact edge-to-edge touch so the ring's bottom rim visibly
+# rests IN the base's top platform instead of a hairline seam. See
+# _gate_base_center_y_offset/_draw_gate_base.
+const GATE_BASE_CANVAS_SIZE := 512.0
+const GATE_BASE_TOP_LOCAL_Y := 112.0
+const GATE_BASE_OVERLAP_LOCAL := 78.0
+const GATE_BASE_SCALE_MULTIPLIER := 0.62  # shrinks the drawn base independently of the ring's own size
+const GATE_BASE_OFFSET_X_LOCAL := 10.0  # nudges the base right of the ring's own center
 # Safety margin so the FX_GATE_PUNCH_KEYFRAMES peak (+8%) can't push the
 # frame's edges past the screen bounds this clamp is meant to guarantee.
 const GATE_VISUAL_CLAMP_MARGIN := 1.1
@@ -173,16 +215,16 @@ const GATE_VISUAL_CLAMP_MARGIN := 1.1
 # container the flag answer art and pass-through FX are built against, so
 # it can't keep shrinking every phase or that art and those effects would
 # never fit consistently. gate_visual_zone_ratio controls how much bigger
-# the frame renders than the zone highlight inside it — left at the
-# original 2.2 (gate size unchanged) per request; the zone itself is grown
-# instead via PHASE_ZONE_MARGIN[0] below. Don't shrink this ratio without
+# the frame renders than the zone highlight inside it. The zone's own
+# height is no longer a hand-tuned margin — it's derived from the ring
+# art's actual inner-hole measurement (GATE_RING_INNER_TOP/BOTTOM_LOCAL_Y,
+# see _gate_ring_inner_zone_height), so it automatically matches whatever
+# gate_visual_zone_ratio is set to. Don't shrink this ratio too far without
 # also shrinking GATE_FLAG_ICON_WIDTH/HEIGHT — the answer flag sits in the
-# same gap above the zone, and at some point the two start to overlap.
-# Phase 1's zone height (PLAYER_SIZE.y 36 + PHASE_ZONE_MARGIN[0] 60) — the
-# largest/most permissive zone, used as a constant sizing reference so the
-# frame never rescales itself between phases.
+# gap above the zone, and at some point the two start to overlap.
+# Fixed sizing reference so the frame never rescales itself between phases.
 const GATE_VISUAL_REFERENCE_ZONE_HEIGHT := 96.0
-@export_range(1.0, 4.0, 0.05) var gate_visual_zone_ratio: float = 1.9
+@export_range(1.0, 4.0, 0.05) var gate_visual_zone_ratio: float = 2.3
 
 # Sky gradient — colors sampled from the reference
 # (assets/references/sky_gradient/sky_gradient_v2.png), top -> mid -> bottom,
@@ -201,32 +243,43 @@ const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps HUD text legi
 const COLOR_TEXT_DARK := Color(0.09, 0.12, 0.18, 1.0)  # for text drawn over the near-opaque white quiz box, where the light COLOR_TEXT would wash out
 const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
-# Answer flag icon sits inside the gate's decorative frame, directly above
-# its zone — positioned so the border's own bottom edge exactly touches the
-# zone's top edge (see _draw_gate_answer_flag), never overlapping it and
-# never leaving a gap either. Flag PNGs are all a unified 256x171 (3:2)
-# frame now (see assets/flags/flags_data.json), so the display size is a
-# rect, not a square — width/height match that same 3:2 ratio so the art
-# is never stretched.
+# Answer flag icon sits inside the gate's decorative frame, above its zone
+# — positioned GATE_FLAG_GAP_ABOVE_ZONE clear of the zone's top edge (see
+# _draw_gate_answer_flag). Flag PNGs are all a unified 256x171 (3:2) frame
+# now (see assets/flags/flags_data.json), so the display size is a rect,
+# not a square — width/height match that same 3:2 ratio so the art is
+# never stretched. This is the flag's fixed on-screen size — the panel
+# below is what gets scaled to fit it, not the other way around.
 const GATE_FLAG_ICON_WIDTH := 72.0
 const GATE_FLAG_ICON_HEIGHT := 48.0
-# Border framing the flag, styled to match the gate pillar's own crystal
-# window (gold trim band + thin dark inner outline) — colors sampled
-# directly from assets/gates/gate_glow_256/gate_left_back_normal_256.png
-# so the two read as the same decorative language, not two unrelated pieces.
-const GATE_FLAG_BORDER_THICKNESS := 2.5
-const GATE_FLAG_OUTLINE_THICKNESS := 1.3
-const GATE_FLAG_BORDER_COLOR := Color(0.969, 0.580, 0.016)
-const GATE_FLAG_OUTLINE_COLOR := Color(0.059, 0.008, 0.31)
-# Beveled trim (lighter gold along top/left, darker along bottom/right,
-# same 3D-bevel trick the crystal window itself uses) plus small corner
-# gem accents — the same corner-diamond motif already used on score_panel
-# and quiz_box, reused here so all three UI pieces read as one kit.
-const GATE_FLAG_BORDER_HIGHLIGHT := Color(1.0, 0.82, 0.35)
-const GATE_FLAG_BORDER_SHADOW := Color(0.75, 0.33, 0.0)
-const GATE_FLAG_CORNER_ACCENT_SIZE := 3.4
-const GATE_FLAG_CORNER_ACCENT_COLOR := Color(0.969, 0.580, 0.016)
-const GATE_FLAG_CORNER_ACCENT_HIGHLIGHT := Color(1.0, 0.95, 0.6)
+const GATE_FLAG_GAP_ABOVE_ZONE := 20.0  # extra clearance lifting the flag+panel further above the zone
+const GATE_FLAG_CARD_COLOR := Color(0.96, 0.90, 0.78)  # cream, matching the panel/score/quiz-box family's tone — fills a non-3:2 flag's letterbox padding
+
+# Backing panel image behind the flag (replaces the old procedural
+# gold-border+corner-gem drawing). Sized so its own inner window — measured
+# directly off the source PNG — matches GATE_FLAG_ICON_WIDTH/HEIGHT exactly.
+# Fit by WIDTH, not height: the window's own aspect (~1.53) is a hair wider
+# than the flag's fixed 1.5, and every flag is itself pre-rendered onto a
+# fixed 3:2 canvas (see assets/flags/flags_data.json), so fitting by height
+# left a small but visible sliver of the panel's window showing past both
+# side edges on nearly every flag. Fitting by width instead makes those
+# side edges flush; the tradeoff (window falling a hair short top/bottom)
+# is a sub-pixel amount, not visible.
+# Drawn behind the flag but AFTER the gate ring halves (see _draw()) so
+# neither the panel nor the flag can ever end up hidden behind the ring.
+# Indexed by Mode (see _apply_mode) — each mode's panel art has its own
+# internal transparent-window position/size, measured the same way as the
+# original sky panel: connected-component flood-fill from the image border
+# to separate "outside" transparent area from the enclosed window cutout,
+# then bbox of the largest enclosed blob (skips small incidental gaps in the
+# frame's own decoration, e.g. ocean's corner-gem gap).
+const MODE_GATE_FLAG_PANEL_PATH := [
+	"res://assets/gates/flag_panel/gate_panel.png",
+	"res://assets/gates/flag_panel/gate_panel_jungle.png",
+	"res://assets/gates/flag_panel/gate_panel_ocean.png",
+]
+const MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL := [Vector2(253.0, 473.0), Vector2(254.0, 508.5), Vector2(250.0, 497.5)]
+const MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL := [265.0, 313.0, 277.0]
 
 # ============================================================
 # Combo tier popup — an "×N" burst in the gate zone's top-right corner,
@@ -393,24 +446,53 @@ const FX_GATE_PUNCH_KEYFRAMES := [
 ]
 
 # Shared per-gate-side timeline length; must stay >= FX_GATE_PUNCH_DURATION
-# and GATE_GLOW_STEP_DURATIONS' total (currently 0.440s) — this is what
-# _gate_glow_frame_index reads elapsed time against.
+# and GATE_GLOW_TINT_ENVELOPE's total (currently 0.44s) — this is what
+# _gate_glow_tint reads elapsed time against.
 const FX_GATE_TIMELINE_DURATION := 0.45
 
-# 3. Two-stage particle burst: big/immediate, then small/delayed. Counts,
-# sizes, speeds, and lifetimes all bumped up for a bigger, longer-lived burst.
-const FX_SPARK_TEXTURE_PATH := "res://assets/fx/success_spark.png"
+# 3. Three-layer particle burst, all sourced from a per-concept FX sprite
+# sheet (pre-colored art, no runtime hue tinting): big/immediate, a themed
+# object (wings for sky, leaves for jungle, bubbles for ocean)/immediate,
+# then small/delayed. Each concept's folder holds the same fx_big_N /
+# fx_theme_N / fx_small_N filenames (small-particle COUNT varies per sheet —
+# sky 7, ocean 8, jungle 9 — _apply_mode's loader just loads however many
+# exist). Indexed by Mode, same convention as MODE_CHARACTER_DIR/MODE_GATE_DIR.
+#
+# Unlike character/gate art, the themed-object layer's MOTION also differs
+# per concept (wings scatter, leaves flutter, bubbles rise) — not just its
+# art — so MODE_FX_THEME_MOTION is swapped alongside MODE_FX_DIR.
+const MODE_FX_DIR := [
+	"res://assets/fx/sky/",
+	"res://assets/fx/jungle/",
+	"res://assets/fx/ocean/",
+]
+const MODE_FX_THEME_MOTION := [ThemeMotion.SCATTER, ThemeMotion.FLUTTER, ThemeMotion.RISE_SWAY]
+const FX_SMALL_PARTICLE_MAX_COUNT := 9  # highest count across all 3 concepts' sheets — _apply_mode's loader tries fx_small_1..N and keeps whichever exist
 const FX_SPARK_BURST_A_COUNT_RANGE := Vector2i(6, 9)        # big, at 0ms
-const FX_SPARK_BURST_A_SCALE_RANGE := Vector2(1.5, 2.2)
+const FX_SPARK_BURST_A_SCALE_RANGE := Vector2(0.45, 0.75)
 const FX_SPARK_BURST_B_COUNT_RANGE := Vector2i(18, 26)      # small, delayed
-const FX_SPARK_BURST_B_SCALE_RANGE := Vector2(0.6, 1.1)
+const FX_SPARK_BURST_B_SCALE_RANGE := Vector2(0.9, 1.4)
 const FX_SPARK_BURST_B_DELAY_RANGE := Vector2(0.04, 0.06)
+const FX_SPARK_THEME_COUNT_RANGE := Vector2i(5, 7)          # themed object, at 0ms alongside burst A
+const FX_SPARK_THEME_SCALE_RANGE := Vector2(0.7, 1.0)       # visible but not oversized — clarity comes from the hold-fraction/modulate below, not sheer size
+const FX_SPARK_THEME_SPEED_RANGE := Vector2(70.0, 140.0)    # SCATTER/FLUTTER only — RISE_SWAY uses FX_RISE_SPEED_RANGE instead
+const FX_SPARK_THEME_LIFETIME_RANGE := Vector2(0.55, 0.85)  # SCATTER/FLUTTER only — RISE_SWAY uses FX_RISE_LIFETIME_RANGE instead
+const FX_SPARK_THEME_SPAWN_RADIUS := 65.0  # starts just outside the character's silhouette (PLAYER_VISUAL_SIZE half ~50px + happy-pop bounce margin), so the themed object never spawns on top of the face
+const FX_SPARK_THEME_HOLD_FRACTION := 0.55  # stays at full opacity for this fraction of its lifetime, then fades — vs. sparks' immediate linear fade
+const FX_SPARK_THEME_MODULATE := Color(1.35, 1.3, 1.15, 1.0)  # warm overexpose so the themed object reads clearly through the sparkle clutter
+# FLUTTER (jungle leaves): burst outward like SCATTER, but tumbling + swaying.
+const FX_FLUTTER_ANGULAR_VELOCITY_RANGE := Vector2(-7.0, 7.0)  # rad/s, random sign
+const FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE := Vector2(8.0, 18.0)  # px, side-to-side sway perpendicular to travel direction
+const FX_FLUTTER_WOBBLE_FREQ_RANGE := Vector2(2.5, 4.5)        # Hz
+# RISE_SWAY (ocean bubbles): drift upward in a narrow cone instead of bursting
+# outward in every direction, gently swaying, much slower/longer-lived.
+const FX_RISE_CONE_HALF_ANGLE := 0.61  # ~35 degrees either side of straight up
+const FX_RISE_SPEED_RANGE := Vector2(35.0, 65.0)
+const FX_RISE_LIFETIME_RANGE := Vector2(0.9, 1.3)
+const FX_RISE_WOBBLE_AMPLITUDE_RANGE := Vector2(6.0, 14.0)
+const FX_RISE_WOBBLE_FREQ_RANGE := Vector2(1.5, 2.5)  # slower bob than the jungle flutter
 const FX_SPARK_LIFETIME_RANGE := Vector2(0.20, 0.42)
 const FX_SPARK_SPEED_RANGE := Vector2(70.0, 150.0)          # px/s, outward from gate center
-const FX_SPARK_GOLD_CHANCE := 0.25                          # rest split white/cyan
-const FX_SPARK_GOLD_TINT := Color(1.0, 0.82, 0.45)
-const FX_SPARK_CYAN_TINT := Color(0.75, 0.96, 1.0)
-const FX_SPARK_WHITE_TINT := Color(1.0, 1.0, 1.0)
 const FX_SPARK_RING_MARGIN := 18.0  # spawn ring sits this far outside the frame's own outer edge
 
 # 5. Speed accent — short thick streaks, fired together with spark burst B.
@@ -473,15 +555,6 @@ const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
 # later; _start_countdown resumes bgm_player for the next run.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
-enum Difficulty { EASY, HARD }
-
-# Precision-zone clearance beyond the player hitbox (Hard mode only). Was
-# phase-scaled (shrinking each phase) but that's reverted per feedback —
-# _spawn_gate now always uses index 0 regardless of phase. Left as an array
-# (not a single float) so the per-phase curve is a one-line change to bring
-# back if wanted later.
-# Easy mode never uses this — the whole lane stays a safe zone (see _resolve_gate).
-const PHASE_ZONE_MARGIN := [90.0, 45.0, 32.0, 20.0]
 
 # Placeholder phase thresholds keyed on gates-passed count — the design doc
 # leaves the real curve open (section 11), tune these once that's decided.
@@ -502,10 +575,9 @@ const REACH_SAFETY_FACTOR := 0.85
 # dummy country-name list entirely.
 const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 
-enum State { READY, COUNTDOWN, PLAYING, GAMEOVER }
+enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER }
 
 var state: int = State.READY
-var difficulty: int = Difficulty.HARD  # Only Hard is wired to the UI so far.
 
 # Tap-to-pause (PLAYING only — see pause_button visibility in _process).
 # Only gates the gameplay-affecting update calls in _process; background
@@ -572,10 +644,19 @@ var flash_color := Color(0, 0, 0, 0)
 var flash_time := 0.0
 const FLASH_DURATION := 0.25
 
+var current_mode: int = Mode.SKY  # picked at State.MODE_SELECT — see _apply_mode
+var active_draw_offset_fly := Vector2.ZERO
+var active_draw_offset_happy := Vector2.ZERO
+var active_draw_offset_sad := Vector2.ZERO
+var active_visual_size_scale: float = 1.0
+var active_flag_panel_window_center := Vector2.ZERO
+var active_flag_panel_window_width: float = 0.0
+var active_theme_motion: int = ThemeMotion.SCATTER
+
 var flap_frames: Array[Texture2D] = []
 var flap_frame_index: int = 0
 var flap_timer: float = 0.0
-var happy_flap_frames: Array[Texture2D] = []
+var happy_face_texture: Texture2D
 var happy_flap_elapsed: float = -1.0  # -1 = inactive; set to 0 on every gate pass, see _play_gate_success_fx
 var sad_face_texture: Texture2D
 var ready_texture: Texture2D
@@ -588,8 +669,10 @@ var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded fr
 var flag_records_by_tier: Dictionary = {}  # tier (int 1-4) -> Array of records, for difficulty-gated spawning
 var muted: bool = false
 
-var gate_left_pillar_textures: Array[Texture2D] = []   # [normal, glow01, glow02, glow03]
-var gate_right_pillar_textures: Array[Texture2D] = []  # [normal, glow01, glow02, glow03]
+var gate_left_pillar_texture: Texture2D
+var gate_right_pillar_texture: Texture2D
+var gate_base_texture: Texture2D
+var gate_flag_panel_texture: Texture2D
 
 # Background parallax state (see the const block above for tunables).
 var mountain_textures: Array[Texture2D] = []
@@ -610,8 +693,10 @@ var cloud_mid_textures: Array[Texture2D] = []
 var cloud_mid_list: Array = []  # fixed pool, each: {texture, x, y, scale, alpha, speed, flip, near}
 
 # Gate-pass FX state (see the const block above for tunables).
-var fx_spark_texture: Texture2D
-var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, tint}
+var fx_big_particle_textures: Array[Texture2D] = []
+var fx_theme_object_textures: Array[Texture2D] = []
+var fx_small_particle_textures: Array[Texture2D] = []
+var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, texture}
 var fx_speed_lines: Array = []       # each: {y_offset, length, elapsed, color}
 var fx_score_pops: Array = []        # each: {pos, elapsed}
 var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
@@ -631,6 +716,10 @@ var fx_sound_countdown_ready: AudioStreamPlayer
 var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
 
+@onready var mode_select_panel: Control = $UI/ModeSelectPanel
+@onready var sky_mode_button: Button = $UI/ModeSelectPanel/SkyModeButton
+@onready var jungle_mode_button: Button = $UI/ModeSelectPanel/JungleModeButton
+@onready var ocean_mode_button: Button = $UI/ModeSelectPanel/OceanModeButton
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
@@ -646,12 +735,6 @@ func _ready() -> void:
 	# Keeps all pixel art crisp at any render scale — draw_texture_rect has no
 	# per-call filter option, so this has to be set on the CanvasItem itself.
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	for path in FLAP_FRAME_PATHS:
-		flap_frames.append(load(path))
-	for path in HAPPY_FLAP_FRAME_PATHS:
-		happy_flap_frames.append(load(path))
-	if ResourceLoader.exists(SAD_FACE_PATH):
-		sad_face_texture = load(SAD_FACE_PATH)
 	if ResourceLoader.exists(READY_TEXTURE_PATH):
 		ready_texture = load(READY_TEXTURE_PATH)
 	if ResourceLoader.exists(START_TEXTURE_PATH):
@@ -677,10 +760,6 @@ func _ready() -> void:
 	score_font_variation.base_font = combo_font
 	score_font_variation.variation_embolden = SCORE_NUMBER_EMBOLDEN
 	score_font = score_font_variation
-	for path in GATE_LEFT_PILLAR_PATHS:
-		gate_left_pillar_textures.append(load(path))
-	for path in GATE_RIGHT_PILLAR_PATHS:
-		gate_right_pillar_textures.append(load(path))
 	for path in MOUNTAIN_TEXTURE_PATHS:
 		mountain_textures.append(load(path))
 	for path in BG_SPARKLE_TEXTURE_PATHS:
@@ -693,8 +772,7 @@ func _ready() -> void:
 	_init_mountains(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
-	if ResourceLoader.exists(FX_SPARK_TEXTURE_PATH):
-		fx_spark_texture = load(FX_SPARK_TEXTURE_PATH)
+	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
 	fx_sound_whoosh = AudioStreamPlayer.new()
 	add_child(fx_sound_whoosh)
 	if ResourceLoader.exists(FX_SOUND_WHOOSH_PATH):
@@ -725,6 +803,9 @@ func _ready() -> void:
 	add_child(fx_sound_gameover)
 	if ResourceLoader.exists(FX_SOUND_GAMEOVER_PATH):
 		fx_sound_gameover.stream = load(FX_SOUND_GAMEOVER_PATH)
+	sky_mode_button.pressed.connect(_on_mode_selected.bind(Mode.SKY))
+	jungle_mode_button.pressed.connect(_on_mode_selected.bind(Mode.JUNGLE))
+	ocean_mode_button.pressed.connect(_on_mode_selected.bind(Mode.OCEAN))
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
@@ -737,7 +818,28 @@ func _ready() -> void:
 	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
 	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
 	_reset_game()
-	_set_state(State.READY)
+	_set_state(State.MODE_SELECT)
+
+
+# Slices a cols x rows spritesheet (equal-size cells) into individual
+# textures, row-major (left-to-right, top-to-bottom — cell 0 is top-left,
+# matching the requested TL/TR/BL/BR frame order for bird_fly.png). Built
+# from Image regions at load time rather than a set of pre-cut PNGs or
+# AtlasTexture .tres resources, so the sheet is the only file to manage.
+func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
+	var frames: Array[Texture2D] = []
+	if not ResourceLoader.exists(path):
+		return frames
+	var sheet_texture: Texture2D = load(path)
+	var full_image: Image = sheet_texture.get_image()
+	var cell_w: int = full_image.get_width() / cols
+	var cell_h: int = full_image.get_height() / rows
+	for row in range(rows):
+		for col in range(cols):
+			var region := Rect2i(col * cell_w, row * cell_h, cell_w, cell_h)
+			var cell_image: Image = full_image.get_region(region)
+			frames.append(ImageTexture.create_from_image(cell_image))
+	return frames
 
 
 # Loads assets/flags/flags_data.json (193 UN member records) and preloads
@@ -970,10 +1072,7 @@ func _gate_zone_top(view_size: Vector2) -> float:
 
 
 func _gate_zone_bottom(view_size: Vector2) -> float:
-	# Easy mode reserves a fixed control zone at the very bottom; Hard mode
-	# has no button UI, so the gate zone just runs to the screen edge.
-	if difficulty == Difficulty.EASY:
-		return view_size.y - CONTROL_ZONE_HEIGHT
+	# No reserved control zone — the gate zone always runs to the screen edge.
 	return view_size.y
 
 
@@ -983,6 +1082,19 @@ func _gate_wall_center_y(view_size: Vector2) -> float:
 	# zone for the HUD/quiz box would silently steal space from the top
 	# lane only, making the two lanes uneven.
 	return (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+
+
+func _gate_ring_inner_zone_height() -> float:
+	# Converts the ring art's measured inner-hole height (in source-canvas
+	# pixels, see GATE_RING_INNER_TOP/BOTTOM_LOCAL_Y) into world pixels using
+	# the exact same scale factor _draw_gate_frame_layer uses to size the
+	# frame art, so the judgment zone always matches whatever size the ring
+	# is actually drawn at (including if gate_visual_zone_ratio is retuned
+	# later). This replaces the old hand-picked PLAYER_SIZE.y + margin value
+	# now that the passable opening is dictated by real art, not a rectangle.
+	var scale: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE
+	var inner_height_px: float = GATE_RING_INNER_BOTTOM_LOCAL_Y - GATE_RING_INNER_TOP_LOCAL_Y
+	return inner_height_px * scale
 
 
 func _gate_frame_top_overhang() -> float:
@@ -1001,92 +1113,92 @@ func _gate_frame_top_overhang() -> float:
 func _gate_frame_bottom_overhang() -> float:
 	# Same as _gate_frame_top_overhang, for how far below a zone's center
 	# the pillars' feet extend — used to inset the bottom-lane spawn band
-	# from the screen's bottom edge. Pillar-canvas-space (256 units).
+	# from the screen's bottom edge. Pillar-canvas-space (512 units).
 	var base_scale: float = ((GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE) * GATE_VISUAL_CLAMP_MARGIN
 	var pillar_center: float = GATE_PILLAR_CANVAS_SIZE * 0.5
 	return (GATE_PILLAR_BOTTOM_LOCAL_Y - pillar_center) * base_scale
 
 
-func _draw_gate_frame_layer(texture: Texture2D, center_x: float, center_y: float, punch_scale: float = 1.0) -> void:
+func _draw_gate_frame_layer(texture: Texture2D, center_x: float, center_y: float, punch_scale: float = 1.0, tint: Color = Color.WHITE) -> void:
 	if texture == null:
 		return
 	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio
 	# punch_scale (see _gate_punch_scale) is a draw-time-only size wobble —
 	# it never changes the zone/collision geometry this is centered on. The
-	# gate-pass color flash is real glow-frame art now (see
-	# _gate_glow_frame_index), not a synthetic tint here.
+	# gate-pass color flash is a brightness tint (see _gate_glow_tint) on
+	# this same single ring texture, not a separate glow-art texture swap.
 	var tex_size := Vector2(texture.get_width(), texture.get_height())
 	var scale_factor: float = (target_long_edge / max(tex_size.x, tex_size.y)) * punch_scale
 	var draw_size: Vector2 = tex_size * scale_factor
 	var top_left := Vector2(center_x - draw_size.x * 0.5, center_y - draw_size.y * 0.5)
-	draw_texture_rect(texture, Rect2(top_left, draw_size), false)
+	draw_texture_rect(texture, Rect2(top_left, draw_size), false, tint)
 
 
-# Draws a gate's answer flag icon inside its own decorative frame, always on
-# the frame's own "top" side (toward smaller y) — the pillar art is never
-# vertically flipped between lanes, so its top-of-canvas opening faces the
-# same direction (up) whether this is the top-lane or bottom-lane gate;
-# mirroring the icon per-lane put it down in the bottom lane's floral pillar
-# base instead of at the U's opening. Anchored so the border's own bottom
-# edge sits exactly on zone_top (touching, never overlapping), clamped only
-# as a safety floor so it can't render above _gate_zone_top (the HUD/quiz-
-# box buffer). code indexes into flag_textures — see _spawn_gate for where
-# top_code/bottom_code are set and code-checked against the quiz box target.
+func _gate_base_center_y_offset() -> float:
+	# In local canvas units (not yet scaled): how far below the ring's own
+	# center the base's own center needs to land so the base's top platform
+	# surface lines up just inside the ring's bottom edge (with
+	# GATE_BASE_OVERLAP_LOCAL of intentional overlap — see the const comment).
+	var ring_bottom_from_center: float = GATE_PILLAR_BOTTOM_LOCAL_Y - GATE_PILLAR_CANVAS_SIZE * 0.5
+	var base_top_from_center: float = GATE_BASE_CANVAS_SIZE * 0.5 - GATE_BASE_TOP_LOCAL_Y
+	return ring_bottom_from_center + base_top_from_center - GATE_BASE_OVERLAP_LOCAL
+
+
+func _draw_gate_base(center_x: float, center_y: float) -> void:
+	if gate_base_texture == null:
+		return
+	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio
+	var tex_size := Vector2(gate_base_texture.get_width(), gate_base_texture.get_height())
+	var scale_factor: float = target_long_edge / max(tex_size.x, tex_size.y)
+	# Position offset uses the ring's own scale_factor (it's defined relative
+	# to the ring's edges), but the draw SIZE gets its own independent
+	# shrink — so making the base smaller doesn't also drag its anchor point.
+	var base_center_y: float = center_y + _gate_base_center_y_offset() * scale_factor
+	var draw_size: Vector2 = tex_size * scale_factor * GATE_BASE_SCALE_MULTIPLIER
+	var base_center_x: float = center_x + GATE_BASE_OFFSET_X_LOCAL * scale_factor
+	var top_left := Vector2(base_center_x - draw_size.x * 0.5, base_center_y - draw_size.y * 0.5)
+	draw_texture_rect(gate_base_texture, Rect2(top_left, draw_size), false)
+
+
+# Draws a gate's answer flag icon (with its backing panel) on top of
+# everything else at that gate, always on the frame's own "top" side
+# (toward smaller y) — the pillar art is never vertically flipped between
+# lanes, so its top-of-canvas opening faces the same direction (up) whether
+# this is the top-lane or bottom-lane gate; mirroring the icon per-lane put
+# it down in the bottom lane's floral pillar base instead of at the U's
+# opening. Anchored so the flag's own bottom edge sits exactly on zone_top
+# (touching, never overlapping), clamped only as a safety floor so it can't
+# render above _gate_zone_top (the HUD/quiz-box buffer). code indexes into
+# flag_textures — see _spawn_gate for where top_code/bottom_code are set
+# and code-checked against the quiz box target. Called last in _draw() (see
+# the bottom of that function), after both ring halves and the bird, so the
+# flag is guaranteed to never end up hidden behind the (now much bigger)
+# ring art.
 func _draw_gate_answer_flag(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
 	var texture: Texture2D = flag_textures.get(code)
 	if texture == null:
 		return
 	var center_x: float = gate_x + GATE_WIDTH * 0.5
-	var outline_half_h: float = GATE_FLAG_ICON_HEIGHT * 0.5 + GATE_FLAG_BORDER_THICKNESS + GATE_FLAG_OUTLINE_THICKNESS
-	var center_y: float = maxf(zone_top - outline_half_h, _gate_zone_top(view_size) + outline_half_h)
-
+	var half_h: float = GATE_FLAG_ICON_HEIGHT * 0.5
+	var center_y: float = maxf(zone_top - half_h - GATE_FLAG_GAP_ABOVE_ZONE, _gate_zone_top(view_size) + half_h)
 	var icon_size := Vector2(GATE_FLAG_ICON_WIDTH, GATE_FLAG_ICON_HEIGHT)
 	var icon_top_left := Vector2(center_x, center_y) - icon_size * 0.5
-	var border_size := icon_size + Vector2.ONE * (GATE_FLAG_BORDER_THICKNESS * 2.0)
-	var border_top_left := icon_top_left - Vector2.ONE * GATE_FLAG_BORDER_THICKNESS
-	var outline_size := border_size + Vector2.ONE * (GATE_FLAG_OUTLINE_THICKNESS * 2.0)
-	var outline_top_left := border_top_left - Vector2.ONE * GATE_FLAG_OUTLINE_THICKNESS
 
-	# Dark outline -> gold trim band -> flag art, same layering as the gate
-	# frame's own crystal window (dark outline around a gold-trimmed inset).
-	draw_rect(Rect2(outline_top_left, outline_size), GATE_FLAG_OUTLINE_COLOR)
-	draw_rect(Rect2(border_top_left, border_size), GATE_FLAG_BORDER_COLOR)
+	if gate_flag_panel_texture != null:
+		var panel_tex_size := Vector2(gate_flag_panel_texture.get_width(), gate_flag_panel_texture.get_height())
+		var panel_scale: float = icon_size.x / active_flag_panel_window_width
+		var panel_draw_size: Vector2 = panel_tex_size * panel_scale
+		var window_offset_from_center: Vector2 = active_flag_panel_window_center - panel_tex_size * 0.5
+		var panel_center: Vector2 = Vector2(center_x, center_y) - window_offset_from_center * panel_scale
+		draw_texture_rect(gate_flag_panel_texture, Rect2(panel_center - panel_draw_size * 0.5, panel_draw_size), false)
 
-	# Bevel the gold band — brighter along top/left, darker along
-	# bottom/right — the same 3D trick the gate's own crystal trim uses,
-	# instead of one flat gold tone.
-	var band_inset: float = GATE_FLAG_BORDER_THICKNESS * 0.5
-	var b_tl: Vector2 = border_top_left + Vector2.ONE * band_inset
-	var b_tr: Vector2 = border_top_left + Vector2(border_size.x - band_inset, band_inset)
-	var b_bl: Vector2 = border_top_left + Vector2(band_inset, border_size.y - band_inset)
-	var b_br: Vector2 = border_top_left + border_size - Vector2.ONE * band_inset
-	draw_line(b_tl, b_tr, GATE_FLAG_BORDER_HIGHLIGHT, GATE_FLAG_BORDER_THICKNESS)
-	draw_line(b_tl, b_bl, GATE_FLAG_BORDER_HIGHLIGHT, GATE_FLAG_BORDER_THICKNESS)
-	draw_line(b_bl, b_br, GATE_FLAG_BORDER_SHADOW, GATE_FLAG_BORDER_THICKNESS)
-	draw_line(b_tr, b_br, GATE_FLAG_BORDER_SHADOW, GATE_FLAG_BORDER_THICKNESS)
-
+	# Fill card behind the flag itself — flags are letterboxed to a unified
+	# 3:2 (see assets/flags/flags_data.json), so non-3:2 flags (Switzerland's
+	# true square, etc.) have real transparent padding baked into the PNG.
+	# This shows through as a solid color instead of see-through gaps,
+	# without touching any of the 193 flag images themselves.
+	draw_rect(Rect2(icon_top_left, icon_size), GATE_FLAG_CARD_COLOR)
 	draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
-
-	# Small gem accents at the four outline corners — same corner-diamond
-	# motif as score_panel.png / quiz_box.png, tying this into the rest of
-	# the UI kit.
-	_draw_flag_corner_accent(outline_top_left)
-	_draw_flag_corner_accent(outline_top_left + Vector2(outline_size.x, 0.0))
-	_draw_flag_corner_accent(outline_top_left + Vector2(0.0, outline_size.y))
-	_draw_flag_corner_accent(outline_top_left + outline_size)
-
-
-func _draw_flag_corner_accent(center: Vector2) -> void:
-	var s := GATE_FLAG_CORNER_ACCENT_SIZE
-	var outer := PackedVector2Array([
-		center + Vector2(0, -s), center + Vector2(s, 0), center + Vector2(0, s), center + Vector2(-s, 0),
-	])
-	draw_colored_polygon(outer, GATE_FLAG_CORNER_ACCENT_COLOR)
-	var inner_s := s * 0.45
-	var inner := PackedVector2Array([
-		center + Vector2(0, -inner_s), center + Vector2(inner_s, 0), center + Vector2(0, inner_s), center + Vector2(-inner_s, 0),
-	])
-	draw_colored_polygon(inner, GATE_FLAG_CORNER_ACCENT_HIGHLIGHT)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1216,8 +1328,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var wall_center_y := _gate_wall_center_y(view_size)
 	var wall_top := wall_center_y - WALL_THICKNESS * 0.5
 	var wall_bottom := wall_center_y + WALL_THICKNESS * 0.5
-	var margin: float = PHASE_ZONE_MARGIN[0]  # fixed, not phase_index — see comment on PHASE_ZONE_MARGIN
-	var zone_height: float = PLAYER_SIZE.y + margin
+	var zone_height: float = _gate_ring_inner_zone_height()
 
 	# The decorative pillar frame drawn around a zone is taller than the
 	# zone itself — see _gate_frame_top_overhang/
@@ -1364,19 +1475,15 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	var in_top := player_y < wall_center_y
 	var in_correct_lane: bool = (in_top and g.top_correct) or (not in_top and not g.top_correct)
 
+	# Being in the correct lane is necessary but not sufficient — you must
+	# also be inside that lane's precision zone this gate rolled.
 	var passed: bool
-	if difficulty == Difficulty.HARD:
-		# Being in the correct lane is necessary but not sufficient — you
-		# must also be inside that lane's precision zone this gate rolled.
-		if not in_correct_lane:
-			passed = false
-		else:
-			var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
-			var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
-			passed = p_top >= zone_top and p_bottom <= zone_bottom
+	if not in_correct_lane:
+		passed = false
 	else:
-		# Easy mode: whole correct lane stays a safe zone, no precision check.
-		passed = in_correct_lane
+		var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
+		var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
+		passed = p_top >= zone_top and p_bottom <= zone_bottom
 
 	if passed:
 		gates_passed += 1
@@ -1406,9 +1513,13 @@ func _play_gate_success_fx(g: Dictionary, in_top: bool) -> void:
 	var gate_center := Vector2(g.x + GATE_WIDTH * 0.5, (zone_top + zone_bottom) * 0.5)
 
 	# 0ms: impact flash + gate punch/crystal flash (driven by fx_flash_elapsed
-	# above, sampled in _draw()) + big spark burst + both sound hooks.
+	# above, sampled in _draw()) + big spark burst + themed-object burst
+	# (wings/leaves/bubbles, motion per active_theme_motion) + both sound hooks.
 	_spawn_impact_flash(gate_center)
-	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SCALE_RANGE)
+	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SCALE_RANGE, fx_big_particle_textures)
+	# Themed object bursts from a tight point at the gate's own center — see
+	# active_theme_motion for how each concept then moves from there.
+	_spawn_spark_burst(gate_center, FX_SPARK_THEME_COUNT_RANGE, FX_SPARK_THEME_SCALE_RANGE, fx_theme_object_textures, FX_SPARK_THEME_SPEED_RANGE, FX_SPARK_THEME_LIFETIME_RANGE, true, FX_SPARK_THEME_SPAWN_RADIUS)
 	# 30-50ms: small spark burst + speed streaks, fired together once this
 	# pending entry's delay elapses (see _update_fx).
 	fx_pending_bursts.append({
@@ -1430,33 +1541,76 @@ func _spawn_impact_flash(gate_center: Vector2) -> void:
 	})
 
 
-func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2) -> void:
-	if fx_spark_texture == null:
+func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2, texture_pool: Array[Texture2D], speed_range: Vector2 = FX_SPARK_SPEED_RANGE, lifetime_range: Vector2 = FX_SPARK_LIFETIME_RANGE, is_theme: bool = false, spawn_radius_override: float = -1.0) -> void:
+	if texture_pool.is_empty():
 		return
-	var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
-	var ring_radius: float = frame_outer_radius + FX_SPARK_RING_MARGIN
+	var ring_radius: float
+	if spawn_radius_override >= 0.0:
+		# Small burst-point spread around a fixed origin (e.g. the
+		# character's center) instead of the gate-frame-edge ring below.
+		ring_radius = spawn_radius_override
+	else:
+		var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
+		ring_radius = frame_outer_radius + FX_SPARK_RING_MARGIN
 	var strength: float = clampf(successFxIntensity, 0.0, 2.0)
 	var count: int = int(round(randi_range(count_range.x, count_range.y) * strength))
+	# RISE_SWAY (ocean bubbles) floats far slower/longer than a burst, so it
+	# overrides the caller's speed/lifetime range — SCATTER/FLUTTER use them
+	# as passed in (both are bursts, just with different tumble/sway).
+	var active_speed_range := speed_range
+	var active_lifetime_range := lifetime_range
+	if is_theme and active_theme_motion == ThemeMotion.RISE_SWAY:
+		active_speed_range = FX_RISE_SPEED_RANGE
+		active_lifetime_range = FX_RISE_LIFETIME_RANGE
 	for i in range(count):
-		# Angled outward from gate_center (the zone center the bird just
-		# passed through), starting at the ring outside the frame's own
-		# edge — spreads toward the gate's outer boundary, not over the
-		# bird's face/body which sits back near gate_center itself.
-		var angle := randf_range(0.0, TAU)
+		var angle: float
+		if is_theme and active_theme_motion == ThemeMotion.RISE_SWAY:
+			# Mostly straight up (-Y), with a bit of spread either side —
+			# bubbles floating, not bursting outward in every direction.
+			angle = -PI * 0.5 + randf_range(-FX_RISE_CONE_HALF_ANGLE, FX_RISE_CONE_HALF_ANGLE)
+		else:
+			# Angled outward from gate_center (the zone center the bird just
+			# passed through), starting at the ring outside the frame's own
+			# edge — spreads toward the gate's outer boundary, not over the
+			# bird's face/body which sits back near gate_center itself.
+			angle = randf_range(0.0, TAU)
 		var dir := Vector2(cos(angle), sin(angle))
 		var dist: float = ring_radius * randf_range(0.9, 1.15)
-		var speed: float = randf_range(FX_SPARK_SPEED_RANGE.x, FX_SPARK_SPEED_RANGE.y) * strength
-		var roll := randf()
-		var tint: Color = FX_SPARK_GOLD_TINT if roll < FX_SPARK_GOLD_CHANCE \
-			else (FX_SPARK_WHITE_TINT if roll < FX_SPARK_GOLD_CHANCE + 0.35 else FX_SPARK_CYAN_TINT)
+		var speed: float = randf_range(active_speed_range.x, active_speed_range.y) * strength
+		var texture: Texture2D = texture_pool[randi() % texture_pool.size()]
+		# Themed objects tumble/sway per active_theme_motion — SCATTER (sky wings)
+		# stays a rigid straight-line burst, FLUTTER (jungle leaves) tumbles
+		# and sways as it bursts outward, RISE_SWAY (ocean bubbles) only
+		# sways (no spin) as it drifts up. Plain sparks get zero here, so
+		# their motion/draw is unaffected.
+		var angular_velocity := 0.0
+		var wobble_amplitude := 0.0
+		var wobble_freq := 0.0
+		if is_theme:
+			match active_theme_motion:
+				ThemeMotion.FLUTTER:
+					angular_velocity = randf_range(FX_FLUTTER_ANGULAR_VELOCITY_RANGE.x, FX_FLUTTER_ANGULAR_VELOCITY_RANGE.y)
+					wobble_amplitude = randf_range(FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE.x, FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE.y)
+					wobble_freq = randf_range(FX_FLUTTER_WOBBLE_FREQ_RANGE.x, FX_FLUTTER_WOBBLE_FREQ_RANGE.y)
+				ThemeMotion.RISE_SWAY:
+					wobble_amplitude = randf_range(FX_RISE_WOBBLE_AMPLITUDE_RANGE.x, FX_RISE_WOBBLE_AMPLITUDE_RANGE.y)
+					wobble_freq = randf_range(FX_RISE_WOBBLE_FREQ_RANGE.x, FX_RISE_WOBBLE_FREQ_RANGE.y)
+				ThemeMotion.SCATTER:
+					pass  # rigid straight-line burst — angular_velocity/wobble stay 0
+		var wobble_phase: float = randf_range(0.0, TAU)
 		fx_sparks.append({
 			"pos": gate_center + dir * dist,
 			"vel": dir * speed,
 			"scale": randf_range(scale_range.x, scale_range.y) * clampf(strength, 0.3, 2.0),
 			"rotation": randf_range(0.0, TAU),
-			"lifetime": randf_range(FX_SPARK_LIFETIME_RANGE.x, FX_SPARK_LIFETIME_RANGE.y),
+			"lifetime": randf_range(active_lifetime_range.x, active_lifetime_range.y),
 			"elapsed": 0.0,
-			"tint": tint,
+			"texture": texture,
+			"is_theme": is_theme,
+			"angular_velocity": angular_velocity,
+			"wobble_amplitude": wobble_amplitude,
+			"wobble_freq": wobble_freq,
+			"wobble_phase": wobble_phase,
 		})
 
 
@@ -1502,7 +1656,7 @@ func _spawn_combo_popup(view_size: Vector2) -> void:
 	var pos := _combo_display_pos(view_size)
 	var particle_count: int = COMBO_TIER_PARTICLE_COUNTS[tier]
 	if particle_count > 0:
-		_spawn_spark_burst(pos, Vector2i(particle_count, particle_count), FX_SPARK_BURST_A_SCALE_RANGE)
+		_spawn_spark_burst(pos, Vector2i(particle_count, particle_count), FX_SPARK_BURST_A_SCALE_RANGE, fx_big_particle_textures)
 	if tier >= 2:
 		combo_shake_elapsed = 0.0
 	if tier >= 3:
@@ -1546,21 +1700,18 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 	return 1.0 + (raw - 1.0) * successFxIntensity
 
 
-func _gate_glow_frame_index(g: Dictionary, side: String) -> int:
-	# Which pillar texture (0=normal, 1-3=glow stages) this side should show
-	# right now — a step function over GATE_GLOW_SEQUENCE/
-	# GATE_GLOW_STEP_DURATIONS, driven by the same elapsed-since-pass timer
-	# as the punch/crystal-flash FX above. Returns 0 (normal) when idle or
-	# once the flash has finished.
+func _gate_glow_tint(g: Dictionary, side: String) -> Color:
+	# Brightness modulate for this side's ring texture right now — a smooth
+	# 0 -> 1 -> 0 pulse over GATE_GLOW_TINT_ENVELOPE, driven by the same
+	# elapsed-since-pass timer as the punch FX above. Returns plain white
+	# (no tint) when idle or once the flash has finished. Replaces the old
+	# discrete normal/glow01/02/03 texture-swap now that there's only one
+	# ring texture per side.
 	var elapsed := _gate_fx_elapsed(g, side)
 	if elapsed < 0.0:
-		return 0
-	var t := 0.0
-	for i in range(GATE_GLOW_STEP_DURATIONS.size()):
-		if elapsed < t + GATE_GLOW_STEP_DURATIONS[i]:
-			return GATE_GLOW_SEQUENCE[i]
-		t += GATE_GLOW_STEP_DURATIONS[i]
-	return 0
+		return Color.WHITE
+	var blend: float = _sample_keyframes(GATE_GLOW_TINT_ENVELOPE, elapsed)
+	return Color.WHITE.lerp(GATE_GLOW_TINT_COLOR, blend)
 
 
 func _bird_stretch_scale() -> Vector2:
@@ -1572,6 +1723,20 @@ func _bird_stretch_scale() -> Vector2:
 	var sx: float = lerp(1.0, FX_STRETCH_SCALE_X_PEAK, envelope * strength)
 	var sy: float = lerp(1.0, FX_STRETCH_SCALE_Y_PEAK, envelope * strength)
 	return Vector2(sx, sy)
+
+
+func _happy_pop_envelope() -> float:
+	if happy_flap_elapsed < 0.0:
+		return 0.0
+	return _sample_keyframes(HAPPY_POP_ENVELOPE, happy_flap_elapsed / HAPPY_FLAP_DURATION)
+
+
+func _happy_pop_scale() -> float:
+	return lerp(1.0, HAPPY_POP_SCALE_PEAK, _happy_pop_envelope())
+
+
+func _happy_pop_bounce_offset() -> float:
+	return -HAPPY_POP_BOUNCE_HEIGHT * _happy_pop_envelope()  # negative Y = up on screen
 
 
 func _update_fx(delta: float) -> void:
@@ -1593,6 +1758,7 @@ func _update_fx(delta: float) -> void:
 	for s in fx_sparks:
 		s.elapsed += delta
 		s.pos += s.vel * delta
+		s.rotation += s.angular_velocity * delta
 	fx_sparks = fx_sparks.filter(func(s): return s.elapsed < s.lifetime)
 
 	for l in fx_speed_lines:
@@ -1615,7 +1781,7 @@ func _update_fx(delta: float) -> void:
 	var fired: Array = fx_pending_bursts.filter(func(b): return b.delay <= 0.0)
 	fx_pending_bursts = fx_pending_bursts.filter(func(b): return b.delay > 0.0)
 	for b in fired:
-		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SCALE_RANGE)
+		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SCALE_RANGE, fx_small_particle_textures)
 		_spawn_speed_lines()
 
 	if fx_stretch_elapsed >= 0.0:
@@ -1676,17 +1842,46 @@ func _draw_impact_flashes() -> void:
 
 
 func _draw_sparks() -> void:
-	if fx_spark_texture == null or fx_sparks.is_empty():
+	if fx_sparks.is_empty():
 		return
-	var tex_size := Vector2(fx_spark_texture.get_width(), fx_spark_texture.get_height())
+	# Two passes: plain sparks first, then themed objects (wings/leaves/
+	# bubbles) on top — otherwise the much larger small-particle burst (18-26
+	# of them) buries the handful of themed pieces underneath it.
 	for s in fx_sparks:
-		var t: float = s.elapsed / s.lifetime
-		var alpha: float = 1.0 - t  # fast fade-out
-		var draw_scale: float = s.scale
-		draw_set_transform(s.pos, s.rotation, Vector2.ONE * draw_scale)
-		var tint: Color = s.tint
-		draw_texture_rect(fx_spark_texture, Rect2(-tex_size * 0.5, tex_size), false, Color(tint.r, tint.g, tint.b, alpha))
+		if s.is_theme:
+			continue
+		_draw_one_spark(s)
+	for s in fx_sparks:
+		if not s.is_theme:
+			continue
+		_draw_one_spark(s)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_one_spark(s: Dictionary) -> void:
+	var texture: Texture2D = s.texture
+	if texture == null:
+		return
+	var tex_size := Vector2(texture.get_width(), texture.get_height())
+	var t: float = s.elapsed / s.lifetime
+	var draw_pos: Vector2 = s.pos
+	var modulate := Color(1.0, 1.0, 1.0, 1.0 - t)  # fast fade-out
+	if s.is_theme:
+		# Sway perpendicular to the outward travel direction so the straight
+		# radial drift reads as a flutter, not a rigid slide.
+		var dir: Vector2 = (s.vel as Vector2).normalized()
+		var perp := Vector2(-dir.y, dir.x)
+		var wobble: float = sin(s.elapsed * s.wobble_freq * TAU + s.wobble_phase) * s.wobble_amplitude
+		draw_pos += perp * wobble
+		# Full opacity for the first FX_SPARK_THEME_HOLD_FRACTION of its life,
+		# then fades — unlike sparks' immediate linear fade — so wings are
+		# still fully visible once the bigger, shorter-lived spark bursts
+		# have already cleared out.
+		var hold_alpha: float = 1.0 if t < FX_SPARK_THEME_HOLD_FRACTION \
+			else clampf(1.0 - (t - FX_SPARK_THEME_HOLD_FRACTION) / (1.0 - FX_SPARK_THEME_HOLD_FRACTION), 0.0, 1.0)
+		modulate = Color(FX_SPARK_THEME_MODULATE.r, FX_SPARK_THEME_MODULATE.g, FX_SPARK_THEME_MODULATE.b, hold_alpha)
+	draw_set_transform(draw_pos, s.rotation, Vector2.ONE * s.scale)
+	draw_texture_rect(texture, Rect2(-tex_size * 0.5, tex_size), false, modulate)
 
 
 func _draw_score_pops() -> void:
@@ -1799,10 +1994,79 @@ func _on_play_pressed() -> void:
 
 
 func _on_restart_pressed() -> void:
-	# Retry after onboarding is already done: short READY -> START beat
-	# before gameplay actually starts.
+	# Back to mode-select rather than an instant same-mode retry — all 3
+	# concepts currently share this same flag quiz and are meant to be
+	# compared/tested back and forth, so restart is the natural point to
+	# switch between them rather than a separate menu button. _reset_game
+	# clears the just-ended run's score/gates so mode-select's background
+	# isn't showing stale gates.
 	_reset_game()
-	_start_countdown()
+	_set_state(State.MODE_SELECT)
+
+
+func _on_mode_selected(mode: int) -> void:
+	_apply_mode(mode)
+	_set_state(State.READY)
+
+
+# Loads the character/gate/FX asset set for the given Mode into the existing
+# runtime textures/vars — called once at _ready() (default SKY) and again
+# every time the mode-select screen picks a mode. See MODE_CHARACTER_DIR/
+# MODE_GATE_DIR/MODE_FX_DIR above for what's shared vs. per-mode.
+func _apply_mode(mode: int) -> void:
+	current_mode = mode
+
+	var char_dir: String = MODE_CHARACTER_DIR[mode]
+	flap_frames = _slice_spritesheet(char_dir + MODE_CHARACTER_FLY_FILE[mode], BIRD_FLY_SHEET_COLS, BIRD_FLY_SHEET_ROWS)
+	flap_frame_index = 0
+	happy_face_texture = null
+	var happy_path: String = char_dir + MODE_CHARACTER_HAPPY_FILE[mode]
+	if ResourceLoader.exists(happy_path):
+		happy_face_texture = load(happy_path)
+	sad_face_texture = null
+	var sad_path: String = char_dir + MODE_CHARACTER_SAD_FILE[mode]
+	if ResourceLoader.exists(sad_path):
+		sad_face_texture = load(sad_path)
+	active_draw_offset_fly = MODE_DRAW_OFFSET_FLY[mode]
+	active_draw_offset_happy = MODE_DRAW_OFFSET_HAPPY[mode]
+	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
+	active_visual_size_scale = MODE_VISUAL_SIZE_SCALE[mode]
+
+	var gate_dir: String = MODE_GATE_DIR[mode]
+	gate_left_pillar_texture = null
+	if ResourceLoader.exists(gate_dir + "gate_ring_left.png"):
+		gate_left_pillar_texture = load(gate_dir + "gate_ring_left.png")
+	gate_right_pillar_texture = null
+	if ResourceLoader.exists(gate_dir + "gate_ring_right.png"):
+		gate_right_pillar_texture = load(gate_dir + "gate_ring_right.png")
+	gate_base_texture = null
+	if ResourceLoader.exists(gate_dir + "gate_ring_base.png"):
+		gate_base_texture = load(gate_dir + "gate_ring_base.png")
+
+	gate_flag_panel_texture = null
+	var panel_path: String = MODE_GATE_FLAG_PANEL_PATH[mode]
+	if ResourceLoader.exists(panel_path):
+		gate_flag_panel_texture = load(panel_path)
+	active_flag_panel_window_center = MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL[mode]
+	active_flag_panel_window_width = MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL[mode]
+
+	var fx_dir: String = MODE_FX_DIR[mode]
+	fx_big_particle_textures.clear()
+	for i in range(1, 4):
+		var big_path: String = fx_dir + "fx_big_%d.png" % i
+		if ResourceLoader.exists(big_path):
+			fx_big_particle_textures.append(load(big_path))
+	fx_theme_object_textures.clear()
+	for i in range(1, 6):
+		var theme_path: String = fx_dir + "fx_theme_%d.png" % i
+		if ResourceLoader.exists(theme_path):
+			fx_theme_object_textures.append(load(theme_path))
+	fx_small_particle_textures.clear()
+	for i in range(1, FX_SMALL_PARTICLE_MAX_COUNT + 1):
+		var small_path: String = fx_dir + "fx_small_%d.png" % i
+		if ResourceLoader.exists(small_path):
+			fx_small_particle_textures.append(load(small_path))
+	active_theme_motion = MODE_FX_THEME_MOTION[mode]
 
 
 func _start_countdown() -> void:
@@ -1878,6 +2142,7 @@ func _animate_button_release(button: Button) -> void:
 
 func _set_state(new_state: int) -> void:
 	state = new_state
+	mode_select_panel.visible = state == State.MODE_SELECT
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
 
@@ -1953,50 +2218,72 @@ func _draw() -> void:
 	var wall_top := wall_center_y - WALL_THICKNESS * 0.5
 	var wall_bottom := wall_center_y + WALL_THICKNESS * 0.5
 
+	# Base pedestal drawn first (furthest back) so the ring always renders in
+	# front of it — see _draw_gate_base.
+	for g in gates:
+		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5)
+		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5)
+
 	# Right pillar drawn behind the bird (bird occludes it while passing that
 	# side), left pillar drawn in front (it occludes the bird while passing
 	# that side) — that's what sells the bird actually passing *through* the
 	# gate instead of just sliding across a flat picture.
 	for g in gates:
-		var right_top_tex: Texture2D = gate_right_pillar_textures[_gate_glow_frame_index(g, "top")]
-		var right_bottom_tex: Texture2D = gate_right_pillar_textures[_gate_glow_frame_index(g, "bottom")]
-		_draw_gate_frame_layer(right_top_tex, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"))
-		_draw_gate_frame_layer(right_bottom_tex, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"))
+		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
+		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
 	for g in gates:
 		var wall_rect := Rect2(Vector2(g.x, wall_top), Vector2(GATE_WIDTH, WALL_THICKNESS))
-		if difficulty == Difficulty.HARD:
-			draw_rect(Rect2(Vector2(g.x, g.top_zone_top), Vector2(GATE_WIDTH, g.top_zone_bottom - g.top_zone_top)), COLOR_ZONE)
-			draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
+		draw_rect(Rect2(Vector2(g.x, g.top_zone_top), Vector2(GATE_WIDTH, g.top_zone_bottom - g.top_zone_top)), COLOR_ZONE)
+		draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
 		draw_rect(wall_rect, COLOR_WALL)
-		_draw_gate_answer_flag(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
-		_draw_gate_answer_flag(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	_draw_speed_lines()  # behind the bird
 
-	if state != State.READY:
-		# Stretch (see _bird_stretch_scale) is a draw-time-only scale around
-		# the bird's own center — player_y/PLAYER_X/PLAYER_SIZE never change.
-		var stretch: Vector2 = _bird_stretch_scale()
-		draw_set_transform(Vector2(PLAYER_X, player_y), 0.0, stretch)
+	if state != State.READY and state != State.MODE_SELECT:
+		# Stretch (see _bird_stretch_scale) and the happy pop/bounce (see
+		# _happy_pop_scale/_happy_pop_bounce_offset) are both draw-time-only —
+		# player_y/PLAYER_X/PLAYER_SIZE and collision never change. They
+		# multiply/add together rather than one replacing the other, so a
+		# gate pass reads as one continuous "impact squash, then happy
+		# bounce" motion instead of two competing effects.
 		var bird_texture: Texture2D
+		var draw_offset: Vector2
 		if state == State.GAMEOVER and sad_face_texture != null:
 			# Static — no flap cycling once the run has ended.
 			bird_texture = sad_face_texture
+			draw_offset = active_draw_offset_sad
+		elif happy_flap_elapsed >= 0.0 and happy_face_texture != null:
+			# Single static frame — no cycling, reverts to fly on its own
+			# once happy_flap_elapsed passes HAPPY_FLAP_DURATION (_update_fx).
+			bird_texture = happy_face_texture
+			draw_offset = active_draw_offset_happy
 		else:
-			# Same flap_frame_index/cadence either way — happy_flap_elapsed
-			# only swaps which 4-frame set it indexes into, right after a
-			# gate pass.
-			var current_flap_frames: Array[Texture2D] = happy_flap_frames if happy_flap_elapsed >= 0.0 else flap_frames
-			bird_texture = current_flap_frames[flap_frame_index]
-		draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5, PLAYER_VISUAL_SIZE), false)
+			bird_texture = flap_frames[flap_frame_index]
+			draw_offset = active_draw_offset_fly
+		var bird_scale: Vector2 = _bird_stretch_scale() * _happy_pop_scale() * active_visual_size_scale
+		var pos := Vector2(PLAYER_X, player_y + _happy_pop_bounce_offset())
+		draw_set_transform(pos, 0.0, bird_scale)
+		draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if DEBUG_SHOW_HITBOX:
+			# The REAL collision rect — PLAYER_SIZE at (PLAYER_X, player_y),
+			# untouched by bird_scale/draw_offset/happy-bounce above, since
+			# those are visual-only and never affect actual collision math
+			# (see _resolve_gate/_update_playing). Temporary tuning aid.
+			var hitbox_rect := Rect2(Vector2(PLAYER_X, player_y) - PLAYER_SIZE * 0.5, PLAYER_SIZE)
+			draw_rect(hitbox_rect, DEBUG_HITBOX_COLOR, false, 2.0)
 
 	for g in gates:
-		var left_top_tex: Texture2D = gate_left_pillar_textures[_gate_glow_frame_index(g, "top")]
-		var left_bottom_tex: Texture2D = gate_left_pillar_textures[_gate_glow_frame_index(g, "bottom")]
-		_draw_gate_frame_layer(left_top_tex, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"))
-		_draw_gate_frame_layer(left_bottom_tex, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"))
+		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
+		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
+
+	# Answer flags drawn last (topmost) of everything gate-related, after both
+	# ring halves and the bird, so they can never end up hidden behind the
+	# ring art — see _draw_gate_answer_flag.
+	for g in gates:
+		_draw_gate_answer_flag(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
+		_draw_gate_answer_flag(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	# ---- Layer 3: HUD bar + quiz box (always above background/gate zone) ----
 	if state == State.PLAYING or state == State.COUNTDOWN:
