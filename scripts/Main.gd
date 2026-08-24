@@ -407,6 +407,50 @@ const CLOUD_MID_FAR_SPEED_RATIO := 0.20     # fraction of GATE_SPEED
 const CLOUD_MID_Y_BAND := Vector2(0.20, 0.65)
 
 # ============================================================
+# Sky World background — SKY mode only (see current_mode/_draw()). Replaces
+# the mountains/sparkle/castle/cloud_mid layers above entirely when active;
+# those stay in place as the fallback for jungle/ocean until they get their
+# own equivalent art. Three layers, same pool/recycle pattern as the layers
+# above (_make_X/_init_X/_update_X/_draw_X), but object picks use a
+# dedicated seeded RandomNumberGenerator (sky_world_rng) instead of the
+# global randf()/randi() — same seed every run, so a given Inspector tuning
+# always produces the same layout to look at/compare, per request.
+# ============================================================
+const SKY_FAR_TEXTURE_PATH := "res://assets/backgrounds/sky_world/Sky_Far.png"
+const SKY_WORLD_OBJECTS_DIR := "res://assets/backgrounds/sky_world/objects/"
+const SKY_WORLD_ISLAND_COUNT := 10  # island_01.png .. island_10.png
+const SKY_WORLD_CLOUD_COUNT := 8    # cloud_01.png .. cloud_08.png
+const SKY_WORLD_RNG_SEED := 20260824
+
+@export_group("Sky World - Far")
+@export_range(0.0, 2.0, 0.01) var sky_far_speed_ratio: float = 0.15  # fraction of GATE_SPEED
+
+@export_group("Sky World - Mid")
+@export_range(0.0, 2.0, 0.01) var sky_mid_speed_ratio: float = 0.35  # fraction of GATE_SPEED
+@export var sky_mid_scale_range: Vector2 = Vector2(0.6, 1.0)
+@export var sky_mid_y_range: Vector2 = Vector2(0.04, 0.30)           # fraction of view height — upper sky, above the gate zone
+@export var sky_mid_spacing_range: Vector2 = Vector2(220.0, 420.0)   # px gap between consecutive spawns
+@export_range(0.0, 1.0, 0.01) var sky_mid_density: float = 0.7       # fraction of SKY_MID_MAX_POOL_SIZE actually populated — read once at init
+@export_range(0.0, 1.0, 0.01) var sky_mid_island_chance: float = 0.7 # rest are clouds — "floating islands mainly in Mid" per spec
+
+@export_group("Sky World - Near")
+@export_range(0.0, 2.0, 0.01) var sky_near_speed_ratio: float = 0.65  # fraction of GATE_SPEED
+@export var sky_near_scale_range: Vector2 = Vector2(1.2, 1.8)
+# Fraction-of-height margin from whichever screen edge (top or bottom, coin-
+# flipped per spawn) the object hugs — Near is specified as "mainly along
+# the top or bottom edge", not one continuous band like Mid, so this is
+# shaped differently on purpose; see _make_sky_world_object.
+@export var sky_near_edge_margin_range: Vector2 = Vector2(0.0, 0.16)
+@export var sky_near_spacing_range: Vector2 = Vector2(280.0, 520.0)
+@export_range(0.0, 1.0, 0.01) var sky_near_density: float = 0.5
+@export_range(0.0, 1.0, 0.01) var sky_near_island_chance: float = 0.1  # islands/buildings "very rare" in Near per spec
+
+const SKY_MID_MAX_POOL_SIZE := 6
+const SKY_NEAR_MAX_POOL_SIZE := 4
+
+@export_group("")  # closes "Sky World - Near" so every @export below lands back in the default Inspector category
+
+# ============================================================
 # Gate-pass success FX — purely cosmetic, a ~0.25s burst triggered exactly
 # once per gate from _resolve_gate() (see _play_gate_success_fx), the same
 # single-fire point that already exists (g.resolved is set the instant the
@@ -691,6 +735,17 @@ var castle_cooldown_timer: float = 3.0  # short initial wait so the first castle
 var cloud_mid_textures: Array[Texture2D] = []
 var cloud_mid_list: Array = []  # fixed pool, each: {texture, x, y, scale, alpha, speed, flip, near}
 
+# Sky World background state (SKY mode only — see the const/export block above).
+var sky_far_texture: Texture2D
+var sky_far_scroll_x: float = 0.0  # ever-increasing distance scrolled; wrapped with fposmod at draw time
+var sky_world_island_textures: Array[Texture2D] = []
+var sky_world_cloud_textures: Array[Texture2D] = []
+var sky_world_rng := RandomNumberGenerator.new()
+var sky_mid_list: Array = []   # fixed pool, each: {texture, x, y, scale, is_island}
+var sky_near_list: Array = []  # same shape as sky_mid_list
+var sky_mid_last_texture: Texture2D  # avoids picking the same object twice in a row on recycle
+var sky_near_last_texture: Texture2D
+
 # Gate-pass FX state (see the const block above for tunables).
 var fx_big_particle_textures: Array[Texture2D] = []
 var fx_theme_object_textures: Array[Texture2D] = []
@@ -767,10 +822,21 @@ func _ready() -> void:
 		castle_texture = load(CASTLE_TEXTURE_PATH)
 	for path in CLOUD_MID_TEXTURE_PATHS:
 		cloud_mid_textures.append(load(path))
+	if ResourceLoader.exists(SKY_FAR_TEXTURE_PATH):
+		sky_far_texture = load(SKY_FAR_TEXTURE_PATH)
+	for i in range(1, SKY_WORLD_ISLAND_COUNT + 1):
+		var island_path: String = SKY_WORLD_OBJECTS_DIR + "island_%02d.png" % i
+		if ResourceLoader.exists(island_path):
+			sky_world_island_textures.append(load(island_path))
+	for i in range(1, SKY_WORLD_CLOUD_COUNT + 1):
+		var cloud_path: String = SKY_WORLD_OBJECTS_DIR + "cloud_%02d.png" % i
+		if ResourceLoader.exists(cloud_path):
+			sky_world_cloud_textures.append(load(cloud_path))
 	var view_size := get_viewport_rect().size
 	_init_mountains(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
+	_init_sky_world(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
 	fx_sound_whoosh = AudioStreamPlayer.new()
 	add_child(fx_sound_whoosh)
@@ -1058,6 +1124,119 @@ func _draw_cloud_mid(near: bool) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
+# ---- Sky World background (SKY mode only — see current_mode/_draw()) ----
+# x/y stored per-object are the draw rect's TOP-LEFT corner (not center),
+# same convention as _make_mountain_segment; no flip variance here (not
+# called for in the spec, unlike the mountains/clouds above).
+
+func _make_sky_world_object(view_size: Vector2, is_near: bool, start_x: float) -> Dictionary:
+	var island_chance: float = sky_near_island_chance if is_near else sky_mid_island_chance
+	var scale_range: Vector2 = sky_near_scale_range if is_near else sky_mid_scale_range
+	var last_texture: Texture2D = sky_near_last_texture if is_near else sky_mid_last_texture
+	var is_island: bool = sky_world_rng.randf() < island_chance and not sky_world_island_textures.is_empty()
+	var pool: Array[Texture2D] = sky_world_island_textures if is_island else sky_world_cloud_textures
+	var texture: Texture2D = null
+	if not pool.is_empty():
+		texture = pool[sky_world_rng.randi() % pool.size()]
+		# Avoid picking the exact same object as last time, per spec — a
+		# few retries is plenty given these pools only hold 9-10 entries.
+		var tries := 0
+		while texture == last_texture and pool.size() > 1 and tries < 6:
+			texture = pool[sky_world_rng.randi() % pool.size()]
+			tries += 1
+	if is_near:
+		sky_near_last_texture = texture
+	else:
+		sky_mid_last_texture = texture
+	var scale: float = sky_world_rng.randf_range(scale_range.x, scale_range.y)
+	var size_y: float = (texture.get_height() * scale) if texture != null else 0.0
+	var center_y: float
+	if is_near:
+		# "Mainly along the top or bottom edge" — a margin-from-edge band,
+		# coin-flipped per spawn, rather than one continuous mid-screen band.
+		var margin_frac: float = sky_world_rng.randf_range(sky_near_edge_margin_range.x, sky_near_edge_margin_range.y)
+		center_y = view_size.y * margin_frac if sky_world_rng.randf() < 0.5 else view_size.y * (1.0 - margin_frac)
+	else:
+		center_y = view_size.y * sky_world_rng.randf_range(sky_mid_y_range.x, sky_mid_y_range.y)
+	return {
+		"texture": texture,
+		"x": start_x,
+		"y": center_y - size_y * 0.5,
+		"scale": scale,
+	}
+
+
+func _init_sky_world(view_size: Vector2) -> void:
+	sky_world_rng.seed = SKY_WORLD_RNG_SEED
+	sky_mid_list.clear()
+	sky_near_list.clear()
+	sky_mid_last_texture = null
+	sky_near_last_texture = null
+	var mid_count: int = max(1, int(round(SKY_MID_MAX_POOL_SIZE * sky_mid_density)))
+	var near_count: int = max(1, int(round(SKY_NEAR_MAX_POOL_SIZE * sky_near_density)))
+	var x := 0.0
+	for i in range(mid_count):
+		x += sky_world_rng.randf_range(sky_mid_spacing_range.x, sky_mid_spacing_range.y)
+		sky_mid_list.append(_make_sky_world_object(view_size, false, x))
+	x = 0.0
+	for i in range(near_count):
+		x += sky_world_rng.randf_range(sky_near_spacing_range.x, sky_near_spacing_range.y)
+		sky_near_list.append(_make_sky_world_object(view_size, true, x))
+
+
+func _update_sky_world_pool(list: Array, delta: float, view_size: Vector2, is_near: bool, speed_ratio: float, spacing_range: Vector2) -> void:
+	var speed: float = speed_ratio * GATE_SPEED
+	var max_right := 0.0
+	for o in list:
+		o.x -= speed * delta
+		if o.texture != null:
+			max_right = max(max_right, o.x + o.texture.get_width() * o.scale)
+	for o in list:
+		var w: float = (o.texture.get_width() * o.scale) if o.texture != null else 0.0
+		if o.x + w < 0.0:
+			var next_x: float = max_right + sky_world_rng.randf_range(spacing_range.x, spacing_range.y)
+			var fresh: Dictionary = _make_sky_world_object(view_size, is_near, next_x)
+			for key in fresh:
+				o[key] = fresh[key]
+			var fresh_w: float = (fresh.texture.get_width() * fresh.scale) if fresh.texture != null else 0.0
+			max_right = next_x + fresh_w
+
+
+func _update_sky_world(delta: float, view_size: Vector2) -> void:
+	sky_far_scroll_x += sky_far_speed_ratio * GATE_SPEED * delta
+	_update_sky_world_pool(sky_mid_list, delta, view_size, false, sky_mid_speed_ratio, sky_mid_spacing_range)
+	_update_sky_world_pool(sky_near_list, delta, view_size, true, sky_near_speed_ratio, sky_near_spacing_range)
+
+
+func _draw_sky_world_far(view_size: Vector2) -> void:
+	if sky_far_texture == null:
+		return
+	var tex_size := Vector2(sky_far_texture.get_width(), sky_far_texture.get_height())
+	if tex_size.y <= 0.0 or view_size.y <= 0.0:
+		return
+	var draw_scale: float = view_size.y / tex_size.y
+	var tile_w: float = tex_size.x * draw_scale
+	# Guards the loop below against ever spinning forever — view_size can
+	# briefly report (0, 0) on the very first frame or two (viewport not
+	# fully realized yet), which would otherwise make tile_w 0 and freeze
+	# the whole editor since `x += tile_w` would never advance.
+	if tile_w <= 1.0:
+		return
+	var x: float = -fposmod(sky_far_scroll_x, tile_w)
+	while x < view_size.x:
+		draw_texture_rect(sky_far_texture, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false)
+		x += tile_w
+
+
+func _draw_sky_world_pool(list: Array) -> void:
+	for o in list:
+		if o.texture == null:
+			continue
+		var tex: Texture2D = o.texture
+		var size: Vector2 = Vector2(tex.get_width(), tex.get_height()) * o.scale
+		draw_texture_rect(tex, Rect2(Vector2(o.x, o.y), size), false)
+
+
 func _gate_zone_top(view_size: Vector2) -> float:
 	# Anchored to the quiz box's real (non-transparent) bottom edge, not its
 	# padded bounding box — quiz_box.png has a lot of transparent margin, so
@@ -1220,10 +1399,13 @@ func _process(delta: float) -> void:
 	# Background parallax keeps drifting on every screen (menu, playing,
 	# game over) for a lively backdrop, independent of gameplay state.
 	var view_size := get_viewport_rect().size
-	_update_mountains(delta, view_size)
-	_update_bg_sparkles(delta, view_size)
-	_update_castle(delta, view_size)
-	_update_cloud_mid(delta, view_size)
+	if current_mode == Mode.SKY:
+		_update_sky_world(delta, view_size)
+	else:
+		_update_mountains(delta, view_size)
+		_update_bg_sparkles(delta, view_size)
+		_update_castle(delta, view_size)
+		_update_cloud_mid(delta, view_size)
 	pause_button.visible = state == State.PLAYING or state == State.COUNTDOWN
 	if not paused:
 		if state == State.PLAYING:
@@ -2200,17 +2382,22 @@ func _draw_quiz_box(view_size: Vector2) -> void:
 
 func _draw() -> void:
 	var view_size := get_viewport_rect().size
-	_draw_sky_gradient(view_size)          # Layer 0
-	_draw_mountains()                      # Layer 1
-	_draw_bg_sparkles()                    # Layer 2
-	_draw_cloud_mid(false)                 # Layer 4, far sub-group — drawn BEHIND the castle (see below)
-	_draw_castle()                         # Layer 3 — drawn between the far/near cloud sub-groups on purpose:
-											# a far cloud is very translucent (alpha ~0.3-0.5), so layering it
-											# OVER the also-translucent castle just double-fades into a muddy
-											# blend the castle shows straight through — not a convincing
-											# occlusion. Near clouds are opaque enough (~0.85-1.0) to still
-											# read as genuinely passing in front when they cross the castle.
-	_draw_cloud_mid(true)                  # Layer 4, near sub-group
+	if current_mode == Mode.SKY:
+		_draw_sky_world_far(view_size)        # Layer 1 — full painted sky/cloud backdrop, replaces the flat gradient
+		_draw_sky_world_pool(sky_mid_list)    # Layer 2 — mostly floating islands, upper sky
+		_draw_sky_world_pool(sky_near_list)   # Layer 3 — mostly clouds, hugging the top/bottom edges
+	else:
+		_draw_sky_gradient(view_size)          # Layer 0
+		_draw_mountains()                      # Layer 1
+		_draw_bg_sparkles()                    # Layer 2
+		_draw_cloud_mid(false)                 # Layer 4, far sub-group — drawn BEHIND the castle (see below)
+		_draw_castle()                         # Layer 3 — drawn between the far/near cloud sub-groups on purpose:
+												# a far cloud is very translucent (alpha ~0.3-0.5), so layering it
+												# OVER the also-translucent castle just double-fades into a muddy
+												# blend the castle shows straight through — not a convincing
+												# occlusion. Near clouds are opaque enough (~0.85-1.0) to still
+												# read as genuinely passing in front when they cross the castle.
+		_draw_cloud_mid(true)                  # Layer 4, near sub-group
 
 	# ---- Layer 2: gate zone (gates, center wall, bird) ----
 	var wall_center_y := _gate_wall_center_y(view_size)
