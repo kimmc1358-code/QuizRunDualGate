@@ -108,8 +108,9 @@ const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallb
 # gap of 0 here still looks like a big visual gap on screen — this is
 # negative to pull the quiz box's real artwork up close to the score
 # panel's real bottom edge. See the two PNGs' measured content bounds if
-# retuning: score panel's frame spans y 0.278-0.737 of its canvas, quiz
-# box's spans y 0.231-0.641 of its own (different canvas height).
+# retuning: the sky score panel's art spans y 0.165-0.921 of its canvas
+# (the other two modes are close), quiz box's spans y 0.231-0.641 of its
+# own (different canvas height).
 const QUIZ_BOX_TOP_GAP := -28.0
 const QUIZ_BOX_HEIGHT := 116.0       # display height; width follows the quiz_box.png source aspect (~3:1 wide banner)
 const QUIZ_BOX_COLOR := Color(1.0, 1.0, 1.0, 0.92)
@@ -697,17 +698,39 @@ const MODE_SCORE_PANEL_PATH := [
 	"res://assets/ui_assets/ocean/score_panel.png",
 ]
 const QUIZ_BOX_TEXTURE_PATH := "res://assets/ui_assets/quiz_box.png"
-const SCORE_PANEL_WIDTH := 240.0            # display width; height follows source aspect
-# Blank number box inside the score panel art sits to the right of the
-# "SCORE" label — measured directly off the source PNG (cream box spans
-# roughly x 0.397-0.869, y 0.356-0.658 of the full image). The number is
-# drawn right-aligned so it hugs the box's right edge instead of centering
-# under the whole panel (which would drift left, under the label).
-const SCORE_NUMBER_RIGHT_FRAC := 0.83       # fraction of panel display width — right edge the digits align to
-const SCORE_NUMBER_Y_FRAC := 0.51           # fraction of panel display height — vertical center of the digits
-const SCORE_NUMBER_FONT_SCALE := 0.22       # fraction of panel display height, used as the digit font size
+const SCORE_PANEL_WIDTH := 300.0            # display width; height follows source aspect
+# Nudge off the HUD band's own center. The panel art is taller than the
+# pause/mute icons it sits between, so centering it on the same line as
+# them leaves it looking low against the top of the screen. The number
+# rides along, being positioned from the panel's own rect.
+const SCORE_PANEL_CENTER_Y_OFFSET := -8.0
+# Cream writing box inside the score panel art, right of the painted
+# "SCORE" label. Measured off each mode's own PNG rather than shared: the
+# three panels are cropped out of one sheet but their frames differ in
+# thickness, so the box lands at a different height and depth in each
+# canvas. Fractions are of the panel's *display* size, so they hold at any
+# SCORE_PANEL_WIDTH.
+#
+# A consequence worth knowing before "fixing" it: because the number is
+# sized and placed off its own mode's box, it does NOT land in the same
+# screen spot in all three. JUNGLE's chunky wood frame leaves the smallest
+# box, so its digits come out ~14% smaller, and the vertical centers span
+# about 4px across the modes. That is deliberate — each mode's number sits
+# correctly in its own frame, which reads better than a shared absolute
+# size that would crowd JUNGLE's box.
+const MODE_SCORE_BOX_RIGHT_FRAC := [0.885, 0.885, 0.885]   # of panel width — box's inner right edge
+const MODE_SCORE_BOX_MID_Y_FRAC := [0.559, 0.521, 0.504]   # of panel height — box's vertical center
+const MODE_SCORE_BOX_HEIGHT_FRAC := [0.488, 0.442, 0.428]  # of panel height — box's inner height
+# The number is right-aligned just inside the box instead of centered in
+# it, so the ones digit stays put and the number grows leftward into the
+# empty space as the score gains digits.
+const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.045  # of panel width — keeps the ones digit off the frame
+const SCORE_NUMBER_FONT_SCALE := 0.58         # digit font size as a fraction of the box height
 const SCORE_NUMBER_DIGIT_SPACING := 3.0     # extra px inserted between digits (score panel's default kerning is tight)
 const SCORE_NUMBER_EMBOLDEN := 0.5          # faux-bold strength (FontVariation) — Mulmaru only ships one weight
+# Baseline offset from a digit row's visual center, as a fraction of the
+# font size — see _draw_spaced_right_aligned_text.
+const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.40
 
 # Pause/Mute button press feedback — quick squash-in on press, springy
 # release back to full size. Needs pivot_offset centered on the button (set
@@ -754,6 +777,10 @@ var sad_face_texture: Texture2D
 var ready_texture: Texture2D
 var start_texture: Texture2D
 var score_panel_texture: Texture2D
+# Where this mode's score panel puts its writing box (see the MODE_SCORE_BOX_* consts).
+var active_score_box_right_frac: float = 0.885
+var active_score_box_mid_y_frac: float = 0.5
+var active_score_box_height_frac: float = 0.45
 var score_font: Font
 var quiz_box_texture: Texture2D
 var flag_records: Array = []          # [{code, name, image, tier}, ...] — see FLAGS_DATA_PATH
@@ -2395,6 +2422,9 @@ func _apply_mode(mode: int) -> void:
 	score_panel_texture = null
 	if ResourceLoader.exists(MODE_SCORE_PANEL_PATH[mode]):
 		score_panel_texture = load(MODE_SCORE_PANEL_PATH[mode])
+	active_score_box_right_frac = MODE_SCORE_BOX_RIGHT_FRAC[mode]
+	active_score_box_mid_y_frac = MODE_SCORE_BOX_MID_Y_FRAC[mode]
+	active_score_box_height_frac = MODE_SCORE_BOX_HEIGHT_FRAC[mode]
 
 	var fx_dir: String = MODE_FX_DIR[mode]
 	fx_big_particle_textures.clear()
@@ -2506,10 +2536,11 @@ func _draw_hud_bar(view_size: Vector2) -> void:
 		var tex_size := Vector2(score_panel_texture.get_width(), score_panel_texture.get_height())
 		var scale: float = SCORE_PANEL_WIDTH / tex_size.x
 		var draw_size: Vector2 = tex_size * scale
-		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, mid_y - draw_size.y * 0.5)
+		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, mid_y + SCORE_PANEL_CENTER_Y_OFFSET - draw_size.y * 0.5)
 		draw_texture_rect(score_panel_texture, Rect2(top_left, draw_size), false)
-		var number_right := Vector2(top_left.x + draw_size.x * SCORE_NUMBER_RIGHT_FRAC, top_left.y + draw_size.y * SCORE_NUMBER_Y_FRAC)
-		var font_size := int(round(draw_size.y * SCORE_NUMBER_FONT_SCALE))
+		var box_right: float = active_score_box_right_frac - SCORE_NUMBER_RIGHT_INSET_FRAC
+		var number_right := Vector2(top_left.x + draw_size.x * box_right, top_left.y + draw_size.y * active_score_box_mid_y_frac)
+		var font_size := int(round(draw_size.y * active_score_box_height_frac * SCORE_NUMBER_FONT_SCALE))
 		_draw_spaced_right_aligned_text("%05d" % score, number_right, font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font)
 	else:
 		draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
@@ -2743,9 +2774,13 @@ func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_s
 		char_widths.append(w)
 		total_width += w
 	total_width += extra_spacing * max(0, text.length() - 1)
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
 	var cursor_x := right_center.x - total_width
-	var y := right_center.y + text_size.y * 0.25
+	# draw_string takes a baseline, but right_center.y is where the glyphs
+	# should look centered. Centering on the font's line height would sit
+	# the digits high, since the descent below the baseline is empty space
+	# they never use — Mulmaru's digits actually run from 0.833em above the
+	# baseline to 0.04em below it, so their visual middle is 0.40em up.
+	var y := right_center.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	for i in range(text.length()):
 		var ch: String = text[i]
 		var pos := Vector2(cursor_x, y)
