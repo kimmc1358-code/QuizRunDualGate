@@ -1235,7 +1235,7 @@ func _process(delta: float) -> void:
 			flash_time = max(0.0, flash_time - delta)
 		_update_fx(delta)
 		flap_timer += delta
-		while flap_timer >= FLAP_FRAME_DURATION:
+		while flap_timer >= FLAP_FRAME_DURATION and not flap_frames.is_empty():
 			flap_timer -= FLAP_FRAME_DURATION
 			flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
 	queue_redraw()
@@ -2206,11 +2206,11 @@ func _draw() -> void:
 	_draw_bg_sparkles()                    # Layer 2
 	_draw_cloud_mid(false)                 # Layer 4, far sub-group — drawn BEHIND the castle (see below)
 	_draw_castle()                         # Layer 3 — drawn between the far/near cloud sub-groups on purpose:
-	                                        # a far cloud is very translucent (alpha ~0.3-0.5), so layering it
-	                                        # OVER the also-translucent castle just double-fades into a muddy
-	                                        # blend the castle shows straight through — not a convincing
-	                                        # occlusion. Near clouds are opaque enough (~0.85-1.0) to still
-	                                        # read as genuinely passing in front when they cross the castle.
+											# a far cloud is very translucent (alpha ~0.3-0.5), so layering it
+											# OVER the also-translucent castle just double-fades into a muddy
+											# blend the castle shows straight through — not a convincing
+											# occlusion. Near clouds are opaque enough (~0.85-1.0) to still
+											# read as genuinely passing in front when they cross the castle.
 	_draw_cloud_mid(true)                  # Layer 4, near sub-group
 
 	# ---- Layer 2: gate zone (gates, center wall, bird) ----
@@ -2259,13 +2259,18 @@ func _draw() -> void:
 			bird_texture = happy_face_texture
 			draw_offset = active_draw_offset_happy
 		else:
-			bird_texture = flap_frames[flap_frame_index]
+			# Guarded rather than a bare index — an unfinished asset sync (or a
+			# bad mode path) leaving flap_frames empty would otherwise throw
+			# an out-of-bounds error every single frame here, which reads as
+			# the whole game freezing rather than "the bird just doesn't draw".
+			bird_texture = flap_frames[flap_frame_index] if flap_frame_index < flap_frames.size() else null
 			draw_offset = active_draw_offset_fly
 		var bird_scale: Vector2 = _bird_stretch_scale() * _happy_pop_scale() * active_visual_size_scale
 		var pos := Vector2(PLAYER_X, player_y + _happy_pop_bounce_offset())
-		draw_set_transform(pos, 0.0, bird_scale)
-		draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		if bird_texture != null:
+			draw_set_transform(pos, 0.0, bird_scale)
+			draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
+			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if DEBUG_SHOW_HITBOX:
 			# The REAL collision rect — PLAYER_SIZE at (PLAYER_X, player_y),
 			# untouched by bird_scale/draw_offset/happy-bounce above, since
