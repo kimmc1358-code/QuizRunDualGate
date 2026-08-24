@@ -572,6 +572,64 @@ const FX_SPEED_LINE_Y_SPREAD := 0.4                 # fraction of PLAYER_VISUAL_
 const FX_SPEED_LINE_CYAN := Color(0.75, 0.96, 1.0)
 const FX_SPEED_LINE_WHITE := Color(1.0, 1.0, 1.0)
 
+# ============================================================
+# Character trail — a few tiny particles shed behind the character,
+# marking the path it just flew.
+#
+# The thing that makes this work: PLAYER_X never moves, so a particle
+# parked at the character's tail would just pile into a vertical column.
+# Each one instead travels left with the world at the current scroll
+# speed, which is what sells it as being *left behind*. It also means a
+# gate pass's speed boost stretches the trail out for free — see
+# _gate_speed_boost_multiplier.
+#
+# Deliberately sparse: the character is small and the quiz gate is what
+# the player actually has to read, so a steady plume would just dirty the
+# screen. The baseline holds 1-3 tiny particles alive at a time, and the
+# only time it thickens is the instant of a tap (see _spawn_trail_burst,
+# called from the flap handler) — which doubles as tactile feedback for
+# the input.
+#
+# Whole feature = these consts + trail_textures/trail_particles/
+# trail_spawn_timer + _update_bird_trail/_spawn_trail_particle/
+# _spawn_trail_burst/_draw_bird_trail + their four call sites. Delete
+# those to remove it.
+# ============================================================
+const TRAIL_ENABLED_PER_MODE := [true, true, true]  # SKY, JUNGLE, OCEAN
+const TRAIL_SPAWN_INTERVAL := 0.19           # seconds between baseline particles — with TRAIL_LIFETIME_RANGE this keeps ~3-4 alive
+const TRAIL_TAP_BURST_RANGE := Vector2i(4, 7)  # extra particles thrown off at the moment of a tap
+const TRAIL_TAP_BURST_SIZE_SCALE := 1.55       # burst particles are drawn larger than the baseline ones, so the tap reads as a puff and not just "more specks"
+const TRAIL_ORIGIN_FRAC := Vector2(-0.30, 0.10)  # spawn point as a fraction of PLAYER_VISUAL_SIZE from the character's center
+const TRAIL_ORIGIN_JITTER := 6.0             # px of random scatter around that point
+const TRAIL_LIFETIME_RANGE := Vector2(0.50, 0.80)
+# Longest edge in px, per mode. Small on purpose (see the header), but not
+# uniform: SKY’s gold sparkles pop off blue sky at almost any size, while
+# JUNGLE and OCEAN are drawing their own colour on top of a background of
+# that same colour and need a little more mass to read at all.
+const TRAIL_SIZE_RANGE_PER_MODE := [Vector2(5.0, 10.0), Vector2(7.0, 13.0), Vector2(7.0, 13.0)]
+const TRAIL_DRIFT_Y_RANGE := Vector2(-10.0, 10.0)  # px/s of random vertical wander, on top of the per-mode drift below
+const TRAIL_INHERIT_VEL_Y := 0.08            # how much of player_vel each particle carries off
+const TRAIL_SHRINK := 0.45                   # fraction of its size a particle loses over its life
+const TRAIL_ALPHA := 1.0
+const TRAIL_OFFSCREEN_MARGIN := 20.0          # px past the left edge before a particle is dropped
+const TRAIL_SPIN_RANGE := Vector2(-1.6, 1.6) # radians/s
+# Per-mode vertical drift, px/s, negative = upward. OCEAN is the reason
+# this exists: bubbles that rise out of the spawn point while the world
+# pushes them left read as a shark actually swimming forward. SKY drifts
+# up a hair so sparkles hang; JUNGLE settles, like shaken-loose leaves.
+const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0]
+# Which fx_small_N.png each mode's trail draws from (see the contact sheets
+# in assets/fx/<mode>/). Every set's last few entries are solid squares —
+# fine as confetti inside a gate burst, but alone in a slow trail they just
+# read as blocks — so only the sparkle/blob shapes are listed. SKY pairs
+# its white-blue blob (4) with the gold sparkles (1, 3) as the "light
+# specks"; OCEAN takes its bubble blob (4) plus the water-blue sparkles.
+const TRAIL_TEXTURE_NUMBERS_PER_MODE := [
+	[4, 1, 3],
+	[4, 3, 5],
+	[4, 5, 1],
+]
+
 # 4. Bird visual stretch — sprite-draw scale only (draw_set_transform in
 # _draw()); player_y/player_vel/PLAYER_SIZE are never touched. Pushed
 # further from 1:1 and held slightly longer for a more obvious squash.
@@ -825,6 +883,9 @@ var fx_theme_object_textures: Array[Texture2D] = []
 var fx_small_particle_textures: Array[Texture2D] = []
 var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, texture}
 var fx_speed_lines: Array = []       # each: {y_offset, length, elapsed, color}
+var trail_textures: Array[Texture2D] = []   # sparkle subset of the mode's fx_small set, see TRAIL_TEXTURE_NUMBERS
+var trail_particles: Array = []      # each: {pos, drift_y, size, rotation, spin, lifetime, elapsed, texture} — see the TRAIL_* consts
+var trail_spawn_timer: float = 0.0
 var fx_score_pops: Array = []        # each: {pos, elapsed}
 var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
 var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
@@ -1478,6 +1539,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		tapped = true
 	if tapped:
 		player_vel = flap_velocity
+		_spawn_trail_burst()
 		if fx_sound_flap.stream != null:
 			fx_sound_flap.play()
 
@@ -2108,6 +2170,8 @@ func _update_fx(delta: float) -> void:
 		l.elapsed += delta
 	fx_speed_lines = fx_speed_lines.filter(func(l): return l.elapsed < FX_SPEED_LINE_DURATION)
 
+	_update_bird_trail(delta)
+
 	for p in fx_score_pops:
 		p.elapsed += delta
 	fx_score_pops = fx_score_pops.filter(func(p): return p.elapsed < FX_SCORE_POP_DURATION)
@@ -2158,6 +2222,83 @@ func _update_fx(delta: float) -> void:
 		combo_glow_elapsed += delta
 		if combo_glow_elapsed >= COMBO_GLOW_DURATION:
 			combo_glow_elapsed = -1.0
+
+
+func _update_bird_trail(delta: float) -> void:
+	# Runs from _update_fx, not _update_playing, so an existing trail keeps
+	# drifting and fading after a game over instead of freezing mid-air.
+	var world_dx: float = GATE_SPEED * _gate_speed_boost_multiplier() * delta
+	for p in trail_particles:
+		p.elapsed += delta
+		p.pos.x -= world_dx          # rides the world, not the bird — see the TRAIL_* header
+		p.pos.y += p.drift_y * delta
+		p.rotation += p.spin * delta
+	trail_particles = trail_particles.filter(func(p): return p.elapsed < p.lifetime and p.pos.x > -TRAIL_OFFSCREEN_MARGIN)
+
+	if not _trail_active():
+		return
+	# Flat baseline rate — the dynamics come from the tap burst, not from
+	# emission chasing the character's speed. See the header.
+	trail_spawn_timer += delta
+	while trail_spawn_timer >= TRAIL_SPAWN_INTERVAL:
+		trail_spawn_timer -= TRAIL_SPAWN_INTERVAL
+		_spawn_trail_particle()
+
+
+func _trail_active() -> bool:
+	return state == State.PLAYING and TRAIL_ENABLED_PER_MODE[current_mode] and not trail_textures.is_empty()
+
+
+func _spawn_trail_burst() -> void:
+	# Fired on tap: a short puff on top of the baseline, so the input gets a
+	# visible kick without the trail ever becoming a steady stream.
+	if not _trail_active():
+		return
+	for i in range(randi_range(TRAIL_TAP_BURST_RANGE.x, TRAIL_TAP_BURST_RANGE.y)):
+		_spawn_trail_particle(TRAIL_TAP_BURST_SIZE_SCALE)
+
+
+func _spawn_trail_particle(size_scale: float = 1.0) -> void:
+	var size_range: Vector2 = TRAIL_SIZE_RANGE_PER_MODE[current_mode] * size_scale
+	var origin := Vector2(
+		PLAYER_X + PLAYER_VISUAL_SIZE.x * TRAIL_ORIGIN_FRAC.x + randf_range(-TRAIL_ORIGIN_JITTER, TRAIL_ORIGIN_JITTER),
+		player_y + PLAYER_VISUAL_SIZE.y * TRAIL_ORIGIN_FRAC.y + randf_range(-TRAIL_ORIGIN_JITTER, TRAIL_ORIGIN_JITTER))
+	trail_particles.append({
+		"pos": origin,
+		# Per-mode drift (bubbles rise, leaves settle) plus a little of the
+		# character's own vertical motion, so a hard dive throws the trail
+		# downward instead of leaving it hanging level.
+		"drift_y": TRAIL_DRIFT_Y_PER_MODE[current_mode] + player_vel * TRAIL_INHERIT_VEL_Y + randf_range(TRAIL_DRIFT_Y_RANGE.x, TRAIL_DRIFT_Y_RANGE.y),
+		"size": randf_range(size_range.x, size_range.y),
+		"rotation": randf() * TAU,
+		"spin": randf_range(TRAIL_SPIN_RANGE.x, TRAIL_SPIN_RANGE.y),
+		"lifetime": randf_range(TRAIL_LIFETIME_RANGE.x, TRAIL_LIFETIME_RANGE.y),
+		"elapsed": 0.0,
+		"texture": trail_textures[randi() % trail_textures.size()],
+	})
+
+
+func _draw_bird_trail() -> void:
+	if trail_particles.is_empty():
+		return
+	for p in trail_particles:
+		var texture: Texture2D = p.texture
+		if texture == null:
+			continue
+		var tex_size := Vector2(texture.get_width(), texture.get_height())
+		if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+			continue
+		var t: float = p.elapsed / p.lifetime
+		# Quadratic fade holds the head of the trail near full and dissolves
+		# the tail, rather than the whole streak dimming evenly.
+		var alpha: float = TRAIL_ALPHA * clampf(1.0 - t * t, 0.0, 1.0)
+		if alpha <= 0.001:
+			continue
+		var draw_scale: float = p.size * (1.0 - t * TRAIL_SHRINK) / max(tex_size.x, tex_size.y)
+		var size: Vector2 = tex_size * draw_scale
+		draw_set_transform(p.pos, p.rotation, Vector2.ONE)
+		draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_speed_lines() -> void:
@@ -2442,6 +2583,11 @@ func _apply_mode(mode: int) -> void:
 		var small_path: String = fx_dir + "fx_small_%d.png" % i
 		if ResourceLoader.exists(small_path):
 			fx_small_particle_textures.append(load(small_path))
+	trail_textures.clear()
+	for i in TRAIL_TEXTURE_NUMBERS_PER_MODE[mode]:
+		var trail_path: String = fx_dir + "fx_small_%d.png" % i
+		if ResourceLoader.exists(trail_path):
+			trail_textures.append(load(trail_path))
 	active_theme_motion = MODE_FX_THEME_MOTION[mode]
 
 
@@ -2468,6 +2614,8 @@ func _reset_game() -> void:
 	last_zone_center = player_y
 	fx_sparks.clear()
 	fx_speed_lines.clear()
+	trail_particles.clear()
+	trail_spawn_timer = 0.0
 	fx_score_pops.clear()
 	combo_display_punch_elapsed = 0.0
 	combo_display_time = 0.0
@@ -2619,6 +2767,7 @@ func _draw() -> void:
 		draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
 		draw_rect(wall_rect, COLOR_WALL)
 
+	_draw_bird_trail()   # behind the bird, and behind the speed lines
 	_draw_speed_lines()  # behind the bird
 
 	if state != State.READY and state != State.MODE_SELECT:
