@@ -323,9 +323,8 @@ const COMBO_GLOW_PEAK_ALPHA := 0.22
 # rather than freed and reallocated, per the "no per-frame GC churn"
 # requirement.
 #
-# NOTE: a near-cloud-sea foreground layer (cloud_near_seamless_512x256.png)
-# used to live here and has been removed entirely per request. The file
-# itself is left on disk untouched; nothing below loads or references it.
+# NOTE: a near-cloud-sea foreground layer used to live here and was removed
+# entirely per request; its unused source file has since been deleted too.
 # ============================================================
 
 # --- Layer 1: distant mountain range — the farthest landform, a slow
@@ -843,7 +842,7 @@ func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 
 
 # Loads assets/flags/flags_data.json (193 UN member records) and preloads
-# every flag texture up front — 193 tiny 64x64 PNGs is negligible memory,
+# every flag texture up front — 193 small 256x171 PNGs is negligible memory,
 # and preloading means _spawn_gate can never hit a mid-run load hitch or a
 # missing-texture gap. See tools/validate_flags_data.ps1 for the offline
 # check that every record's code/name/image is present and 1:1 matched;
