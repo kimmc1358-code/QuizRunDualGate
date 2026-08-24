@@ -192,6 +192,10 @@ const GATE_PILLAR_BOTTOM_LOCAL_Y := 492.0
 # _gate_ring_inner_zone_height.
 const GATE_RING_INNER_TOP_LOCAL_Y := 128.0
 const GATE_RING_INNER_BOTTOM_LOCAL_Y := 395.0
+# Small forgiveness margin added on top of the ring art's own exact opening,
+# split evenly top/bottom (see _gate_ring_inner_zone_height) — shared by all
+# 3 modes since they all use this same ring geometry, just reskinned art.
+const GATE_ZONE_HEIGHT_MARGIN_LOCAL := 20.0
 
 # Base pedestal — a separate static image (no left/right split; it never
 # occludes/is occluded by the bird, since the passable opening sits well
@@ -245,7 +249,7 @@ const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
 # Answer flag icon sits inside the gate's decorative frame, above its zone
 # — positioned GATE_FLAG_GAP_ABOVE_ZONE clear of the zone's top edge (see
-# _draw_gate_answer_flag). Flag PNGs are all a unified 256x171 (3:2) frame
+# _draw_gate_answer_box). Flag PNGs are all a unified 256x171 (3:2) frame
 # now (see assets/flags/flags_data.json), so the display size is a rect,
 # not a square — width/height match that same 3:2 ratio so the art is
 # never stretched. This is the flag's fixed on-screen size — the panel
@@ -280,6 +284,12 @@ const MODE_GATE_FLAG_PANEL_PATH := [
 ]
 const MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL := [Vector2(253.0, 473.0), Vector2(254.0, 508.5), Vector2(250.0, 497.5)]
 const MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL := [265.0, 313.0, 277.0]
+# Flags are fit by width only (see _draw_gate_answer_box) — every panel's
+# window is close enough to the flags' own fixed 3:2 that the sub-pixel
+# height mismatch is invisible. JUNGLE's math-quiz number instead has no
+# fixed aspect of its own, so it fits both width AND height exactly to
+# each panel's real window — this array is what that needs.
+const MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL := [173.0, 186.0, 180.0]
 
 # ============================================================
 # Combo tier popup — an "×N" burst in the gate zone's top-right corner,
@@ -407,48 +417,62 @@ const CLOUD_MID_FAR_SPEED_RATIO := 0.20     # fraction of GATE_SPEED
 const CLOUD_MID_Y_BAND := Vector2(0.20, 0.65)
 
 # ============================================================
-# Sky World background — SKY mode only (see current_mode/_draw()). Replaces
-# the mountains/sparkle/castle/cloud_mid layers above entirely when active;
-# those stay in place as the fallback for jungle/ocean until they get their
-# own equivalent art. Three layers, same pool/recycle pattern as the layers
-# above (_make_X/_init_X/_update_X/_draw_X), but object picks use a
-# dedicated seeded RandomNumberGenerator (sky_world_rng) instead of the
-# global randf()/randi() — same seed every run, so a given Inspector tuning
-# always produces the same layout to look at/compare, per request.
+# Per-mode single-image scrolling background (see current_mode/_apply_mode/
+# _draw()). One painted scene per mode, scaled to fill the view height and
+# tiled horizontally. Falls back to the old mountains/sparkle/castle/
+# cloud_mid layers below for any mode without a dedicated image yet (empty
+# path here, or the file just doesn't exist on disk) — see bg_texture's
+# null-check in _draw()/_process().
 # ============================================================
-const SKY_FAR_TEXTURE_PATH := "res://assets/backgrounds/sky_world/Sky_Far.png"
-const SKY_WORLD_OBJECTS_DIR := "res://assets/backgrounds/sky_world/objects/"
-const SKY_WORLD_ISLAND_COUNT := 10  # island_01.png .. island_10.png
-const SKY_WORLD_CLOUD_COUNT := 8    # cloud_01.png .. cloud_08.png
-const SKY_WORLD_RNG_SEED := 20260824
+const MODE_BG_TEXTURE_PATH := [
+	# _blur variants — a pre-blurred copy of the same art (no runtime blur
+	# shader in this custom-draw setup), so the background reads as soft/
+	# out-of-focus instead of competing for detail with the gate/character.
+	"res://assets/backgrounds/sky_world/background_single_blur.png",
+	"res://assets/backgrounds/jungle_world/background_single_blur.png",
+	"res://assets/backgrounds/ocean_world/background_single_blur.png",
+]
 
-@export_group("Sky World - Far")
-@export_range(0.0, 2.0, 0.01) var sky_far_speed_ratio: float = 0.15  # fraction of GATE_SPEED
+@export_group("Sky Background")
+@export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.15  # fraction of GATE_SPEED
+# Dims the background art so its own strong color/detail doesn't compete
+# with the gate/flag/character sitting on top of it — 1.0 = full original
+# brightness, lower recedes it further into the background.
+@export_range(0.3, 1.0, 0.01) var bg_brightness: float = 0.95
 
-@export_group("Sky World - Mid")
-@export_range(0.0, 2.0, 0.01) var sky_mid_speed_ratio: float = 0.35  # fraction of GATE_SPEED
-@export var sky_mid_scale_range: Vector2 = Vector2(0.6, 1.0)
-@export var sky_mid_y_range: Vector2 = Vector2(0.04, 0.30)           # fraction of view height — upper sky, above the gate zone
-@export var sky_mid_spacing_range: Vector2 = Vector2(220.0, 420.0)   # px gap between consecutive spawns
-@export_range(0.0, 1.0, 0.01) var sky_mid_density: float = 0.7       # fraction of SKY_MID_MAX_POOL_SIZE actually populated — read once at init
-@export_range(0.0, 1.0, 0.01) var sky_mid_island_chance: float = 0.7 # rest are clouds — "floating islands mainly in Mid" per spec
+@export_group("")  # closes "Sky Background" so every @export below lands back in the default Inspector category
 
-@export_group("Sky World - Near")
-@export_range(0.0, 2.0, 0.01) var sky_near_speed_ratio: float = 0.65  # fraction of GATE_SPEED
-@export var sky_near_scale_range: Vector2 = Vector2(1.2, 1.8)
-# Fraction-of-height margin from whichever screen edge (top or bottom, coin-
-# flipped per spawn) the object hugs — Near is specified as "mainly along
-# the top or bottom edge", not one continuous band like Mid, so this is
-# shaped differently on purpose; see _make_sky_world_object.
-@export var sky_near_edge_margin_range: Vector2 = Vector2(0.0, 0.16)
-@export var sky_near_spacing_range: Vector2 = Vector2(280.0, 520.0)
-@export_range(0.0, 1.0, 0.01) var sky_near_density: float = 0.5
-@export_range(0.0, 1.0, 0.01) var sky_near_island_chance: float = 0.1  # islands/buildings "very rare" in Near per spec
+# ============================================================
+# Ambient background particles — small, pre-blurred sprites drawn as part
+# of the background (right after the scrolling background image, still
+# behind the gate/character/UI), animating continuously regardless of game
+# state. One themed sprite + motion per mode: SKY twinkles in place in the
+# sky, JUNGLE falls top-to-bottom with a side-to-side flutter, OCEAN rises
+# bottom-to-top with a gentle sway — same per-mode-file swap convention as
+# everything else, and the same "pre-blur the PNG once" trick as the
+# backgrounds above (no runtime blur shader in this custom-draw setup).
+# ============================================================
+const MODE_PARTICLE_DIR := [
+	"res://assets/backgrounds/sky_world/particles/",
+	"res://assets/backgrounds/jungle_world/particles/",
+	"res://assets/backgrounds/ocean_world/particles/",
+]
+const MODE_PARTICLE_PREFIX := ["light", "leaf", "bubble"]
+const MODE_PARTICLE_COUNT := [16, 24, 16]  # light_01-16.png / leaf_01-24.png / bubble_01-16.png
 
-const SKY_MID_MAX_POOL_SIZE := 6
-const SKY_NEAR_MAX_POOL_SIZE := 4
+@export_group("Ambient Particles")
+@export_range(0, 40, 1) var particle_count: int = 8
+@export var particle_draw_size_range: Vector2 = Vector2(34.0, 58.0)  # final on-screen px, independent of the source image's own resolution
+@export_range(0.0, 1.0, 0.01) var particle_alpha_max: float = 0.8
+@export var particle_twinkle_duration_range: Vector2 = Vector2(1.5, 3.5)  # SKY only — one full fade in -> out cycle
+@export_range(5.0, 120.0, 1.0) var particle_fall_speed: float = 35.0      # JUNGLE only
+@export var particle_flutter_amplitude_range: Vector2 = Vector2(10.0, 25.0)  # JUNGLE only — side-to-side sway width
+@export var particle_flutter_freq_range: Vector2 = Vector2(0.4, 0.9)         # JUNGLE only — sway speed, Hz
+@export_range(5.0, 120.0, 1.0) var particle_rise_speed: float = 30.0      # OCEAN only
+@export var particle_sway_amplitude_range: Vector2 = Vector2(8.0, 18.0)   # OCEAN only
+@export var particle_sway_freq_range: Vector2 = Vector2(0.3, 0.7)         # OCEAN only
 
-@export_group("")  # closes "Sky World - Near" so every @export below lands back in the default Inspector category
+@export_group("")  # closes "Ambient Particles" so every @export below lands back in the default Inspector category
 
 # ============================================================
 # Gate-pass success FX — purely cosmetic, a ~0.25s burst triggered exactly
@@ -640,16 +664,38 @@ const COUNTDOWN_START_DURATION := 0.4
 # "READY!" / "START!" countdown pop art — PixelLab-sourced, drawn in place of
 # the old plain-text draw_string call (see the State.COUNTDOWN block in
 # _draw()). Falls back to the old text if either file is missing.
-const READY_TEXTURE_PATH := "res://assets/ui_assets/Ready.png"
-const START_TEXTURE_PATH := "res://assets/ui_assets/Start.png"
-const COUNTDOWN_IMAGE_WIDTH := 220.0  # display width in px; height follows the source aspect ratio
+const MODE_READY_TEXTURE_PATH := [
+	"res://assets/ui_assets/sky/Ready.png",
+	"res://assets/ui_assets/jungle/Ready.png",
+	"res://assets/ui_assets/ocean/Ready.png",
+]
+const MODE_START_TEXTURE_PATH := [
+	"res://assets/ui_assets/sky/Start.png",
+	"res://assets/ui_assets/jungle/Start.png",
+	"res://assets/ui_assets/ocean/Start.png",
+]
+const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the source aspect ratio
+# All 3 modes' Ready/Start art come from one shared sheet, cropped per mode
+# to its own content-safe band (row heights aren't uniform — each mode's
+# glow/flourish extends a different amount past the naive even-thirds grid
+# split, so the actual crop bounds were found from a real transparency scan,
+# not fixed math). Within its own crop canvas the content still isn't
+# perfectly centered, so these are (canvas_center - measured_content_center)
+# per file, same technique as MODE_DRAW_OFFSET_FLY/HAPPY/SAD, applied in
+# _draw_countdown_image.
+const MODE_READY_OFFSET_LOCAL := [Vector2(-28.5, -19.5), Vector2(-32.0, 4.0), Vector2(-19.5, 24.0)]
+const MODE_START_OFFSET_LOCAL := [Vector2(21.5, -22.5), Vector2(10.5, -5.5), Vector2(10.5, 23.5)]
 
 # Top HUD art: pause (top-left, real Button) / mute (top-right, real Button) /
 # score panel (top-center, drawn — no interaction needed). All PixelLab-
 # sourced, sized to fit inside the existing HUD_BAR_HEIGHT band unchanged.
 const PAUSE_ICON_PATH := "res://assets/ui_assets/pause.png"
 const MUTE_ICON_PATH := "res://assets/ui_assets/mute.png"
-const SCORE_PANEL_PATH := "res://assets/ui_assets/score_panel.png"
+const MODE_SCORE_PANEL_PATH := [
+	"res://assets/ui_assets/sky/score_panel.png",
+	"res://assets/ui_assets/jungle/score_panel.png",
+	"res://assets/ui_assets/ocean/score_panel.png",
+]
 const QUIZ_BOX_TEXTURE_PATH := "res://assets/ui_assets/quiz_box.png"
 const SCORE_PANEL_WIDTH := 240.0            # display width; height follows source aspect
 # Blank number box inside the score panel art sits to the right of the
@@ -694,7 +740,10 @@ var active_draw_offset_sad := Vector2.ZERO
 var active_visual_size_scale: float = 1.0
 var active_flag_panel_window_center := Vector2.ZERO
 var active_flag_panel_window_width: float = 0.0
+var active_flag_panel_window_height: float = 0.0
 var active_theme_motion: int = ThemeMotion.SCATTER
+var active_ready_offset := Vector2.ZERO
+var active_start_offset := Vector2.ZERO
 
 var flap_frames: Array[Texture2D] = []
 var flap_frame_index: int = 0
@@ -735,16 +784,13 @@ var castle_cooldown_timer: float = 3.0  # short initial wait so the first castle
 var cloud_mid_textures: Array[Texture2D] = []
 var cloud_mid_list: Array = []  # fixed pool, each: {texture, x, y, scale, alpha, speed, flip, near}
 
-# Sky World background state (SKY mode only — see the const/export block above).
-var sky_far_texture: Texture2D
-var sky_far_scroll_x: float = 0.0  # ever-increasing distance scrolled; wrapped with fposmod at draw time
-var sky_world_island_textures: Array[Texture2D] = []
-var sky_world_cloud_textures: Array[Texture2D] = []
-var sky_world_rng := RandomNumberGenerator.new()
-var sky_mid_list: Array = []   # fixed pool, each: {texture, x, y, scale, is_island}
-var sky_near_list: Array = []  # same shape as sky_mid_list
-var sky_mid_last_texture: Texture2D  # avoids picking the same object twice in a row on recycle
-var sky_near_last_texture: Texture2D
+# Per-mode single-image background state — loaded in _apply_mode, see the const/export block above.
+var bg_texture: Texture2D
+var bg_scroll_x: float = 0.0  # ever-increasing distance scrolled; wrapped with fposmod at draw time
+
+# Ambient background particle state (see the const/export block above).
+var particle_textures: Array[Texture2D] = []
+var ambient_particle_list: Array = []  # fixed pool, each: {texture, base_x, y, size, wobble_amp, wobble_freq, phase, elapsed, duration}
 
 # Gate-pass FX state (see the const block above for tunables).
 var fx_big_particle_textures: Array[Texture2D] = []
@@ -789,12 +835,6 @@ func _ready() -> void:
 	# Keeps all pixel art crisp at any render scale — draw_texture_rect has no
 	# per-call filter option, so this has to be set on the CanvasItem itself.
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	if ResourceLoader.exists(READY_TEXTURE_PATH):
-		ready_texture = load(READY_TEXTURE_PATH)
-	if ResourceLoader.exists(START_TEXTURE_PATH):
-		start_texture = load(START_TEXTURE_PATH)
-	if ResourceLoader.exists(SCORE_PANEL_PATH):
-		score_panel_texture = load(SCORE_PANEL_PATH)
 	if ResourceLoader.exists(QUIZ_BOX_TEXTURE_PATH):
 		quiz_box_texture = load(QUIZ_BOX_TEXTURE_PATH)
 	_load_flags_data()
@@ -822,21 +862,10 @@ func _ready() -> void:
 		castle_texture = load(CASTLE_TEXTURE_PATH)
 	for path in CLOUD_MID_TEXTURE_PATHS:
 		cloud_mid_textures.append(load(path))
-	if ResourceLoader.exists(SKY_FAR_TEXTURE_PATH):
-		sky_far_texture = load(SKY_FAR_TEXTURE_PATH)
-	for i in range(1, SKY_WORLD_ISLAND_COUNT + 1):
-		var island_path: String = SKY_WORLD_OBJECTS_DIR + "island_%02d.png" % i
-		if ResourceLoader.exists(island_path):
-			sky_world_island_textures.append(load(island_path))
-	for i in range(1, SKY_WORLD_CLOUD_COUNT + 1):
-		var cloud_path: String = SKY_WORLD_OBJECTS_DIR + "cloud_%02d.png" % i
-		if ResourceLoader.exists(cloud_path):
-			sky_world_cloud_textures.append(load(cloud_path))
 	var view_size := get_viewport_rect().size
 	_init_mountains(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
-	_init_sky_world(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
 	fx_sound_whoosh = AudioStreamPlayer.new()
 	add_child(fx_sound_whoosh)
@@ -1124,117 +1153,124 @@ func _draw_cloud_mid(near: bool) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-# ---- Sky World background (SKY mode only — see current_mode/_draw()) ----
-# x/y stored per-object are the draw rect's TOP-LEFT corner (not center),
-# same convention as _make_mountain_segment; no flip variance here (not
-# called for in the spec, unlike the mountains/clouds above).
+# ---- Per-mode single-image background (see _apply_mode/_draw()) ----
+# One painted scene, scaled to exactly fill the view height and tiled
+# horizontally — same infinite-scroll technique as before, just a single
+# layer now instead of three.
 
-func _make_sky_world_object(view_size: Vector2, is_near: bool, start_x: float) -> Dictionary:
-	var island_chance: float = sky_near_island_chance if is_near else sky_mid_island_chance
-	var scale_range: Vector2 = sky_near_scale_range if is_near else sky_mid_scale_range
-	var last_texture: Texture2D = sky_near_last_texture if is_near else sky_mid_last_texture
-	var is_island: bool = sky_world_rng.randf() < island_chance and not sky_world_island_textures.is_empty()
-	var pool: Array[Texture2D] = sky_world_island_textures if is_island else sky_world_cloud_textures
-	var texture: Texture2D = null
-	if not pool.is_empty():
-		texture = pool[sky_world_rng.randi() % pool.size()]
-		# Avoid picking the exact same object as last time, per spec — a
-		# few retries is plenty given these pools only hold 9-10 entries.
-		var tries := 0
-		while texture == last_texture and pool.size() > 1 and tries < 6:
-			texture = pool[sky_world_rng.randi() % pool.size()]
-			tries += 1
-	if is_near:
-		sky_near_last_texture = texture
-	else:
-		sky_mid_last_texture = texture
-	var scale: float = sky_world_rng.randf_range(scale_range.x, scale_range.y)
-	var size_y: float = (texture.get_height() * scale) if texture != null else 0.0
-	var center_y: float
-	if is_near:
-		# "Mainly along the top or bottom edge" — a margin-from-edge band,
-		# coin-flipped per spawn, rather than one continuous mid-screen band.
-		var margin_frac: float = sky_world_rng.randf_range(sky_near_edge_margin_range.x, sky_near_edge_margin_range.y)
-		center_y = view_size.y * margin_frac if sky_world_rng.randf() < 0.5 else view_size.y * (1.0 - margin_frac)
-	else:
-		center_y = view_size.y * sky_world_rng.randf_range(sky_mid_y_range.x, sky_mid_y_range.y)
-	return {
-		"texture": texture,
-		"x": start_x,
-		"y": center_y - size_y * 0.5,
-		"scale": scale,
-	}
+func _update_sky_background(delta: float) -> void:
+	bg_scroll_x += bg_speed_ratio * GATE_SPEED * delta
 
 
-func _init_sky_world(view_size: Vector2) -> void:
-	sky_world_rng.seed = SKY_WORLD_RNG_SEED
-	sky_mid_list.clear()
-	sky_near_list.clear()
-	sky_mid_last_texture = null
-	sky_near_last_texture = null
-	var mid_count: int = max(1, int(round(SKY_MID_MAX_POOL_SIZE * sky_mid_density)))
-	var near_count: int = max(1, int(round(SKY_NEAR_MAX_POOL_SIZE * sky_near_density)))
-	var x := 0.0
-	for i in range(mid_count):
-		x += sky_world_rng.randf_range(sky_mid_spacing_range.x, sky_mid_spacing_range.y)
-		sky_mid_list.append(_make_sky_world_object(view_size, false, x))
-	x = 0.0
-	for i in range(near_count):
-		x += sky_world_rng.randf_range(sky_near_spacing_range.x, sky_near_spacing_range.y)
-		sky_near_list.append(_make_sky_world_object(view_size, true, x))
-
-
-func _update_sky_world_pool(list: Array, delta: float, view_size: Vector2, is_near: bool, speed_ratio: float, spacing_range: Vector2) -> void:
-	var speed: float = speed_ratio * GATE_SPEED
-	var max_right := 0.0
-	for o in list:
-		o.x -= speed * delta
-		if o.texture != null:
-			max_right = max(max_right, o.x + o.texture.get_width() * o.scale)
-	for o in list:
-		var w: float = (o.texture.get_width() * o.scale) if o.texture != null else 0.0
-		if o.x + w < 0.0:
-			var next_x: float = max_right + sky_world_rng.randf_range(spacing_range.x, spacing_range.y)
-			var fresh: Dictionary = _make_sky_world_object(view_size, is_near, next_x)
-			for key in fresh:
-				o[key] = fresh[key]
-			var fresh_w: float = (fresh.texture.get_width() * fresh.scale) if fresh.texture != null else 0.0
-			max_right = next_x + fresh_w
-
-
-func _update_sky_world(delta: float, view_size: Vector2) -> void:
-	sky_far_scroll_x += sky_far_speed_ratio * GATE_SPEED * delta
-	_update_sky_world_pool(sky_mid_list, delta, view_size, false, sky_mid_speed_ratio, sky_mid_spacing_range)
-	_update_sky_world_pool(sky_near_list, delta, view_size, true, sky_near_speed_ratio, sky_near_spacing_range)
-
-
-func _draw_sky_world_far(view_size: Vector2) -> void:
-	if sky_far_texture == null:
+func _draw_sky_background(view_size: Vector2) -> void:
+	if bg_texture == null:
 		return
-	var tex_size := Vector2(sky_far_texture.get_width(), sky_far_texture.get_height())
+	var tex_size := Vector2(bg_texture.get_width(), bg_texture.get_height())
 	if tex_size.y <= 0.0 or view_size.y <= 0.0:
 		return
 	var draw_scale: float = view_size.y / tex_size.y
 	var tile_w: float = tex_size.x * draw_scale
-	# Guards the loop below against ever spinning forever — view_size can
-	# briefly report (0, 0) on the very first frame or two (viewport not
-	# fully realized yet), which would otherwise make tile_w 0 and freeze
-	# the whole editor since `x += tile_w` would never advance.
+	# Guards against an infinite loop if tile_w is ever degenerate (e.g. the
+	# viewport briefly reporting zero size on startup) — see the freeze this
+	# caused before it was guarded.
 	if tile_w <= 1.0:
 		return
-	var x: float = -fposmod(sky_far_scroll_x, tile_w)
+	var tint := Color(bg_brightness, bg_brightness, bg_brightness, 1.0)
+	var x: float = -fposmod(bg_scroll_x, tile_w)
 	while x < view_size.x:
-		draw_texture_rect(sky_far_texture, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false)
+		draw_texture_rect(bg_texture, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
 		x += tile_w
 
 
-func _draw_sky_world_pool(list: Array) -> void:
-	for o in list:
-		if o.texture == null:
+# ---- Ambient background particles (see _apply_mode/_draw()) ----
+# base_x never changes after spawn — JUNGLE/OCEAN sway around it, SKY just
+# holds still there. y is the only field that actually travels over time
+# (for JUNGLE/OCEAN); SKY's y is fixed and only alpha pulses.
+
+func _make_ambient_particle(view_size: Vector2, stagger_start: bool) -> Dictionary:
+	var size: float = randf_range(particle_draw_size_range.x, particle_draw_size_range.y)
+	var texture: Texture2D = particle_textures[randi() % particle_textures.size()] if not particle_textures.is_empty() else null
+	var d := {
+		"texture": texture,
+		"base_x": randf_range(0.0, view_size.x),
+		"y": 0.0,
+		"size": size,
+		"wobble_amp": 0.0,
+		"wobble_freq": 0.0,
+		"phase": randf_range(0.0, TAU),
+		"elapsed": 0.0,
+		"duration": 1.0,
+	}
+	match current_mode:
+		Mode.SKY:
+			d.y = view_size.y * randf_range(0.04, 0.32)  # upper sky, above the gate zone
+			d.duration = randf_range(particle_twinkle_duration_range.x, particle_twinkle_duration_range.y)
+			d.elapsed = randf_range(0.0, d.duration) if stagger_start else 0.0
+		Mode.JUNGLE:
+			# Staggered across the whole fall range on init so they don't all
+			# start clustered at the top; recycled particles start exactly at
+			# the top edge instead, same as every other pool in this file.
+			d.y = randf_range(-view_size.y * 0.3, view_size.y) if stagger_start else -size
+			d.wobble_amp = randf_range(particle_flutter_amplitude_range.x, particle_flutter_amplitude_range.y)
+			d.wobble_freq = randf_range(particle_flutter_freq_range.x, particle_flutter_freq_range.y)
+		Mode.OCEAN:
+			d.y = randf_range(0.0, view_size.y * 1.3) if stagger_start else view_size.y + size
+			d.wobble_amp = randf_range(particle_sway_amplitude_range.x, particle_sway_amplitude_range.y)
+			d.wobble_freq = randf_range(particle_sway_freq_range.x, particle_sway_freq_range.y)
+	return d
+
+
+func _init_ambient_particles(view_size: Vector2) -> void:
+	ambient_particle_list.clear()
+	for i in range(particle_count):
+		ambient_particle_list.append(_make_ambient_particle(view_size, true))
+
+
+func _update_ambient_particles(delta: float, view_size: Vector2) -> void:
+	if particle_textures.is_empty():
+		return
+	for p in ambient_particle_list:
+		p.elapsed += delta
+		match current_mode:
+			Mode.SKY:
+				if p.elapsed >= p.duration:
+					var fresh: Dictionary = _make_ambient_particle(view_size, false)
+					for key in fresh:
+						p[key] = fresh[key]
+			Mode.JUNGLE:
+				p.y += particle_fall_speed * delta
+				if p.y - p.size > view_size.y:
+					var fresh: Dictionary = _make_ambient_particle(view_size, false)
+					for key in fresh:
+						p[key] = fresh[key]
+			Mode.OCEAN:
+				p.y -= particle_rise_speed * delta
+				if p.y + p.size < 0.0:
+					var fresh: Dictionary = _make_ambient_particle(view_size, false)
+					for key in fresh:
+						p[key] = fresh[key]
+
+
+func _draw_ambient_particles() -> void:
+	for p in ambient_particle_list:
+		var texture: Texture2D = p.texture
+		if texture == null:
 			continue
-		var tex: Texture2D = o.texture
-		var size: Vector2 = Vector2(tex.get_width(), tex.get_height()) * o.scale
-		draw_texture_rect(tex, Rect2(Vector2(o.x, o.y), size), false)
+		var tex_size := Vector2(texture.get_width(), texture.get_height())
+		if tex_size.x <= 0.0 or tex_size.y <= 0.0:
+			continue
+		var draw_scale: float = p.size / max(tex_size.x, tex_size.y)
+		var size: Vector2 = tex_size * draw_scale
+		var x: float = p.base_x
+		var alpha: float = particle_alpha_max
+		if current_mode == Mode.SKY:
+			var t: float = p.elapsed / p.duration
+			alpha = particle_alpha_max * sin(PI * clampf(t, 0.0, 1.0))  # fade in -> peak -> fade out
+		else:
+			x += sin(p.elapsed * p.wobble_freq * TAU + p.phase) * p.wobble_amp
+		if alpha <= 0.001:
+			continue
+		draw_texture_rect(texture, Rect2(Vector2(x - size.x * 0.5, p.y - size.y * 0.5), size), false, Color(1.0, 1.0, 1.0, alpha))
 
 
 func _gate_zone_top(view_size: Vector2) -> float:
@@ -1271,7 +1307,7 @@ func _gate_ring_inner_zone_height() -> float:
 	# later). This replaces the old hand-picked PLAYER_SIZE.y + margin value
 	# now that the passable opening is dictated by real art, not a rectangle.
 	var scale: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE
-	var inner_height_px: float = GATE_RING_INNER_BOTTOM_LOCAL_Y - GATE_RING_INNER_TOP_LOCAL_Y
+	var inner_height_px: float = (GATE_RING_INNER_BOTTOM_LOCAL_Y - GATE_RING_INNER_TOP_LOCAL_Y) + GATE_ZONE_HEIGHT_MARGIN_LOCAL
 	return inner_height_px * scale
 
 
@@ -1352,31 +1388,55 @@ func _draw_gate_base(center_x: float, center_y: float) -> void:
 # the bottom of that function), after both ring halves and the bird, so the
 # flag is guaranteed to never end up hidden behind the (now much bigger)
 # ring art.
-func _draw_gate_answer_flag(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
-	var texture: Texture2D = flag_textures.get(code)
-	if texture == null:
-		return
+func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
+	# JUNGLE draws its answer as plain number text instead of a flag texture
+	# — everything else about the box (panel, position, card fill) is shared.
+	var is_math: bool = current_mode == Mode.JUNGLE
+	var texture: Texture2D = null
+	if not is_math:
+		texture = flag_textures.get(code)
+		if texture == null:
+			return
 	var center_x: float = gate_x + GATE_WIDTH * 0.5
-	var half_h: float = GATE_FLAG_ICON_HEIGHT * 0.5
-	var center_y: float = maxf(zone_top - half_h - GATE_FLAG_GAP_ABOVE_ZONE, _gate_zone_top(view_size) + half_h)
+	# Width always fits the panel to the flag's own fixed on-screen size (see
+	# the const block above) — that part is shared by both modes. Height is
+	# where they diverge: a flag has its own fixed 3:2 to preserve, but
+	# JUNGLE's number has no art of its own, so instead of the fixed flag
+	# height it uses the panel's own actual scaled window height — otherwise
+	# a panel whose window aspect isn't ~3:2 (jungle's is noticeably taller)
+	# leaves the fixed-height card overflowing past the window into the
+	# panel's own frame artwork.
+	var panel_scale: float = GATE_FLAG_ICON_WIDTH / active_flag_panel_window_width
 	var icon_size := Vector2(GATE_FLAG_ICON_WIDTH, GATE_FLAG_ICON_HEIGHT)
+	if is_math:
+		icon_size.y = active_flag_panel_window_height * panel_scale
+	var half_h: float = icon_size.y * 0.5
+	var center_y: float = maxf(zone_top - half_h - GATE_FLAG_GAP_ABOVE_ZONE, _gate_zone_top(view_size) + half_h)
 	var icon_top_left := Vector2(center_x, center_y) - icon_size * 0.5
 
 	if gate_flag_panel_texture != null:
 		var panel_tex_size := Vector2(gate_flag_panel_texture.get_width(), gate_flag_panel_texture.get_height())
-		var panel_scale: float = icon_size.x / active_flag_panel_window_width
 		var panel_draw_size: Vector2 = panel_tex_size * panel_scale
 		var window_offset_from_center: Vector2 = active_flag_panel_window_center - panel_tex_size * 0.5
 		var panel_center: Vector2 = Vector2(center_x, center_y) - window_offset_from_center * panel_scale
 		draw_texture_rect(gate_flag_panel_texture, Rect2(panel_center - panel_draw_size * 0.5, panel_draw_size), false)
 
-	# Fill card behind the flag itself — flags are letterboxed to a unified
-	# 3:2 (see assets/flags/flags_data.json), so non-3:2 flags (Switzerland's
-	# true square, etc.) have real transparent padding baked into the PNG.
-	# This shows through as a solid color instead of see-through gaps,
-	# without touching any of the 193 flag images themselves.
+	# Fill card behind the flag/number itself — flags are letterboxed to a
+	# unified 3:2 (see assets/flags/flags_data.json), so non-3:2 flags
+	# (Switzerland's true square, etc.) have real transparent padding baked
+	# into the PNG. This shows through as a solid color instead of
+	# see-through gaps, without touching any of the 193 flag images
+	# themselves — and doubles as the number's backdrop for JUNGLE.
 	draw_rect(Rect2(icon_top_left, icon_size), GATE_FLAG_CARD_COLOR)
-	draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
+	if is_math:
+		# Capped by height too, not just width — the window's real height
+		# varies per panel (see the note above), so a flat max wide enough
+		# for sky's window could overflow a shorter one like jungle's.
+		var max_font_size: int = int(min(30.0, icon_size.y * 0.6))
+		var font_size := _fit_font_size(code, icon_size.x * 0.8, max_font_size, 16, combo_font)
+		_draw_centered_text(code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
+	else:
+		draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1399,8 +1459,9 @@ func _process(delta: float) -> void:
 	# Background parallax keeps drifting on every screen (menu, playing,
 	# game over) for a lively backdrop, independent of gameplay state.
 	var view_size := get_viewport_rect().size
-	if current_mode == Mode.SKY:
-		_update_sky_world(delta, view_size)
+	if bg_texture != null:
+		_update_sky_background(delta)
+		_update_ambient_particles(delta, view_size)
 	else:
 		_update_mountains(delta, view_size)
 		_update_bg_sparkles(delta, view_size)
@@ -1490,20 +1551,39 @@ func _update_playing(delta: float) -> void:
 func _spawn_gate(view_size: Vector2) -> void:
 	var phase_index := _get_phase_index(gates_passed)
 
-	# Difficulty curve: phase 0 (tier 1) draws only from the most
-	# internationally famous flags, phase 3 (tier 4) from the least — both
-	# the correct answer and the decoy come from the same tier, so a wrong
-	# choice is never a giveaway just because it "looks less famous."
-	var tier: int = phase_index + 1
-	var pool: Array = flag_records_by_tier.get(tier, flag_records)
-	if pool.size() < 2:
-		pool = flag_records
-	var target_index := randi() % pool.size()
-	var other_index := randi() % (pool.size() - 1)
-	if other_index >= target_index:
-		other_index += 1  # skip target_index so other is always a different country
-	var target: Dictionary = pool[target_index]
-	var other: Dictionary = pool[other_index]
+	# Quiz content: JUNGLE gets a single-digit arithmetic problem (see
+	# _make_math_problem/_make_wrong_answer); every other mode keeps the
+	# flag quiz. Either way this only produces target_code/target_name/
+	# other_code — everything below (zone placement, reachability, spacing)
+	# is quiz-agnostic and untouched.
+	var target_code: String
+	var target_name: String
+	var other_code: String
+	if current_mode == Mode.JUNGLE:
+		var problem: Dictionary = _make_math_problem()
+		var correct: int = problem.answer
+		target_code = str(correct)
+		target_name = problem.text + " = ?"
+		other_code = str(_make_wrong_answer(correct))
+	else:
+		# Difficulty curve: phase 0 (tier 1) draws only from the most
+		# internationally famous flags, phase 3 (tier 4) from the least —
+		# both the correct answer and the decoy come from the same tier, so
+		# a wrong choice is never a giveaway just because it "looks less
+		# famous."
+		var tier: int = phase_index + 1
+		var pool: Array = flag_records_by_tier.get(tier, flag_records)
+		if pool.size() < 2:
+			pool = flag_records
+		var target_index := randi() % pool.size()
+		var other_index := randi() % (pool.size() - 1)
+		if other_index >= target_index:
+			other_index += 1  # skip target_index so other is always a different country
+		var target: Dictionary = pool[target_index]
+		var other: Dictionary = pool[other_index]
+		target_code = target.code
+		target_name = target.name
+		other_code = other.code
 	var top_correct: bool = randi() % 2 == 0
 
 	var wall_center_y := _gate_wall_center_y(view_size)
@@ -1565,22 +1645,22 @@ func _spawn_gate(view_size: Vector2) -> void:
 		top_zone = _random_zone(top_lane_band_top, wall_top, zone_height)
 		last_zone_center = (bottom_zone.x + bottom_zone.y) * 0.5
 
-	var top_code: String = target.code if top_correct else other.code
-	var bottom_code: String = other.code if top_correct else target.code
+	var top_code: String = target_code if top_correct else other_code
+	var bottom_code: String = other_code if top_correct else target_code
 
 	# Code-level correctness check (per spec): the quiz box always shows
-	# target.name, so the gate in the correct lane must carry that exact
-	# same country code, not just a name that happens to match.
+	# target_name, so the gate in the correct lane must carry that exact
+	# same code, not just a name/text that happens to match.
 	var correct_lane_code: String = top_code if top_correct else bottom_code
-	assert(correct_lane_code == target.code, "Quiz target code and correct-lane gate code must match")
+	assert(correct_lane_code == target_code, "Quiz target code and correct-lane gate code must match")
 
 	gates.append({
 		"x": PLAYER_X + base_gate_spacing,
 		"top_code": top_code,
 		"bottom_code": bottom_code,
 		"top_correct": top_correct,
-		"target_code": target.code,
-		"target_name": target.name,
+		"target_code": target_code,
+		"target_name": target_name,
 		"resolved": false,
 		"top_zone_top": top_zone.x,
 		"top_zone_bottom": top_zone.y,
@@ -1638,6 +1718,61 @@ func _get_phase_index(passed_count: int) -> int:
 		if passed_count >= PHASE_GATE_THRESHOLDS[i]:
 			idx = i
 	return idx
+
+
+# ---- JUNGLE mode's math quiz (see _spawn_gate) ----
+# Single-digit operands only, per request — graybox for now, to be revisited.
+
+func _make_math_problem() -> Dictionary:
+	var op: int = randi() % 4  # 0=+, 1=-, 2=x, 3=÷
+	var a: int
+	var b: int
+	var answer: int
+	var op_symbol: String
+	match op:
+		0:
+			a = randi() % 10
+			b = randi() % 10
+			answer = a + b
+			op_symbol = "+"
+		1:
+			# b <= a so the result never goes negative — the operands stay
+			# single-digit, but there's no reason the answer should too.
+			a = randi() % 10
+			b = randi_range(0, a)
+			answer = a - b
+			op_symbol = "-"
+		2:
+			a = randi() % 10
+			b = randi() % 10
+			answer = a * b
+			op_symbol = "x"
+		_:
+			# Divisor/quotient picked so the dividend itself also stays a
+			# single digit (0-9), not just the two operands shown — e.g.
+			# never "12 / 4", since 12 isn't single-digit.
+			b = randi_range(1, 9)
+			var max_q: int = mini(9, 9 / b)
+			var q: int = randi_range(0, max_q)
+			a = b * q
+			answer = q
+			# Plain ASCII "x"/"/" rather than ×/÷ — combo_font (Mulmaru.ttf)
+			# is only confirmed to cover basic Latin (see the header note on
+			# why quiz text stays English), no guarantee on math symbols.
+			op_symbol = "/"
+	return {"text": "%d %s %d" % [a, op_symbol, b], "answer": answer}
+
+
+func _make_wrong_answer(correct: int) -> int:
+	# A close decoy on purpose (per request) — right next to the correct
+	# answer so the two gates can't be told apart by magnitude alone.
+	var offsets: Array = [-2, -1, 1, 2]
+	offsets.shuffle()
+	for offset in offsets:
+		var candidate: int = correct + offset
+		if candidate >= 0:
+			return candidate
+	return correct + 1  # unreachable in practice — every offset already handles correct == 0
 
 
 func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
@@ -2224,12 +2359,42 @@ func _apply_mode(mode: int) -> void:
 	if ResourceLoader.exists(gate_dir + "gate_ring_base.png"):
 		gate_base_texture = load(gate_dir + "gate_ring_base.png")
 
+	bg_texture = null
+	var bg_path: String = MODE_BG_TEXTURE_PATH[mode]
+	if bg_path != "" and ResourceLoader.exists(bg_path):
+		bg_texture = load(bg_path)
+	bg_scroll_x = 0.0
+
+	particle_textures.clear()
+	if mode != Mode.SKY:  # sky's twinkling light particles didn't fit the scene, dropped per request — jungle/ocean keep theirs
+		var particle_dir: String = MODE_PARTICLE_DIR[mode]
+		var particle_prefix: String = MODE_PARTICLE_PREFIX[mode]
+		for i in range(1, MODE_PARTICLE_COUNT[mode] + 1):
+			var particle_path: String = particle_dir + "%s_%02d.png" % [particle_prefix, i]
+			if ResourceLoader.exists(particle_path):
+				particle_textures.append(load(particle_path))
+	_init_ambient_particles(get_viewport_rect().size)
+
 	gate_flag_panel_texture = null
 	var panel_path: String = MODE_GATE_FLAG_PANEL_PATH[mode]
 	if ResourceLoader.exists(panel_path):
 		gate_flag_panel_texture = load(panel_path)
 	active_flag_panel_window_center = MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL[mode]
 	active_flag_panel_window_width = MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL[mode]
+	active_flag_panel_window_height = MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL[mode]
+
+	ready_texture = null
+	if ResourceLoader.exists(MODE_READY_TEXTURE_PATH[mode]):
+		ready_texture = load(MODE_READY_TEXTURE_PATH[mode])
+	start_texture = null
+	if ResourceLoader.exists(MODE_START_TEXTURE_PATH[mode]):
+		start_texture = load(MODE_START_TEXTURE_PATH[mode])
+	active_ready_offset = MODE_READY_OFFSET_LOCAL[mode]
+	active_start_offset = MODE_START_OFFSET_LOCAL[mode]
+
+	score_panel_texture = null
+	if ResourceLoader.exists(MODE_SCORE_PANEL_PATH[mode]):
+		score_panel_texture = load(MODE_SCORE_PANEL_PATH[mode])
 
 	var fx_dir: String = MODE_FX_DIR[mode]
 	fx_big_particle_textures.clear()
@@ -2382,10 +2547,9 @@ func _draw_quiz_box(view_size: Vector2) -> void:
 
 func _draw() -> void:
 	var view_size := get_viewport_rect().size
-	if current_mode == Mode.SKY:
-		_draw_sky_world_far(view_size)        # Layer 1 — full painted sky/cloud backdrop, replaces the flat gradient
-		_draw_sky_world_pool(sky_mid_list)    # Layer 2 — mostly floating islands, upper sky
-		_draw_sky_world_pool(sky_near_list)   # Layer 3 — mostly clouds, hugging the top/bottom edges
+	if bg_texture != null:
+		_draw_sky_background(view_size)     # single scrolling background image — see _draw_sky_background
+		_draw_ambient_particles()           # small twinkle/leaf/bubble particles, still behind the gate zone
 	else:
 		_draw_sky_gradient(view_size)          # Layer 0
 		_draw_mountains()                      # Layer 1
@@ -2469,12 +2633,13 @@ func _draw() -> void:
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
-	# Answer flags drawn last (topmost) of everything gate-related, after both
-	# ring halves and the bird, so they can never end up hidden behind the
-	# ring art — see _draw_gate_answer_flag.
+	# Answer boxes (flag icon, or a number for JUNGLE's math quiz) drawn last
+	# (topmost) of everything gate-related, after both ring halves and the
+	# bird, so they can never end up hidden behind the ring art — see
+	# _draw_gate_answer_box.
 	for g in gates:
-		_draw_gate_answer_flag(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
-		_draw_gate_answer_flag(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
+		_draw_gate_answer_box(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
+		_draw_gate_answer_box(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	# ---- Layer 3: HUD bar + quiz box (always above background/gate zone) ----
 	if state == State.PLAYING or state == State.COUNTDOWN:
@@ -2492,14 +2657,14 @@ func _draw() -> void:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
 			if ready_texture != null:
-				_draw_countdown_image(ready_texture, countdown_center, 1.0)
+				_draw_countdown_image(ready_texture, countdown_center, 1.0, active_ready_offset)
 			else:
 				_draw_centered_text("READY", countdown_center, 36)
 		else:
 			var t: float = 1.0 - (countdown_timer / COUNTDOWN_START_DURATION)
 			var pop_scale: float = _pop_scale(t)
 			if start_texture != null:
-				_draw_countdown_image(start_texture, countdown_center, pop_scale)
+				_draw_countdown_image(start_texture, countdown_center, pop_scale, active_start_offset)
 			else:
 				_draw_centered_text("START", countdown_center, int(round(36.0 * pop_scale)))
 
@@ -2511,11 +2676,16 @@ func _draw() -> void:
 	# content — nothing to do here for it.
 
 
-func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float) -> void:
+func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float, offset_local: Vector2 = Vector2.ZERO) -> void:
 	var tex_size := Vector2(texture.get_width(), texture.get_height())
 	var base_scale: float = COUNTDOWN_IMAGE_WIDTH / tex_size.x
 	var draw_size: Vector2 = tex_size * base_scale * scale_mult
-	draw_texture_rect(texture, Rect2(center - draw_size * 0.5, draw_size), false)
+	# offset_local corrects for the text/flourishes not sitting centered in
+	# the source canvas (see MODE_READY_OFFSET_LOCAL/MODE_START_OFFSET_LOCAL)
+	# — same base_scale as the image itself so it still lines up at any
+	# scale_mult (the READY->START pop included).
+	var draw_center: Vector2 = center + offset_local * base_scale * scale_mult
+	draw_texture_rect(texture, Rect2(draw_center - draw_size * 0.5, draw_size), false)
 
 
 func _pop_scale(t: float) -> float:

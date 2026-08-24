@@ -18,3 +18,15 @@ data_*/
 .vscode/
 .idea/
 *.tmp
+
+# Flag generation pipeline — source library and intermediate sizes.
+# Only assets/flags/256x171 is loaded by the game (see flags_data.json);
+# the rest are regenerable intermediates, kept on disk but out of git.
+/flag-icons/
+/assets/flags/64x64/
+/assets/flags/128x128/
+/assets/flags/256x256/
+
+# Scratch images from art-alignment debugging
+**/_dbg_*.png
+**/_dbg_*.png.import
