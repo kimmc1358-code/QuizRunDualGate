@@ -148,8 +148,8 @@ const HUD_BUTTON_EXTRA := 1.0
 # short of the canvas bottom by a different amount in each mode and each
 # piece. These are where the art actually ends, as a fraction of canvas
 # height, measured off the sliced PNGs — indexed by Mode.
-const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9856, 1.0000, 1.0000]
-const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [1.0000, 1.0000, 1.0000]
+const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9778, 1.0000, 0.9926]
+const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [0.9908, 1.0000, 0.9908]
 const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) from that alignment
 # Stretches the quiz box taller than its art's aspect. The box already spans
 # the full screen width, so it cannot grow taller proportionally — anything
@@ -157,20 +157,20 @@ const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) fro
 # and stretches the painted "QUIZ" letters. 1.0 = untouched art.
 # The quiz TEXT does not grow with it; see QUIZ_TEXT_*_FONT_FRAC.
 const QUIZ_BOX_HEIGHT_STRETCH := 1.25
-# Canvas sizes the slicer produced — see tools/slice_hud_sheet_v4.gd, which
+# Canvas sizes the slicer produced — see tools/slice_hud_sheet_v5.gd, which
 # prints them. Used for layout maths and as the aspect fallback when a
 # texture is missing; the real texture's size wins when it is loaded.
-const SCORE_BOX_SRC := Vector2(795.0, 139.0)
-const QUIZ_BOX_SRC := Vector2(1013.0, 120.0)
-const HUD_BUTTON_SRC := Vector2(111.0, 111.0)
+const SCORE_BOX_SRC := Vector2(937.0, 135.0)
+const QUIZ_BOX_SRC := Vector2(1190.0, 117.0)
+const HUD_BUTTON_SRC := Vector2(117.0, 109.0)
 const QUIZ_BOX_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const QUIZ_BOX_CORNER_RADIUS := 12.0
 # Blank writing area inside the quiz box art, right of the painted "QUIZ"
 # label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
 # one set of fractions covers all three modes.
-const QUIZ_TEXT_CENTER_X_FRAC := 0.5691
-const QUIZ_TEXT_CENTER_Y_FRAC := 0.4583
-const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.79    # usable span 0.1579-0.9803, minus breathing room
+const QUIZ_TEXT_CENTER_X_FRAC := 0.5710
+const QUIZ_TEXT_CENTER_Y_FRAC := 0.5085
+const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.79    # usable span 0.1588-0.9832, minus breathing room
 # Font size is pinned to the box's WIDTH, not its height. Height would be the
 # natural choice, but it would tie the text to QUIZ_BOX_HEIGHT_STRETCH —
 # making the panel taller would grow the letters with it, which is exactly
@@ -813,7 +813,7 @@ const MODE_START_OFFSET_LOCAL := [Vector2(21.5, -22.5), Vector2(10.5, -5.5), Vec
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
 # as real Buttons. All four come out of one hand-authored sheet,
-# assets/ui_assets/hud_sheet_v4.png, cut by tools/slice_hud_sheet_v4.gd.
+# assets/ui_assets/hud_sheet_v5.png, cut by tools/slice_hud_sheet_v5.gd.
 #
 # The slicer is what makes the three modes interchangeable here: rather than
 # cropping each mode to its own tight bounding box (which lands the writing
@@ -861,12 +861,12 @@ const SAVE_KEY_BEST := "best_score"
 # right of it. These are the two blank areas, as fractions of the box's
 # *display* size, so they hold at any size the row scale works out to.
 # Both halves share a vertical centre and height.
-const SCORE_NUM_LEFT_FRAC := 0.2868     # of width — right edge of the "SCORE" label
-const SCORE_NUM_RIGHT_FRAC := 0.5283    # of width — the divider
-const BEST_NUM_LEFT_FRAC := 0.6893      # of width — right edge of the "BEST" label
-const BEST_NUM_RIGHT_FRAC := 0.8969     # of width — inner right edge of the frame
-const SCORE_BOX_MID_Y_FRAC := 0.4856    # of height — writing areas' vertical center
-const SCORE_BOX_HEIGHT_FRAC := 0.5540   # of height — writing areas' height
+const SCORE_NUM_LEFT_FRAC := 0.2700       # of width — right edge of the "SCORE" label
+const SCORE_NUM_RIGHT_FRAC := 0.5379     # of width — the divider
+const BEST_NUM_LEFT_FRAC := 0.6777         # of width — right edge of the "BEST" label
+const BEST_NUM_RIGHT_FRAC := 0.9039       # of width — inner right edge of the frame
+const SCORE_BOX_MID_Y_FRAC := 0.5296     # of height — writing areas' vertical center
+const SCORE_BOX_HEIGHT_FRAC := 0.6148   # of height — writing areas' height
 # Both numbers are right-aligned just inside their half instead of centred in
 # it, so the ones digit stays put and the number grows leftward into the
 # empty space as it gains digits.
@@ -1960,7 +1960,7 @@ func _make_math_problem() -> Dictionary:
 			a = randi() % 10
 			b = randi() % 10
 			answer = a * b
-			op_symbol = "x"
+			op_symbol = "×"
 		_:
 			# Divisor/quotient picked so the dividend itself also stays a
 			# single digit (0-9), not just the two operands shown — e.g.
@@ -1970,10 +1970,11 @@ func _make_math_problem() -> Dictionary:
 			var q: int = randi_range(0, max_q)
 			a = b * q
 			answer = q
-			# Plain ASCII "x"/"/" rather than ×/÷ — combo_font (Mulmaru.ttf)
-			# is only confirmed to cover basic Latin (see the header note on
-			# why quiz text stays English), no guarantee on math symbols.
-			op_symbol = "/"
+			# Real × and ÷ rather than ASCII "x" and "/". This used to be
+			# ASCII because the old face (Mulmaru) could not be relied on to
+			# cover them; Fredoka does, verified against the font itself
+			# rather than assumed.
+			op_symbol = "÷"
 	return {"text": "%d %s %d" % [a, op_symbol, b], "answer": answer}
 
 

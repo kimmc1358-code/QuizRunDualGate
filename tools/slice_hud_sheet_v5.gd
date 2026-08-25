@@ -1,8 +1,8 @@
 extends SceneTree
 
-# Slices assets/ui_assets/hud_sheet_v4.png into the 12 per-mode HUD PNGs.
+# Slices assets/ui_assets/hud_sheet_v5.png into the 12 per-mode HUD PNGs.
 #
-#   godot --headless --path . --script tools/slice_hud_sheet_v4.gd
+#   godot --headless --path . --script tools/slice_hud_sheet_v5.gd
 #
 # Sheet layout: six row bands = three modes (sky / jungle / ocean), each with
 # a top sub-row holding pause | score box | mute, and a bottom sub-row holding
@@ -27,7 +27,7 @@ extends SceneTree
 # Prints the fractions the drawing code needs; copy them into Main.gd if the
 # sheet is ever redrawn.
 
-const SHEET := "res://assets/ui_assets/hud_sheet_v4.png"
+const SHEET := "res://assets/ui_assets/hud_sheet_v5.png"
 const OUT_DIR := "res://assets/ui_assets"
 const A_THR := 0.10
 const SPARSE_FRAC := 0.03   # row is content when this fraction of its width is opaque

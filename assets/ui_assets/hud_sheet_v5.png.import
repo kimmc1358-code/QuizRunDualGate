@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://c5o4dj7vfnbta"
-path="res://.godot/imported/hud_sheet_v4.png-2bcdf3c2dfa4f2c15e213c280f07d99e.ctex"
+uid="uid://dcx0x6c25da1h"
+path="res://.godot/imported/hud_sheet_v5.png-bd09ccfca520b8b986b79d4584b50328.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui_assets/hud_sheet_v4.png"
-dest_files=["res://.godot/imported/hud_sheet_v4.png-2bcdf3c2dfa4f2c15e213c280f07d99e.ctex"]
+source_file="res://assets/ui_assets/hud_sheet_v5.png"
+dest_files=["res://.godot/imported/hud_sheet_v5.png-bd09ccfca520b8b986b79d4584b50328.ctex"]
 
 [params]
 
