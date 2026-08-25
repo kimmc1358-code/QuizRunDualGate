@@ -165,16 +165,15 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 
-[node name="GameOverLabel" type="Label" parent="UI/GameOverPanel" unique_id=544301319]
+[node name="TryAgainImage" type="TextureRect" parent="UI/GameOverPanel" unique_id=544301319]
+texture_filter = 4
 layout_mode = 0
 offset_left = 20.0
-offset_top = 260.0
+offset_top = 150.0
 offset_right = 460.0
-offset_bottom = 320.0
-theme_override_colors/font_color = Color(0.85, 0.25, 0.25, 1)
-theme_override_font_sizes/font_size = 32
-text = "GAME OVER"
-horizontal_alignment = 1
+offset_bottom = 330.0
+expand_mode = 1
+stretch_mode = 5
 
 [node name="FinalScoreLabel" type="Label" parent="UI/GameOverPanel" unique_id=341177484]
 layout_mode = 0

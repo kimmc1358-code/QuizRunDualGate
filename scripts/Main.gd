@@ -132,7 +132,7 @@ const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallb
 # the drawn rect IS what you see. _score_box_rect/_quiz_box_rect are the only
 # places that turn any of this into screen rects, and _gate_zone_top starts
 # the gate zone at the quiz box's bottom edge.
-const SCORE_BOX_TOP := 4.0           # screen y of the top HUD row
+const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 10.0           # score box bottom edge -> quiz box top edge
@@ -168,16 +168,29 @@ const QUIZ_BOX_CORNER_RADIUS := 12.0
 # Blank writing area inside the quiz box art, right of the painted "QUIZ"
 # label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
 # one set of fractions covers all three modes.
-const QUIZ_TEXT_CENTER_X_FRAC := 0.5710
+const QUIZ_TEXT_LEFT_FRAC := 0.1588       # of width — inner edge of the "QUIZ" label pill
+const QUIZ_TEXT_RIGHT_FRAC := 0.9832      # of width — inner right edge of the frame
+const QUIZ_TEXT_SIDE_PAD_FRAC := 0.020    # of width — keeps text off both edges
 const QUIZ_TEXT_CENTER_Y_FRAC := 0.5085
-const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.79    # usable span 0.1588-0.9832, minus breathing room
+# The text is centred within LEFT_FRAC..RIGHT_FRAC — the writing area with
+# the painted "QUIZ" pill excluded — not within the box as a whole.
 # Font size is pinned to the box's WIDTH, not its height. Height would be the
 # natural choice, but it would tie the text to QUIZ_BOX_HEIGHT_STRETCH —
 # making the panel taller would grow the letters with it, which is exactly
 # what we don't want. Width is untouched by the stretch, so the text holds
 # its size no matter how tall the box gets.
-const QUIZ_TEXT_MAX_FONT_FRAC := 0.0477   # of box width — matches the pre-stretch size
-const QUIZ_TEXT_MIN_FONT_FRAC := 0.0208   # of box width — floor for very long country names
+#
+# The ceiling comes from descenders: measured on Fredoka, cap-height strings
+# ink 0.72 em above the baseline to 0.01 below, but a "Paraguay" reaches
+# 0.21 em below. Centred on the ink midpoint, that puts the descender
+# 0.565 em under the centre, which is what has to clear the frame.
+const QUIZ_TEXT_MAX_FONT_FRAC := 0.062    # of box width
+const QUIZ_TEXT_MIN_FONT_FRAC := 0.030    # of box width — floor for very long country names
+# Baseline offset from the text's visual centre, as a fraction of font size.
+# Measured the same way as the digits: ink midpoint of cap-height strings
+# sits 0.355 em above the baseline. Centring on the cap band rather than on
+# the full ink box keeps strings with descenders from jumping upward.
+const QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC := 0.355
 const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's bottom edge, if ever wanted again
 
 # Gate-pass speed boost: on a successful pass, GATE_SPEED is briefly
@@ -785,9 +798,18 @@ var countdown_timer: float = 0.0
 const COUNTDOWN_READY_DURATION := 0.9
 const COUNTDOWN_START_DURATION := 0.4
 
-# "READY!" / "START!" countdown pop art — PixelLab-sourced, drawn in place of
-# the old plain-text draw_string call (see the State.COUNTDOWN block in
-# _draw()). Falls back to the old text if either file is missing.
+# "READY" / "START" countdown pop art and the "TRY AGAIN" game-over word, all
+# cut from one hand-authored sheet (assets/ui_assets/ready_start_sheet_v2.png)
+# by tools/slice_ready_sheet.gd. Ready/Start are drawn in place of the old
+# plain-text draw_string call (see the State.COUNTDOWN block in _draw()) and
+# fall back to that text if a file is missing; TRY AGAIN is a TextureRect in
+# the game-over panel, replacing what used to be a red "GAME OVER" label.
+#
+# The slicer centres every mode's art on one canvas shared across the three,
+# which is why there are no per-mode nudge offsets here any more: this used to
+# carry MODE_READY_OFFSET_LOCAL / MODE_START_OFFSET_LOCAL to shove each mode's
+# differently-sized crop back into place, and centring by construction makes
+# that unnecessary.
 const MODE_READY_TEXTURE_PATH := [
 	"res://assets/ui_assets/sky/Ready.png",
 	"res://assets/ui_assets/jungle/Ready.png",
@@ -798,17 +820,12 @@ const MODE_START_TEXTURE_PATH := [
 	"res://assets/ui_assets/jungle/Start.png",
 	"res://assets/ui_assets/ocean/Start.png",
 ]
+const MODE_TRY_AGAIN_TEXTURE_PATH := [
+	"res://assets/ui_assets/sky/TryAgain.png",
+	"res://assets/ui_assets/jungle/TryAgain.png",
+	"res://assets/ui_assets/ocean/TryAgain.png",
+]
 const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the source aspect ratio
-# All 3 modes' Ready/Start art come from one shared sheet, cropped per mode
-# to its own content-safe band (row heights aren't uniform — each mode's
-# glow/flourish extends a different amount past the naive even-thirds grid
-# split, so the actual crop bounds were found from a real transparency scan,
-# not fixed math). Within its own crop canvas the content still isn't
-# perfectly centered, so these are (canvas_center - measured_content_center)
-# per file, same technique as MODE_DRAW_OFFSET_FLY/HAPPY/SAD, applied in
-# _draw_countdown_image.
-const MODE_READY_OFFSET_LOCAL := [Vector2(-28.5, -19.5), Vector2(-32.0, 4.0), Vector2(-19.5, 24.0)]
-const MODE_START_OFFSET_LOCAL := [Vector2(21.5, -22.5), Vector2(10.5, -5.5), Vector2(10.5, 23.5)]
 
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
@@ -857,24 +874,35 @@ const SAVE_PATH := "user://savegame.cfg"
 const SAVE_SECTION := "progress"
 const SAVE_KEY_BEST := "best_score"
 # The score box art is split by a painted divider into a SCORE half and a
-# BEST half, each with its label on the left and blank writing space to the
-# right of it. These are the two blank areas, as fractions of the box's
-# *display* size, so they hold at any size the row scale works out to.
-# Both halves share a vertical centre and height.
-const SCORE_NUM_LEFT_FRAC := 0.2700       # of width — right edge of the "SCORE" label
-const SCORE_NUM_RIGHT_FRAC := 0.5379     # of width — the divider
-const BEST_NUM_LEFT_FRAC := 0.6777         # of width — right edge of the "BEST" label
-const BEST_NUM_RIGHT_FRAC := 0.9039       # of width — inner right edge of the frame
-const SCORE_BOX_MID_Y_FRAC := 0.5296     # of height — writing areas' vertical center
-const SCORE_BOX_HEIGHT_FRAC := 0.6148   # of height — writing areas' height
-# Both numbers are right-aligned just inside their half instead of centred in
-# it, so the ones digit stays put and the number grows leftward into the
-# empty space as it gains digits.
-const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.015  # of box width — keeps the ones digit off the divider/frame
-const SCORE_NUMBER_FONT_SCALE := 0.58         # digit font size as a fraction of the box height
+# BEST half, each carrying a painted label with blank writing space beside it.
+# All fractions are of the box's *display* size, so they hold at whatever the
+# row scale works out to.
+#
+# The two numbers are deliberately NOT the same size or on the same line: each
+# is matched to the label it belongs to, so the pair reads as "SCORE <big>"
+# and "BEST <small>" the way the art draws them. The values below come from
+# measuring the painted lettering in the sliced PNGs — all three modes agreed
+# to within a pixel, which is why one set covers them all:
+#
+#   label   ink height   vertical centre   right edge
+#   SCORE   0.286        0.548             0.2625
+#   BEST    0.242        0.696             0.6734
+#
+# Font size converts from ink height: Fredoka's digits occupy 0.72 em (0.700
+# above the baseline, 0.020 below — see DIGIT_BASELINE_FROM_CENTER_FRAC), so
+# font = ink_height / 0.72.
+const SCORE_NUM_RIGHT_FRAC := 0.5379      # of width — the divider; the score is right-aligned to just inside it
+const SCORE_NUMBER_FONT_FRAC := 0.397     # of height — 0.286 ink / 0.72
+const SCORE_NUMBER_MID_Y_FRAC := 0.548    # of height — matches the painted "SCORE"
+# BEST is left-aligned instead, starting just past its label, so the number
+# sits beside the word rather than stranded at the far edge of the half.
+const BEST_NUM_LEFT_FRAC := 0.702         # of width — label ends at 0.6734, plus a gap so the number does not crowd it
+const BEST_NUMBER_FONT_FRAC := 0.336      # of height — 0.242 ink / 0.72
+const BEST_NUMBER_MID_Y_FRAC := 0.696     # of height — matches the painted "BEST"
+const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.015  # of box width — keeps the ones digit off the divider
 const SCORE_NUMBER_DIGIT_SPACING := 1.0     # extra px between digit cells, on top of the tabular cell width
 # Baseline offset from a digit row's visual center, as a fraction of the
-# font size — see _draw_spaced_right_aligned_text. Measured by rendering
+# font size — see _draw_spaced_digits. Measured by rendering
 # "0123456789" at a known baseline and reading the ink box back: Fredoka's
 # figures run 0.700 em above the baseline to 0.020 em below at this weight,
 # putting their visual middle 0.34 em up. (Mulmaru's sat at 0.38, which is
@@ -920,8 +948,6 @@ var active_flag_panel_window_center := Vector2.ZERO
 var active_flag_panel_window_width: float = 0.0
 var active_flag_panel_window_height: float = 0.0
 var active_theme_motion: int = ThemeMotion.SCATTER
-var active_ready_offset := Vector2.ZERO
-var active_start_offset := Vector2.ZERO
 
 var flap_frames: Array[Texture2D] = []
 var flap_frame_index: int = 0
@@ -1008,6 +1034,7 @@ var fx_sound_gameover: AudioStreamPlayer
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
+@onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
 @onready var play_button: Button = $UI/ReadyPanel/PlayButton
 @onready var restart_button: Button = $UI/GameOverPanel/RestartButton
 @onready var pause_button: Button = $UI/PauseButton
@@ -2708,8 +2735,10 @@ func _apply_mode(mode: int) -> void:
 	start_texture = null
 	if ResourceLoader.exists(MODE_START_TEXTURE_PATH[mode]):
 		start_texture = load(MODE_START_TEXTURE_PATH[mode])
-	active_ready_offset = MODE_READY_OFFSET_LOCAL[mode]
-	active_start_offset = MODE_START_OFFSET_LOCAL[mode]
+	# TRY AGAIN is a node in the game-over panel rather than something
+	# _draw() paints, so it is assigned rather than cached.
+	if ResourceLoader.exists(MODE_TRY_AGAIN_TEXTURE_PATH[mode]):
+		try_again_image.texture = load(MODE_TRY_AGAIN_TEXTURE_PATH[mode])
 
 	# All four top-HUD pieces are per-mode. They share one canvas size per
 	# piece across the modes, so nothing about the layout has to change here
@@ -2919,14 +2948,19 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if score_box_texture != null:
 		var rect := _score_box_rect(view_size)
 		ci.draw_texture_rect(score_box_texture, rect, false)
-		var mid_y: float = rect.position.y + rect.size.y * SCORE_BOX_MID_Y_FRAC
-		var font_size := int(round(rect.size.y * SCORE_BOX_HEIGHT_FRAC * SCORE_NUMBER_FONT_SCALE))
-		# Two halves of the same box: the live score on the left, the stored
-		# best on the right. Both right-aligned just inside their own half.
+		# Two halves of the same box, each number matched to its own painted
+		# label rather than sharing one size and line: the live score is the
+		# big one, right-aligned to just inside the divider so its ones digit
+		# never moves; the stored best is the small one, left-aligned so it
+		# sits directly beside the word BEST.
+		var score_font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
 		var score_right := rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
-		_draw_spaced_right_aligned_text("%05d" % score, Vector2(score_right, mid_y), font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
-		var best_right := rect.position.x + rect.size.x * (BEST_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
-		_draw_spaced_right_aligned_text("%05d" % best_score, Vector2(best_right, mid_y), font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+		var score_mid_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC
+		_draw_spaced_digits("%05d" % score, Vector2(score_right, score_mid_y), score_font_size, SCORE_NUMBER_DIGIT_SPACING, true, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+		var best_font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
+		var best_left := rect.position.x + rect.size.x * BEST_NUM_LEFT_FRAC
+		var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
+		_draw_spaced_digits("%05d" % best_score, Vector2(best_left, best_mid_y), best_font_size, SCORE_NUMBER_DIGIT_SPACING, false, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
 	else:
 		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
 		_draw_centered_text("SCORE %d  BEST %d" % [score, best_score], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
@@ -2945,13 +2979,18 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var draw_size: Vector2 = rect.size
 		var top_left: Vector2 = rect.position
 		ci.draw_texture_rect(quiz_box_texture, rect, false)
-		var text_center := Vector2(top_left.x + draw_size.x * QUIZ_TEXT_CENTER_X_FRAC, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
-		var max_width: float = draw_size.x * QUIZ_TEXT_MAX_WIDTH_FRAC
+		var pad: float = draw_size.x * QUIZ_TEXT_SIDE_PAD_FRAC
+		var area_left: float = top_left.x + draw_size.x * QUIZ_TEXT_LEFT_FRAC + pad
+		var area_right: float = top_left.x + draw_size.x * QUIZ_TEXT_RIGHT_FRAC - pad
+		var max_width: float = area_right - area_left
 		# Sized off the box WIDTH on purpose — see QUIZ_TEXT_MAX_FONT_FRAC.
 		var max_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MAX_FONT_FRAC))
 		var min_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MIN_FONT_FRAC))
 		var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, combo_font)
-		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font, ci)
+		# Centred within the writing area — the part of the box left over once
+		# the painted "QUIZ" pill is excluded — not within the box as a whole.
+		var text_center := Vector2((area_left + area_right) * 0.5, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
+		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font, ci, QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
 	else:
 		var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, _quiz_box_rect(view_size).size.y))
 		var style := StyleBoxFlat.new()
@@ -3077,14 +3116,14 @@ func _draw() -> void:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
 			if ready_texture != null:
-				_draw_countdown_image(ready_texture, countdown_center, 1.0, active_ready_offset)
+				_draw_countdown_image(ready_texture, countdown_center, 1.0)
 			else:
 				_draw_centered_text("READY", countdown_center, 36)
 		else:
 			var t: float = 1.0 - (countdown_timer / COUNTDOWN_START_DURATION)
 			var pop_scale: float = _pop_scale(t)
 			if start_texture != null:
-				_draw_countdown_image(start_texture, countdown_center, pop_scale, active_start_offset)
+				_draw_countdown_image(start_texture, countdown_center, pop_scale)
 			else:
 				_draw_centered_text("START", countdown_center, int(round(36.0 * pop_scale)))
 
@@ -3096,16 +3135,12 @@ func _draw() -> void:
 	# content — nothing to do here for it.
 
 
-func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float, offset_local: Vector2 = Vector2.ZERO) -> void:
+func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float) -> void:
+	# The art is centred within its own canvas by the slicer, so drawing the
+	# canvas centred on `center` is all it takes — no per-mode correction.
 	var tex_size := Vector2(texture.get_width(), texture.get_height())
-	var base_scale: float = COUNTDOWN_IMAGE_WIDTH / tex_size.x
-	var draw_size: Vector2 = tex_size * base_scale * scale_mult
-	# offset_local corrects for the text/flourishes not sitting centered in
-	# the source canvas (see MODE_READY_OFFSET_LOCAL/MODE_START_OFFSET_LOCAL)
-	# — same base_scale as the image itself so it still lines up at any
-	# scale_mult (the READY->START pop included).
-	var draw_center: Vector2 = center + offset_local * base_scale * scale_mult
-	draw_texture_rect(texture, Rect2(draw_center - draw_size * 0.5, draw_size), false)
+	var draw_size: Vector2 = tex_size * (COUNTDOWN_IMAGE_WIDTH / tex_size.x) * scale_mult
+	draw_texture_rect(texture, Rect2(center - draw_size * 0.5, draw_size), false)
 
 
 func _pop_scale(t: float) -> float:
@@ -3127,13 +3162,19 @@ func _get_upcoming_target() -> String:
 
 # `ci` lets the HUD render this onto its own canvas (see HudCanvas.gd);
 # every other caller leaves it null and draws onto Main as before.
-func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null) -> void:
+func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null, baseline_frac: float = 0.0) -> void:
 	if font == null:
 		font = ThemeDB.fallback_font
 	if ci == null:
 		ci = self
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-	var pos := Vector2(center.x - text_size.x * 0.5, center.y + text_size.y * 0.25)
+	# baseline_frac > 0 puts the baseline a measured fraction of the font size
+	# below `center`, which centres the glyphs on their actual ink rather than
+	# on the font's line box. The line-box fallback below sits the text
+	# slightly high, since the descent it counts is space most strings never
+	# use; callers that care (the quiz box) pass the measured value instead.
+	var baseline_offset: float = font_size * baseline_frac if baseline_frac > 0.0 else text_size.y * 0.25
+	var pos := Vector2(center.x - text_size.x * 0.5, center.y + baseline_offset)
 	# Dark outline so the light default HUD text still reads over the pastel
 	# sky — callers drawing over a light background (the quiz box) pass a
 	# dark fill_color instead, at which point the outline just adds a touch
@@ -3157,7 +3198,9 @@ func _draw_right_aligned_text(text: String, right_center: Vector2, font_size: in
 # character — draw_string has no per-glyph tracking control, so each glyph
 # is measured and placed individually, right-to-left, to add breathing room
 # between the score panel's tightly-kerned digits.
-func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_size: int, extra_spacing: float, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null) -> void:
+# Draws a run of digits on a fixed grid. `anchor` is the vertical centre plus
+# either the right edge (align_right) or the left edge of the run.
+func _draw_spaced_digits(text: String, anchor: Vector2, font_size: int, extra_spacing: float, align_right: bool, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null) -> void:
 	if font == null:
 		font = ThemeDB.fallback_font
 	if ci == null:
@@ -3172,13 +3215,13 @@ func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_s
 	for d in range(10):
 		cell = max(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
 	var total_width: float = cell * text.length() + extra_spacing * max(0, text.length() - 1)
-	var cursor_x := right_center.x - total_width
-	# draw_string takes a baseline, but right_center.y is where the glyphs
-	# should look centered. Centering on the font's line height would sit
-	# the digits high, since the descent below the baseline is empty space
-	# they never use — see DIGIT_BASELINE_FROM_CENTER_FRAC for the measured
-	# offset this uses instead.
-	var y := right_center.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
+	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
+	# draw_string takes a baseline, but anchor.y is where the glyphs should
+	# look centered. Centering on the font's line height would sit the digits
+	# high, since the descent below the baseline is empty space they never
+	# use — see DIGIT_BASELINE_FROM_CENTER_FRAC for the measured offset this
+	# uses instead.
+	var y := anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	for i in range(text.length()):
 		var ch: String = text[i]
 		var w: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://v5jcwfoo21fu"
-path="res://.godot/imported/Ready.png-ece8548337d66b38842e832734172b38.ctex"
+uid="uid://oyx3we62y4uk"
+path="res://.godot/imported/TryAgain.png-0e4c0ce0522409f76b109a3c612e1dd0.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui_assets/ocean/Ready.png"
-dest_files=["res://.godot/imported/Ready.png-ece8548337d66b38842e832734172b38.ctex"]
+source_file="res://assets/ui_assets/ocean/TryAgain.png"
+dest_files=["res://.godot/imported/TryAgain.png-0e4c0ce0522409f76b109a3c612e1dd0.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
