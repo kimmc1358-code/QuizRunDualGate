@@ -30,3 +30,6 @@ data_*/
 # Scratch images from art-alignment debugging
 **/_dbg_*.png
 **/_dbg_*.png.import
+
+# Windows/OneDrive folder metadata
+desktop.ini

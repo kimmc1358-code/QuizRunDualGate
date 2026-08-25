@@ -31,7 +31,7 @@ enum ThemeMotion { SCATTER, FLUTTER, RISE_SWAY }
 const PLAYER_SIZE := Vector2(50, 50)  # hitbox — scaled up a bit alongside PLAYER_VISUAL_SIZE below to keep matching the body size, per request
 const PLAYER_VISUAL_SIZE := Vector2(100, 100)  # on-screen draw size — source art is scaled to this regardless of its own resolution
 const PLAYER_X := 130.0
-const DEBUG_SHOW_HITBOX := true  # outlines the real collision rect over the character — turn off once done tuning PLAYER_SIZE/PLAYER_VISUAL_SIZE
+const DEBUG_SHOW_HITBOX := false # outlines the real collision rect over the character — turn off once done tuning PLAYER_SIZE/PLAYER_VISUAL_SIZE
 const DEBUG_HITBOX_COLOR := Color(1.0, 0.0, 1.0, 1.0)  # bright magenta — doesn't occur anywhere else in the game's palette
 
 # Character display set — display/animation only, never touches
@@ -90,6 +90,24 @@ const GATE_SPEED := 130.0  # halved for testing — was 260.0
 const WALL_THICKNESS := 36.0
 
 # ============================================================
+# Art filtering.
+#
+# This used to be TEXTURE_FILTER_NEAREST for everything Main draws, on the
+# assumption that the art is pixel art that wants hard edges. It isn't: none
+# of it is authored at 1:1. The gate rings are 512px PNGs drawn at ~220px,
+# the character sheets and the flag cards (256px source at 72px) are minified
+# harder still. Nearest-neighbour minification just point-samples, dropping
+# most of the source pixels, which is what chews up the thin outlines and
+# leaves ragged edges. Linear + mipmaps resolves them properly instead.
+#
+# Flip this to false to get the old hard-edged look back — that single edit
+# is the whole revert, nothing else has to change. (Nearest ignores mipmaps,
+# so the mipmap flags in the *.import files are harmless either way and can
+# stay on.) The top HUD is filtered separately and stays smooth regardless —
+# see scripts/HudCanvas.gd.
+const SMOOTH_WORLD_FILTER := true
+
+# ============================================================
 # Screen layout zones (top -> bottom): HUD bar -> quiz box -> the gate zone
 # (everything gameplay-visual: gates/wall/bird), starting right at the quiz
 # box's real (non-transparent) bottom edge and running all the way to the
@@ -99,33 +117,68 @@ const WALL_THICKNESS := 36.0
 # see _gate_zone_top/_gate_zone_bottom, the only two places that combine
 # them into the actual bounds gate spawning/clamping/drawing use.
 # ============================================================
-const HUD_BAR_HEIGHT := 100.0
+const HUD_BAR_HEIGHT := 100.0        # fallback-only: the plain bar drawn when the score box art is missing
 const HUD_SIDE_MARGIN := 12.0
 const HUD_BAR_COLOR := Color(1.0, 1.0, 1.0, 0.3)
 const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallback draw only)
-# Both score_panel.png and quiz_box.png carry a lot of transparent padding
-# around their actual painted frame (wings/clouds stick out unevenly), so a
-# gap of 0 here still looks like a big visual gap on screen — this is
-# negative to pull the quiz box's real artwork up close to the score
-# panel's real bottom edge. See the two PNGs' measured content bounds if
-# retuning: the sky score panel's art spans y 0.165-0.921 of its canvas
-# (the other two modes are close), quiz box's spans y 0.231-0.641 of its
-# own (different canvas height).
-const QUIZ_BOX_TOP_GAP := -28.0
-const QUIZ_BOX_HEIGHT := 116.0       # display height; width follows the quiz_box.png source aspect (~3:1 wide banner)
+# Top HUD: one row of pause | score box | mute, with the quiz box directly
+# under it. The row is laid out at a single shared scale so it keeps the
+# proportions of the source sheet the art was cut from — the buttons stay in
+# the same size relationship to the score box that they were drawn in.
+#
+# The scale falls out of filling the screen width (see _hud_row_scale), so
+# the knobs here are the margins and gaps, not the widths. Heights follow
+# from each PNG's own aspect, and the art is cropped tight to its frame, so
+# the drawn rect IS what you see. _score_box_rect/_quiz_box_rect are the only
+# places that turn any of this into screen rects, and _gate_zone_top starts
+# the gate zone at the quiz box's bottom edge.
+const SCORE_BOX_TOP := 4.0           # screen y of the top HUD row
+const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
+const HUD_ROW_GAP := 4.0             # button -> score box
+const QUIZ_BOX_GAP := 10.0           # score box bottom edge -> quiz box top edge
+# Pause/mute are scaled so their height matches the score box's exactly,
+# which is what makes the top row read as one flush band rather than three
+# loosely stacked pieces. Derived from the art rather than hard-coded, so it
+# still holds if the sheet is redrawn — see _hud_button_mult. This is a
+# further nudge on top of that: >1 makes the buttons overhang the row.
+const HUD_BUTTON_EXTRA := 1.0
+# The buttons are hung off the score box's bottom edge rather than centred on
+# it. Aligning the *rects* would not do it: the slicer pads every canvas to
+# make the panel interiors line up across modes, so the painted art stops
+# short of the canvas bottom by a different amount in each mode and each
+# piece. These are where the art actually ends, as a fraction of canvas
+# height, measured off the sliced PNGs — indexed by Mode.
+const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9856, 1.0000, 1.0000]
+const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [1.0000, 1.0000, 1.0000]
+const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) from that alignment
+# Stretches the quiz box taller than its art's aspect. The box already spans
+# the full screen width, so it cannot grow taller proportionally — anything
+# above 1.0 scales the art vertically only, which ovalises the rounded caps
+# and stretches the painted "QUIZ" letters. 1.0 = untouched art.
+# The quiz TEXT does not grow with it; see QUIZ_TEXT_*_FONT_FRAC.
+const QUIZ_BOX_HEIGHT_STRETCH := 1.25
+# Canvas sizes the slicer produced — see tools/slice_hud_sheet_v4.gd, which
+# prints them. Used for layout maths and as the aspect fallback when a
+# texture is missing; the real texture's size wins when it is loaded.
+const SCORE_BOX_SRC := Vector2(795.0, 139.0)
+const QUIZ_BOX_SRC := Vector2(1013.0, 120.0)
+const HUD_BUTTON_SRC := Vector2(111.0, 111.0)
 const QUIZ_BOX_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const QUIZ_BOX_CORNER_RADIUS := 12.0
-# Blank text area inside quiz_box.png sits to the right of the "Q." badge —
-# measured directly off the source PNG (cream box spans roughly x
-# 0.159-0.976, y 0.311-0.559 of the full image).
-const QUIZ_TEXT_CENTER_X_FRAC := 0.567
-const QUIZ_TEXT_CENTER_Y_FRAC := 0.47
-const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.75
-# Same measured content bounds as above, used to find the quiz box's real
-# (non-transparent) bottom edge on screen — see _gate_zone_top, which anchors
-# the gate zone to this instead of the padded bounding box.
-const QUIZ_CONTENT_BOTTOM_FRAC := 0.641
-const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's real bottom edge, if ever wanted again
+# Blank writing area inside the quiz box art, right of the painted "QUIZ"
+# label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
+# one set of fractions covers all three modes.
+const QUIZ_TEXT_CENTER_X_FRAC := 0.5691
+const QUIZ_TEXT_CENTER_Y_FRAC := 0.4583
+const QUIZ_TEXT_MAX_WIDTH_FRAC := 0.79    # usable span 0.1579-0.9803, minus breathing room
+# Font size is pinned to the box's WIDTH, not its height. Height would be the
+# natural choice, but it would tie the text to QUIZ_BOX_HEIGHT_STRETCH —
+# making the panel taller would grow the letters with it, which is exactly
+# what we don't want. Width is untouched by the stretch, so the text holds
+# its size no matter how tall the box gets.
+const QUIZ_TEXT_MAX_FONT_FRAC := 0.0477   # of box width — matches the pre-stretch size
+const QUIZ_TEXT_MIN_FONT_FRAC := 0.0208   # of box width — floor for very long country names
+const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's bottom edge, if ever wanted again
 
 # Gate-pass speed boost: on a successful pass, GATE_SPEED is briefly
 # multiplied up (all gates scroll faster for an instant, world-rush style)
@@ -300,7 +353,19 @@ const MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL := [173.0, 186.0, 180.0]
 # curve) — this only ever reads `combo`. Four escalating tiers, 25 combo
 # wide each, capped at Tier 4 for anything >= COMBO_TIER_CAP.
 # ============================================================
-const COMBO_FONT_PATH := "res://assets/fonts/Mulmaru.ttf"
+# Fredoka (SIL OFL, see assets/fonts/Fredoka_LICENSE.txt) — a rounded
+# geometric sans that matches the painted SCORE/QUIZ/BEST labels in the HUD
+# art. Replaces Mulmaru, which is a Korean face whose Latin glyphs were only
+# a secondary concern; nothing the game actually renders needs Hangul (the
+# quiz targets are English country names and arithmetic).
+#
+# It is a variable font with a wght axis (300-700, default 300 — too light
+# for a HUD, so both weights below are set explicitly). The axis has to be
+# keyed by its integer OpenType tag, not the string "wght": a string key is
+# silently ignored and you get the 300 default back.
+const COMBO_FONT_PATH := "res://assets/fonts/Fredoka.ttf"
+const TEXT_FONT_WEIGHT := 600      # quiz text, combo popups, flag codes
+const SCORE_FONT_WEIGHT := 700     # the score/best digits, which want more punch
 const COMBO_TIER_SIZE := 25
 const COMBO_TIER_CAP := 100
 const COMBO_DISPLAY_MARGIN := Vector2(20.0, 16.0)  # inset from the gate zone's top-right corner
@@ -745,50 +810,82 @@ const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the 
 const MODE_READY_OFFSET_LOCAL := [Vector2(-28.5, -19.5), Vector2(-32.0, 4.0), Vector2(-19.5, 24.0)]
 const MODE_START_OFFSET_LOCAL := [Vector2(21.5, -22.5), Vector2(10.5, -5.5), Vector2(10.5, 23.5)]
 
-# Top HUD art: pause (top-left, real Button) / mute (top-right, real Button) /
-# score panel (top-center, drawn — no interaction needed). All PixelLab-
-# sourced, sized to fit inside the existing HUD_BAR_HEIGHT band unchanged.
-const PAUSE_ICON_PATH := "res://assets/ui_assets/pause.png"
-const MUTE_ICON_PATH := "res://assets/ui_assets/mute.png"
-const MODE_SCORE_PANEL_PATH := [
-	"res://assets/ui_assets/sky/score_panel.png",
-	"res://assets/ui_assets/jungle/score_panel.png",
-	"res://assets/ui_assets/ocean/score_panel.png",
-]
-const QUIZ_BOX_TEXTURE_PATH := "res://assets/ui_assets/quiz_box.png"
-const SCORE_PANEL_WIDTH := 300.0            # display width; height follows source aspect
-# Nudge off the HUD band's own center. The panel art is taller than the
-# pause/mute icons it sits between, so centering it on the same line as
-# them leaves it looking low against the top of the screen. The number
-# rides along, being positioned from the panel's own rect.
-const SCORE_PANEL_CENTER_Y_OFFSET := -8.0
-# Cream writing box inside the score panel art, right of the painted
-# "SCORE" label. Measured off each mode's own PNG rather than shared: the
-# three panels are cropped out of one sheet but their frames differ in
-# thickness, so the box lands at a different height and depth in each
-# canvas. Fractions are of the panel's *display* size, so they hold at any
-# SCORE_PANEL_WIDTH.
+# Top HUD art: score box (top-center, drawn — no interaction needed), quiz
+# box (directly under it, also drawn), pause (top-left) and mute (top-right)
+# as real Buttons. All four come out of one hand-authored sheet,
+# assets/ui_assets/hud_sheet_v4.png, cut by tools/slice_hud_sheet_v4.gd.
 #
-# A consequence worth knowing before "fixing" it: because the number is
-# sized and placed off its own mode's box, it does NOT land in the same
-# screen spot in all three. JUNGLE's chunky wood frame leaves the smallest
-# box, so its digits come out ~14% smaller, and the vertical centers span
-# about 4px across the modes. That is deliberate — each mode's number sits
-# correctly in its own frame, which reads better than a shared absolute
-# size that would crowd JUNGLE's box.
-const MODE_SCORE_BOX_RIGHT_FRAC := [0.885, 0.885, 0.885]   # of panel width — box's inner right edge
-const MODE_SCORE_BOX_MID_Y_FRAC := [0.559, 0.521, 0.504]   # of panel height — box's vertical center
-const MODE_SCORE_BOX_HEIGHT_FRAC := [0.488, 0.442, 0.428]  # of panel height — box's inner height
-# The number is right-aligned just inside the box instead of centered in
+# The slicer is what makes the three modes interchangeable here: rather than
+# cropping each mode to its own tight bounding box (which lands the writing
+# area somewhere different in every mode, because the frames differ in
+# thickness and the decorations — wings, leaves, coral — stick out by
+# different amounts), it gives every column ONE canvas size shared across the
+# modes and positions each mode's art on it so the cream writing boxes land
+# on the same pixel. Pause and mute additionally share a canvas with each
+# other, so both buttons are the same size on screen.
+#
+# The practical payoff: the *_FRAC constants below are single values, not the
+# per-mode arrays this used to need, and the score number and quiz text now
+# land in exactly the same place at exactly the same size in all three modes.
+# Re-run the slicer if the sheet is ever redrawn; it prints the fractions.
+const MODE_PAUSE_ICON_PATH := [
+	"res://assets/ui_assets/sky/pause.png",
+	"res://assets/ui_assets/jungle/pause.png",
+	"res://assets/ui_assets/ocean/pause.png",
+]
+const MODE_MUTE_ICON_PATH := [
+	"res://assets/ui_assets/sky/mute.png",
+	"res://assets/ui_assets/jungle/mute.png",
+	"res://assets/ui_assets/ocean/mute.png",
+]
+const MODE_SCORE_BOX_PATH := [
+	"res://assets/ui_assets/sky/score_box.png",
+	"res://assets/ui_assets/jungle/score_box.png",
+	"res://assets/ui_assets/ocean/score_box.png",
+]
+const MODE_QUIZ_BOX_PATH := [
+	"res://assets/ui_assets/sky/quiz_box.png",
+	"res://assets/ui_assets/jungle/quiz_box.png",
+	"res://assets/ui_assets/ocean/quiz_box.png",
+]
+const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
+# Best score persistence. user:// is the per-user writable location Godot
+# maps outside the project (%APPDATA%/Godot/app_userdata/<project> on
+# Windows), so this survives reinstalls of the game files themselves.
+# One best across all three modes, matching the single BEST slot the art has.
+const SAVE_PATH := "user://savegame.cfg"
+const SAVE_SECTION := "progress"
+const SAVE_KEY_BEST := "best_score"
+# The score box art is split by a painted divider into a SCORE half and a
+# BEST half, each with its label on the left and blank writing space to the
+# right of it. These are the two blank areas, as fractions of the box's
+# *display* size, so they hold at any size the row scale works out to.
+# Both halves share a vertical centre and height.
+const SCORE_NUM_LEFT_FRAC := 0.2868     # of width — right edge of the "SCORE" label
+const SCORE_NUM_RIGHT_FRAC := 0.5283    # of width — the divider
+const BEST_NUM_LEFT_FRAC := 0.6893      # of width — right edge of the "BEST" label
+const BEST_NUM_RIGHT_FRAC := 0.8969     # of width — inner right edge of the frame
+const SCORE_BOX_MID_Y_FRAC := 0.4856    # of height — writing areas' vertical center
+const SCORE_BOX_HEIGHT_FRAC := 0.5540   # of height — writing areas' height
+# Both numbers are right-aligned just inside their half instead of centred in
 # it, so the ones digit stays put and the number grows leftward into the
-# empty space as the score gains digits.
-const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.045  # of panel width — keeps the ones digit off the frame
+# empty space as it gains digits.
+const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.015  # of box width — keeps the ones digit off the divider/frame
 const SCORE_NUMBER_FONT_SCALE := 0.58         # digit font size as a fraction of the box height
-const SCORE_NUMBER_DIGIT_SPACING := 3.0     # extra px inserted between digits (score panel's default kerning is tight)
-const SCORE_NUMBER_EMBOLDEN := 0.5          # faux-bold strength (FontVariation) — Mulmaru only ships one weight
+const SCORE_NUMBER_DIGIT_SPACING := 1.0     # extra px between digit cells, on top of the tabular cell width
 # Baseline offset from a digit row's visual center, as a fraction of the
-# font size — see _draw_spaced_right_aligned_text.
-const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.40
+# font size — see _draw_spaced_right_aligned_text. Measured by rendering
+# "0123456789" at a known baseline and reading the ink box back: Fredoka's
+# figures run 0.700 em above the baseline to 0.020 em below at this weight,
+# putting their visual middle 0.34 em up. (Mulmaru's sat at 0.38, which is
+# why this changed with the font.)
+const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.34
+
+# Pause/Mute button size comes from the shared row scale (see
+# _layout_hud_buttons) rather than a fixed height, so the buttons keep the
+# proportion to the score box that they were drawn with. Both icons are
+# cropped onto the same canvas by the slicer, so one size fits both and they
+# read as a matched pair.
 
 # Pause/Mute button press feedback — quick squash-in on press, springy
 # release back to full size. Needs pivot_offset centered on the button (set
@@ -834,13 +931,13 @@ var happy_flap_elapsed: float = -1.0  # -1 = inactive; set to 0 on every gate pa
 var sad_face_texture: Texture2D
 var ready_texture: Texture2D
 var start_texture: Texture2D
-var score_panel_texture: Texture2D
-# Where this mode's score panel puts its writing box (see the MODE_SCORE_BOX_* consts).
-var active_score_box_right_frac: float = 0.885
-var active_score_box_mid_y_frac: float = 0.5
-var active_score_box_height_frac: float = 0.45
+var best_score: int = 0   # loaded from SAVE_PATH in _ready, written on game over
+var score_box_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
+# Child canvas the top HUD is drawn on, so it can use a texture filter of
+# its own (see scripts/HudCanvas.gd). Created in _ready.
+var hud_canvas: Node2D
 var flag_records: Array = []          # [{code, name, image, tier}, ...] — see FLAGS_DATA_PATH
 var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded from flag_records
 var flag_records_by_tier: Dictionary = {}  # tier (int 1-4) -> Array of records, for difficulty-gated spawning
@@ -920,28 +1017,37 @@ var fx_sound_gameover: AudioStreamPlayer
 
 
 func _ready() -> void:
-	# Keeps all pixel art crisp at any render scale — draw_texture_rect has no
-	# per-call filter option, so this has to be set on the CanvasItem itself.
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	if ResourceLoader.exists(QUIZ_BOX_TEXTURE_PATH):
-		quiz_box_texture = load(QUIZ_BOX_TEXTURE_PATH)
+	# Filter for everything Main draws: background, gates, character, flags,
+	# particles. draw_texture_rect has no per-call filter option, so it has to
+	# be set on the CanvasItem itself — which is also why the HUD needs its
+	# own node to differ. See SMOOTH_WORLD_FILTER to revert this.
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if SMOOTH_WORLD_FILTER else CanvasItem.TEXTURE_FILTER_NEAREST
+	# ...except the top HUD, whose painted frames are minified hard enough
+	# that nearest breaks their outlines. It gets its own canvas with linear
+	# + mipmap filtering — see scripts/HudCanvas.gd for the why.
+	hud_canvas = Node2D.new()
+	hud_canvas.name = "HudCanvas"
+	hud_canvas.set_script(load(HUD_CANVAS_SCRIPT_PATH))
+	hud_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	hud_canvas.main = self
+	add_child(hud_canvas)
+	_load_best_score()
 	_load_flags_data()
-	if ResourceLoader.exists(PAUSE_ICON_PATH):
-		pause_button.icon = load(PAUSE_ICON_PATH)
-		pause_button.text = ""
-		pause_button.expand_icon = true
-	if ResourceLoader.exists(MUTE_ICON_PATH):
-		mute_button.icon = load(MUTE_ICON_PATH)
-		mute_button.text = ""
-		mute_button.expand_icon = true
+	# The four HUD pieces are all per-mode now and get loaded in _apply_mode;
+	# only the parts that never change per mode are set up here.
+	pause_button.text = ""
+	pause_button.expand_icon = true
+	mute_button.text = ""
+	mute_button.expand_icon = true
+	_layout_hud_buttons()
+	var base_font: Font = ThemeDB.fallback_font
 	if ResourceLoader.exists(COMBO_FONT_PATH):
-		combo_font = load(COMBO_FONT_PATH)
-	else:
-		combo_font = ThemeDB.fallback_font
-	var score_font_variation := FontVariation.new()
-	score_font_variation.base_font = combo_font
-	score_font_variation.variation_embolden = SCORE_NUMBER_EMBOLDEN
-	score_font = score_font_variation
+		base_font = load(COMBO_FONT_PATH)
+	# Real weight axis rather than the faux-bold this used to need: Mulmaru
+	# shipped a single weight, Fredoka carries 300-700.
+	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
+	combo_font = _weighted_font(base_font, wght, TEXT_FONT_WEIGHT)
+	score_font = _weighted_font(base_font, wght, SCORE_FONT_WEIGHT)
 	for path in MOUNTAIN_TEXTURE_PATHS:
 		mountain_textures.append(load(path))
 	for path in BG_SPARKLE_TEXTURE_PATHS:
@@ -993,8 +1099,9 @@ func _ready() -> void:
 	pause_button.pressed.connect(_on_pause_pressed)
 	resume_button.pressed.connect(_on_resume_pressed)
 	mute_button.pressed.connect(_on_mute_pressed)
-	pause_button.pivot_offset = pause_button.size * 0.5
-	mute_button.pivot_offset = mute_button.size * 0.5
+	# pivot_offset is set in _layout_hud_buttons instead — it resizes the
+	# buttons deferred, so reading .size here would still give the scene's
+	# pre-layout value and the press animation would scale off-center.
 	pause_button.button_down.connect(_animate_button_press.bind(pause_button))
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
 	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
@@ -1008,6 +1115,13 @@ func _ready() -> void:
 # matching the requested TL/TR/BL/BR frame order for bird_fly.png). Built
 # from Image regions at load time rather than a set of pre-cut PNGs or
 # AtlasTexture .tres resources, so the sheet is the only file to manage.
+func _weighted_font(base: Font, wght_tag: int, weight: int) -> Font:
+	var fv := FontVariation.new()
+	fv.base_font = base
+	fv.variation_opentype = {wght_tag: weight}
+	return fv
+
+
 func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 	var frames: Array[Texture2D] = []
 	if not ResourceLoader.exists(path):
@@ -1020,6 +1134,16 @@ func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 		for col in range(cols):
 			var region := Rect2i(col * cell_w, row * cell_h, cell_w, cell_h)
 			var cell_image: Image = full_image.get_region(region)
+			# get_region() carries the source's has_mipmaps flag over and
+			# allocates the whole chain, but only ever fills level 0 — every
+			# smaller level comes back fully transparent. The character is
+			# drawn at ~39% (256px frame into PLAYER_VISUAL_SIZE), so with a
+			# mipmapping filter the GPU samples level 1 and the sprite
+			# vanishes outright. Rebuild the chain from the cell we actually
+			# extracted. Cheap: this runs once per mode change, not per frame.
+			if cell_image.has_mipmaps():
+				cell_image.clear_mipmaps()
+			cell_image.generate_mipmaps()
 			frames.append(ImageTexture.create_from_image(cell_image))
 	return frames
 
@@ -1362,15 +1486,14 @@ func _draw_ambient_particles() -> void:
 
 
 func _gate_zone_top(view_size: Vector2) -> float:
-	# Anchored to the quiz box's real (non-transparent) bottom edge, not its
-	# padded bounding box — quiz_box.png has a lot of transparent margin, so
-	# using the raw box_top + QUIZ_BOX_HEIGHT would leave a dead gap here and
-	# shrink the gate's actual travel range for no visual reason. The top
-	# gate's frame is separately inset in _spawn_gate (see
-	# _gate_frame_top_overhang) so its own top edge still never crosses this
-	# line — it's allowed to touch it, just not go past it.
-	var quiz_box_top: float = HUD_BAR_HEIGHT + QUIZ_BOX_TOP_GAP
-	return quiz_box_top + QUIZ_BOX_HEIGHT * QUIZ_CONTENT_BOTTOM_FRAC + GATE_ZONE_TOP_BUFFER
+	# Starts at the quiz box's bottom edge. The art is cropped tight to its
+	# frame now (tools/slice_hud_sheet.gd trims to the alpha bounding box), so
+	# the rect's bottom IS the painted bottom — no transparent margin to
+	# compensate for the way the old assets needed. The top gate's frame is
+	# separately inset in _spawn_gate (see _gate_frame_top_overhang) so its
+	# own top edge still never crosses this line — it's allowed to touch it,
+	# just not go past it.
+	return _quiz_box_rect(view_size).end.y + GATE_ZONE_TOP_BUFFER
 
 
 func _gate_zone_bottom(view_size: Vector2) -> float:
@@ -1570,6 +1693,8 @@ func _process(delta: float) -> void:
 			flap_timer -= FLAP_FRAME_DURATION
 			flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
 	queue_redraw()
+	if hud_canvas != null:
+		hud_canvas.queue_redraw()
 
 
 func _update_countdown(delta: float) -> void:
@@ -2441,7 +2566,9 @@ func _draw_combo_popups(view_size: Vector2) -> void:
 	draw_string(combo_font, label_pos, label, HORIZONTAL_ALIGNMENT_LEFT, -1, label_font_size, main_col)
 
 
-func _draw_combo_glow(view_size: Vector2) -> void:
+func _draw_combo_glow(view_size: Vector2, ci: CanvasItem = null) -> void:
+	if ci == null:
+		ci = self
 	if combo_glow_elapsed < 0.0:
 		return
 	var t: float = combo_glow_elapsed / COMBO_GLOW_DURATION
@@ -2451,15 +2578,38 @@ func _draw_combo_glow(view_size: Vector2) -> void:
 		return
 	var c := Color(COMBO_GLOW_COLOR.r, COMBO_GLOW_COLOR.g, COMBO_GLOW_COLOR.b, alpha)
 	var b := COMBO_GLOW_BAND_PX
-	draw_rect(Rect2(Vector2(0, 0), Vector2(view_size.x, b)), c)
-	draw_rect(Rect2(Vector2(0, view_size.y - b), Vector2(view_size.x, b)), c)
-	draw_rect(Rect2(Vector2(0, 0), Vector2(b, view_size.y)), c)
-	draw_rect(Rect2(Vector2(view_size.x - b, 0), Vector2(b, view_size.y)), c)
+	ci.draw_rect(Rect2(Vector2(0, 0), Vector2(view_size.x, b)), c)
+	ci.draw_rect(Rect2(Vector2(0, view_size.y - b), Vector2(view_size.x, b)), c)
+	ci.draw_rect(Rect2(Vector2(0, 0), Vector2(b, view_size.y)), c)
+	ci.draw_rect(Rect2(Vector2(view_size.x - b, 0), Vector2(b, view_size.y)), c)
+
+
+# ---- Best score (the BEST half of the score box) ----
+
+func _load_best_score() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return   # no save yet — a fresh install starts at 0, not an error
+	best_score = int(cfg.get_value(SAVE_SECTION, SAVE_KEY_BEST, 0))
+
+
+func _save_best_score() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST, best_score)
+	var err := cfg.save(SAVE_PATH)
+	if err != OK:
+		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])
 
 
 func _game_over() -> void:
 	state = State.GAMEOVER
 	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
+	# Only write on an actual improvement, so a run that doesn't beat the
+	# record costs no disk access at all.
+	if score > best_score:
+		best_score = score
+		_save_best_score()
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
 	final_score_label.text = "SCORE: %d" % score
@@ -2560,12 +2710,22 @@ func _apply_mode(mode: int) -> void:
 	active_ready_offset = MODE_READY_OFFSET_LOCAL[mode]
 	active_start_offset = MODE_START_OFFSET_LOCAL[mode]
 
-	score_panel_texture = null
-	if ResourceLoader.exists(MODE_SCORE_PANEL_PATH[mode]):
-		score_panel_texture = load(MODE_SCORE_PANEL_PATH[mode])
-	active_score_box_right_frac = MODE_SCORE_BOX_RIGHT_FRAC[mode]
-	active_score_box_mid_y_frac = MODE_SCORE_BOX_MID_Y_FRAC[mode]
-	active_score_box_height_frac = MODE_SCORE_BOX_HEIGHT_FRAC[mode]
+	# All four top-HUD pieces are per-mode. They share one canvas size per
+	# piece across the modes, so nothing about the layout has to change here
+	# — only which texture is drawn.
+	score_box_texture = null
+	if ResourceLoader.exists(MODE_SCORE_BOX_PATH[mode]):
+		score_box_texture = load(MODE_SCORE_BOX_PATH[mode])
+	quiz_box_texture = null
+	if ResourceLoader.exists(MODE_QUIZ_BOX_PATH[mode]):
+		quiz_box_texture = load(MODE_QUIZ_BOX_PATH[mode])
+	if ResourceLoader.exists(MODE_PAUSE_ICON_PATH[mode]):
+		pause_button.icon = load(MODE_PAUSE_ICON_PATH[mode])
+	if ResourceLoader.exists(MODE_MUTE_ICON_PATH[mode]):
+		mute_button.icon = load(MODE_MUTE_ICON_PATH[mode])
+	# Re-run now that the icons are loaded: _ready lays the row out before
+	# any mode is applied, so it sizes off the HUD_BUTTON_SRC fallback.
+	_layout_hud_buttons()
 
 	var fx_dir: String = MODE_FX_DIR[mode]
 	fx_big_particle_textures.clear()
@@ -2674,54 +2834,132 @@ func _set_state(new_state: int) -> void:
 # ---- Layer 3: HUD bar + quiz box (always drawn above the background/gate
 # zone, per the layer-order spec) ----
 
-func _draw_hud_bar(view_size: Vector2) -> void:
-	var mid_y: float = HUD_BAR_HEIGHT * 0.5
+# Source size of a HUD piece: the loaded texture's own size, or the sheet
+# canvas size the slicer produced when it isn't loaded yet.
+func _hud_src(texture: Texture2D, fallback: Vector2) -> Vector2:
+	if texture == null:
+		return fallback
+	return Vector2(texture.get_width(), texture.get_height())
+
+
+# Extra scale on the buttons so they end up exactly as tall as the score box.
+func _hud_button_mult() -> float:
+	var score_src := _hud_src(score_box_texture, SCORE_BOX_SRC)
+	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
+	return (score_src.y / button_src.y) * HUD_BUTTON_EXTRA
+
+
+# One scale for the whole top row, chosen so pause + score box + mute exactly
+# fill the screen width inside the margins. Everything in the row is sized
+# from this, so enlarging the buttons automatically takes width back off the
+# score box instead of overflowing the screen.
+func _hud_row_scale(view_size: Vector2) -> float:
+	var score_src := _hud_src(score_box_texture, SCORE_BOX_SRC)
+	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
+	var available: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
+	return available / (score_src.x + button_src.x * 2.0 * _hud_button_mult())
+
+
+# Screen rect of the score box art. The art is cropped tight to its frame, so
+# this rect IS what you see.
+func _score_box_rect(view_size: Vector2) -> Rect2:
+	var src := _hud_src(score_box_texture, SCORE_BOX_SRC)
+	var draw_size: Vector2 = src * _hud_row_scale(view_size)
+	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, SCORE_BOX_TOP), draw_size)
+
+
+# Screen rect of the quiz box art, parked directly under the score box. It
+# spans the full width inside the margins rather than following the row
+# scale — it has no neighbours to share the line with.
+func _quiz_box_rect(view_size: Vector2) -> Rect2:
+	var src := _hud_src(quiz_box_texture, QUIZ_BOX_SRC)
+	var width: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0
+	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
+	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
+	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
+
+
+# Sizes and parks the pause/mute buttons off the score box, so the three of
+# them stay on one line if SCORE_BOX_TOP/WIDTH get retuned. Both buttons get
+# the same rect size — their art shares a canvas (see the slicer note).
+func _layout_hud_buttons() -> void:
+	var view_size := get_viewport_rect().size
+	var box := _score_box_rect(view_size)
+	var size: Vector2 = _hud_src(pause_button.icon, HUD_BUTTON_SRC) * _hud_row_scale(view_size) * _hud_button_mult()
+	# Bottom edge of the score box's painted art, then hang the buttons so
+	# their own painted bottoms land on the same line.
+	var score_art_bottom: float = box.position.y + box.size.y * MODE_SCORE_BOX_ART_BOTTOM_FRAC[current_mode]
+	var top: float = score_art_bottom - size.y * MODE_HUD_BUTTON_ART_BOTTOM_FRAC[current_mode] + HUD_BUTTON_Y_OFFSET
+	pause_button.set_deferred("size", size)
+	pause_button.set_deferred("position", Vector2(HUD_ROW_SIDE_MARGIN, top))
+	pause_button.set_deferred("pivot_offset", size * 0.5)
+	mute_button.set_deferred("size", size)
+	mute_button.set_deferred("position", Vector2(view_size.x - HUD_ROW_SIDE_MARGIN - size.x, top))
+	mute_button.set_deferred("pivot_offset", size * 0.5)
+
+
+# Called from HudCanvas._draw. Everything here draws onto `ci` (the HUD's
+# own canvas) rather than onto Main, which is the whole point — see
+# scripts/HudCanvas.gd.
+func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
+	if state == State.PLAYING or state == State.COUNTDOWN:
+		_draw_hud_bar(view_size, ci)
+		_draw_quiz_box(view_size, ci)
+	_draw_combo_glow(view_size, ci)
+
+
+func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
+	if ci == null:
+		ci = self
 	# PauseButton/MuteButton (real Control/Button nodes, see scene) occupy the
 	# top-left/top-right corners; nothing drawn here for them. Combo lives
 	# entirely in the gate zone's top-right corner as a per-pass effect (see
-	# _draw_combo_popups), not here — this only ever draws the score panel.
-	if score_panel_texture != null:
-		var tex_size := Vector2(score_panel_texture.get_width(), score_panel_texture.get_height())
-		var scale: float = SCORE_PANEL_WIDTH / tex_size.x
-		var draw_size: Vector2 = tex_size * scale
-		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, mid_y + SCORE_PANEL_CENTER_Y_OFFSET - draw_size.y * 0.5)
-		draw_texture_rect(score_panel_texture, Rect2(top_left, draw_size), false)
-		var box_right: float = active_score_box_right_frac - SCORE_NUMBER_RIGHT_INSET_FRAC
-		var number_right := Vector2(top_left.x + draw_size.x * box_right, top_left.y + draw_size.y * active_score_box_mid_y_frac)
-		var font_size := int(round(draw_size.y * active_score_box_height_frac * SCORE_NUMBER_FONT_SCALE))
-		_draw_spaced_right_aligned_text("%05d" % score, number_right, font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font)
+	# _draw_combo_popups), not here — this only ever draws the score box.
+	if score_box_texture != null:
+		var rect := _score_box_rect(view_size)
+		ci.draw_texture_rect(score_box_texture, rect, false)
+		var mid_y: float = rect.position.y + rect.size.y * SCORE_BOX_MID_Y_FRAC
+		var font_size := int(round(rect.size.y * SCORE_BOX_HEIGHT_FRAC * SCORE_NUMBER_FONT_SCALE))
+		# Two halves of the same box: the live score on the left, the stored
+		# best on the right. Both right-aligned just inside their own half.
+		var score_right := rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
+		_draw_spaced_right_aligned_text("%05d" % score, Vector2(score_right, mid_y), font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+		var best_right := rect.position.x + rect.size.x * (BEST_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
+		_draw_spaced_right_aligned_text("%05d" % best_score, Vector2(best_right, mid_y), font_size, SCORE_NUMBER_DIGIT_SPACING, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
 	else:
-		draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
-		_draw_centered_text("SCORE %d" % score, Vector2(view_size.x * 0.5, mid_y), 18)
+		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
+		_draw_centered_text("SCORE %d  BEST %d" % [score, best_score], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
 
 
-func _draw_quiz_box(view_size: Vector2) -> void:
+func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
+	if ci == null:
+		ci = self
 	var upcoming_target := _get_upcoming_target()
 	if upcoming_target == "":
 		return
-	var box_top: float = HUD_BAR_HEIGHT + QUIZ_BOX_TOP_GAP
+	var box_top: float = _quiz_box_rect(view_size).position.y
 	var text: String = upcoming_target
 	if quiz_box_texture != null:
-		var tex_size := Vector2(quiz_box_texture.get_width(), quiz_box_texture.get_height())
-		var scale: float = QUIZ_BOX_HEIGHT / tex_size.y
-		var draw_size: Vector2 = tex_size * scale
-		var top_left := Vector2(view_size.x * 0.5 - draw_size.x * 0.5, box_top)
-		draw_texture_rect(quiz_box_texture, Rect2(top_left, draw_size), false)
+		var rect := _quiz_box_rect(view_size)
+		var draw_size: Vector2 = rect.size
+		var top_left: Vector2 = rect.position
+		ci.draw_texture_rect(quiz_box_texture, rect, false)
 		var text_center := Vector2(top_left.x + draw_size.x * QUIZ_TEXT_CENTER_X_FRAC, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
 		var max_width: float = draw_size.x * QUIZ_TEXT_MAX_WIDTH_FRAC
-		var max_font_size: int = int(round(draw_size.y * 0.20))
-		var min_font_size: int = int(round(draw_size.y * 0.10))
+		# Sized off the box WIDTH on purpose — see QUIZ_TEXT_MAX_FONT_FRAC.
+		var max_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MAX_FONT_FRAC))
+		var min_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MIN_FONT_FRAC))
 		var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, combo_font)
-		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font)
+		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font, ci)
 	else:
-		var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, QUIZ_BOX_HEIGHT))
+		var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, _quiz_box_rect(view_size).size.y))
 		var style := StyleBoxFlat.new()
 		style.bg_color = QUIZ_BOX_COLOR
 		style.set_corner_radius_all(int(QUIZ_BOX_CORNER_RADIUS))
-		draw_style_box(style, box_rect)
+		ci.draw_style_box(style, box_rect)
 		var max_width: float = box_rect.size.x - QUIZ_BOX_MARGIN
 		var font_size := _fit_font_size(text, max_width, 22, 14)
-		_draw_centered_text(text, box_rect.get_center(), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0))
+		_draw_centered_text(text, box_rect.get_center(), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), null, ci)
 
 
 func _draw() -> void:
@@ -2821,17 +3059,18 @@ func _draw() -> void:
 		_draw_gate_answer_box(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
 		_draw_gate_answer_box(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
-	# ---- Layer 3: HUD bar + quiz box (always above background/gate zone) ----
-	if state == State.PLAYING or state == State.COUNTDOWN:
-		_draw_hud_bar(view_size)
-		_draw_quiz_box(view_size)
+	# ---- Layer 3: HUD bar + quiz box ----
+	# Drawn by the HudCanvas child instead of here, so it can use its own
+	# texture filter. The child renders after this whole _draw, which keeps
+	# the HUD above the gate zone as before — see draw_hud_into.
 
 	# ---- Layer 4: effects layer (top of everything drawn above) ----
 	_draw_impact_flashes()
 	_draw_sparks()
 	_draw_score_pops()
 	_draw_combo_popups(view_size)
-	_draw_combo_glow(view_size)
+	# _draw_combo_glow also moved to HudCanvas: its top band overlaps the
+	# score box, and it has to stay on top of it the way it was here.
 
 	if state == State.COUNTDOWN:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
@@ -2885,9 +3124,13 @@ func _get_upcoming_target() -> String:
 	return ""
 
 
-func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
+# `ci` lets the HUD render this onto its own canvas (see HudCanvas.gd);
+# every other caller leaves it null and draws onto Main as before.
+func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null) -> void:
 	if font == null:
 		font = ThemeDB.fallback_font
+	if ci == null:
+		ci = self
 	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 	var pos := Vector2(center.x - text_size.x * 0.5, center.y + text_size.y * 0.25)
 	# Dark outline so the light default HUD text still reads over the pastel
@@ -2895,8 +3138,8 @@ func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_col
 	# dark fill_color instead, at which point the outline just adds a touch
 	# of contrast rather than doing the main legibility work.
 	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		draw_string(font, pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, outline_color)
-	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, fill_color)
+		ci.draw_string(font, pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, outline_color)
+	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, fill_color)
 
 
 func _draw_right_aligned_text(text: String, right_center: Vector2, font_size: int, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
@@ -2913,30 +3156,36 @@ func _draw_right_aligned_text(text: String, right_center: Vector2, font_size: in
 # character — draw_string has no per-glyph tracking control, so each glyph
 # is measured and placed individually, right-to-left, to add breathing room
 # between the score panel's tightly-kerned digits.
-func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_size: int, extra_spacing: float, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null) -> void:
+func _draw_spaced_right_aligned_text(text: String, right_center: Vector2, font_size: int, extra_spacing: float, fill_color: Color = COLOR_TEXT, outline_color: Color = COLOR_TEXT_OUTLINE, font: Font = null, ci: CanvasItem = null) -> void:
 	if font == null:
 		font = ThemeDB.fallback_font
-	var char_widths: Array[float] = []
-	var total_width := 0.0
-	for i in range(text.length()):
-		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		char_widths.append(w)
-		total_width += w
-	total_width += extra_spacing * max(0, text.length() - 1)
+	if ci == null:
+		ci = self
+	# Every glyph gets the same cell width — the widest digit — and is centred
+	# in it. Fredoka's figures are not tabular ("1" is 40 units wide against
+	# "2" at 61), so advancing by each glyph's own width would make the score
+	# visibly reflow every time a digit changed. Forcing a uniform cell makes
+	# the number sit rock-steady no matter what it counts up to, without
+	# depending on the font having tabular figures at all.
+	var cell := 0.0
+	for d in range(10):
+		cell = max(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	var total_width: float = cell * text.length() + extra_spacing * max(0, text.length() - 1)
 	var cursor_x := right_center.x - total_width
 	# draw_string takes a baseline, but right_center.y is where the glyphs
 	# should look centered. Centering on the font's line height would sit
 	# the digits high, since the descent below the baseline is empty space
-	# they never use — Mulmaru's digits actually run from 0.833em above the
-	# baseline to 0.04em below it, so their visual middle is 0.40em up.
+	# they never use — see DIGIT_BASELINE_FROM_CENTER_FRAC for the measured
+	# offset this uses instead.
 	var y := right_center.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	for i in range(text.length()):
 		var ch: String = text[i]
-		var pos := Vector2(cursor_x, y)
+		var w: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		var pos := Vector2(cursor_x + (cell - w) * 0.5, y)
 		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			draw_string(font, pos + offset, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
-		draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
-		cursor_x += char_widths[i] + extra_spacing
+			ci.draw_string(font, pos + offset, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
+		ci.draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+		cursor_x += cell + extra_spacing
 
 
 func _fit_font_size(text: String, max_width: float, max_size: int, min_size: int, font: Font = null) -> int:

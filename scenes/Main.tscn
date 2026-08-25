@@ -100,20 +100,22 @@ text = "PLAY"
 
 [node name="PauseButton" type="Button" parent="UI" unique_id=1479340810]
 visible = false
-offset_left = 8.0
-offset_top = 22.0
-offset_right = 64.0
-offset_bottom = 78.0
+texture_filter = 4
+offset_left = 6.0
+offset_top = 4.0
+offset_right = 78.84
+offset_bottom = 66.0
 theme_override_font_sizes/font_size = 16
 flat = true
 focus_mode = 0
 text = "II"
 
 [node name="MuteButton" type="Button" parent="UI" unique_id=746313814]
-offset_left = 416.0
-offset_top = 22.0
-offset_right = 472.0
-offset_bottom = 78.0
+texture_filter = 4
+offset_left = 401.16
+offset_top = 4.0
+offset_right = 474.0
+offset_bottom = 66.0
 theme_override_font_sizes/font_size = 16
 flat = true
 focus_mode = 0
