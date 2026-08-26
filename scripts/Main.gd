@@ -290,7 +290,7 @@ const MODE_GATE_DIR := [
 	"res://assets/gates/gate_ring/",
 	"res://assets/gates/gate_ring_jungle/",
 	"res://assets/gates/gate_ring_ocean/",
-	"res://assets/gates/gate_ring/",  # DREAM — placeholder, reusing SKY art
+	"res://assets/gates/gate_ring_dream/",
 ]
 
 # No glow-variant art this time (single normal image per side) — the old
@@ -569,7 +569,7 @@ const MODE_BG_TEXTURE_PATH := [
 	"res://assets/backgrounds/sky_world/background_single_blur.png",
 	"res://assets/backgrounds/jungle_world/background_single_blur.png",
 	"res://assets/backgrounds/ocean_world/background_single_blur.png",
-	"res://assets/backgrounds/sky_world/background_single_blur.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/backgrounds/dream_world/background_single_blur.png",
 ]
 
 @export_group("Sky Background")
