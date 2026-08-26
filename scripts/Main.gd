@@ -25,8 +25,47 @@ extends Node2D
 # type undecided — flag quiz stands in). ThemeMotion is the gate-pass
 # themed-object particle's motion (see the FX const block further down) —
 # it varies per concept the same way the character/gate art does.
-enum Mode { SKY, JUNGLE, OCEAN }
+enum Mode { SKY, JUNGLE, OCEAN, DREAM }
 enum ThemeMotion { SCATTER, FLUTTER, RISE_SWAY }
+
+# DREAM (unicorn + dream world, working title) is the newest concept and its
+# art is still being drawn. Every MODE_* array below therefore carries SKY's
+# entry in the DREAM slot: the mode boots, plays and is selectable today,
+# wearing the bird's costume, and each row gets swapped for real dream art as
+# it lands. Its quiz is the flag quiz, shared with SKY — see _spawn_gate,
+# where anything that is not JUNGLE or OCEAN falls through to it.
+# Search MODE_ to find every row that still needs replacing.
+
+# ---- OCEAN mode: Stroop colour quiz (see the OCEAN_* const block and
+# _make_color_problem / _draw_ocean_quiz_box further down) ----
+# The classic Stroop, and the only variant: a colour word painted in some
+# other colour, and you name the PAINT. The answer is a colour name, matched
+# exactly the way SKY matches a country code (see _spawn_gate/_resolve_gate).
+
+# The three shapes a wrong option can take. Which one a question gets is
+# rolled per question from the phase's weights below — the point being that a
+# player who works out one trap still can't coast, because the next gate may
+# not be running that trap at all.
+#   WORD_MEANING — the word's own meaning. Read instead of look, and you take
+#                  it every time. The strongest single trap available.
+#   NEAREST_HUE  — the palette colour sitting closest to the answer on the
+#                  hue circle. Punishes a glance instead of a look.
+#   RANDOM       — neither of the above. A genuine breather: obviously wrong
+#                  once you actually read it.
+enum OceanDecoy { WORD_MEANING, NEAREST_HUE, RANDOM }
+
+## Wrong-gate trap mix, one entry per phase (see phase_gate_counts).
+## x = WORD_MEANING, y = NEAREST_HUE, z = RANDOM.
+## Relative weights, not percentages — they need not sum to 100, so a single
+## component can be nudged without rebalancing the other two. All-zero falls
+## back to WORD_MEANING. Safe to edit live from the remote scene tree while
+## playing; each new question re-reads this.
+@export var ocean_decoy_weights_by_phase: Array[Vector3] = [
+	Vector3(20.0, 10.0, 70.0),  # phase 1 — warm-up: mostly harmless decoys
+	Vector3(40.0, 30.0, 30.0),  # phase 2 — traps switched on
+	Vector3(45.0, 45.0, 10.0),  # phase 3 — the breather nearly gone
+	Vector3(50.0, 50.0, 0.0),   # phase 4 — extreme: always one trap or the other
+]
 
 const PLAYER_SIZE := Vector2(50, 50)  # hitbox — scaled up a bit alongside PLAYER_VISUAL_SIZE below to keep matching the body size, per request
 const PLAYER_VISUAL_SIZE := Vector2(100, 100)  # on-screen draw size — source art is scaled to this regardless of its own resolution
@@ -44,12 +83,18 @@ const MODE_CHARACTER_DIR := [
 	"res://assets/characters/bird_v2/",
 	"res://assets/characters/dragon_green/",
 	"res://assets/characters/shark_blue/",
+	"res://assets/characters/unicorn_dream/",
 ]
-const MODE_CHARACTER_FLY_FILE := ["bird_fly.png", "dragon_fly.png", "shark_swim.png"]
-const MODE_CHARACTER_HAPPY_FILE := ["bird_happy.png", "dragon_happy.png", "shark_happy.png"]
-const MODE_CHARACTER_SAD_FILE := ["bird_sad.png", "dragon_sad.png", "shark_sad.png"]
-const BIRD_FLY_SHEET_COLS := 2
-const BIRD_FLY_SHEET_ROWS := 2
+const MODE_CHARACTER_FLY_FILE := ["bird_fly.png", "dragon_fly.png", "shark_swim.png", "unicorn_run.png"]
+const MODE_CHARACTER_HAPPY_FILE := ["bird_happy.png", "dragon_happy.png", "shark_happy.png", "unicorn_happy.png"]
+const MODE_CHARACTER_SAD_FILE := ["bird_sad.png", "dragon_sad.png", "shark_sad.png", "unicorn_sad.png"]
+# Frame layout of each mode's motion spritesheet, as (columns, rows), read
+# left-to-right then top-to-bottom. The first three are 2x2 flap cycles;
+# DREAM's unicorn run is a 3x2 grid holding 5 frames, so its sixth cell is
+# empty — _slice_spritesheet drops fully transparent cells, which is why the
+# grid can describe the sheet honestly instead of needing a frame count.
+# Every mode's cell is 256x256; only the arrangement differs.
+const MODE_CHARACTER_SHEET_GRID := [Vector2i(2, 2), Vector2i(2, 2), Vector2i(2, 2), Vector2i(3, 2)]
 const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 
 # Measured opaque-pixel bounding-box centers (in each source PNG's own pixel
@@ -58,14 +103,26 @@ const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 # — same technique for all three, so switching modes never makes the
 # character visually jump between fly/happy/sad. Re-measure and update
 # rather than guessing if any of this art is ever redrawn.
-const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0)]
-const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0)]
-const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0)]
+# DREAM measured off the unicorn art: run frames average (126.7, 126.9) —
+# the 5 frames' own centers drift 3.5x6.0px, a run cycle's natural bob, well
+# under JUNGLE's 16.5px and not worth flattening — and both faces sit at
+# (126.0, 124.0).
+const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
+const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
 # Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
 # scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
 # Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
 # bigger or smaller on screen.
-const MODE_VISUAL_SIZE_SCALE := [0.92, 1.0, 1.0]
+# DREAM is sized against JUNGLE, not SKY: the unicorn and the dragon are the
+# two big-bodied characters and are meant to read at the same weight. Their
+# proportions differ though — measured opaque bbox is 238.5x202.3 for the
+# dragon against 229.0x168.2 for the unicorn, so the unicorn is the flatter
+# of the two and no single number matches both axes. Matched on HEIGHT, per
+# request: 1.20 puts the unicorn at 78.8px tall against the dragon's 79.0,
+# and 107px wide against its 93px — the extra width is mostly mane and tail,
+# which read as silhouette rather than bulk. Hitbox is untouched either way.
+const MODE_VISUAL_SIZE_SCALE := [0.92, 1.0, 1.0, 1.20]
 
 # Gate-pass "happy" reaction — visual-only (scale + a small upward draw
 # offset around the bird's existing draw_set_transform center; player_y/
@@ -148,8 +205,8 @@ const HUD_BUTTON_EXTRA := 1.0
 # short of the canvas bottom by a different amount in each mode and each
 # piece. These are where the art actually ends, as a fraction of canvas
 # height, measured off the sliced PNGs — indexed by Mode.
-const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9778, 1.0000, 0.9926]
-const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [0.9908, 1.0000, 0.9908]
+const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9778, 1.0000, 0.9926, 0.9778]
+const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [0.9908, 1.0000, 0.9908, 0.9908]
 const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) from that alignment
 # Stretches the quiz box taller than its art's aspect. The box already spans
 # the full screen width, so it cannot grow taller proportionally — anything
@@ -233,6 +290,7 @@ const MODE_GATE_DIR := [
 	"res://assets/gates/gate_ring/",
 	"res://assets/gates/gate_ring_jungle/",
 	"res://assets/gates/gate_ring_ocean/",
+	"res://assets/gates/gate_ring/",  # DREAM — placeholder, reusing SKY art
 ]
 
 # No glow-variant art this time (single normal image per side) — the old
@@ -348,15 +406,16 @@ const MODE_GATE_FLAG_PANEL_PATH := [
 	"res://assets/gates/flag_panel/gate_panel.png",
 	"res://assets/gates/flag_panel/gate_panel_jungle.png",
 	"res://assets/gates/flag_panel/gate_panel_ocean.png",
+	"res://assets/gates/flag_panel/gate_panel.png",  # DREAM — placeholder, reusing SKY art
 ]
-const MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL := [Vector2(253.0, 473.0), Vector2(254.0, 508.5), Vector2(250.0, 497.5)]
-const MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL := [265.0, 313.0, 277.0]
+const MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL := [Vector2(253.0, 473.0), Vector2(254.0, 508.5), Vector2(250.0, 497.5), Vector2(253.0, 473.0)]
+const MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL := [265.0, 313.0, 277.0, 265.0]
 # Flags are fit by width only (see _draw_gate_answer_box) — every panel's
 # window is close enough to the flags' own fixed 3:2 that the sub-pixel
 # height mismatch is invisible. JUNGLE's math-quiz number instead has no
 # fixed aspect of its own, so it fits both width AND height exactly to
 # each panel's real window — this array is what that needs.
-const MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL := [173.0, 186.0, 180.0]
+const MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL := [173.0, 186.0, 180.0, 173.0]
 
 # ============================================================
 # Combo tier popup — an "×N" burst in the gate zone's top-right corner,
@@ -510,6 +569,7 @@ const MODE_BG_TEXTURE_PATH := [
 	"res://assets/backgrounds/sky_world/background_single_blur.png",
 	"res://assets/backgrounds/jungle_world/background_single_blur.png",
 	"res://assets/backgrounds/ocean_world/background_single_blur.png",
+	"res://assets/backgrounds/sky_world/background_single_blur.png",  # DREAM — placeholder, reusing SKY art
 ]
 
 @export_group("Sky Background")
@@ -535,9 +595,10 @@ const MODE_PARTICLE_DIR := [
 	"res://assets/backgrounds/sky_world/particles/",
 	"res://assets/backgrounds/jungle_world/particles/",
 	"res://assets/backgrounds/ocean_world/particles/",
+	"res://assets/backgrounds/sky_world/particles/",  # DREAM — placeholder, reusing SKY art
 ]
-const MODE_PARTICLE_PREFIX := ["light", "leaf", "bubble"]
-const MODE_PARTICLE_COUNT := [16, 24, 16]  # light_01-16.png / leaf_01-24.png / bubble_01-16.png
+const MODE_PARTICLE_PREFIX := ["light", "leaf", "bubble", "light"]
+const MODE_PARTICLE_COUNT := [16, 24, 16, 16]  # light_01-16.png / leaf_01-24.png / bubble_01-16.png
 
 @export_group("Ambient Particles")
 @export_range(0, 40, 1) var particle_count: int = 8
@@ -611,8 +672,9 @@ const MODE_FX_DIR := [
 	"res://assets/fx/sky/",
 	"res://assets/fx/jungle/",
 	"res://assets/fx/ocean/",
+	"res://assets/fx/sky/",  # DREAM — placeholder, reusing SKY art
 ]
-const MODE_FX_THEME_MOTION := [ThemeMotion.SCATTER, ThemeMotion.FLUTTER, ThemeMotion.RISE_SWAY]
+const MODE_FX_THEME_MOTION := [ThemeMotion.SCATTER, ThemeMotion.FLUTTER, ThemeMotion.RISE_SWAY, ThemeMotion.SCATTER]
 const FX_SMALL_PARTICLE_MAX_COUNT := 9  # highest count across all 3 concepts' sheets — _apply_mode's loader tries fx_small_1..N and keeps whichever exist
 const FX_SPARK_BURST_A_COUNT_RANGE := Vector2i(6, 9)        # big, at 0ms
 const FX_SPARK_BURST_A_SCALE_RANGE := Vector2(0.45, 0.75)
@@ -673,7 +735,7 @@ const FX_SPEED_LINE_WHITE := Color(1.0, 1.0, 1.0)
 # _spawn_trail_burst/_draw_bird_trail + their four call sites. Delete
 # those to remove it.
 # ============================================================
-const TRAIL_ENABLED_PER_MODE := [true, true, true]  # SKY, JUNGLE, OCEAN
+const TRAIL_ENABLED_PER_MODE := [true, true, true, true]  # SKY, JUNGLE, OCEAN, DREAM
 const TRAIL_SPAWN_INTERVAL := 0.19           # seconds between baseline particles — with TRAIL_LIFETIME_RANGE this keeps ~3-4 alive
 const TRAIL_TAP_BURST_RANGE := Vector2i(4, 7)  # extra particles thrown off at the moment of a tap
 const TRAIL_TAP_BURST_SIZE_SCALE := 1.55       # burst particles are drawn larger than the baseline ones, so the tap reads as a puff and not just "more specks"
@@ -684,7 +746,7 @@ const TRAIL_LIFETIME_RANGE := Vector2(0.50, 0.80)
 # uniform: SKY’s gold sparkles pop off blue sky at almost any size, while
 # JUNGLE and OCEAN are drawing their own colour on top of a background of
 # that same colour and need a little more mass to read at all.
-const TRAIL_SIZE_RANGE_PER_MODE := [Vector2(5.0, 10.0), Vector2(7.0, 13.0), Vector2(7.0, 13.0)]
+const TRAIL_SIZE_RANGE_PER_MODE := [Vector2(5.0, 10.0), Vector2(7.0, 13.0), Vector2(7.0, 13.0), Vector2(5.0, 10.0)]
 const TRAIL_DRIFT_Y_RANGE := Vector2(-10.0, 10.0)  # px/s of random vertical wander, on top of the per-mode drift below
 const TRAIL_INHERIT_VEL_Y := 0.08            # how much of player_vel each particle carries off
 const TRAIL_SHRINK := 0.45                   # fraction of its size a particle loses over its life
@@ -695,7 +757,7 @@ const TRAIL_SPIN_RANGE := Vector2(-1.6, 1.6) # radians/s
 # this exists: bubbles that rise out of the spawn point while the world
 # pushes them left read as a shark actually swimming forward. SKY drifts
 # up a hair so sparkles hang; JUNGLE settles, like shaken-loose leaves.
-const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0]
+const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0, -4.0]
 # Which fx_small_N.png each mode's trail draws from (see the contact sheets
 # in assets/fx/<mode>/). Every set's last few entries are solid squares —
 # fine as confetti inside a gate burst, but alone in a slow trail they just
@@ -706,6 +768,7 @@ const TRAIL_TEXTURE_NUMBERS_PER_MODE := [
 	[4, 1, 3],
 	[4, 3, 5],
 	[4, 5, 1],
+	[4, 1, 3],  # DREAM — placeholder, reusing SKY art
 ]
 
 # 4. Bird visual stretch — sprite-draw scale only (draw_set_transform in
@@ -760,9 +823,184 @@ const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
 
-# Placeholder phase thresholds keyed on gates-passed count — the design doc
-# leaves the real curve open (section 11), tune these once that's decided.
-const PHASE_GATE_THRESHOLDS := [0, 5, 12, 20]
+# ---- Phase curve, shared by all three modes ----
+# Difficulty is keyed on how many gates the run has PASSED, and the phase
+# each mode is in drives its own quiz generation (see _get_phase_index and
+# its callers: flag tiers, math operation mix, Stroop hue band + decoy mix).
+# One curve for all three on purpose — the modes are meant to be compared
+# against each other, which only works if they ramp on the same schedule.
+#
+# This array is the LENGTH of each phase in gates, not the boundaries: the
+# last phase runs forever, so it has no length and no entry here. Three
+# entries = four phases. _phase_gate_thresholds() accumulates them.
+#   [10, 20, 30] -> phase 1 = gates 1-10, phase 2 = 11-30,
+#                   phase 3 = 31-60, phase 4 = 61 onward, to the death.
+# How many times a mode re-rolls a question that repeats the previous gate's
+# (see last_quiz_key). Capped rather than looped until distinct: the late
+# phases draw from deliberately small pools, so "always different" is not
+# always available, and a repeat is far better than a hang.
+const QUIZ_REPEAT_RETRIES := 8
+
+## Length in gates of each phase except the last, which runs unbounded.
+## Shared by all three modes — this is the single place the ramp is set.
+## Editable live while playing; every new gate re-reads it.
+@export var phase_gate_counts: PackedInt32Array = PackedInt32Array([10, 20, 30])
+
+
+# ============================================================
+# JUNGLE mode's math quiz. Six problem shapes, mixed per phase rather than
+# assigned outright, so a phase reads as a shifting blend instead of a hard
+# switch — an easy shape stays possible late, and a hard one shows up early
+# just often enough to warn you it is coming.
+#
+# Division and two-digit x two-digit are deliberately absent: not modelled at
+# all, so no weight can bring them back.
+# ============================================================
+enum MathKind {
+	SINGLE_ADD_SUB,       # 한자리 덧셈/뺄셈 — sum/difference stays within math_single_max_result
+	DOUBLE_ADD_SUB_PLAIN, # 두자리 덧셈/뺄셈, 자리올림/빌림 없음
+	TIMES_TABLE,          # 구구단 (한자리 x 한자리)
+	DOUBLE_ADD_SUB_CARRY, # 두자리 덧셈/뺄셈, 자리올림/빌림 있음
+	DOUBLE_X_SINGLE,      # 두자리 x 한자리
+	MISSING_OPERAND,      # 빈칸추론 — 7 + ? = 15
+}
+
+# Per-phase weights, one array per problem shape, indexed by phase. Laid out
+# by shape rather than by phase so the Inspector shows each shape's whole
+# curve on one line: read a row to see when a shape appears, read a column to
+# see a phase's mix. Relative weights, not percentages.
+# ============================================================
+# SKY mode's flag quiz. Two independent axes, on purpose:
+#   recognition_tier     — how well known the flag is. Picks the ANSWER, and
+#                          is the only thing the phase curve touches.
+#   confusion_cluster_id — what the flag LOOKS like. Picks the DECOY, and
+#                          ignores the phase and the tier entirely.
+# Keeping them apart is what makes the decoy honest: pick it by fame and the
+# odd one out is obvious without looking at either flag.
+# ============================================================
+@export_group("Flag quiz weights (by phase)")
+## Tier 1 — 누구나 아는 국기 (48개국)
+@export var flag_weight_tier1: PackedFloat32Array = PackedFloat32Array([90, 30, 0, 0])
+## Tier 2 — 대체로 아는 국기 (54개국)
+@export var flag_weight_tier2: PackedFloat32Array = PackedFloat32Array([10, 60, 30, 0])
+## Tier 3 — 들어는 본 국기 (54개국)
+@export var flag_weight_tier3: PackedFloat32Array = PackedFloat32Array([0, 10, 60, 30])
+## Tier 4 — 낯선 국기 (37개국)
+@export var flag_weight_tier4: PackedFloat32Array = PackedFloat32Array([0, 0, 10, 70])
+
+@export_group("Math quiz weights (by phase)")
+## 한자리 덧셈/뺄셈
+@export var math_weight_single_add_sub: PackedFloat32Array = PackedFloat32Array([90, 10, 0, 0])
+## 두자리 덧셈/뺄셈 (자리올림 없음)
+@export var math_weight_double_plain: PackedFloat32Array = PackedFloat32Array([10, 70, 0, 0])
+## 구구단
+@export var math_weight_times_table: PackedFloat32Array = PackedFloat32Array([0, 20, 40, 20])
+## 두자리 덧셈/뺄셈 (자리올림 있음)
+@export var math_weight_double_carry: PackedFloat32Array = PackedFloat32Array([0, 0, 40, 0])
+## 두자리 x 한자리 곱셈
+@export var math_weight_double_x_single: PackedFloat32Array = PackedFloat32Array([0, 0, 20, 40])
+## 빈칸추론 (7 + ? = 15)
+@export var math_weight_missing_operand: PackedFloat32Array = PackedFloat32Array([0, 0, 0, 40])
+
+@export_group("Math quiz number ranges")
+## 한자리 덧셈/뺄셈의 합·차 상한
+@export var math_single_max_result: int = 10
+## 두자리 피연산자 범위
+@export var math_double_range: Vector2i = Vector2i(10, 99)
+## 구구단 단 범위
+@export var math_times_table_range: Vector2i = Vector2i(2, 9)
+## 두자리 x 한자리에서 한자리 쪽 범위
+@export var math_single_factor_range: Vector2i = Vector2i(2, 9)
+@export_group("")
+
+
+# ============================================================
+# OCEAN mode's Stroop colour quiz. Self-contained: nothing below is read by
+# SKY's flag quiz or JUNGLE's math quiz, and it reads nothing of theirs.
+# See the OceanDecoy enum at the top of the file for the wrong-gate traps.
+#
+# The whole point of the quiz is the conflict between what a word SAYS and
+# what it LOOKS like, so two rules hold for every item this generates:
+#   1. The word and the answer colour are never the same colour — there is
+#      always a trap (no congruent items at all).
+#   2. The two gate options are the answer's name and the WORD's own name,
+#      the word being the strongest possible decoy: reading the question
+#      instead of looking at it lands you on the wrong gate every time.
+# ============================================================
+const OCEAN_COLOR_NAMES := [
+	"RED", "BLUE", "GREEN", "YELLOW", "ORANGE",
+	"PURPLE", "PINK", "BROWN", "BLACK", "WHITE", "GRAY",
+]
+# HSL hue in degrees for each name above, used only for the phase difficulty
+# curve (see OCEAN_PHASE_HUE_BAND / _ocean_color_distance). BLACK/WHITE/GRAY
+# are achromatic — hue is undefined for them, so they carry OCEAN_HUE_NONE
+# and the distance function falls back to their lightness instead.
+const OCEAN_HUE_NONE := -1.0
+const OCEAN_COLOR_HUES := [
+	0.0, 220.0, 130.0, 52.0, 28.0,
+	280.0, 335.0, 22.0, OCEAN_HUE_NONE, OCEAN_HUE_NONE, OCEAN_HUE_NONE,
+]
+# HSL lightness, same order. Only consulted for the three neutrals, where it
+# is the only axis they differ on; kept for all 11 so the table stays whole.
+const OCEAN_COLOR_LIGHTNESS := [
+	0.50, 0.50, 0.40, 0.52, 0.52,
+	0.50, 0.68, 0.35, 0.08, 0.97, 0.55,
+]
+# What actually gets painted, same order — the HSL triples above converted to
+# RGB once, by hand, so the on-screen colour is art-directable independently
+# of the numbers driving the difficulty maths.
+const OCEAN_COLOR_RGB := [
+	Color(0.90, 0.13, 0.13),  # RED
+	Color(0.10, 0.43, 0.90),  # BLUE
+	Color(0.10, 0.62, 0.25),  # GREEN
+	Color(0.97, 0.85, 0.05),  # YELLOW
+	Color(0.97, 0.51, 0.05),  # ORANGE
+	Color(0.60, 0.20, 0.80),  # PURPLE
+	Color(0.95, 0.45, 0.68),  # PINK
+	Color(0.54, 0.32, 0.16),  # BROWN
+	Color(0.08, 0.08, 0.09),  # BLACK
+	Color(0.98, 0.98, 0.98),  # WHITE
+	Color(0.55, 0.55, 0.56),  # GRAY
+]
+const OCEAN_HUE_DISTANCE_MAX := 180.0  # hue is a circle, so this is as far apart as two hues get
+
+# Difficulty curve, indexed by phase (see _get_phase_index). Each entry is
+# the [min, max] hue distance allowed between the WORD's own colour and the
+# ANSWER colour, so the two get harder to keep apart as the run goes on:
+# phase 1 is "RED" in blue (impossible to confuse), phase 4 is "RED" in
+# orange (you have to actually look). If a phase's band happens to have no
+# legal pair, _make_color_problem falls back to the closest pairs instead of
+# failing — so these can be retuned freely without breaking generation.
+const OCEAN_PHASE_HUE_BAND := [
+	Vector2(150.0, 180.0),  # phase 1 — far apart, easy
+	Vector2(95.0, 150.0),   # phase 2
+	Vector2(55.0, 95.0),    # phase 3
+	Vector2(0.0, 40.0),     # phase 4 — near-neighbour hues, hard
+]
+
+# Question box wording. A question about the COLOUR, never about the word,
+# which is the one thing the player has to keep straight.
+const OCEAN_PROMPT_INK := "Q. What COLOR is this word?"
+
+# Question box layout. The prompt is static and read once; the stimulus is
+# what gets re-read every single gate, so the prompt is deliberately the
+# smaller of the two and the pair is centred in the writing area as a group.
+const OCEAN_PROMPT_SIZE_RATIO := 0.46      # prompt font size, as a fraction of the stimulus's
+const OCEAN_PROMPT_GAP_FRAC := 0.022       # of box width — prompt -> stimulus gap
+const OCEAN_STIMULUS_MIN_FONT_FRAC := 0.034  # of box width — floor when the pair has to shrink to fit
+const OCEAN_PROMPT_MIN_FONT := 9
+# The word is painted straight onto the cream quiz-box art, where a yellow or
+# white word would otherwise vanish. Every word gets the same dark outline —
+# uniformly, so the outline is never itself a hint.
+const OCEAN_INK_OUTLINE_PX := 2.0
+const OCEAN_INK_OUTLINE_COLOR := Color(0.09, 0.12, 0.18, 0.95)
+
+# Gate options. The names are up to six letters on a card built for a flag,
+# so they take more of its width than JUNGLE's digits do — raise
+# GATE_FLAG_ICON_WIDTH if they ever want to be bigger, since that (not this)
+# is what caps them. See _ocean_gate_font_size.
+const OCEAN_GATE_FIT_WIDTH_FRAC := 0.92
+const OCEAN_GATE_MIN_FONT := 10
 
 # Next zone's center is clamped to what's physically reachable from the
 # previous zone's center within the spawn-to-judgement travel window, using
@@ -814,16 +1052,19 @@ const MODE_READY_TEXTURE_PATH := [
 	"res://assets/ui_assets/sky/Ready.png",
 	"res://assets/ui_assets/jungle/Ready.png",
 	"res://assets/ui_assets/ocean/Ready.png",
+	"res://assets/ui_assets/sky/Ready.png",  # DREAM — placeholder, reusing SKY art
 ]
 const MODE_START_TEXTURE_PATH := [
 	"res://assets/ui_assets/sky/Start.png",
 	"res://assets/ui_assets/jungle/Start.png",
 	"res://assets/ui_assets/ocean/Start.png",
+	"res://assets/ui_assets/sky/Start.png",  # DREAM — placeholder, reusing SKY art
 ]
 const MODE_TRY_AGAIN_TEXTURE_PATH := [
 	"res://assets/ui_assets/sky/TryAgain.png",
 	"res://assets/ui_assets/jungle/TryAgain.png",
 	"res://assets/ui_assets/ocean/TryAgain.png",
+	"res://assets/ui_assets/sky/TryAgain.png",  # DREAM — placeholder, reusing SKY art
 ]
 const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the source aspect ratio
 
@@ -849,21 +1090,25 @@ const MODE_PAUSE_ICON_PATH := [
 	"res://assets/ui_assets/sky/pause.png",
 	"res://assets/ui_assets/jungle/pause.png",
 	"res://assets/ui_assets/ocean/pause.png",
+	"res://assets/ui_assets/sky/pause.png",  # DREAM — placeholder, reusing SKY art
 ]
 const MODE_MUTE_ICON_PATH := [
 	"res://assets/ui_assets/sky/mute.png",
 	"res://assets/ui_assets/jungle/mute.png",
 	"res://assets/ui_assets/ocean/mute.png",
+	"res://assets/ui_assets/sky/mute.png",  # DREAM — placeholder, reusing SKY art
 ]
 const MODE_SCORE_BOX_PATH := [
 	"res://assets/ui_assets/sky/score_box.png",
 	"res://assets/ui_assets/jungle/score_box.png",
 	"res://assets/ui_assets/ocean/score_box.png",
+	"res://assets/ui_assets/sky/score_box.png",  # DREAM — placeholder, reusing SKY art
 ]
 const MODE_QUIZ_BOX_PATH := [
 	"res://assets/ui_assets/sky/quiz_box.png",
 	"res://assets/ui_assets/jungle/quiz_box.png",
 	"res://assets/ui_assets/ocean/quiz_box.png",
+	"res://assets/ui_assets/sky/quiz_box.png",  # DREAM — placeholder, reusing SKY art
 ]
 const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
 # Best score persistence. user:// is the per-user writable location Godot
@@ -939,6 +1184,19 @@ var flash_color := Color(0, 0, 0, 0)
 var flash_time := 0.0
 const FLASH_DURATION := 0.25
 
+# Back-to-back repeat guard, shared by all three modes. Holds whatever
+# identifies the PREVIOUS gate's question — country code for SKY, the
+# expression text for JUNGLE, the colour word for OCEAN — and a new question
+# that matches it is re-rolled (see QUIZ_REPEAT_RETRIES and _spawn_gate).
+# Only the immediately previous one: repeats further back are fine, and
+# forbidding them would starve the late phases, whose pools are small by
+# design. Cleared per run in _reset_game.
+var last_quiz_key: String = ""
+
+# Shared size for every OCEAN gate option, resolved on first draw — see
+# _ocean_gate_font_size. -1 = not computed yet.
+var ocean_gate_font_size: int = -1
+
 var current_mode: int = Mode.SKY  # picked at State.MODE_SELECT — see _apply_mode
 var active_draw_offset_fly := Vector2.ZERO
 var active_draw_offset_happy := Vector2.ZERO
@@ -966,7 +1224,8 @@ var quiz_box_texture: Texture2D
 var hud_canvas: Node2D
 var flag_records: Array = []          # [{code, name, image, tier}, ...] — see FLAGS_DATA_PATH
 var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded from flag_records
-var flag_records_by_tier: Dictionary = {}  # tier (int 1-4) -> Array of records, for difficulty-gated spawning
+var flag_records_by_tier: Dictionary = {}  # recognition_tier (int 1-4) -> Array of records, picks the ANSWER
+var flag_records_by_cluster: Dictionary = {}  # confusion_cluster_id -> Array of records, picks the DECOY
 var muted: bool = false
 
 var gate_left_pillar_texture: Texture2D
@@ -1031,6 +1290,7 @@ var fx_sound_gameover: AudioStreamPlayer
 @onready var sky_mode_button: Button = $UI/ModeSelectPanel/SkyModeButton
 @onready var jungle_mode_button: Button = $UI/ModeSelectPanel/JungleModeButton
 @onready var ocean_mode_button: Button = $UI/ModeSelectPanel/OceanModeButton
+@onready var dream_mode_button: Button = $UI/ModeSelectPanel/DreamModeButton
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
@@ -1121,6 +1381,7 @@ func _ready() -> void:
 	sky_mode_button.pressed.connect(_on_mode_selected.bind(Mode.SKY))
 	jungle_mode_button.pressed.connect(_on_mode_selected.bind(Mode.JUNGLE))
 	ocean_mode_button.pressed.connect(_on_mode_selected.bind(Mode.OCEAN))
+	dream_mode_button.pressed.connect(_on_mode_selected.bind(Mode.DREAM))
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
@@ -1149,6 +1410,17 @@ func _weighted_font(base: Font, wght_tag: int, weight: int) -> Font:
 	return fv
 
 
+# One happy/sad face, or SKY's if this mode's has not been drawn yet. See the
+# fallback note in _apply_mode.
+func _load_face(path: String, fallback_path: String) -> Texture2D:
+	if ResourceLoader.exists(path):
+		return load(path)
+	if fallback_path != path and ResourceLoader.exists(fallback_path):
+		push_warning("No face at %s — falling back to %s." % [path, fallback_path])
+		return load(fallback_path)
+	return null
+
+
 func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 	var frames: Array[Texture2D] = []
 	if not ResourceLoader.exists(path):
@@ -1161,6 +1433,12 @@ func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 		for col in range(cols):
 			var region := Rect2i(col * cell_w, row * cell_h, cell_w, cell_h)
 			var cell_image: Image = full_image.get_region(region)
+			# A grid rarely divides evenly into the frame count — DREAM's run
+			# is 5 frames in a 3x2 grid, leaving the last cell blank. Drawing
+			# that blank would blink the character out for one frame of every
+			# cycle, so skip cells with nothing in them.
+			if cell_image.is_invisible():
+				continue
 			# get_region() carries the source's has_mipmaps flag over and
 			# allocates the whole chain, but only ever fills level 0 — every
 			# smaller level comes back fully transparent. The character is
@@ -1196,10 +1474,21 @@ func _load_flags_data() -> void:
 		var tex_path: String = record.image
 		if ResourceLoader.exists(tex_path):
 			flag_textures[record.code] = load(tex_path)
-		var tier: int = record.tier
+		# recognition_tier drives which countries can be the ANSWER (see
+		# flag_tier_weights_by_phase); confusion_cluster_id drives which one
+		# becomes the DECOY (see _pick_flag_decoy). Deliberately independent
+		# axes: how well known a flag is has nothing to do with what it
+		# looks like, and a decoy picked by fame would be a giveaway.
+		var tier: int = int(record.get("recognition_tier", 1))
 		if not flag_records_by_tier.has(tier):
 			flag_records_by_tier[tier] = []
 		flag_records_by_tier[tier].append(record)
+		var cluster: String = str(record.get("confusion_cluster_id", ""))
+		if cluster == "":
+			continue  # no visual twin worth trapping with — see the fallback in _pick_flag_decoy
+		if not flag_records_by_cluster.has(cluster):
+			flag_records_by_cluster[cluster] = []
+		flag_records_by_cluster[cluster].append(record)
 
 
 func _draw_sky_gradient(view_size: Vector2) -> void:
@@ -1629,9 +1918,16 @@ func _draw_gate_base(center_x: float, center_y: float) -> void:
 func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
 	# JUNGLE draws its answer as plain number text instead of a flag texture
 	# — everything else about the box (panel, position, card fill) is shared.
+	# OCEAN takes the same text path for its colour NAME, and deliberately
+	# draws it in the shared dark ink on the shared cream card, with no trace
+	# of the colour it names: an option painted RED would let the player
+	# match the question by colour and never read a word, which is exactly
+	# the shortcut this quiz exists to close off. The name is the only way in.
 	var is_math: bool = current_mode == Mode.JUNGLE
+	var is_color_name: bool = current_mode == Mode.OCEAN
+	var is_text: bool = is_math or is_color_name
 	var texture: Texture2D = null
-	if not is_math:
+	if not is_text:
 		texture = flag_textures.get(code)
 		if texture == null:
 			return
@@ -1646,7 +1942,7 @@ func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bo
 	# panel's own frame artwork.
 	var panel_scale: float = GATE_FLAG_ICON_WIDTH / active_flag_panel_window_width
 	var icon_size := Vector2(GATE_FLAG_ICON_WIDTH, GATE_FLAG_ICON_HEIGHT)
-	if is_math:
+	if is_text:
 		icon_size.y = active_flag_panel_window_height * panel_scale
 	var half_h: float = icon_size.y * 0.5
 	var center_y: float = maxf(zone_top - half_h - GATE_FLAG_GAP_ABOVE_ZONE, _gate_zone_top(view_size) + half_h)
@@ -1666,15 +1962,44 @@ func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bo
 	# see-through gaps, without touching any of the 193 flag images
 	# themselves — and doubles as the number's backdrop for JUNGLE.
 	draw_rect(Rect2(icon_top_left, icon_size), GATE_FLAG_CARD_COLOR)
-	if is_math:
+	if is_text:
 		# Capped by height too, not just width — the window's real height
 		# varies per panel (see the note above), so a flat max wide enough
 		# for sky's window could overflow a shorter one like jungle's.
 		var max_font_size: int = int(min(30.0, icon_size.y * 0.6))
-		var font_size := _fit_font_size(code, icon_size.x * 0.8, max_font_size, 16, combo_font)
+		# A colour name is up to six letters against JUNGLE's one or two
+		# digits, so it gets more of the card's width to work with — and,
+		# unlike the digits, ONE size shared by all eleven names rather than
+		# a per-word fit. Fitting each word on its own would draw "RED" at
+		# 30px next to "YELLOW" at 15px, which makes the pair of gates look
+		# unbalanced and, worse, turns letter size into a second channel the
+		# player can read the option by. Uniform, and the name is the signal.
+		var font_size: int
+		if is_color_name:
+			font_size = _ocean_gate_font_size(icon_size, max_font_size)
+		else:
+			font_size = _fit_font_size(code, icon_size.x * 0.8, max_font_size, 16, combo_font)
 		_draw_centered_text(code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
 	else:
 		draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
+
+
+# One font size for every OCEAN gate option: the largest at which the widest
+# name in the table still fits the card. Cached because the answer only
+# depends on the card size, which is fixed for the mode, and this is called
+# twice per gate per frame. See the call site for why it is uniform.
+func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
+	if ocean_gate_font_size > 0:
+		return ocean_gate_font_size
+	var widest: String = OCEAN_COLOR_NAMES[0]
+	var widest_width: float = 0.0
+	for name in OCEAN_COLOR_NAMES:
+		var w: float = combo_font.get_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, -1, max_font_size).x
+		if w > widest_width:
+			widest_width = w
+			widest = name
+	ocean_gate_font_size = _fit_font_size(widest, icon_size.x * OCEAN_GATE_FIT_WIDTH_FRAC, max_font_size, OCEAN_GATE_MIN_FONT, combo_font)
+	return ocean_gate_font_size
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1793,38 +2118,87 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var phase_index := _get_phase_index(gates_passed)
 
 	# Quiz content: JUNGLE gets a single-digit arithmetic problem (see
-	# _make_math_problem/_make_wrong_answer); every other mode keeps the
-	# flag quiz. Either way this only produces target_code/target_name/
+	# _make_math_problem/_make_wrong_answer), OCEAN gets a Stroop colour
+	# problem (see _make_color_problem); every other mode keeps the flag
+	# quiz. Either way this only produces target_code/target_name/
 	# other_code — everything below (zone placement, reachability, spacing)
 	# is quiz-agnostic and untouched.
 	var target_code: String
 	var target_name: String
 	var other_code: String
+	# OCEAN only — the indices the question box needs to repaint this item
+	# (see _draw_ocean_quiz_box). Left at -1 for the other two modes, which
+	# never read them.
+	var ocean_word_index: int = -1
+	var ocean_answer_index: int = -1
 	if current_mode == Mode.JUNGLE:
-		var problem: Dictionary = _make_math_problem()
-		var correct: int = problem.answer
-		target_code = str(correct)
-		target_name = problem.text + " = ?"
-		other_code = str(_make_wrong_answer(correct))
+		# Re-rolled if it repeats the previous gate's expression — see
+		# last_quiz_key. The decoy comes from the problem shape itself now,
+		# not from a generic offset (see the _make_*_problem block).
+		var problem: Dictionary = _make_math_problem(phase_index)
+		for attempt in range(QUIZ_REPEAT_RETRIES):
+			if problem.text != last_quiz_key:
+				break
+			problem = _make_math_problem(phase_index)
+		last_quiz_key = problem.text
+		target_code = str(problem.answer)
+		# The shape supplies the whole question, "= ?" included — the blank
+		# is mid-expression for MISSING_OPERAND ("7 + ? = 15"), so it cannot
+		# be tacked on here.
+		target_name = problem.text
+		other_code = str(problem.wrong)
+		# A decoy that collides with the answer would put the same number on
+		# both gates. The shape-specific decoys are built not to, but they
+		# depend on Inspector-tunable ranges, so this is the backstop.
+		if other_code == target_code:
+			other_code = str(problem.answer + 1)
+	elif current_mode == Mode.OCEAN:
+		# Difficulty comes from how close the word's own colour and the
+		# answer colour sit on the hue circle — see OCEAN_PHASE_HUE_BAND.
+		# Re-rolled if the WORD repeats the previous gate's word: the same
+		# word twice running reads as a stutter even when the ink changed,
+		# and the word is what the player is fighting to ignore. The ink may
+		# still repeat — the late phase bands are too narrow to forbid it.
+		var color_problem: Dictionary = _make_color_problem(phase_index)
+		for attempt in range(QUIZ_REPEAT_RETRIES):
+			if OCEAN_COLOR_NAMES[color_problem.word] != last_quiz_key:
+				break
+			color_problem = _make_color_problem(phase_index)
+		last_quiz_key = OCEAN_COLOR_NAMES[color_problem.word]
+		ocean_word_index = color_problem.word
+		ocean_answer_index = color_problem.answer
+		# The answer is the NAME of the colour the word is painted in.
+		target_code = OCEAN_COLOR_NAMES[ocean_answer_index]
+		# Which trap the wrong gate runs is rolled per question from the
+		# phase's mix — see _pick_ocean_decoy. Never equal to target_code
+		# whichever branch wins, so the wrong gate is always wrong.
+		other_code = OCEAN_COLOR_NAMES[_pick_ocean_decoy(ocean_word_index, ocean_answer_index, phase_index)]
+		# Only a fallback for _get_upcoming_target — OCEAN paints its own
+		# question box (see _draw_quiz_box's branch) rather than printing
+		# this string, but it must stay non-empty for that path's guard.
+		target_name = OCEAN_PROMPT_INK
 	else:
-		# Difficulty curve: phase 0 (tier 1) draws only from the most
-		# internationally famous flags, phase 3 (tier 4) from the least —
-		# both the correct answer and the decoy come from the same tier, so
-		# a wrong choice is never a giveaway just because it "looks less
-		# famous."
-		var tier: int = phase_index + 1
-		var pool: Array = flag_records_by_tier.get(tier, flag_records)
-		if pool.size() < 2:
-			pool = flag_records
-		var target_index := randi() % pool.size()
-		var other_index := randi() % (pool.size() - 1)
-		if other_index >= target_index:
-			other_index += 1  # skip target_index so other is always a different country
-		var target: Dictionary = pool[target_index]
-		var other: Dictionary = pool[other_index]
+		# Difficulty curve: the phase shifts WHICH recognition_tier the answer
+		# is drawn from — famous flags early, obscure ones late — as a
+		# weighted blend rather than a hard tier-per-phase, so a phase reads
+		# as a gradual shift instead of a switch. The decoy does not follow
+		# that curve at all: it comes from the answer's visual cluster (see
+		# _pick_flag_decoy), because a decoy chosen by fame would let the
+		# player spot the odd one out without looking at either flag.
+		# Re-rolled if it repeats the previous gate's country — see
+		# last_quiz_key.
+		var target: Dictionary = _pick_flag_target(phase_index)
+		for attempt in range(QUIZ_REPEAT_RETRIES):
+			if target.is_empty() or str(target.code) != last_quiz_key:
+				break
+			target = _pick_flag_target(phase_index)
+		if target.is_empty():
+			return  # no flag data loaded — nothing to ask
+		last_quiz_key = str(target.code)
+		var other: Dictionary = _pick_flag_decoy(target)
 		target_code = target.code
 		target_name = target.name
-		other_code = other.code
+		other_code = other.code if not other.is_empty() else target.code
 	var top_correct: bool = randi() % 2 == 0
 
 	var wall_center_y := _gate_wall_center_y(view_size)
@@ -1895,7 +2269,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var correct_lane_code: String = top_code if top_correct else bottom_code
 	assert(correct_lane_code == target_code, "Quiz target code and correct-lane gate code must match")
 
-	gates.append({
+	var gate := {
 		"x": PLAYER_X + base_gate_spacing,
 		"top_code": top_code,
 		"bottom_code": bottom_code,
@@ -1907,7 +2281,13 @@ func _spawn_gate(view_size: Vector2) -> void:
 		"top_zone_bottom": top_zone.y,
 		"bottom_zone_top": bottom_zone.x,
 		"bottom_zone_bottom": bottom_zone.y,
-	})
+	}
+	# OCEAN carries its Stroop item on the gate itself — the question box
+	# repaints the word from these every frame the gate is the pending one.
+	if current_mode == Mode.OCEAN:
+		gate["ocean_word_index"] = ocean_word_index
+		gate["ocean_answer_index"] = ocean_answer_index
+	gates.append(gate)
 
 
 func _random_zone(band_top: float, band_bottom: float, zone_height: float) -> Vector2:
@@ -1953,68 +2333,378 @@ func _random_reachable_zone(band_top: float, band_bottom: float, zone_height: fl
 	return Vector2(center - zone_height * 0.5, center + zone_height * 0.5)
 
 
+# Which phase a run is in, 0-based, from the number of gates already passed.
+# passed_count is how many are BEHIND you, so the gate being generated is
+# number passed_count + 1 — which is why phase 1 covering "gates 1-10" means
+# passed_count 0..9 here.
+#
+# Guarded rather than trusting phase_gate_counts, since it is an @export the
+# Inspector can put anything into: non-positive lengths would make a phase
+# zero-width and silently skip it, so they are ignored. An empty array (or
+# one of nothing but junk) leaves every gate in phase 1, which is a sane
+# reading of "no ramp configured" and never an out-of-range index.
 func _get_phase_index(passed_count: int) -> int:
-	var idx := 0
-	for i in range(PHASE_GATE_THRESHOLDS.size()):
-		if passed_count >= PHASE_GATE_THRESHOLDS[i]:
-			idx = i
-	return idx
+	var boundary := 0
+	for i in range(phase_gate_counts.size()):
+		var length: int = phase_gate_counts[i]
+		if length <= 0:
+			continue
+		boundary += length
+		if passed_count < boundary:
+			return i
+	# Past every listed phase — the last one, which runs unbounded.
+	return _phase_count() - 1
+
+
+# Number of phases the curve describes: one more than the lengths given,
+# because the final phase is open-ended. Always at least 1.
+func _phase_count() -> int:
+	var listed := 0
+	for length in phase_gate_counts:
+		if length > 0:
+			listed += 1
+	return listed + 1
+
+
+# ---- SKY mode's flag quiz (see _spawn_gate) ----
+
+# Rolls a recognition_tier for this phase, then a country from it. Tiers with
+# no countries loaded are skipped rather than rolled and retried, so a weight
+# pointing at an empty tier costs nothing.
+func _pick_flag_target(phase_index: int) -> Dictionary:
+	var curves: Array = [flag_weight_tier1, flag_weight_tier2, flag_weight_tier3, flag_weight_tier4]
+	var weights: Array[float] = []
+	var total: float = 0.0
+	for i in range(curves.size()):
+		var curve: PackedFloat32Array = curves[i]
+		var pool: Array = flag_records_by_tier.get(i + 1, [])
+		var w: float = 0.0
+		if not curve.is_empty() and not pool.is_empty():
+			# A curve shorter than the phase count holds its last value, so
+			# trimming it in the Inspector cannot silently empty a phase.
+			w = maxf(0.0, curve[clampi(phase_index, 0, curve.size() - 1)])
+		weights.append(w)
+		total += w
+	if total <= 0.0:
+		# Nothing configured (or nothing loaded) for this phase — any country
+		# beats no question at all.
+		return flag_records[randi() % flag_records.size()] if not flag_records.is_empty() else {}
+	var roll: float = randf() * total
+	for i in range(weights.size()):
+		roll -= weights[i]
+		if roll < 0.0:
+			var pool: Array = flag_records_by_tier[i + 1]
+			return pool[randi() % pool.size()]
+	return flag_records[randi() % flag_records.size()]
+
+
+# The decoy: a flag that LOOKS like the answer, drawn from its
+# confusion_cluster_id and nothing else — the answer's own tier and the
+# phase are both ignored, per the design. 105 of the 193 sit in a visual
+# cluster; the rest have no twin worth trapping with, and fall back to a
+# plain different country.
+func _pick_flag_decoy(target: Dictionary) -> Dictionary:
+	var cluster: String = str(target.get("confusion_cluster_id", ""))
+	var siblings: Array = flag_records_by_cluster.get(cluster, [])
+	if siblings.size() >= 2:
+		# Pick any sibling but the answer itself — index-shifted rather than
+		# retried, so a two-country cluster resolves in one step.
+		var target_at: int = siblings.find(target)
+		var pick: int = randi() % (siblings.size() - 1)
+		if target_at >= 0 and pick >= target_at:
+			pick += 1
+		return siblings[pick]
+	# No cluster (or a cluster of one): any other country.
+	if flag_records.size() < 2:
+		return {}
+	var target_index: int = flag_records.find(target)
+	var other: int = randi() % (flag_records.size() - 1)
+	if target_index >= 0 and other >= target_index:
+		other += 1
+	return flag_records[other]
 
 
 # ---- JUNGLE mode's math quiz (see _spawn_gate) ----
-# Single-digit operands only, per request — graybox for now, to be revisited.
+# Each _make_*_problem below returns {text, answer, wrong}: the shape decides
+# its own decoy, because a good decoy is the specific mistake that shape
+# invites — a dropped carry in a column sum, a neighbouring times-table row,
+# an inverted operation. A generic "answer ± 2" cannot express any of that.
+#
+# Real × rather than ASCII "x": Fredoka covers it, verified against the font.
 
-func _make_math_problem() -> Dictionary:
-	var op: int = randi() % 4  # 0=+, 1=-, 2=x, 3=÷
-	var a: int
-	var b: int
-	var answer: int
-	var op_symbol: String
-	match op:
-		0:
-			a = randi() % 10
-			b = randi() % 10
-			answer = a + b
-			op_symbol = "+"
-		1:
-			# b <= a so the result never goes negative — the operands stay
-			# single-digit, but there's no reason the answer should too.
-			a = randi() % 10
-			b = randi_range(0, a)
-			answer = a - b
-			op_symbol = "-"
-		2:
-			a = randi() % 10
-			b = randi() % 10
-			answer = a * b
-			op_symbol = "×"
+# Weight of each MathKind for this phase, in enum order.
+func _math_kind_weights(phase_index: int) -> Array[float]:
+	var curves: Array = [
+		math_weight_single_add_sub,
+		math_weight_double_plain,
+		math_weight_times_table,
+		math_weight_double_carry,
+		math_weight_double_x_single,
+		math_weight_missing_operand,
+	]
+	var out: Array[float] = []
+	for curve in curves:
+		# A curve shorter than the phase count holds its last value rather
+		# than reading as zero, so trimming the array in the Inspector can
+		# never silently empty out a late phase.
+		if curve.is_empty():
+			out.append(0.0)
+		else:
+			out.append(maxf(0.0, curve[clampi(phase_index, 0, curve.size() - 1)]))
+	return out
+
+
+func _pick_math_kind(phase_index: int) -> int:
+	var weights: Array[float] = _math_kind_weights(phase_index)
+	var total: float = 0.0
+	for w in weights:
+		total += w
+	if total <= 0.0:
+		return MathKind.SINGLE_ADD_SUB  # nothing configured for this phase — fall back to the gentlest shape
+	var roll: float = randf() * total
+	for i in range(weights.size()):
+		roll -= weights[i]
+		if roll < 0.0:
+			return i
+	return MathKind.SINGLE_ADD_SUB
+
+
+func _make_math_problem(phase_index: int) -> Dictionary:
+	match _pick_math_kind(phase_index):
+		MathKind.DOUBLE_ADD_SUB_PLAIN:
+			return _make_double_add_sub(false)
+		MathKind.TIMES_TABLE:
+			return _make_times_table()
+		MathKind.DOUBLE_ADD_SUB_CARRY:
+			return _make_double_add_sub(true)
+		MathKind.DOUBLE_X_SINGLE:
+			return _make_double_x_single()
+		MathKind.MISSING_OPERAND:
+			return _make_missing_operand()
 		_:
-			# Divisor/quotient picked so the dividend itself also stays a
-			# single digit (0-9), not just the two operands shown — e.g.
-			# never "12 / 4", since 12 isn't single-digit.
-			b = randi_range(1, 9)
-			var max_q: int = mini(9, 9 / b)
-			var q: int = randi_range(0, max_q)
-			a = b * q
-			answer = q
-			# Real × and ÷ rather than ASCII "x" and "/". This used to be
-			# ASCII because the old face (Mulmaru) could not be relied on to
-			# cover them; Fredoka does, verified against the font itself
-			# rather than assumed.
-			op_symbol = "÷"
-	return {"text": "%d %s %d" % [a, op_symbol, b], "answer": answer}
+			return _make_single_add_sub()
 
 
-func _make_wrong_answer(correct: int) -> int:
-	# A close decoy on purpose (per request) — right next to the correct
-	# answer so the two gates can't be told apart by magnitude alone.
-	var offsets: Array = [-2, -1, 1, 2]
-	offsets.shuffle()
-	for offset in offsets:
-		var candidate: int = correct + offset
-		if candidate >= 0:
-			return candidate
-	return correct + 1  # unreachable in practice — every offset already handles correct == 0
+# 한자리 덧셈/뺄셈 — both operands single-digit AND the result capped, so
+# this stays the shape a young player can do at a glance.
+func _make_single_add_sub() -> Dictionary:
+	var cap: int = maxi(1, math_single_max_result)
+	if randi() % 2 == 0:
+		var a: int = randi_range(1, mini(9, cap - 1))
+		var b: int = randi_range(1, mini(9, cap - a))
+		# Off by one in the units column — the mistake this shape invites.
+		return {"text": "%d + %d = ?" % [a, b], "answer": a + b, "wrong": a + b + (1 if randi() % 2 == 0 else -1)}
+	var x: int = randi_range(2, mini(9, cap))
+	var y: int = randi_range(1, x - 1)
+	return {"text": "%d - %d = ?" % [x, y], "answer": x - y, "wrong": maxi(0, x - y + (1 if randi() % 2 == 0 else -1))}
+
+
+# 두자리 덧셈/뺄셈. `with_carry` picks whether the units column carries (or
+# borrows) — which is exactly what the decoy then gets wrong, landing 10 off.
+# Without a carry there is no carry to drop, so those decoys miss by 1 in a
+# column instead.
+func _make_double_add_sub(with_carry: bool) -> Dictionary:
+	var lo: int = mini(math_double_range.x, math_double_range.y)
+	var hi: int = maxi(math_double_range.x, math_double_range.y)
+	lo = maxi(10, lo)
+	hi = clampi(hi, lo, 99)
+	if randi() % 2 == 0:
+		# Addition. Build it column-wise so the carry is decided, not hoped for.
+		var a_units: int = randi_range(5, 9) if with_carry else randi_range(0, 4)
+		var b_units: int = randi_range(10 - a_units, 9) if with_carry else randi_range(0, 4 - mini(a_units, 4))
+		var a_tens: int = randi_range(lo / 10, mini(hi / 10, 8))
+		var b_tens: int = randi_range(1, mini(9 - a_tens, hi / 10))
+		var a: int = a_tens * 10 + a_units
+		var b: int = maxi(10, b_tens * 10 + b_units)
+		var sum: int = a + b
+		# The classic column error: 10 away, from dropping the carry. Always
+		# DOWN, never up — a decoy above the sum can spill into three digits
+		# (61 + 31 -> 102), and a decoy with more digits than the answer is
+		# dismissable at a glance without doing the sum at all.
+		var wrong: int = sum - 10
+		return {"text": "%d + %d = ?" % [a, b], "answer": sum, "wrong": maxi(0, wrong)}
+	# Subtraction, same idea: force (or forbid) a borrow in the units column.
+	var top_units: int = randi_range(0, 4) if with_carry else randi_range(5, 9)
+	var bot_units: int = randi_range(top_units + 1, 9) if with_carry else randi_range(0, top_units)
+	var top_tens: int = randi_range(maxi(2, lo / 10), mini(hi / 10, 9))
+	var bot_tens: int = randi_range(1, top_tens - 1)
+	var top: int = top_tens * 10 + top_units
+	var bot: int = bot_tens * 10 + bot_units
+	var diff: int = top - bot
+	var wrong_diff: int = diff + 10 if with_carry else diff - 10  # forgot to borrow / borrowed anyway
+	return {"text": "%d - %d = ?" % [top, bot], "answer": diff, "wrong": maxi(0, wrong_diff)}
+
+
+# 구구단. The decoy is a genuine neighbouring product — one row or one column
+# away — so it is a number that really does live in the times table, not an
+# arbitrary near miss.
+func _make_times_table() -> Dictionary:
+	var lo: int = mini(math_times_table_range.x, math_times_table_range.y)
+	var hi: int = maxi(math_times_table_range.x, math_times_table_range.y)
+	lo = clampi(lo, 1, 9)
+	hi = clampi(hi, lo, 9)
+	var a: int = randi_range(lo, hi)
+	var b: int = randi_range(lo, hi)
+	var answer: int = a * b
+	var neighbours: Array[int] = []
+	for delta in [-1, 1]:
+		if a + delta >= 1 and a + delta <= 9:
+			neighbours.append((a + delta) * b)
+		if b + delta >= 1 and b + delta <= 9:
+			neighbours.append(a * (b + delta))
+	neighbours = neighbours.filter(func(n: int) -> bool: return n != answer)
+	var wrong: int = neighbours[randi() % neighbours.size()] if not neighbours.is_empty() else answer + 1
+	return {"text": "%d × %d = ?" % [a, b], "answer": answer, "wrong": wrong}
+
+
+# 두자리 x 한자리. The decoy drops the carry out of the units column, which is
+# the error this shape actually produces when done in the head.
+func _make_double_x_single() -> Dictionary:
+	var lo: int = clampi(mini(math_double_range.x, math_double_range.y), 10, 99)
+	var hi: int = clampi(maxi(math_double_range.x, math_double_range.y), lo, 99)
+	var f_lo: int = clampi(mini(math_single_factor_range.x, math_single_factor_range.y), 2, 9)
+	var f_hi: int = clampi(maxi(math_single_factor_range.x, math_single_factor_range.y), f_lo, 9)
+	var a: int = randi_range(lo, hi)
+	var b: int = randi_range(f_lo, f_hi)
+	var answer: int = a * b
+	# What you get by multiplying each column and forgetting to carry.
+	var no_carry: int = (a / 10) * b * 10 + ((a % 10) * b) % 10
+	var wrong: int = no_carry if no_carry != answer and no_carry > 0 else answer + 10
+	return {"text": "%d × %d = ?" % [a, b], "answer": answer, "wrong": wrong}
+
+
+# 빈칸추론 — 7 + ? = 15. The decoy is the operation run the wrong way: adding
+# where you should subtract, which is the mistake the blank invites.
+func _make_missing_operand() -> Dictionary:
+	var cap: int = clampi(maxi(math_double_range.x, math_double_range.y), 20, 99)
+	if randi() % 2 == 0:
+		# a + ? = c   ->   ? = c - a, wrong = c + a (added instead)
+		var a: int = randi_range(2, cap / 2)
+		var missing: int = randi_range(2, cap / 2)
+		var c: int = a + missing
+		return {"text": "%d + ? = %d" % [a, c], "answer": missing, "wrong": a + c}
+	# ? - b = c   ->   ? = c + b, wrong = c - b (subtracted instead).
+	# c is kept above b so that wrong stays a positive, plausible number: a
+	# decoy clamped to 0 is no trap at all, it is instantly dismissable.
+	var b: int = randi_range(2, maxi(3, cap / 3))
+	var c2: int = randi_range(b + 1, maxi(b + 2, cap / 2))
+	var missing2: int = c2 + b
+	return {"text": "? - %d = %d" % [b, c2], "answer": missing2, "wrong": c2 - b}
+
+
+# ---- OCEAN mode's Stroop colour quiz (see _spawn_gate) ----
+# Generation only — the drawing lives in _draw_ocean_quiz_box.
+
+# Perceptual distance between two entries of the colour table, on a single
+# 0..OCEAN_HUE_DISTANCE_MAX scale so one phase band can gate every pair.
+func _ocean_color_distance(a: int, b: int) -> float:
+	var hue_a: float = OCEAN_COLOR_HUES[a]
+	var hue_b: float = OCEAN_COLOR_HUES[b]
+	var a_neutral: bool = hue_a == OCEAN_HUE_NONE
+	var b_neutral: bool = hue_b == OCEAN_HUE_NONE
+	if a_neutral and b_neutral:
+		# Hue says nothing about black vs white vs gray — lightness is the
+		# only axis they differ on, so stretch that gap onto the same scale.
+		# Black/white land far apart (easy), black/gray land mid (harder).
+		return absf(OCEAN_COLOR_LIGHTNESS[a] - OCEAN_COLOR_LIGHTNESS[b]) * OCEAN_HUE_DISTANCE_MAX
+	if a_neutral or b_neutral:
+		# A neutral against a chromatic is as far apart as this scale goes:
+		# there is no hue confusion to be had between "gray" and "orange".
+		return OCEAN_HUE_DISTANCE_MAX
+	var d: float = absf(hue_a - hue_b)
+	return d if d <= 180.0 else 360.0 - d
+
+
+# Rolls one Stroop item for the given phase. Returns indices into
+# OCEAN_COLOR_NAMES: `word` is the text shown, `answer` is the colour it is
+# actually painted in (INK_COLOR) or sat on (BACKGROUND_COLOR). The two are
+# never equal, so every item traps.
+func _make_color_problem(phase_index: int) -> Dictionary:
+	var band: Vector2 = OCEAN_PHASE_HUE_BAND[clampi(phase_index, 0, OCEAN_PHASE_HUE_BAND.size() - 1)]
+	var in_band: Array = []
+	# Every pair that missed the band by the same smallest amount, kept as
+	# the fallback so a band with no legal pair still yields the closest
+	# thing to the intended difficulty rather than nothing at all.
+	var nearest: Array = []
+	var nearest_miss: float = INF
+	for word in range(OCEAN_COLOR_NAMES.size()):
+		for answer in range(OCEAN_COLOR_NAMES.size()):
+			if word == answer:
+				continue  # never congruent — the trap is the whole quiz
+			var d: float = _ocean_color_distance(word, answer)
+			if d >= band.x and d <= band.y:
+				in_band.append(Vector2i(word, answer))
+				continue
+			var miss: float = (band.x - d) if d < band.x else (d - band.y)
+			if miss < nearest_miss - 0.01:
+				nearest_miss = miss
+				nearest = [Vector2i(word, answer)]
+			elif absf(miss - nearest_miss) <= 0.01:
+				nearest.append(Vector2i(word, answer))
+	var pool: Array = in_band if not in_band.is_empty() else nearest
+	var pick: Vector2i = pool[randi() % pool.size()]
+	return {"word": pick.x, "answer": pick.y}
+
+
+# The palette colour sitting closest to `answer` on the hue circle, the
+# answer itself excluded. Basis of the NEAREST_HUE trap: near enough that a
+# glance at the ink won't separate them, so you have to actually look.
+func _ocean_nearest_hue(answer_index: int) -> int:
+	var best: int = -1
+	var best_distance: float = INF
+	for i in range(OCEAN_COLOR_NAMES.size()):
+		if i == answer_index:
+			continue
+		var d: float = _ocean_color_distance(answer_index, i)
+		if d < best_distance:
+			best_distance = d
+			best = i
+	return best
+
+
+# Rolls which of the three traps this question's wrong gate runs, then
+# returns the colour index to print on it. Never returns `answer_index` —
+# whichever branch wins, the wrong gate must stay wrong.
+func _pick_ocean_decoy(word_index: int, answer_index: int, phase_index: int) -> int:
+	var weights := Vector3(1.0, 0.0, 0.0)  # all-zero/empty table degrades to the word-meaning trap
+	if not ocean_decoy_weights_by_phase.is_empty():
+		weights = ocean_decoy_weights_by_phase[clampi(phase_index, 0, ocean_decoy_weights_by_phase.size() - 1)]
+	# Negative weights would silently eat the roll, so floor each at zero
+	# rather than trusting whatever got typed into the Inspector.
+	var w_word: float = maxf(0.0, weights.x)
+	var w_near: float = maxf(0.0, weights.y)
+	var w_random: float = maxf(0.0, weights.z)
+	var total: float = w_word + w_near + w_random
+	var kind: int = OceanDecoy.WORD_MEANING
+	if total > 0.0:
+		var roll: float = randf() * total
+		if roll < w_word:
+			kind = OceanDecoy.WORD_MEANING
+		elif roll < w_word + w_near:
+			kind = OceanDecoy.NEAREST_HUE
+		else:
+			kind = OceanDecoy.RANDOM
+
+	match kind:
+		OceanDecoy.WORD_MEANING:
+			return word_index
+		OceanDecoy.NEAREST_HUE:
+			# Can coincide with the word — most often late on, where the
+			# phase band already pulls the word's own colour in tight around
+			# the answer. That is not a bug: the option is still a valid
+			# wrong answer, it just happens to be running both traps at once.
+			return _ocean_nearest_hue(answer_index)
+		_:
+			# Neither trap, per spec — and never the answer, which would
+			# make the wrong gate right.
+			var nearest_index: int = _ocean_nearest_hue(answer_index)
+			var candidates: Array[int] = []
+			for i in range(OCEAN_COLOR_NAMES.size()):
+				if i != answer_index and i != word_index and i != nearest_index:
+					candidates.append(i)
+			if candidates.is_empty():
+				return word_index  # unreachable with 11 colours; keeps the return total
+			return candidates[randi() % candidates.size()]
 
 
 func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
@@ -2678,17 +3368,22 @@ func _on_mode_selected(mode: int) -> void:
 func _apply_mode(mode: int) -> void:
 	current_mode = mode
 
+	# Character art, with SKY as the safety net. A mode whose art has not been
+	# drawn yet (DREAM, while the unicorn is in progress) would otherwise run
+	# with an invisible character; falling back per-file means each unicorn
+	# PNG starts being used the moment it is dropped in, with no code change
+	# and no need for all three to land at once.
 	var char_dir: String = MODE_CHARACTER_DIR[mode]
-	flap_frames = _slice_spritesheet(char_dir + MODE_CHARACTER_FLY_FILE[mode], BIRD_FLY_SHEET_COLS, BIRD_FLY_SHEET_ROWS)
+	var sky_dir: String = MODE_CHARACTER_DIR[Mode.SKY]
+	var grid: Vector2i = MODE_CHARACTER_SHEET_GRID[mode]
+	flap_frames = _slice_spritesheet(char_dir + MODE_CHARACTER_FLY_FILE[mode], grid.x, grid.y)
+	if flap_frames.is_empty() and mode != Mode.SKY:
+		push_warning("Mode %d: no motion sheet at %s — falling back to SKY art." % [mode, char_dir + MODE_CHARACTER_FLY_FILE[mode]])
+		var sky_grid: Vector2i = MODE_CHARACTER_SHEET_GRID[Mode.SKY]
+		flap_frames = _slice_spritesheet(sky_dir + MODE_CHARACTER_FLY_FILE[Mode.SKY], sky_grid.x, sky_grid.y)
 	flap_frame_index = 0
-	happy_face_texture = null
-	var happy_path: String = char_dir + MODE_CHARACTER_HAPPY_FILE[mode]
-	if ResourceLoader.exists(happy_path):
-		happy_face_texture = load(happy_path)
-	sad_face_texture = null
-	var sad_path: String = char_dir + MODE_CHARACTER_SAD_FILE[mode]
-	if ResourceLoader.exists(sad_path):
-		sad_face_texture = load(sad_path)
+	happy_face_texture = _load_face(char_dir + MODE_CHARACTER_HAPPY_FILE[mode], sky_dir + MODE_CHARACTER_HAPPY_FILE[Mode.SKY])
+	sad_face_texture = _load_face(char_dir + MODE_CHARACTER_SAD_FILE[mode], sky_dir + MODE_CHARACTER_SAD_FILE[Mode.SKY])
 	active_draw_offset_fly = MODE_DRAW_OFFSET_FLY[mode]
 	active_draw_offset_happy = MODE_DRAW_OFFSET_HAPPY[mode]
 	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
@@ -2799,6 +3494,7 @@ func _reset_game() -> void:
 	combo = 0
 	gates_passed = 0
 	gates.clear()
+	last_quiz_key = ""  # repeat guard is per-run — see last_quiz_key
 	flash_time = 0.0
 	gate_speed_boost_elapsed = -1.0
 	last_zone_center = player_y
@@ -2969,6 +3665,11 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if ci == null:
 		ci = self
+	# OCEAN's question is a painted colour, not a string, so it takes over
+	# the whole box rather than feeding text into the path below.
+	if current_mode == Mode.OCEAN:
+		_draw_ocean_quiz_box(view_size, ci)
+		return
 	var upcoming_target := _get_upcoming_target()
 	if upcoming_target == "":
 		return
@@ -3000,6 +3701,90 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var max_width: float = box_rect.size.x - QUIZ_BOX_MARGIN
 		var font_size := _fit_font_size(text, max_width, 22, 14)
 		_draw_centered_text(text, box_rect.get_center(), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), null, ci)
+
+
+# ============================================================
+# OCEAN mode's question box. Lays out one row inside the same writing area
+# the other modes' text uses — prompt on the left, the painted word on the
+# right, centred as a pair.
+# ============================================================
+
+# First gate whose question hasn't been answered yet — the one the box is
+# currently asking about. Sibling of _get_upcoming_target, which returns a
+# bare string and so can't carry a colour.
+func _get_upcoming_ocean_gate() -> Dictionary:
+	for g in gates:
+		if not g.resolved and g.has("ocean_answer_index"):
+			return g
+	return {}
+
+
+# Left-aligned sibling of _draw_centered_text. The prompt and the stimulus
+# are laid out as one row, so both have to be placed by their left edge and
+# share the one measured baseline.
+func _draw_ocean_text(ci: CanvasItem, text: String, left_x: float, center_y: float, font_size: int, fill: Color, outline: Color, outline_px: float) -> void:
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var pos := Vector2(left_x, center_y + font_size * QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
+	if outline_px > 0.0 and outline.a > 0.0:
+		for dx in [-outline_px, 0.0, outline_px]:
+			for dy in [-outline_px, 0.0, outline_px]:
+				if dx == 0.0 and dy == 0.0:
+					continue
+				ci.draw_string(font, pos + Vector2(dx, dy), text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline)
+	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill)
+
+
+func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
+	var g: Dictionary = _get_upcoming_ocean_gate()
+	if g.is_empty():
+		return
+	var rect := _quiz_box_rect(view_size)
+	if quiz_box_texture != null:
+		ci.draw_texture_rect(quiz_box_texture, rect, false)
+	else:
+		var style := StyleBoxFlat.new()
+		style.bg_color = QUIZ_BOX_COLOR
+		style.set_corner_radius_all(int(QUIZ_BOX_CORNER_RADIUS))
+		ci.draw_style_box(style, rect)
+
+	# Blank writing area inside the box art, right of the painted "QUIZ"
+	# label — the same one the flag/math text is centred in.
+	var pad: float = rect.size.x * QUIZ_TEXT_SIDE_PAD_FRAC
+	var area_left: float = rect.position.x + rect.size.x * QUIZ_TEXT_LEFT_FRAC + pad
+	var area_right: float = rect.position.x + rect.size.x * QUIZ_TEXT_RIGHT_FRAC - pad
+	var area_width: float = area_right - area_left
+	var center_y: float = rect.position.y + rect.size.y * QUIZ_TEXT_CENTER_Y_FRAC
+
+	var word: String = OCEAN_COLOR_NAMES[g.ocean_word_index]
+	var ink_color: Color = OCEAN_COLOR_RGB[g.ocean_answer_index]
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+
+	# Shrink the pair together until the row fits the writing area. The
+	# prompt is static and read once, the word is re-read every gate, so the
+	# prompt stays the smaller of the two at every size (see
+	# OCEAN_PROMPT_SIZE_RATIO). Bounded by the floor, so this always ends.
+	var word_size: int = int(round(rect.size.x * QUIZ_TEXT_MAX_FONT_FRAC))
+	var min_word_size: int = int(round(rect.size.x * OCEAN_STIMULUS_MIN_FONT_FRAC))
+	var gap: float = rect.size.x * OCEAN_PROMPT_GAP_FRAC
+	var prompt_size: int = 0
+	var prompt_width: float = 0.0
+	var word_width: float = 0.0
+	while true:
+		prompt_size = maxi(OCEAN_PROMPT_MIN_FONT, int(round(word_size * OCEAN_PROMPT_SIZE_RATIO)))
+		prompt_width = font.get_string_size(OCEAN_PROMPT_INK, HORIZONTAL_ALIGNMENT_LEFT, -1, prompt_size).x
+		word_width = font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, word_size).x
+		if prompt_width + gap + word_width <= area_width or word_size <= min_word_size:
+			break
+		word_size -= 1
+
+	var cursor_x: float = (area_left + area_right) * 0.5 - (prompt_width + gap + word_width) * 0.5
+	_draw_ocean_text(ci, OCEAN_PROMPT_INK, cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
+	cursor_x += prompt_width + gap
+
+	# The answer is the INK. Outlined because a YELLOW or WHITE word would
+	# otherwise wash out against the cream box art; the same outline goes on
+	# every colour so it never becomes a hint.
+	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, OCEAN_INK_OUTLINE_PX)
 
 
 func _draw() -> void:

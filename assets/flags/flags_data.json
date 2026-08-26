@@ -1,1160 +1,1353 @@
-﻿[
+[
     {
         "code":  "AD",
         "name":  "Andorra",
         "image":  "res://assets/flags/256x171/AD.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_yellow_red"
     },
     {
         "code":  "AE",
         "name":  "United Arab Emirates",
         "image":  "res://assets/flags/256x171/AE.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "AF",
         "name":  "Afghanistan",
         "image":  "res://assets/flags/256x171/AF.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "AG",
         "name":  "Antigua and Barbuda",
         "image":  "res://assets/flags/256x171/AG.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "AL",
         "name":  "Albania",
         "image":  "res://assets/flags/256x171/AL.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "AM",
         "name":  "Armenia",
         "image":  "res://assets/flags/256x171/AM.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "AO",
         "name":  "Angola",
         "image":  "res://assets/flags/256x171/AO.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "AR",
         "name":  "Argentina",
         "image":  "res://assets/flags/256x171/AR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "AT",
         "name":  "Austria",
         "image":  "res://assets/flags/256x171/AT.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "AU",
         "name":  "Australia",
         "image":  "res://assets/flags/256x171/AU.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "union_jack"
     },
     {
         "code":  "AZ",
         "name":  "Azerbaijan",
         "image":  "res://assets/flags/256x171/AZ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "BA",
         "name":  "Bosnia and Herzegovina",
         "image":  "res://assets/flags/256x171/BA.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BB",
         "name":  "Barbados",
         "image":  "res://assets/flags/256x171/BB.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BD",
         "name":  "Bangladesh",
         "image":  "res://assets/flags/256x171/BD.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "sun_disc"
     },
     {
         "code":  "BE",
         "name":  "Belgium",
         "image":  "res://assets/flags/256x171/BE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "black_yellow_red"
     },
     {
         "code":  "BF",
         "name":  "Burkina Faso",
         "image":  "res://assets/flags/256x171/BF.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "BG",
         "name":  "Bulgaria",
         "image":  "res://assets/flags/256x171/BG.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BH",
         "name":  "Bahrain",
         "image":  "res://assets/flags/256x171/BH.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "BI",
         "name":  "Burundi",
         "image":  "res://assets/flags/256x171/BI.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BJ",
         "name":  "Benin",
         "image":  "res://assets/flags/256x171/BJ.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "BN",
         "name":  "Brunei",
         "image":  "res://assets/flags/256x171/BN.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BO",
         "name":  "Bolivia",
         "image":  "res://assets/flags/256x171/BO.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "BR",
         "name":  "Brazil",
         "image":  "res://assets/flags/256x171/BR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "southern_stars"
     },
     {
         "code":  "BS",
         "name":  "Bahamas",
         "image":  "res://assets/flags/256x171/BS.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BT",
         "name":  "Bhutan",
         "image":  "res://assets/flags/256x171/BT.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BW",
         "name":  "Botswana",
         "image":  "res://assets/flags/256x171/BW.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BY",
         "name":  "Belarus",
         "image":  "res://assets/flags/256x171/BY.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "BZ",
         "name":  "Belize",
         "image":  "res://assets/flags/256x171/BZ.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CA",
         "name":  "Canada",
         "image":  "res://assets/flags/256x171/CA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "CD",
         "name":  "DR Congo",
         "image":  "res://assets/flags/256x171/CD.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CF",
         "name":  "Central African Republic",
         "image":  "res://assets/flags/256x171/CF.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CG",
         "name":  "Congo",
         "image":  "res://assets/flags/256x171/CG.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CH",
         "name":  "Switzerland",
         "image":  "res://assets/flags/256x171/CH.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "square_cross"
     },
     {
         "code":  "CI",
         "name":  "Ivory Coast",
         "image":  "res://assets/flags/256x171/CI.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "green_white_orange"
     },
     {
         "code":  "CL",
         "name":  "Chile",
         "image":  "res://assets/flags/256x171/CL.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "CM",
         "name":  "Cameroon",
         "image":  "res://assets/flags/256x171/CM.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "pan_african_vertical"
     },
     {
         "code":  "CN",
         "name":  "China",
         "image":  "res://assets/flags/256x171/CN.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_field_star"
     },
     {
         "code":  "CO",
         "name":  "Colombia",
         "image":  "res://assets/flags/256x171/CO.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "andean_tricolor"
     },
     {
         "code":  "CR",
         "name":  "Costa Rica",
         "image":  "res://assets/flags/256x171/CR.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CU",
         "name":  "Cuba",
         "image":  "res://assets/flags/256x171/CU.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "CV",
         "name":  "Cape Verde",
         "image":  "res://assets/flags/256x171/CV.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CY",
         "name":  "Cyprus",
         "image":  "res://assets/flags/256x171/CY.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "CZ",
         "name":  "Czechia",
         "image":  "res://assets/flags/256x171/CZ.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "DE",
         "name":  "Germany",
         "image":  "res://assets/flags/256x171/DE.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "black_yellow_red"
     },
     {
         "code":  "DJ",
         "name":  "Djibouti",
         "image":  "res://assets/flags/256x171/DJ.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "DK",
         "name":  "Denmark",
         "image":  "res://assets/flags/256x171/DK.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "nordic_cross"
     },
     {
         "code":  "DM",
         "name":  "Dominica",
         "image":  "res://assets/flags/256x171/DM.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "DO",
         "name":  "Dominican Republic",
         "image":  "res://assets/flags/256x171/DO.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "DZ",
         "name":  "Algeria",
         "image":  "res://assets/flags/256x171/DZ.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "EC",
         "name":  "Ecuador",
         "image":  "res://assets/flags/256x171/EC.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "andean_tricolor"
     },
     {
         "code":  "EE",
         "name":  "Estonia",
         "image":  "res://assets/flags/256x171/EE.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "EG",
         "name":  "Egypt",
         "image":  "res://assets/flags/256x171/EG.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "ER",
         "name":  "Eritrea",
         "image":  "res://assets/flags/256x171/ER.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ES",
         "name":  "Spain",
         "image":  "res://assets/flags/256x171/ES.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ET",
         "name":  "Ethiopia",
         "image":  "res://assets/flags/256x171/ET.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "FI",
         "name":  "Finland",
         "image":  "res://assets/flags/256x171/FI.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "nordic_cross"
     },
     {
         "code":  "FJ",
         "name":  "Fiji",
         "image":  "res://assets/flags/256x171/FJ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "union_jack"
     },
     {
         "code":  "FM",
         "name":  "Micronesia",
         "image":  "res://assets/flags/256x171/FM.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "blue_star_field"
     },
     {
         "code":  "FR",
         "name":  "France",
         "image":  "res://assets/flags/256x171/FR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "french_tricolor"
     },
     {
         "code":  "GA",
         "name":  "Gabon",
         "image":  "res://assets/flags/256x171/GA.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "GB",
         "name":  "United Kingdom",
         "image":  "res://assets/flags/256x171/GB.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "union_jack"
     },
     {
         "code":  "GD",
         "name":  "Grenada",
         "image":  "res://assets/flags/256x171/GD.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "GE",
         "name":  "Georgia",
         "image":  "res://assets/flags/256x171/GE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "square_cross"
     },
     {
         "code":  "GH",
         "name":  "Ghana",
         "image":  "res://assets/flags/256x171/GH.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "GM",
         "name":  "Gambia",
         "image":  "res://assets/flags/256x171/GM.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "GN",
         "name":  "Guinea",
         "image":  "res://assets/flags/256x171/GN.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "pan_african_vertical"
     },
     {
         "code":  "GQ",
         "name":  "Equatorial Guinea",
         "image":  "res://assets/flags/256x171/GQ.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "GR",
         "name":  "Greece",
         "image":  "res://assets/flags/256x171/GR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "GT",
         "name":  "Guatemala",
         "image":  "res://assets/flags/256x171/GT.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "GW",
         "name":  "Guinea-Bissau",
         "image":  "res://assets/flags/256x171/GW.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "GY",
         "name":  "Guyana",
         "image":  "res://assets/flags/256x171/GY.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "HN",
         "name":  "Honduras",
         "image":  "res://assets/flags/256x171/HN.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "HR",
         "name":  "Croatia",
         "image":  "res://assets/flags/256x171/HR.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "HT",
         "name":  "Haiti",
         "image":  "res://assets/flags/256x171/HT.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "HU",
         "name":  "Hungary",
         "image":  "res://assets/flags/256x171/HU.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ID",
         "name":  "Indonesia",
         "image":  "res://assets/flags/256x171/ID.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "IE",
         "name":  "Ireland",
         "image":  "res://assets/flags/256x171/IE.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "green_white_orange"
     },
     {
         "code":  "IL",
         "name":  "Israel",
         "image":  "res://assets/flags/256x171/IL.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "IN",
         "name":  "India",
         "image":  "res://assets/flags/256x171/IN.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "saffron_white_green"
     },
     {
         "code":  "IQ",
         "name":  "Iraq",
         "image":  "res://assets/flags/256x171/IQ.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "IR",
         "name":  "Iran",
         "image":  "res://assets/flags/256x171/IR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "IS",
         "name":  "Iceland",
         "image":  "res://assets/flags/256x171/IS.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "nordic_cross"
     },
     {
         "code":  "IT",
         "name":  "Italy",
         "image":  "res://assets/flags/256x171/IT.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "green_white_orange"
     },
     {
         "code":  "JM",
         "name":  "Jamaica",
         "image":  "res://assets/flags/256x171/JM.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "JO",
         "name":  "Jordan",
         "image":  "res://assets/flags/256x171/JO.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "JP",
         "name":  "Japan",
         "image":  "res://assets/flags/256x171/JP.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "sun_disc"
     },
     {
         "code":  "KE",
         "name":  "Kenya",
         "image":  "res://assets/flags/256x171/KE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KG",
         "name":  "Kyrgyzstan",
         "image":  "res://assets/flags/256x171/KG.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KH",
         "name":  "Cambodia",
         "image":  "res://assets/flags/256x171/KH.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KI",
         "name":  "Kiribati",
         "image":  "res://assets/flags/256x171/KI.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KM",
         "name":  "Comoros",
         "image":  "res://assets/flags/256x171/KM.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "KN",
         "name":  "Saint Kitts and Nevis",
         "image":  "res://assets/flags/256x171/KN.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KP",
         "name":  "North Korea",
         "image":  "res://assets/flags/256x171/KP.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KR",
         "name":  "South Korea",
         "image":  "res://assets/flags/256x171/KR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "KW",
         "name":  "Kuwait",
         "image":  "res://assets/flags/256x171/KW.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "KZ",
         "name":  "Kazakhstan",
         "image":  "res://assets/flags/256x171/KZ.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LA",
         "name":  "Laos",
         "image":  "res://assets/flags/256x171/LA.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LB",
         "name":  "Lebanon",
         "image":  "res://assets/flags/256x171/LB.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "LC",
         "name":  "Saint Lucia",
         "image":  "res://assets/flags/256x171/LC.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LI",
         "name":  "Liechtenstein",
         "image":  "res://assets/flags/256x171/LI.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LK",
         "name":  "Sri Lanka",
         "image":  "res://assets/flags/256x171/LK.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LR",
         "name":  "Liberia",
         "image":  "res://assets/flags/256x171/LR.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "LS",
         "name":  "Lesotho",
         "image":  "res://assets/flags/256x171/LS.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "LT",
         "name":  "Lithuania",
         "image":  "res://assets/flags/256x171/LT.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "LU",
         "name":  "Luxembourg",
         "image":  "res://assets/flags/256x171/LU.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "french_tricolor"
     },
     {
         "code":  "LV",
         "name":  "Latvia",
         "image":  "res://assets/flags/256x171/LV.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "LY",
         "name":  "Libya",
         "image":  "res://assets/flags/256x171/LY.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MA",
         "name":  "Morocco",
         "image":  "res://assets/flags/256x171/MA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_field_star"
     },
     {
         "code":  "MC",
         "name":  "Monaco",
         "image":  "res://assets/flags/256x171/MC.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "MD",
         "name":  "Moldova",
         "image":  "res://assets/flags/256x171/MD.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_yellow_red"
     },
     {
         "code":  "ME",
         "name":  "Montenegro",
         "image":  "res://assets/flags/256x171/ME.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MG",
         "name":  "Madagascar",
         "image":  "res://assets/flags/256x171/MG.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MH",
         "name":  "Marshall Islands",
         "image":  "res://assets/flags/256x171/MH.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MK",
         "name":  "North Macedonia",
         "image":  "res://assets/flags/256x171/MK.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ML",
         "name":  "Mali",
         "image":  "res://assets/flags/256x171/ML.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "pan_african_vertical"
     },
     {
         "code":  "MM",
         "name":  "Myanmar",
         "image":  "res://assets/flags/256x171/MM.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "MN",
         "name":  "Mongolia",
         "image":  "res://assets/flags/256x171/MN.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MR",
         "name":  "Mauritania",
         "image":  "res://assets/flags/256x171/MR.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "MT",
         "name":  "Malta",
         "image":  "res://assets/flags/256x171/MT.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "MU",
         "name":  "Mauritius",
         "image":  "res://assets/flags/256x171/MU.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MV",
         "name":  "Maldives",
         "image":  "res://assets/flags/256x171/MV.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "MW",
         "name":  "Malawi",
         "image":  "res://assets/flags/256x171/MW.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "MX",
         "name":  "Mexico",
         "image":  "res://assets/flags/256x171/MX.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "green_white_orange"
     },
     {
         "code":  "MY",
         "name":  "Malaysia",
         "image":  "res://assets/flags/256x171/MY.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "MZ",
         "name":  "Mozambique",
         "image":  "res://assets/flags/256x171/MZ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "NA",
         "name":  "Namibia",
         "image":  "res://assets/flags/256x171/NA.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "NE",
         "name":  "Niger",
         "image":  "res://assets/flags/256x171/NE.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "saffron_white_green"
     },
     {
         "code":  "NG",
         "name":  "Nigeria",
         "image":  "res://assets/flags/256x171/NG.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "NI",
         "name":  "Nicaragua",
         "image":  "res://assets/flags/256x171/NI.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "NL",
         "name":  "Netherlands",
         "image":  "res://assets/flags/256x171/NL.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "french_tricolor"
     },
     {
         "code":  "NO",
         "name":  "Norway",
         "image":  "res://assets/flags/256x171/NO.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "nordic_cross"
     },
     {
         "code":  "NP",
         "name":  "Nepal",
         "image":  "res://assets/flags/256x171/NP.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "NR",
         "name":  "Nauru",
         "image":  "res://assets/flags/256x171/NR.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "NZ",
         "name":  "New Zealand",
         "image":  "res://assets/flags/256x171/NZ.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "union_jack"
     },
     {
         "code":  "OM",
         "name":  "Oman",
         "image":  "res://assets/flags/256x171/OM.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "PA",
         "name":  "Panama",
         "image":  "res://assets/flags/256x171/PA.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "PE",
         "name":  "Peru",
         "image":  "res://assets/flags/256x171/PE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "red_white_red_bands"
     },
     {
         "code":  "PG",
         "name":  "Papua New Guinea",
         "image":  "res://assets/flags/256x171/PG.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "southern_stars"
     },
     {
         "code":  "PH",
         "name":  "Philippines",
         "image":  "res://assets/flags/256x171/PH.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "PK",
         "name":  "Pakistan",
         "image":  "res://assets/flags/256x171/PK.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "PL",
         "name":  "Poland",
         "image":  "res://assets/flags/256x171/PL.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "PT",
         "name":  "Portugal",
         "image":  "res://assets/flags/256x171/PT.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "PW",
         "name":  "Palau",
         "image":  "res://assets/flags/256x171/PW.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "sun_disc"
     },
     {
         "code":  "PY",
         "name":  "Paraguay",
         "image":  "res://assets/flags/256x171/PY.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "french_tricolor"
     },
     {
         "code":  "QA",
         "name":  "Qatar",
         "image":  "res://assets/flags/256x171/QA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "RO",
         "name":  "Romania",
         "image":  "res://assets/flags/256x171/RO.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "blue_yellow_red"
     },
     {
         "code":  "RS",
         "name":  "Serbia",
         "image":  "res://assets/flags/256x171/RS.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "RU",
         "name":  "Russia",
         "image":  "res://assets/flags/256x171/RU.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "RW",
         "name":  "Rwanda",
         "image":  "res://assets/flags/256x171/RW.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SA",
         "name":  "Saudi Arabia",
         "image":  "res://assets/flags/256x171/SA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SB",
         "name":  "Solomon Islands",
         "image":  "res://assets/flags/256x171/SB.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SC",
         "name":  "Seychelles",
         "image":  "res://assets/flags/256x171/SC.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SD",
         "name":  "Sudan",
         "image":  "res://assets/flags/256x171/SD.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "SE",
         "name":  "Sweden",
         "image":  "res://assets/flags/256x171/SE.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "nordic_cross"
     },
     {
         "code":  "SG",
         "name":  "Singapore",
         "image":  "res://assets/flags/256x171/SG.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_white_bicolor"
     },
     {
         "code":  "SI",
         "name":  "Slovenia",
         "image":  "res://assets/flags/256x171/SI.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "SK",
         "name":  "Slovakia",
         "image":  "res://assets/flags/256x171/SK.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "slavic_tricolor"
     },
     {
         "code":  "SL",
         "name":  "Sierra Leone",
         "image":  "res://assets/flags/256x171/SL.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SM",
         "name":  "San Marino",
         "image":  "res://assets/flags/256x171/SM.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SN",
         "name":  "Senegal",
         "image":  "res://assets/flags/256x171/SN.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_african_vertical"
     },
     {
         "code":  "SO",
         "name":  "Somalia",
         "image":  "res://assets/flags/256x171/SO.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_star_field"
     },
     {
         "code":  "SR",
         "name":  "Suriname",
         "image":  "res://assets/flags/256x171/SR.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SS",
         "name":  "South Sudan",
         "image":  "res://assets/flags/256x171/SS.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ST",
         "name":  "São Tomé and Príncipe",
         "image":  "res://assets/flags/256x171/ST.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "SV",
         "name":  "El Salvador",
         "image":  "res://assets/flags/256x171/SV.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "blue_white_bands"
     },
     {
         "code":  "SY",
         "name":  "Syria",
         "image":  "res://assets/flags/256x171/SY.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "SZ",
         "name":  "Eswatini",
         "image":  "res://assets/flags/256x171/SZ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TD",
         "name":  "Chad",
         "image":  "res://assets/flags/256x171/TD.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "blue_yellow_red"
     },
     {
         "code":  "TG",
         "name":  "Togo",
         "image":  "res://assets/flags/256x171/TG.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "pan_african_horizontal"
     },
     {
         "code":  "TH",
         "name":  "Thailand",
         "image":  "res://assets/flags/256x171/TH.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TJ",
         "name":  "Tajikistan",
         "image":  "res://assets/flags/256x171/TJ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TL",
         "name":  "Timor-Leste",
         "image":  "res://assets/flags/256x171/TL.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TM",
         "name":  "Turkmenistan",
         "image":  "res://assets/flags/256x171/TM.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "TN",
         "name":  "Tunisia",
         "image":  "res://assets/flags/256x171/TN.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "TO",
         "name":  "Tonga",
         "image":  "res://assets/flags/256x171/TO.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TR",
         "name":  "Türkiye",
         "image":  "res://assets/flags/256x171/TR.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "TT",
         "name":  "Trinidad and Tobago",
         "image":  "res://assets/flags/256x171/TT.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "TV",
         "name":  "Tuvalu",
         "image":  "res://assets/flags/256x171/TV.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  "union_jack"
     },
     {
         "code":  "TZ",
         "name":  "Tanzania",
         "image":  "res://assets/flags/256x171/TZ.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "UA",
         "name":  "Ukraine",
         "image":  "res://assets/flags/256x171/UA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "UG",
         "name":  "Uganda",
         "image":  "res://assets/flags/256x171/UG.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "black_yellow_red"
     },
     {
         "code":  "US",
         "name":  "United States",
         "image":  "res://assets/flags/256x171/US.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "UY",
         "name":  "Uruguay",
         "image":  "res://assets/flags/256x171/UY.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "stripes_canton"
     },
     {
         "code":  "UZ",
         "name":  "Uzbekistan",
         "image":  "res://assets/flags/256x171/UZ.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "crescent_star"
     },
     {
         "code":  "VC",
         "name":  "Saint Vincent and the Grenadines",
         "image":  "res://assets/flags/256x171/VC.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "VE",
         "name":  "Venezuela",
         "image":  "res://assets/flags/256x171/VE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "andean_tricolor"
     },
     {
         "code":  "VN",
         "name":  "Vietnam",
         "image":  "res://assets/flags/256x171/VN.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  "red_field_star"
     },
     {
         "code":  "VU",
         "name":  "Vanuatu",
         "image":  "res://assets/flags/256x171/VU.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "WS",
         "name":  "Samoa",
         "image":  "res://assets/flags/256x171/WS.png",
-        "tier":  3
+        "recognition_tier":  3,
+        "confusion_cluster_id":  "southern_stars"
     },
     {
         "code":  "YE",
         "name":  "Yemen",
         "image":  "res://assets/flags/256x171/YE.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_arab"
     },
     {
         "code":  "ZA",
         "name":  "South Africa",
         "image":  "res://assets/flags/256x171/ZA.png",
-        "tier":  1
+        "recognition_tier":  1,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ZM",
         "name":  "Zambia",
         "image":  "res://assets/flags/256x171/ZM.png",
-        "tier":  4
+        "recognition_tier":  4,
+        "confusion_cluster_id":  ""
     },
     {
         "code":  "ZW",
         "name":  "Zimbabwe",
         "image":  "res://assets/flags/256x171/ZW.png",
-        "tier":  2
+        "recognition_tier":  2,
+        "confusion_cluster_id":  "pan_african_horizontal"
     }
 ]

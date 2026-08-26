@@ -29,29 +29,38 @@ horizontal_alignment = 1
 [node name="SkyModeButton" type="Button" parent="UI/ModeSelectPanel" unique_id=1925926919]
 layout_mode = 0
 offset_left = 90.0
-offset_top = 380.0
+offset_top = 340.0
 offset_right = 390.0
-offset_bottom = 440.0
+offset_bottom = 400.0
 theme_override_font_sizes/font_size = 20
 text = "SKY — bird + flag quiz"
 
 [node name="JungleModeButton" type="Button" parent="UI/ModeSelectPanel" unique_id=1925926920]
 layout_mode = 0
 offset_left = 90.0
-offset_top = 460.0
+offset_top = 420.0
 offset_right = 390.0
-offset_bottom = 520.0
+offset_bottom = 480.0
 theme_override_font_sizes/font_size = 20
 text = "JUNGLE — dragon + flag quiz"
 
 [node name="OceanModeButton" type="Button" parent="UI/ModeSelectPanel" unique_id=1925926921]
 layout_mode = 0
 offset_left = 90.0
-offset_top = 540.0
+offset_top = 500.0
 offset_right = 390.0
-offset_bottom = 600.0
+offset_bottom = 560.0
 theme_override_font_sizes/font_size = 20
-text = "OCEAN — shark + flag quiz"
+text = "OCEAN — shark + color quiz"
+
+[node name="DreamModeButton" type="Button" parent="UI/ModeSelectPanel" unique_id=1925926922]
+layout_mode = 0
+offset_left = 90.0
+offset_top = 580.0
+offset_right = 390.0
+offset_bottom = 640.0
+theme_override_font_sizes/font_size = 20
+text = "DREAM — unicorn + flag quiz"
 
 [node name="ReadyPanel" type="Control" parent="UI" unique_id=1168968718]
 layout_mode = 3
