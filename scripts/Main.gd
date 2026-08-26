@@ -809,7 +809,31 @@ const FX_SOUND_FLAP_PATH := "res://assets/audio/bird_flap.wav"
 # parallax background), independent of the FX players above. Respects the
 # existing mute button since AudioStreamPlayer defaults to the Master bus,
 # same as every other sound here.
-const BGM_MAIN_PATH := "res://assets/audio/bgm_main.wav"
+const BGM_DIR := "res://assets/audio/"
+# Music is named without an extension here and resolved at load time, .ogg
+# first. OGG is the intended shipping format — these tracks run 10-14 MB
+# each as WAV and roughly a tenth of that as OGG, which is the difference
+# between a sane and an absurd mobile build once all five exist — but the
+# fallback means an un-converted .wav still plays, and dropping the .ogg
+# beside it switches over with no code change.
+const BGM_EXTENSIONS := [".ogg", ".wav"]
+# The splash and mode-picker screens share one track; a run switches to the
+# chosen mode's. Per-mode entries are indexed by Mode, same convention as
+# MODE_CHARACTER_DIR/MODE_GATE_DIR — all four point at the one existing
+# game track for now, so adding a per-mode file later is one line each.
+const BGM_MENU_NAME := "bgm_main_v2_loop"
+const BGM_MAIN_NAME := "bgm_main_loop"
+const MODE_BGM_NAME := [
+	BGM_MAIN_NAME,  # SKY
+	BGM_MAIN_NAME,  # JUNGLE
+	BGM_MAIN_NAME,  # OCEAN
+	BGM_MAIN_NAME,  # DREAM
+]
+# Swapping tracks hard-cuts audibly, so the outgoing player fades down while
+# the incoming one fades up over this long. Two players exist purely to make
+# that overlap possible.
+const BGM_CROSSFADE_TIME := 0.4
+const BGM_SILENT_DB := -40.0
 # Countdown beat sounds — one played the instant the READY image appears,
 # the other the instant it swaps to START (see _start_countdown and
 # _update_countdown).
@@ -819,7 +843,7 @@ const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
 # the screen all funnel through the single _game_over() below, so this is
 # the one place it needs to be wired. BGM is stopped (not just paused) at
 # the same time — see _game_over — pending a separate failure-BGM track
-# later; _start_countdown resumes bgm_player for the next run.
+# later; _start_countdown resumes the music for the next run.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
 
@@ -1017,7 +1041,27 @@ const REACH_SAFETY_FACTOR := 0.85
 # dummy country-name list entirely.
 const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 
-enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER }
+# SPLASH is the boot screen (title art + "Tap to START"); it hands off to
+# MODE_SELECT on the first tap. Appended rather than placed first so the
+# existing states keep their values.
+enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH }
+
+# ============================================================
+# Splash / title screen — the first thing shown on boot, before the mode
+# picker. Just the painted title art plus a prompt; a tap anywhere moves on.
+# ============================================================
+const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash_v2.png"
+# The art is a taller aspect than the viewport, so it is scaled to COVER and
+# centred — the overflow is cropped rather than letterboxed. The title and
+# the three characters sit in the upper-middle of the painting, so an even
+# centre crop keeps them all and only trims sky and sea-floor.
+const SPLASH_PROMPT_TEXT := "Tap to START"
+const SPLASH_PROMPT_BOTTOM_FRAC := 0.135   # of view height — distance from the bottom edge to the prompt's centre
+const SPLASH_PROMPT_FONT_SCALE := 0.055    # of view height
+const SPLASH_PROMPT_PULSE_PERIOD := 1.3    # seconds per fade cycle
+const SPLASH_PROMPT_ALPHA_RANGE := Vector2(0.45, 1.0)
+const SPLASH_PROMPT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
+const SPLASH_PROMPT_OUTLINE := Color(0.09, 0.16, 0.33, 1.0)  # deep navy, matching the title art's own outline
 
 var state: int = State.READY
 
@@ -1219,6 +1263,8 @@ var best_score: int = 0   # loaded from SAVE_PATH in _ready, written on game ove
 var score_box_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
+var splash_texture: Texture2D
+var splash_elapsed: float = 0.0   # free-running clock for the prompt pulse
 # Child canvas the top HUD is drawn on, so it can use a texture filter of
 # its own (see scripts/HudCanvas.gd). Created in _ready.
 var hud_canvas: Node2D
@@ -1281,16 +1327,17 @@ var combo_font: Font
 var fx_sound_whoosh: AudioStreamPlayer
 var fx_sound_chime: AudioStreamPlayer
 var fx_sound_flap: AudioStreamPlayer
-var bgm_player: AudioStreamPlayer
+# Two players so a track change can crossfade; bgm_active indexes whichever
+# is currently the audible one. See _play_bgm.
+var bgm_players: Array[AudioStreamPlayer] = []
+var bgm_active: int = 0
+var bgm_current_path: String = ""
+var bgm_fade_tween: Tween
 var fx_sound_countdown_ready: AudioStreamPlayer
 var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
-@onready var sky_mode_button: Button = $UI/ModeSelectPanel/SkyModeButton
-@onready var jungle_mode_button: Button = $UI/ModeSelectPanel/JungleModeButton
-@onready var ocean_mode_button: Button = $UI/ModeSelectPanel/OceanModeButton
-@onready var dream_mode_button: Button = $UI/ModeSelectPanel/DreamModeButton
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
@@ -1360,12 +1407,14 @@ func _ready() -> void:
 	add_child(fx_sound_flap)
 	if ResourceLoader.exists(FX_SOUND_FLAP_PATH):
 		fx_sound_flap.stream = load(FX_SOUND_FLAP_PATH)
-	bgm_player = AudioStreamPlayer.new()
-	add_child(bgm_player)
-	if ResourceLoader.exists(BGM_MAIN_PATH):
-		bgm_player.stream = load(BGM_MAIN_PATH)
-		bgm_player.finished.connect(bgm_player.play)  # manual loop — simpler/more reliable than fiddling with AudioStreamWAV's own loop points
-		bgm_player.play()
+	for i in range(2):
+		var player := AudioStreamPlayer.new()
+		add_child(player)
+		player.volume_db = BGM_SILENT_DB
+		# Manual loop — simpler and more reliable than relying on each source
+		# format's own loop points.
+		player.finished.connect(_on_bgm_finished.bind(player))
+		bgm_players.append(player)
 	fx_sound_countdown_ready = AudioStreamPlayer.new()
 	add_child(fx_sound_countdown_ready)
 	if ResourceLoader.exists(COUNTDOWN_READY_SOUND_PATH):
@@ -1378,10 +1427,9 @@ func _ready() -> void:
 	add_child(fx_sound_gameover)
 	if ResourceLoader.exists(FX_SOUND_GAMEOVER_PATH):
 		fx_sound_gameover.stream = load(FX_SOUND_GAMEOVER_PATH)
-	sky_mode_button.pressed.connect(_on_mode_selected.bind(Mode.SKY))
-	jungle_mode_button.pressed.connect(_on_mode_selected.bind(Mode.JUNGLE))
-	ocean_mode_button.pressed.connect(_on_mode_selected.bind(Mode.OCEAN))
-	dream_mode_button.pressed.connect(_on_mode_selected.bind(Mode.DREAM))
+	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
+	# back which mode START chose.
+	mode_select_panel.start_pressed.connect(_on_mode_selected)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
@@ -1394,8 +1442,12 @@ func _ready() -> void:
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
 	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
 	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
+	if ResourceLoader.exists(SPLASH_TEXTURE_PATH):
+		splash_texture = load(SPLASH_TEXTURE_PATH)
 	_reset_game()
-	_set_state(State.MODE_SELECT)
+	# Boot into the title screen; with no art on disk, straight to the mode
+	# picker as before.
+	_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
 
 
 # Slices a cols x rows spritesheet (equal-size cells) into individual
@@ -2003,7 +2055,9 @@ func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state != State.PLAYING or paused:
+	if state != State.PLAYING and state != State.SPLASH:
+		return
+	if paused:
 		return
 	var tapped := false
 	if event is InputEventScreenTouch and event.pressed:
@@ -2012,6 +2066,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		tapped = true
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		tapped = true
+	if state == State.SPLASH:
+		# Any tap leaves the title screen; the flap below must not also fire.
+		if tapped:
+			_set_state(State.MODE_SELECT)
+		return
 	if tapped:
 		player_vel = flap_velocity
 		_spawn_trail_burst()
@@ -2020,6 +2079,12 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	# The title screen draws nothing but its own art, so it skips the whole
+	# world update below — it only needs its prompt clock running.
+	if state == State.SPLASH:
+		splash_elapsed += delta
+		queue_redraw()
+		return
 	# Background parallax keeps drifting on every screen (menu, playing,
 	# game over) for a lively backdrop, independent of gameplay state.
 	var view_size := get_viewport_rect().size
@@ -3332,7 +3397,7 @@ func _game_over() -> void:
 	flash_time = FLASH_DURATION
 	final_score_label.text = "SCORE: %d" % score
 	gameover_panel.visible = true
-	bgm_player.stop()
+	_stop_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
 
@@ -3482,8 +3547,8 @@ func _start_countdown() -> void:
 	_set_state(State.COUNTDOWN)
 	if fx_sound_countdown_ready.stream != null:
 		fx_sound_countdown_ready.play()
-	if bgm_player.stream != null and not bgm_player.playing:
-		bgm_player.play()
+	# A run may be starting again after a game over silenced the music.
+	_play_bgm(_bgm_path_for_state())
 
 
 func _reset_game() -> void:
@@ -3550,8 +3615,108 @@ func _animate_button_release(button: Button) -> void:
 	tween.tween_property(button, "scale", Vector2.ONE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
+func _draw_splash(view_size: Vector2) -> void:
+	if splash_texture == null:
+		return
+	# Scale to cover, then centre: whichever axis is proportionally shorter
+	# decides the scale, and the surplus on the other axis is cropped evenly.
+	var tex_size := Vector2(splash_texture.get_width(), splash_texture.get_height())
+	var scale: float = maxf(view_size.x / tex_size.x, view_size.y / tex_size.y)
+	var draw_size: Vector2 = tex_size * scale
+	var top_left: Vector2 = (view_size - draw_size) * 0.5
+	draw_texture_rect(splash_texture, Rect2(top_left, draw_size), false)
+
+	var t: float = fposmod(splash_elapsed, SPLASH_PROMPT_PULSE_PERIOD) / SPLASH_PROMPT_PULSE_PERIOD
+	# sin over the full cycle gives a smooth in-and-out with no hard turn.
+	var pulse: float = (sin(t * TAU - PI * 0.5) + 1.0) * 0.5
+	var alpha: float = lerpf(SPLASH_PROMPT_ALPHA_RANGE.x, SPLASH_PROMPT_ALPHA_RANGE.y, pulse)
+	var font_size := int(round(view_size.y * SPLASH_PROMPT_FONT_SCALE))
+	var centre := Vector2(view_size.x * 0.5, view_size.y * (1.0 - SPLASH_PROMPT_BOTTOM_FRAC))
+	var fill := Color(SPLASH_PROMPT_COLOR.r, SPLASH_PROMPT_COLOR.g, SPLASH_PROMPT_COLOR.b, alpha)
+	var outline := Color(SPLASH_PROMPT_OUTLINE.r, SPLASH_PROMPT_OUTLINE.g, SPLASH_PROMPT_OUTLINE.b, alpha)
+	_draw_centered_text(SPLASH_PROMPT_TEXT, centre, font_size, fill, outline, combo_font)
+
+
+# Finds a track by name, preferring OGG over WAV — see BGM_EXTENSIONS.
+# Returns "" when neither exists, which _play_bgm treats as "leave the
+# current music alone" rather than dropping to silence.
+func _resolve_bgm(track_name: String) -> String:
+	for ext in BGM_EXTENSIONS:
+		var path: String = BGM_DIR + track_name + ext
+		if ResourceLoader.exists(path):
+			return path
+	return ""
+
+
+# Which track belongs to the screen we are on: the menu screens share one,
+# everything from the countdown onward uses the chosen mode's.
+func _bgm_path_for_state() -> String:
+	if state == State.SPLASH or state == State.MODE_SELECT:
+		return _resolve_bgm(BGM_MENU_NAME)
+	return _resolve_bgm(MODE_BGM_NAME[current_mode])
+
+
+func _play_bgm(path: String) -> void:
+	if path == "" or path == bgm_current_path:
+		return  # nothing to switch to, or already on this track
+	var incoming: int = 1 - bgm_active
+	var outgoing: AudioStreamPlayer = bgm_players[bgm_active]
+	var target: AudioStreamPlayer = bgm_players[incoming]
+	var stream: AudioStream = load(path)
+	_enable_stream_loop(stream)
+	target.stream = stream
+	target.volume_db = BGM_SILENT_DB
+	target.play()
+	bgm_active = incoming
+	bgm_current_path = path
+	if bgm_fade_tween != null and bgm_fade_tween.is_valid():
+		bgm_fade_tween.kill()
+	bgm_fade_tween = create_tween()
+	bgm_fade_tween.set_parallel(true)
+	bgm_fade_tween.tween_property(target, "volume_db", 0.0, BGM_CROSSFADE_TIME)
+	bgm_fade_tween.tween_property(outgoing, "volume_db", BGM_SILENT_DB, BGM_CROSSFADE_TIME)
+	bgm_fade_tween.chain().tween_callback(outgoing.stop)
+
+
+func _stop_bgm() -> void:
+	if bgm_fade_tween != null and bgm_fade_tween.is_valid():
+		bgm_fade_tween.kill()
+	for player in bgm_players:
+		player.stop()
+	bgm_current_path = ""
+
+
+# Loop inside the stream rather than by restarting the player. Waiting for
+# the finished signal and calling play() again costs at least a frame of
+# silence, which is plainly audible on a music loop; the audio server's own
+# loop is sample-accurate and seamless. (A track whose end does not lead
+# musically back into its start will still sound like a seam — that is the
+# music, not the playback. AudioStream's loop_offset is the knob for
+# looping past an intro, if a track ever needs one.)
+func _enable_stream_loop(stream: AudioStream) -> void:
+	if stream is AudioStreamOggVorbis or stream is AudioStreamMP3:
+		stream.loop = true
+
+
+func _on_bgm_finished(player: AudioStreamPlayer) -> void:
+	# Only reached by a stream that could not be set to loop itself; the
+	# faded-out player is on its way to stop and must not restart.
+	if player == bgm_players[bgm_active]:
+		player.play()
+
+
 func _set_state(new_state: int) -> void:
 	state = new_state
+	# GAMEOVER keeps the existing behaviour of cutting the music (see
+	# _game_over); every other screen gets the track that belongs to it.
+	if state != State.GAMEOVER:
+		_play_bgm(_bgm_path_for_state())
+	if new_state == State.SPLASH:
+		splash_elapsed = 0.0
+	# The menu screens have no audio control of their own, and the mute button
+	# sits exactly where the mode picker puts its settings icon — so it is an
+	# in-game control only.
+	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT
 	mode_select_panel.visible = state == State.MODE_SELECT
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
@@ -3789,6 +3954,9 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 
 func _draw() -> void:
 	var view_size := get_viewport_rect().size
+	if state == State.SPLASH:
+		_draw_splash(view_size)
+		return
 	if bg_texture != null:
 		_draw_sky_background(view_size)     # single scrolling background image — see _draw_sky_background
 		_draw_ambient_particles()           # small twinkle/leaf/bubble particles, still behind the gate zone
