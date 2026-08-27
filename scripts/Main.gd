@@ -821,13 +821,15 @@ const BGM_EXTENSIONS := [".ogg", ".wav"]
 # chosen mode's. Per-mode entries are indexed by Mode, same convention as
 # MODE_CHARACTER_DIR/MODE_GATE_DIR — all four point at the one existing
 # game track for now, so adding a per-mode file later is one line each.
-const BGM_MENU_NAME := "bgm_main_v2_loop"
-const BGM_MAIN_NAME := "bgm_main_loop"
+const BGM_MENU_NAME := "splash_main_bgm"
+# No per-mode tracks exist yet. An empty name means "leave whatever is
+# playing alone", so a run carries the menu music rather than dropping into
+# silence at the countdown. Fill an entry in as each mode's track arrives.
 const MODE_BGM_NAME := [
-	BGM_MAIN_NAME,  # SKY
-	BGM_MAIN_NAME,  # JUNGLE
-	BGM_MAIN_NAME,  # OCEAN
-	BGM_MAIN_NAME,  # DREAM
+	"",  # SKY
+	"",  # JUNGLE
+	"",  # OCEAN
+	"",  # DREAM
 ]
 # Swapping tracks hard-cuts audibly, so the outgoing player fades down while
 # the incoming one fades up over this long. Two players exist purely to make
