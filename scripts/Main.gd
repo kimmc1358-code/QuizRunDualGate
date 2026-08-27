@@ -846,6 +846,12 @@ const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
 # later; _start_countdown resumes the music for the next run.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
+# Tapping the title screen to enter the mode picker. Every other sound here
+# belongs to a run; this one is the first thing the game ever plays, so it
+# doubles as the "audio is working" confirmation. Optional like the rest —
+# a missing file just means the transition stays silent.
+const FX_SOUND_SPLASH_START_PATH := "res://assets/audio/splash_start.wav"
+
 
 # ---- Phase curve, shared by all three modes ----
 # Difficulty is keyed on how many gates the run has PASSED, and the phase
@@ -1050,7 +1056,7 @@ enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH }
 # Splash / title screen — the first thing shown on boot, before the mode
 # picker. Just the painted title art plus a prompt; a tap anywhere moves on.
 # ============================================================
-const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash_v2.png"
+const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash.png"
 # The art is a taller aspect than the viewport, so it is scaled to COVER and
 # centred — the overflow is cropped rather than letterboxed. The title and
 # the three characters sit in the upper-middle of the painting, so an even
@@ -1336,6 +1342,7 @@ var bgm_fade_tween: Tween
 var fx_sound_countdown_ready: AudioStreamPlayer
 var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
+var fx_sound_splash_start: AudioStreamPlayer
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
 @onready var ready_panel: Control = $UI/ReadyPanel
@@ -1427,6 +1434,10 @@ func _ready() -> void:
 	add_child(fx_sound_gameover)
 	if ResourceLoader.exists(FX_SOUND_GAMEOVER_PATH):
 		fx_sound_gameover.stream = load(FX_SOUND_GAMEOVER_PATH)
+	fx_sound_splash_start = AudioStreamPlayer.new()
+	add_child(fx_sound_splash_start)
+	if ResourceLoader.exists(FX_SOUND_SPLASH_START_PATH):
+		fx_sound_splash_start.stream = load(FX_SOUND_SPLASH_START_PATH)
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
@@ -2069,6 +2080,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if state == State.SPLASH:
 		# Any tap leaves the title screen; the flap below must not also fire.
 		if tapped:
+			# Played before the state change, not after: _set_state can swap
+			# the BGM track for the next screen, and starting the cue first
+			# keeps it from landing under that fade.
+			if fx_sound_splash_start.stream != null:
+				fx_sound_splash_start.play()
 			_set_state(State.MODE_SELECT)
 		return
 	if tapped:
