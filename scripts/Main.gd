@@ -1070,6 +1070,25 @@ const SPLASH_PROMPT_PULSE_PERIOD := 1.3    # seconds per fade cycle
 const SPLASH_PROMPT_ALPHA_RANGE := Vector2(0.45, 1.0)
 const SPLASH_PROMPT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const SPLASH_PROMPT_OUTLINE := Color(0.09, 0.16, 0.33, 1.0)  # deep navy, matching the title art's own outline
+# Tap feedback: the prompt swells and fades out, and the handover to the
+# mode picker waits for it. Without the wait the title would simply cut
+# away and the effect would never be seen. Scaling is done with a draw
+# transform rather than by growing the font size, which would re-rasterise
+# the glyphs every frame and shimmer.
+const SPLASH_EXIT_DURATION := 0.32
+const SPLASH_EXIT_SCALE := 1.55
+# The three playable characters fly under the title, using the same sheets
+# and frame rate the game itself runs them at rather than a painted copy.
+# Order is left to right on screen, so JUNGLE's dragon lands in the middle.
+const SPLASH_CHARACTER_MODES := [Mode.SKY, Mode.JUNGLE, Mode.OCEAN]
+const SPLASH_CHARACTER_MID_Y_FRAC := 0.600   # of view height — below the title, clear of the prompt
+const SPLASH_CHARACTER_SIZE_FRAC := 0.260    # of view width, per character
+const SPLASH_CHARACTER_SPACING_FRAC := 0.300 # of view width, centre to centre
+# Each drifts on its own phase, so the three never rise and fall as a block.
+# Amplitude is a fraction of the drawn size, so it tracks the size above.
+const SPLASH_BOB_AMPLITUDE_FRAC := 0.06
+const SPLASH_BOB_PERIOD := 2.1
+const SPLASH_BOB_PHASE := [0.0, 0.7, 1.35]   # seconds of lead per character
 
 var state: int = State.READY
 
@@ -1273,6 +1292,14 @@ var score_font: Font
 var quiz_box_texture: Texture2D
 var splash_texture: Texture2D
 var splash_elapsed: float = 0.0   # free-running clock for the prompt pulse
+var splash_exit_elapsed: float = -1.0  # -1 = not leaving yet; see SPLASH_EXIT_DURATION
+# One Array[Texture2D] of flight frames per entry in SPLASH_CHARACTER_MODES,
+# loaded once in _ready and independent of the game's own flap_frames, which
+# only ever holds the mode currently being played.
+var splash_character_frames: Array = []
+# Own CanvasItem so the title characters can use a smooth minification filter
+# without the rest of the game inheriting it — see _draw_splash_characters.
+var splash_char_layer: Node2D
 # Child canvas the top HUD is drawn on, so it can use a texture filter of
 # its own (see scripts/HudCanvas.gd). Created in _ready.
 var hud_canvas: Node2D
@@ -1455,8 +1482,17 @@ func _ready() -> void:
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
 	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
 	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
+	splash_char_layer = Node2D.new()
+	splash_char_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	splash_char_layer.draw.connect(_draw_splash_characters)
+	add_child(splash_char_layer)
 	if ResourceLoader.exists(SPLASH_TEXTURE_PATH):
 		splash_texture = load(SPLASH_TEXTURE_PATH)
+	splash_character_frames.clear()
+	for mode in SPLASH_CHARACTER_MODES:
+		var grid: Vector2i = MODE_CHARACTER_SHEET_GRID[mode]
+		splash_character_frames.append(
+			_slice_spritesheet(MODE_CHARACTER_DIR[mode] + MODE_CHARACTER_FLY_FILE[mode], grid.x, grid.y))
 	_reset_game()
 	# Boot into the title screen; with no art on disk, straight to the mode
 	# picker as before.
@@ -2081,13 +2117,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		tapped = true
 	if state == State.SPLASH:
 		# Any tap leaves the title screen; the flap below must not also fire.
-		if tapped:
-			# Played before the state change, not after: _set_state can swap
-			# the BGM track for the next screen, and starting the cue first
-			# keeps it from landing under that fade.
+		# The screen does not hand over immediately — it starts the prompt's
+		# exit and _process changes state once that finishes — so a second
+		# tap while it is playing has to be ignored.
+		if tapped and splash_exit_elapsed < 0.0:
+			# The cue starts now, on the tap, rather than at the handover:
+			# it is the feedback for the press, and _set_state swaps the BGM
+			# track, which would otherwise land on top of it.
 			if fx_sound_splash_start.stream != null:
 				fx_sound_splash_start.play()
-			_set_state(State.MODE_SELECT)
+			splash_exit_elapsed = 0.0
 		return
 	if tapped:
 		player_vel = flap_velocity
@@ -2101,6 +2140,11 @@ func _process(delta: float) -> void:
 	# world update below — it only needs its prompt clock running.
 	if state == State.SPLASH:
 		splash_elapsed += delta
+		splash_char_layer.queue_redraw()
+		if splash_exit_elapsed >= 0.0:
+			splash_exit_elapsed += delta
+			if splash_exit_elapsed >= SPLASH_EXIT_DURATION:
+				_set_state(State.MODE_SELECT)
 		queue_redraw()
 		return
 	# Background parallax keeps drifting on every screen (menu, playing,
@@ -3633,6 +3677,46 @@ func _animate_button_release(button: Button) -> void:
 	tween.tween_property(button, "scale", Vector2.ONE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
+# Drawn into splash_char_layer rather than here. The frames are 256px drawn
+# at about half that, and this project renders with nearest filtering — right
+# for the pixel-art sprites in play, but it stair-steps a sprite this heavily
+# minified. The layer is a child CanvasItem carrying its own filter, so the
+# title screen gets smooth minification without changing how the game itself
+# draws a single pixel.
+func _draw_splash_characters() -> void:
+	var view_size := get_viewport_rect().size
+	if splash_character_frames.is_empty():
+		return
+	var draw_size: float = view_size.x * SPLASH_CHARACTER_SIZE_FRAC
+	var spacing: float = view_size.x * SPLASH_CHARACTER_SPACING_FRAC
+	var mid_x: float = view_size.x * 0.5
+	var mid_y: float = view_size.y * SPLASH_CHARACTER_MID_Y_FRAC
+	# The per-mode draw offsets are measured against PLAYER_VISUAL_SIZE, so
+	# they have to be rescaled to whatever size the title screen draws at or
+	# the three end up misaligned against each other.
+	var offset_scale: float = draw_size / PLAYER_VISUAL_SIZE.x
+	var span: float = spacing * (splash_character_frames.size() - 1)
+	for i in range(splash_character_frames.size()):
+		var frames: Array = splash_character_frames[i]
+		if frames.is_empty():
+			continue
+		var mode: int = SPLASH_CHARACTER_MODES[i]
+		# Frame index straight off the clock — the splash runs its own
+		# animation rather than borrowing the gameplay flap timer, which does
+		# not tick on this screen.
+		var frame: int = int(splash_elapsed / FLAP_FRAME_DURATION) % frames.size()
+		var texture: Texture2D = frames[frame]
+		if texture == null:
+			continue
+		var phase: float = SPLASH_BOB_PHASE[i] if i < SPLASH_BOB_PHASE.size() else 0.0
+		var bob: float = sin((splash_elapsed + phase) / SPLASH_BOB_PERIOD * TAU) * draw_size * SPLASH_BOB_AMPLITUDE_FRAC
+		var centre := Vector2(mid_x - span * 0.5 + spacing * i, mid_y + bob)
+		var size_scale: float = MODE_VISUAL_SIZE_SCALE[mode]
+		var size := Vector2(draw_size, draw_size) * size_scale
+		var offset: Vector2 = MODE_DRAW_OFFSET_FLY[mode] * offset_scale
+		splash_char_layer.draw_texture_rect(texture, Rect2(centre - size * 0.5 + offset, size), false)
+
+
 func _draw_splash(view_size: Vector2) -> void:
 	if splash_texture == null:
 		return
@@ -3644,21 +3728,41 @@ func _draw_splash(view_size: Vector2) -> void:
 	var top_left: Vector2 = (view_size - draw_size) * 0.5
 	draw_texture_rect(splash_texture, Rect2(top_left, draw_size), false)
 
-	var t: float = fposmod(splash_elapsed, SPLASH_PROMPT_PULSE_PERIOD) / SPLASH_PROMPT_PULSE_PERIOD
-	# sin over the full cycle gives a smooth in-and-out with no hard turn.
-	var pulse: float = (sin(t * TAU - PI * 0.5) + 1.0) * 0.5
-	var alpha: float = lerpf(SPLASH_PROMPT_ALPHA_RANGE.x, SPLASH_PROMPT_ALPHA_RANGE.y, pulse)
+
+	var alpha: float
+	var prompt_scale := 1.0
+	if splash_exit_elapsed >= 0.0:
+		var e: float = clampf(splash_exit_elapsed / SPLASH_EXIT_DURATION, 0.0, 1.0)
+		# Cubic ease-out: the prompt jumps at the moment of the tap and eases
+		# to a stop, which reads as a response to the press. Easing in would
+		# creep first and feel like lag.
+		var eased: float = 1.0 - pow(1.0 - e, 3)
+		prompt_scale = lerpf(1.0, SPLASH_EXIT_SCALE, eased)
+		alpha = 1.0 - eased
+	else:
+		var t: float = fposmod(splash_elapsed, SPLASH_PROMPT_PULSE_PERIOD) / SPLASH_PROMPT_PULSE_PERIOD
+		# sin over the full cycle gives a smooth in-and-out with no hard turn.
+		var pulse: float = (sin(t * TAU - PI * 0.5) + 1.0) * 0.5
+		alpha = lerpf(SPLASH_PROMPT_ALPHA_RANGE.x, SPLASH_PROMPT_ALPHA_RANGE.y, pulse)
+	if alpha <= 0.001:
+		return
 	var font_size := int(round(view_size.y * SPLASH_PROMPT_FONT_SCALE))
 	var centre := Vector2(view_size.x * 0.5, view_size.y * (1.0 - SPLASH_PROMPT_BOTTOM_FRAC))
 	var fill := Color(SPLASH_PROMPT_COLOR.r, SPLASH_PROMPT_COLOR.g, SPLASH_PROMPT_COLOR.b, alpha)
 	var outline := Color(SPLASH_PROMPT_OUTLINE.r, SPLASH_PROMPT_OUTLINE.g, SPLASH_PROMPT_OUTLINE.b, alpha)
-	_draw_centered_text(SPLASH_PROMPT_TEXT, centre, font_size, fill, outline, combo_font)
+	# Drawn about the origin with the transform placing and scaling it, so
+	# the swell grows from the prompt's centre instead of its top-left.
+	draw_set_transform(centre, 0.0, Vector2(prompt_scale, prompt_scale))
+	_draw_centered_text(SPLASH_PROMPT_TEXT, Vector2.ZERO, font_size, fill, outline, combo_font)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 # Finds a track by name, preferring OGG over WAV — see BGM_EXTENSIONS.
 # Returns "" when neither exists, which _play_bgm treats as "leave the
 # current music alone" rather than dropping to silence.
 func _resolve_bgm(track_name: String) -> String:
+	if track_name == "":
+		return ""
 	for ext in BGM_EXTENSIONS:
 		var path: String = BGM_DIR + track_name + ext
 		if ResourceLoader.exists(path):
@@ -3731,9 +3835,12 @@ func _set_state(new_state: int) -> void:
 		_play_bgm(_bgm_path_for_state())
 	if new_state == State.SPLASH:
 		splash_elapsed = 0.0
+		splash_exit_elapsed = -1.0
 	# The menu screens have no audio control of their own, and the mute button
 	# sits exactly where the mode picker puts its settings icon — so it is an
 	# in-game control only.
+	if splash_char_layer != null:
+		splash_char_layer.visible = state == State.SPLASH
 	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT
 	mode_select_panel.visible = state == State.MODE_SELECT
 	ready_panel.visible = state == State.READY
