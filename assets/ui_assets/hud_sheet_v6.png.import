@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bnwdq3300wvv4"
-path="res://.godot/imported/gate_ring_right.png-500ded0fca65ca7c1a168bf2fae2692e.ctex"
+uid="uid://bmol7jdlf3cx6"
+path="res://.godot/imported/hud_sheet_v6.png-ddbb81558f2b42bf63acd6c38eb5eb1b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gates/gate_ring_dream/gate_ring_right.png"
-dest_files=["res://.godot/imported/gate_ring_right.png-500ded0fca65ca7c1a168bf2fae2692e.ctex"]
+source_file="res://assets/ui_assets/hud_sheet_v6.png"
+dest_files=["res://.godot/imported/hud_sheet_v6.png-ddbb81558f2b42bf63acd6c38eb5eb1b.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

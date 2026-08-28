@@ -73,6 +73,23 @@ const PLAYER_X := 130.0
 const DEBUG_SHOW_HITBOX := false # outlines the real collision rect over the character — turn off once done tuning PLAYER_SIZE/PLAYER_VISUAL_SIZE
 const DEBUG_HITBOX_COLOR := Color(1.0, 0.0, 1.0, 1.0)  # bright magenta — doesn't occur anywhere else in the game's palette
 
+## 판정 영역을 색으로 덮어 보여준다 (튜닝용). 게임플레이에는 영향 없음.
+## 마젠타=캐릭터 히트박스, 파랑=게이트 통과 구역, 초록=중심 허용 범위.
+@export var debug_show_zones: bool = false
+# Two things are drawn, and they are NOT the same measurement — which is the
+# whole reason this overlay exists:
+#   ZONE   the gate's opening. The player's WHOLE hitbox must fit inside it.
+#   SLACK  where the player's CENTRE may be and still fit — the zone inset by
+#          half the hitbox. This is the band that actually gets steered, and
+#          it is a good deal narrower than the opening looks.
+const DEBUG_ZONE_FILL := Color(0.30, 0.60, 1.00, 0.20)      # 게이트 통과 구역
+const DEBUG_ZONE_EDGE := Color(0.30, 0.60, 1.00, 0.95)
+const DEBUG_SLACK_FILL := Color(0.20, 0.95, 0.45, 0.28)     # 중심 허용 범위
+const DEBUG_SLACK_EDGE := Color(0.10, 0.85, 0.35, 0.95)
+const DEBUG_CENTER_LINE := Color(1.0, 1.0, 1.0, 0.9)        # 구역 정중앙
+const DEBUG_JUDGE_LINE := Color(1.0, 0.25, 0.25, 0.95)      # 판정이 일어나는 x
+const DEBUG_LABEL_SIZE := 13
+
 # Character display set — display/animation only, never touches
 # PLAYER_SIZE/physics/collision. fly is a 2x2 spritesheet sliced at runtime
 # (see _slice_spritesheet), happy and sad are single static frames. Frame
@@ -790,30 +807,6 @@ const FX_SHAKE_DURATION := 0.14
 const FX_SHAKE_PEAK_AMPLITUDE := 4.5   # px
 
 # Score pop — bigger and longer-lived so the +score reads clearly.
-# ============================================================
-# Pass precision — PERFECT / GOOD. Shared by all four modes: it reads the
-# lane's precision zone, which every mode already rolls the same way, and
-# touches nothing mode-specific.
-#
-# A pass is graded only AFTER it is already a pass. Hitting the wrong gate
-# still ends the run exactly as before — precision never rescues a wrong
-# answer, and never fails a right one.
-# ============================================================
-## PERFECT 판정 폭 — 구역 높이 대비 중앙에서의 허용 오차 (0.20 = 중앙 ±20%).
-## 이 안이면 PERFECT, 구역 안이지만 벗어나면 GOOD.
-@export_range(0.01, 0.5, 0.01) var perfect_center_tolerance_frac: float = 0.20
-## PERFECT 시 획득 점수에 곱해지는 배율. GOOD은 항상 1.0배.
-@export_range(1.0, 5.0, 0.1) var perfect_score_multiplier: float = 1.5
-
-const PERFECT_POPUP_TEXT := "PERFECT!"
-const PERFECT_POPUP_DURATION := 0.75
-const PERFECT_POPUP_RISE := 42.0        # px the text drifts upward over its life
-const PERFECT_POPUP_OFFSET := Vector2(0.0, -62.0)  # from the character's centre — clears the sprite
-const PERFECT_POPUP_FONT_SIZE := 30
-const PERFECT_POPUP_COLOR := Color(1.0, 0.85, 0.25)
-const PERFECT_POPUP_OUTLINE := Color(0.20, 0.10, 0.0, 1.0)
-const PERFECT_POPUP_POP_IN := 0.18      # seconds of the overshoot scale-in at the start
-
 const FX_SCORE_POP_DURATION := 0.7
 const FX_SCORE_POP_RISE := 34.0
 const FX_SCORE_POP_COLOR := Color(1.0, 0.93, 0.6)
@@ -1082,7 +1075,17 @@ enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH }
 # Splash / title screen — the first thing shown on boot, before the mode
 # picker. Just the painted title art plus a prompt; a tap anywhere moves on.
 # ============================================================
-const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash.png"
+const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash_v3.png"
+# The title is its own piece of art now. The v3 painting is a plain sky, so
+# the wordmark can be moved, resized or replaced without repainting the
+# background — and it is the same file the mode picker uses, so the two
+# screens can never drift apart.
+const SPLASH_TITLE_PATH := "res://assets/ui_assets/main/title_main_v2.png"
+# Matched to how wide the row of three characters below it reads, so the
+# title and the characters share one column rather than sitting at two
+# unrelated widths.
+const SPLASH_TITLE_WIDTH_FRAC := 0.84   # of view width
+const SPLASH_TITLE_MID_Y_FRAC := 0.30   # of view height — centre of the art
 # The art is a taller aspect than the viewport, so it is scaled to COVER and
 # centred — the overflow is cropped rather than letterboxed. The title and
 # the three characters sit in the upper-middle of the painting, so an even
@@ -1090,8 +1093,20 @@ const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash.png"
 const SPLASH_PROMPT_TEXT := "Tap to START"
 const SPLASH_PROMPT_BOTTOM_FRAC := 0.135   # of view height — distance from the bottom edge to the prompt's centre
 const SPLASH_PROMPT_FONT_SCALE := 0.055    # of view height
-const SPLASH_PROMPT_PULSE_PERIOD := 1.3    # seconds per fade cycle
-const SPLASH_PROMPT_ALPHA_RANGE := Vector2(0.45, 1.0)
+const SPLASH_PROMPT_PULSE_PERIOD := 1.2    # seconds per breath cycle
+# Alpha, scale and glow all ride the SAME pulse, in phase: three separate
+# rhythms would read as clutter, one shared rhythm reads as breathing. The
+# alpha floor is kept high enough that the swell is what draws the eye
+# rather than the text vanishing and returning.
+const SPLASH_PROMPT_ALPHA_RANGE := Vector2(0.72, 1.0)
+const SPLASH_PROMPT_SCALE_RANGE := Vector2(1.0, 1.05)
+# Faked bloom: the same string redrawn in rings around itself, each ring
+# fainter than the last. draw_string has no blur, and a real shader would be
+# a lot of machinery for one line of text on one screen.
+const SPLASH_PROMPT_GLOW_COLOR := Color(1.0, 0.84, 0.32)  # gold
+const SPLASH_PROMPT_GLOW_RADII := [3.0, 7.0, 12.0]        # px, at scale 1.0
+const SPLASH_PROMPT_GLOW_STEPS := 8                       # samples per ring
+const SPLASH_PROMPT_GLOW_ALPHA := 0.14                    # per sample at full pulse — kept low on purpose
 const SPLASH_PROMPT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const SPLASH_PROMPT_OUTLINE := Color(0.09, 0.16, 0.33, 1.0)  # deep navy, matching the title art's own outline
 # Tap feedback: the prompt swells and fades out, and the handover to the
@@ -1121,6 +1136,8 @@ var state: int = State.READY
 # parallax keeps drifting while paused, same as it does on every other
 # non-PLAYING screen.
 var paused: bool = false
+# 한 판에 부활 제안은 한 번만. 이어간 뒤 또 죽으면 그때는 바로 게임오버다.
+var revive_offered: bool = false
 
 # "READY" -> "START" pop-in shown before every *retry* (post-onboarding).
 # The very first play (from the READY/onboarding panel) skips straight to
@@ -1212,7 +1229,28 @@ const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
 # One best across all three modes, matching the single BEST slot the art has.
 const SAVE_PATH := "user://savegame.cfg"
 const SAVE_SECTION := "progress"
-const SAVE_KEY_BEST := "best_score"
+# 모드마다 기록을 따로 둔다. 키는 "best_score_<모드번호>".
+const SAVE_KEY_BEST_PREFIX := "best_score_"
+# 모드 구분 없이 하나만 쓰던 시절의 키. 불러올 때 한 번 옮겨 오고 그 뒤로는
+# 쓰지 않는다.
+const SAVE_KEY_BEST_LEGACY := "best_score"
+# 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
+const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
+const SAVE_SECTION_AUDIO := "audio"
+const SAVE_KEY_SFX := "sfx_volume"
+const SAVE_KEY_MUSIC := "music_volume"
+
+# ---- 오디오 버스 ----
+# 효과음과 음악을 따로 줄이려면 각자의 버스가 있어야 한다. 프로젝트에는
+# Master 하나뿐이라 실행할 때 만들어 붙인다 — .tres 레이아웃 파일을 두는
+# 것보다 이쪽이 눈에 보이고, 버스가 이미 있으면 건너뛰므로 안전하다.
+const BUS_SFX := "SFX"
+const BUS_MUSIC := "Music"
+# 슬라이더 0~1을 데시벨로 옮길 때 쓰는 하한. 0에 닿으면 -inf가 되어 버려서,
+# 완전히 끈 상태는 볼륨이 아니라 mute로 따로 처리한다.
+const VOLUME_MIN_DB := -32.0
+@export_range(0.0, 1.0, 0.01) var sfx_volume: float = 0.8
+@export_range(0.0, 1.0, 0.01) var music_volume: float = 0.7
 # The score box art is split by a painted divider into a SCORE half and a
 # BEST half, each carrying a painted label with blank writing space beside it.
 # All fractions are of the box's *display* size, so they hold at whatever the
@@ -1270,6 +1308,19 @@ var gate_speed_boost_elapsed: float = -1.0
 
 var score: int = 0
 var combo: int = 0
+var max_combo: int = 0   # highest combo reached this run — see the gate-pass handler
+# 광고를 보고 이어서 뛴 판인가. 부활 팝업이 "이어가면 이 판은 순위표에
+# 올라가지 않는다"고 약속하므로, 그 약속을 지키려면 끝까지 들고 가야 한다.
+# (개인 최고 기록은 "always saved"라고 했으니 부활 여부와 무관하게 쓴다.)
+var run_revived: bool = false
+# 이 판에서 "첫 실수 전까지" 도달한 점수. 순위표에 올라가는 건 이 값이다.
+#
+# 광고를 보고 이어 뛰면 개인 최고 기록은 끝까지 간 점수로 갱신되지만,
+# 순위표는 여기서 멈춘다. 광고로 순위를 살 수는 없게 하면서, 광고를 보기
+# 전에 이미 정직하게 벌어 둔 점수까지 빼앗지는 않는 선이다.
+#
+# 부활을 거절하면 이 값이 곧 최종 점수라 아무 차이가 없다.
+var leaderboard_score: int = 0
 var gates_passed: int = 0
 
 var gates: Array = []
@@ -1310,11 +1361,20 @@ var happy_flap_elapsed: float = -1.0  # -1 = inactive; set to 0 on every gate pa
 var sad_face_texture: Texture2D
 var ready_texture: Texture2D
 var start_texture: Texture2D
-var best_score: int = 0   # loaded from SAVE_PATH in _ready, written on game over
+# No sign-in exists yet. The game-over popup branches on this, so it lives
+# here as an export rather than a bare false — it can be flipped in the
+# inspector to see the logged-in variants once they are built.
+@export var player_logged_in: bool = false
+# 모드별 최고 점수. 인덱스가 곧 Mode 값이다. _ready에서 불러오고, 기록을
+# 갈아치울 때만 저장한다.
+var best_scores := PackedInt32Array()
+# 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — leaderboard_score 참고.
+var leaderboard_bests := PackedInt32Array()
 var score_box_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
 var splash_texture: Texture2D
+var splash_title_texture: Texture2D
 var splash_elapsed: float = 0.0   # free-running clock for the prompt pulse
 var splash_exit_elapsed: float = -1.0  # -1 = not leaving yet; see SPLASH_EXIT_DURATION
 # One Array[Texture2D] of flight frames per entry in SPLASH_CHARACTER_MODES,
@@ -1374,7 +1434,6 @@ var trail_textures: Array[Texture2D] = []   # sparkle subset of the mode's fx_sm
 var trail_particles: Array = []      # each: {pos, drift_y, size, rotation, spin, lifetime, elapsed, texture} — see the TRAIL_* consts
 var trail_spawn_timer: float = 0.0
 var fx_score_pops: Array = []        # each: {pos, elapsed}
-var fx_perfect_popups: Array = []    # each: {pos, elapsed} — PERFECT text rising off the character
 var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
 var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
 var fx_impact_flashes: Array = []    # each: {pos, radius, elapsed}
@@ -1400,6 +1459,7 @@ var fx_sound_splash_start: AudioStreamPlayer
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
 @onready var ready_panel: Control = $UI/ReadyPanel
+@onready var gameover_popup: Control = $UI/GameOverPopupPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
 @onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
@@ -1408,7 +1468,7 @@ var fx_sound_splash_start: AudioStreamPlayer
 @onready var pause_button: Button = $UI/PauseButton
 @onready var mute_button: Button = $UI/MuteButton
 @onready var pause_panel: Control = $UI/PausePanel
-@onready var resume_button: Button = $UI/PausePanel/ResumeButton
+@onready var revive_panel: Control = $UI/RevivePanel
 
 
 func _ready() -> void:
@@ -1427,6 +1487,7 @@ func _ready() -> void:
 	hud_canvas.main = self
 	add_child(hud_canvas)
 	_load_best_score()
+	_load_audio_settings()
 	_load_flags_data()
 	# The four HUD pieces are all per-mode now and get loaded in _apply_mode;
 	# only the parts that never change per mode are set up here.
@@ -1456,21 +1517,27 @@ func _ready() -> void:
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
+	# 효과음과 음악을 따로 조절하려면 각자 버스를 타야 한다.
+	_setup_audio_buses()
 	fx_sound_whoosh = AudioStreamPlayer.new()
 	add_child(fx_sound_whoosh)
+	fx_sound_whoosh.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_WHOOSH_PATH):
 		fx_sound_whoosh.stream = load(FX_SOUND_WHOOSH_PATH)
 	fx_sound_chime = AudioStreamPlayer.new()
 	add_child(fx_sound_chime)
+	fx_sound_chime.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_CHIME_PATH):
 		fx_sound_chime.stream = load(FX_SOUND_CHIME_PATH)
 	fx_sound_flap = AudioStreamPlayer.new()
 	add_child(fx_sound_flap)
+	fx_sound_flap.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_FLAP_PATH):
 		fx_sound_flap.stream = load(FX_SOUND_FLAP_PATH)
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
 		add_child(player)
+		player.bus = BUS_MUSIC
 		player.volume_db = BGM_SILENT_DB
 		# Manual loop — simpler and more reliable than relying on each source
 		# format's own loop points.
@@ -1478,18 +1545,22 @@ func _ready() -> void:
 		bgm_players.append(player)
 	fx_sound_countdown_ready = AudioStreamPlayer.new()
 	add_child(fx_sound_countdown_ready)
+	fx_sound_countdown_ready.bus = BUS_SFX
 	if ResourceLoader.exists(COUNTDOWN_READY_SOUND_PATH):
 		fx_sound_countdown_ready.stream = load(COUNTDOWN_READY_SOUND_PATH)
 	fx_sound_countdown_start = AudioStreamPlayer.new()
 	add_child(fx_sound_countdown_start)
+	fx_sound_countdown_start.bus = BUS_SFX
 	if ResourceLoader.exists(COUNTDOWN_START_SOUND_PATH):
 		fx_sound_countdown_start.stream = load(COUNTDOWN_START_SOUND_PATH)
 	fx_sound_gameover = AudioStreamPlayer.new()
 	add_child(fx_sound_gameover)
+	fx_sound_gameover.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_GAMEOVER_PATH):
 		fx_sound_gameover.stream = load(FX_SOUND_GAMEOVER_PATH)
 	fx_sound_splash_start = AudioStreamPlayer.new()
 	add_child(fx_sound_splash_start)
+	fx_sound_splash_start.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_SPLASH_START_PATH):
 		fx_sound_splash_start.stream = load(FX_SOUND_SPLASH_START_PATH)
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
@@ -1497,8 +1568,20 @@ func _ready() -> void:
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
+	gameover_popup.play_again_pressed.connect(_on_gameover_play_again_pressed)
+	gameover_popup.login_pressed.connect(_on_gameover_login_pressed)
+	gameover_popup.leaderboard_pressed.connect(_on_gameover_leaderboard_pressed)
+	gameover_popup.share_pressed.connect(_on_gameover_share_pressed)
+	gameover_popup.home_pressed.connect(_on_pause_home_pressed)
 	pause_button.pressed.connect(_on_pause_pressed)
-	resume_button.pressed.connect(_on_resume_pressed)
+	# 팝업이 자기 버튼을 들고 있고, 눌린 결과만 신호로 알려 준다.
+	pause_panel.resume_pressed.connect(_on_resume_pressed)
+	pause_panel.restart_pressed.connect(_on_pause_restart_pressed)
+	pause_panel.home_pressed.connect(_on_pause_home_pressed)
+	pause_panel.sfx_volume_changed.connect(set_sfx_volume)
+	pause_panel.music_volume_changed.connect(set_music_volume)
+	revive_panel.watch_ad_pressed.connect(_on_revive_continue)
+	revive_panel.decline_pressed.connect(_on_revive_decline)
 	mute_button.pressed.connect(_on_mute_pressed)
 	# pivot_offset is set in _layout_hud_buttons instead — it resizes the
 	# buttons deferred, so reading .size here would still give the scene's
@@ -1513,6 +1596,7 @@ func _ready() -> void:
 	add_child(splash_char_layer)
 	if ResourceLoader.exists(SPLASH_TEXTURE_PATH):
 		splash_texture = load(SPLASH_TEXTURE_PATH)
+	splash_title_texture = _load_trimmed(SPLASH_TITLE_PATH)
 	splash_character_frames.clear()
 	for mode in SPLASH_CHARACTER_MODES:
 		var grid: Vector2i = MODE_CHARACTER_SHEET_GRID[mode]
@@ -1538,6 +1622,30 @@ func _weighted_font(base: Font, wght_tag: int, weight: int) -> Font:
 
 # One happy/sad face, or SKY's if this mode's has not been drawn yet. See the
 # fallback note in _apply_mode.
+
+# Loads art with its transparent margin cropped off.
+#
+# The wordmark art is drawn on a canvas with slack around it (45px on the
+# left, 47 on the right, and unequal top/bottom). Sizing by the canvas would
+# make the visible letters narrower than asked for and push them off centre,
+# and the slack differs per file, so the numbers here would stop meaning
+# anything the moment the art is redrawn. Cropping first makes the width
+# fraction describe the letters themselves.
+func _load_trimmed(path: String) -> Texture2D:
+	if not ResourceLoader.exists(path):
+		push_warning("missing art: %s" % path)
+		return null
+	var img: Image = (load(path) as Texture2D).get_image()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	img.clear_mipmaps()
+	var used := img.get_used_rect()
+	if used.size.x > 0 and used.size.y > 0 and used.size != img.get_size():
+		img = img.get_region(used)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
 func _load_face(path: String, fallback_path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
 		return load(path)
@@ -2255,7 +2363,14 @@ func _update_playing(delta: float) -> void:
 
 	for g in gates:
 		g.x -= gate_speed * delta
-		if not g.resolved and g.x <= PLAYER_X and g.x + GATE_WIDTH >= PLAYER_X:
+		# Judged where the ring is actually DRAWN, not at the gate's left
+		# edge. _draw_gate_frame_layer centres the ring on g.x + GATE_WIDTH/2,
+		# so judging on g.x alone resolved the pass a half-gate (65px) before
+		# the character reached the hole — the run was already decided while
+		# the ring was still visibly ahead, and a last-moment correction came
+		# too late to count. Judging on the ring's own centre line puts the
+		# verdict where the player sees it happen.
+		if not g.resolved and _gate_judge_x(g) <= PLAYER_X:
 			_resolve_gate(g, view_size)
 
 	gates = gates.filter(func(g): return g.x + GATE_WIDTH > -10.0)
@@ -2859,6 +2974,14 @@ func _pick_ocean_decoy(word_index: int, answer_index: int, phase_index: int) -> 
 			return candidates[randi() % candidates.size()]
 
 
+# The x at which a gate is judged: the ring's own centre line, matching
+# where _draw_gate_frame_layer draws it. One definition, used by both the
+# judgement in _update_playing and the debug overlay, so the line drawn is
+# always the line judged.
+func _gate_judge_x(g: Dictionary) -> float:
+	return g.x + GATE_WIDTH * 0.5
+
+
 func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	g.resolved = true
 	var wall_center_y := _gate_wall_center_y(view_size)
@@ -2878,38 +3001,26 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	# Being in the correct lane is necessary but not sufficient — you must
 	# also be inside that lane's precision zone this gate rolled.
 	var passed: bool
-	# Graded only once `passed` is true — see the PERFECT/GOOD block above.
-	var perfect: bool = false
 	if not in_correct_lane:
 		passed = false
 	else:
 		var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
 		var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
 		passed = p_top >= zone_top and p_bottom <= zone_bottom
-		if passed:
-			# Distance from the zone's own centre, against a window measured
-			# as a fraction of the zone's full height. Uses the player's
-			# centre rather than its edges: the hitbox is a fixed 50px, so
-			# the centre is the only thing the player actually steers.
-			var zone_center: float = (zone_top + zone_bottom) * 0.5
-			var window: float = (zone_bottom - zone_top) * perfect_center_tolerance_frac
-			perfect = absf(player_y - zone_center) <= window
 
 	if passed:
 		gates_passed += 1
 		combo += 1
-		# PERFECT multiplies the award; GOOD is the plain 10 it always was.
-		# Rounded rather than truncated so a 1.5x on 10 is 15, not 14.
-		score += int(round(10.0 * (perfect_score_multiplier if perfect else 1.0)))
+		# combo is zeroed by any miss, so the run's peak has to be kept
+		# separately — the game-over popup reports the peak, not what was
+		# left standing at the end.
+		max_combo = maxi(max_combo, combo)
+		score += 10
 		flash_color = Color(0.3, 0.8, 0.4, 0.35)
 		flash_time = FLASH_DURATION
 		gate_speed_boost_elapsed = 0.0
 		_play_gate_success_fx(g, in_top)
 		_spawn_combo_popup(view_size)
-		# GOOD keeps exactly the effects and sound it had; PERFECT only adds
-		# the popup on top, so the two never read as different events.
-		if perfect:
-			_spawn_perfect_popup()
 	else:
 		_game_over()
 
@@ -3041,17 +3152,6 @@ func _spawn_speed_lines() -> void:
 			"elapsed": 0.0,
 			"color": line_color,
 		})
-
-
-# Anchored to the character, not the gate: PERFECT is feedback about where
-# YOU were, so it reads better rising off the player than off the ring.
-# Position is captured at spawn — the popup does not follow the player
-# afterwards, so it stays put while the character flies on.
-func _spawn_perfect_popup() -> void:
-	fx_perfect_popups.append({
-		"pos": Vector2(PLAYER_X, player_y) + PERFECT_POPUP_OFFSET,
-		"elapsed": 0.0,
-	})
 
 
 func _spawn_score_pop(gate_center: Vector2) -> void:
@@ -3197,10 +3297,6 @@ func _update_fx(delta: float) -> void:
 	for p in fx_score_pops:
 		p.elapsed += delta
 	fx_score_pops = fx_score_pops.filter(func(p): return p.elapsed < FX_SCORE_POP_DURATION)
-
-	for p in fx_perfect_popups:
-		p.elapsed += delta
-	fx_perfect_popups = fx_perfect_popups.filter(func(p): return p.elapsed < PERFECT_POPUP_DURATION)
 
 	if combo > 0:
 		combo_display_punch_elapsed += delta
@@ -3412,31 +3508,59 @@ func _draw_score_pops() -> void:
 		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, main_col)
 
 
-# "PERFECT!" rising off the character. Scaled about its own centre so the
-# pop-in grows from the middle rather than the baseline — draw_set_transform
-# rather than a bigger font size, which would only re-rasterise the glyphs.
-func _draw_perfect_popups() -> void:
-	if fx_perfect_popups.is_empty():
-		return
+# Tuning overlay for the pass zones. Drawn over the gate art so each band can
+# be read against the ring it belongs to. Reads the same values _resolve_gate
+# judges on, so what is drawn is exactly what is judged.
+func _draw_debug_zones(view_size: Vector2) -> void:
 	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
-	var text_size := font.get_string_size(PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE)
-	for p in fx_perfect_popups:
-		var t: float = p.elapsed / PERFECT_POPUP_DURATION
-		# Hold full opacity through the first half, then fade — the word has
-		# to be readable before it starts leaving.
-		var alpha: float = 1.0 if t < 0.5 else 1.0 - (t - 0.5) / 0.5
-		# Overshoot in, settle to 1.0. _pop_scale is the same curve the
-		# countdown art uses, so the two read as one language.
-		var scale: float = _pop_scale(minf(1.0, p.elapsed / PERFECT_POPUP_POP_IN))
-		var pos: Vector2 = p.pos + Vector2(0.0, -PERFECT_POPUP_RISE * t)
-		var fill := Color(PERFECT_POPUP_COLOR.r, PERFECT_POPUP_COLOR.g, PERFECT_POPUP_COLOR.b, alpha)
-		var outline := Color(PERFECT_POPUP_OUTLINE.r, PERFECT_POPUP_OUTLINE.g, PERFECT_POPUP_OUTLINE.b, PERFECT_POPUP_OUTLINE.a * alpha)
-		draw_set_transform(pos, 0.0, Vector2(scale, scale))
-		var local := Vector2(-text_size.x * 0.5, text_size.y * 0.25)
-		for offset in [Vector2(-2, -2), Vector2(2, -2), Vector2(-2, 2), Vector2(2, 2), Vector2(0, -2), Vector2(0, 2), Vector2(-2, 0), Vector2(2, 0)]:
-			draw_string(font, local + offset, PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE, outline)
-		draw_string(font, local, PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE, fill)
-		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	var half_h: float = PLAYER_SIZE.y * 0.5
+	for g in gates:
+		if g.resolved:
+			continue
+		for lane in ["top", "bottom"]:
+			var zone_top: float = g.top_zone_top if lane == "top" else g.bottom_zone_top
+			var zone_bottom: float = g.top_zone_bottom if lane == "top" else g.bottom_zone_bottom
+			# 1. The opening — the whole hitbox has to fit in here.
+			draw_rect(Rect2(Vector2(g.x, zone_top), Vector2(GATE_WIDTH, zone_bottom - zone_top)), DEBUG_ZONE_FILL)
+			draw_rect(Rect2(Vector2(g.x, zone_top), Vector2(GATE_WIDTH, zone_bottom - zone_top)), DEBUG_ZONE_EDGE, false, 2.0)
+			# 2. Where the centre may sit and still fit — the same opening
+			#    inset by half the hitbox, top and bottom. This is the band
+			#    the player is really aiming at.
+			var slack_top: float = zone_top + half_h
+			var slack_bottom: float = zone_bottom - half_h
+			if slack_bottom > slack_top:
+				draw_rect(Rect2(Vector2(g.x + 10.0, slack_top), Vector2(GATE_WIDTH - 20.0, slack_bottom - slack_top)), DEBUG_SLACK_FILL)
+				draw_rect(Rect2(Vector2(g.x + 10.0, slack_top), Vector2(GATE_WIDTH - 20.0, slack_bottom - slack_top)), DEBUG_SLACK_EDGE, false, 2.0)
+			var zone_center: float = (zone_top + zone_bottom) * 0.5
+			draw_line(Vector2(g.x, zone_center), Vector2(g.x + GATE_WIDTH, zone_center), DEBUG_CENTER_LINE, 1.0)
+			var label: String = "zone %.0f   center+-%.1f" % [
+				zone_bottom - zone_top, (zone_bottom - zone_top - PLAYER_SIZE.y) * 0.5]
+			draw_string(font, Vector2(g.x + 2.0, zone_top - 5.0), label,
+				HORIZONTAL_ALIGNMENT_LEFT, -1, DEBUG_LABEL_SIZE, Color(1, 1, 1, 0.95))
+		# Where the verdict is taken — the ring's centre line reaching the
+		# character (see _update_playing). Everything is decided the instant
+		# this line crosses, so it is a moment, not an area.
+		var jx: float = _gate_judge_x(g)
+		draw_line(Vector2(jx, _gate_zone_top(view_size)), Vector2(jx, view_size.y), DEBUG_JUDGE_LINE, 2.0)
+
+	# The character's real collision rect, on top of whichever band it is in.
+	var hitbox := Rect2(Vector2(PLAYER_X, player_y) - PLAYER_SIZE * 0.5, PLAYER_SIZE)
+	draw_rect(hitbox, Color(DEBUG_HITBOX_COLOR.r, DEBUG_HITBOX_COLOR.g, DEBUG_HITBOX_COLOR.b, 0.18))
+	draw_rect(hitbox, DEBUG_HITBOX_COLOR, false, 2.0)
+	draw_line(Vector2(hitbox.position.x, player_y), Vector2(hitbox.end.x, player_y), DEBUG_HITBOX_COLOR, 2.0)
+
+	# Legend, parked under the quiz box where nothing else draws.
+	var legend_y: float = _gate_zone_top(view_size) + 14.0
+	var entries := [
+		[DEBUG_HITBOX_COLOR, "HITBOX  %.0fx%.0f" % [PLAYER_SIZE.x, PLAYER_SIZE.y]],
+		[DEBUG_JUDGE_LINE, "JUDGE LINE  verdict happens HERE"],
+		[DEBUG_ZONE_EDGE, "ZONE   whole hitbox must fit inside"],
+		[DEBUG_SLACK_EDGE, "SLACK  where the CENTER may sit"],
+	]
+	for i in range(entries.size()):
+		var y: float = legend_y + i * 17.0
+		draw_rect(Rect2(Vector2(8.0, y - 9.0), Vector2(14.0, 12.0)), entries[i][0])
+		draw_string(font, Vector2(28.0, y), entries[i][1], HORIZONTAL_ALIGNMENT_LEFT, -1, DEBUG_LABEL_SIZE, Color(1, 1, 1, 0.95))
 
 
 func _combo_tier_color(tier: int, elapsed: float) -> Color:
@@ -3514,37 +3638,154 @@ func _draw_combo_glow(view_size: Vector2, ci: CanvasItem = null) -> void:
 
 # ---- Best score (the BEST half of the score box) ----
 
+# 한 모드의 최고 점수. 저장본이 아직 없거나 모드가 늘어난 직후에도
+# 안전하게 0을 돌려준다.
+func _best_for(mode: int) -> int:
+	if mode < 0 or mode >= best_scores.size():
+		return 0
+	return best_scores[mode]
+
+
 func _load_best_score() -> void:
+	best_scores.resize(Mode.size())
+	best_scores.fill(0)
+	leaderboard_bests.resize(Mode.size())
+	leaderboard_bests.fill(0)
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
-	best_score = int(cfg.get_value(SAVE_SECTION, SAVE_KEY_BEST, 0))
+	for mode in range(Mode.size()):
+		best_scores[mode] = int(cfg.get_value(
+			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
+		leaderboard_bests[mode] = int(cfg.get_value(
+			SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), 0))
+	# 예전 저장본에는 모드 구분 없는 기록 하나뿐이다. 어느 모드에서 낸
+	# 점수인지 알 길이 없으므로, 처음 모드(SKY)의 기록으로 옮긴다. 버리는
+	# 것보다는 낫고, 여러 모드에 복사하면 없던 기록이 생긴다.
+	var legacy: int = int(cfg.get_value(SAVE_SECTION, SAVE_KEY_BEST_LEGACY, 0))
+	if legacy > 0 and best_scores[Mode.SKY] == 0:
+		best_scores[Mode.SKY] = legacy
+		_save_best_score(Mode.SKY)
 
 
-func _save_best_score() -> void:
+func _save_best_score(mode: int) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
-	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST, best_score)
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), best_scores[mode])
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), leaderboard_bests[mode])
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])
 
 
+# 실패한 순간. 곧바로 게임오버 화면으로 가지 않고 부활 제안을 먼저 띄운다 —
+# 판을 접을지 이어갈지는 아직 플레이어가 정하지 않았다. 광고를 보면 이 판이
+# 그대로 이어지고(_on_revive_continue), 거절하면 그때 진짜 게임오버로 간다.
 func _game_over() -> void:
-	state = State.GAMEOVER
-	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
-	# Only write on an actual improvement, so a run that doesn't beat the
-	# record costs no disk access at all.
-	if score > best_score:
-		best_score = score
-		_save_best_score()
+	# 첫 죽음에서 한 번만 — 이어 뛴 뒤의 죽음은 이 값을 건드리지 않는다.
+	if not run_revived:
+		leaderboard_score = score
+	if revive_panel != null and not revive_offered:
+		revive_offered = true
+		_offer_revive()
+		return
+	_finish_run()
+
+
+# 부활 제안. 죽은 자리를 그대로 두고 판만 멈춘다.
+func _offer_revive() -> void:
+	state = State.GAMEOVER   # 게이트와 물리를 멈추기 위해 — 화면은 아직 안 띄운다
+	combo = 0
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
-	final_score_label.text = "SCORE: %d" % score
-	gameover_panel.visible = true
 	_stop_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
+	revive_panel.set_character(sad_face_texture, PLAYER_VISUAL_SIZE.y * active_visual_size_scale)
+	# 이어 뛰어도 순위표는 여기서 멈춘다는 걸 숫자로 보여 준다.
+	revive_panel.set_leaderboard_score(leaderboard_score)
+	revive_panel.visible = true
+
+
+# 광고를 본 뒤 이어가기. 죽은 게이트를 치우고 안전한 높이에서 다시 시작한다 —
+# 점수와 통과 수는 그대로 두어 "이어서 뛰는" 것이 되게 한다.
+func _on_revive_continue() -> void:
+	run_revived = true
+	revive_panel.visible = false
+	var view_size := get_viewport_rect().size
+	gates.clear()
+	player_y = (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	player_vel = 0.0
+	last_zone_center = player_y
+	flash_time = 0.0
+	_spawn_gate(view_size)
+	_start_countdown()
+
+
+# 제안을 거절했을 때 — 여기서부터가 원래의 게임오버다.
+func _on_revive_decline() -> void:
+	revive_panel.visible = false
+	_finish_run()
+
+
+func _finish_run() -> void:
+	state = State.GAMEOVER
+	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
+	# Whether this run set a record has to be read BEFORE the record is
+	# updated — the popup shows a different face for a new best, and once
+	# best_score has been overwritten the two are indistinguishable.
+	var is_new_record: bool = score > _best_for(current_mode)
+	var previous_best: int = _best_for(current_mode)
+	# Only write on an actual improvement, so a run that doesn't beat the
+	# record costs no disk access at all.
+	if is_new_record:
+		best_scores[current_mode] = score
+	# 순위표 기록은 첫 실수 전까지의 점수로만 겨룬다.
+	if leaderboard_score > leaderboard_bests[current_mode]:
+		leaderboard_bests[current_mode] = leaderboard_score
+	if is_new_record or leaderboard_score > 0:
+		_save_best_score(current_mode)
+	flash_color = Color(0.8, 0.15, 0.15, 0.45)
+	flash_time = FLASH_DURATION
+	# 네 가지 조합(신기록 여부 x 로그인 여부)을 팝업이 스스로 갈래 친다.
+	if gameover_popup != null:
+		# 신기록이면 웃는 얼굴, 아니면 우는 얼굴. 어느 모드인지 아는 쪽이
+		# 여기라, 표정도 여기서 고른다.
+		var face: Texture2D = happy_face_texture if is_new_record else sad_face_texture
+		gameover_popup.set_result(face,
+			PLAYER_VISUAL_SIZE.y * active_visual_size_scale,
+			score, max_combo, previous_best, is_new_record, player_logged_in,
+			leaderboard_score)
+		gameover_popup.visible = true
+	else:
+		final_score_label.text = "SCORE: %d" % score
+		gameover_panel.visible = true
+	_stop_bgm()
+	if fx_sound_gameover.stream != null:
+		fx_sound_gameover.play()
+
+
+# Placeholder — there is no sign-in yet, so the popup always takes the
+# not-logged-in branch. Wiring real auth means setting this and building the
+# other three popup variants.
+# 같은 모드로 곧장 다시 시작한다 — 일시정지의 RESTART와 같은 동작이다.
+# (모드 선택으로 돌아가는 건 HOME 쪽이다.)
+func _on_gameover_play_again_pressed() -> void:
+	gameover_popup.visible = false
+	_reset_game()
+	_start_countdown()
+
+
+func _on_gameover_login_pressed() -> void:
+	push_warning("game over: login not wired up yet")
+
+
+func _on_gameover_leaderboard_pressed() -> void:
+	push_warning("game over: leaderboard not wired up yet")
+
+
+func _on_gameover_share_pressed() -> void:
+	push_warning("game over: share not wired up yet")
 
 
 func _on_play_pressed() -> void:
@@ -3594,6 +3835,11 @@ func _apply_mode(mode: int) -> void:
 	flap_frame_index = 0
 	happy_face_texture = _load_face(char_dir + MODE_CHARACTER_HAPPY_FILE[mode], sky_dir + MODE_CHARACTER_HAPPY_FILE[Mode.SKY])
 	sad_face_texture = _load_face(char_dir + MODE_CHARACTER_SAD_FILE[mode], sky_dir + MODE_CHARACTER_SAD_FILE[Mode.SKY])
+	# 부활 팝업이 쓸 얼굴을 미리 넘겨 둔다. 팝업이 알파 경계를 다듬느라
+	# 30ms쯤 쓰는데, 게이트를 놓친 그 순간에 그러면 멈칫하는 게 느껴진다.
+	if revive_panel != null:
+		# 크기도 함께 — 팝업이 게임 화면과 똑같은 크기로 캐릭터를 띄운다.
+		revive_panel.set_character(sad_face_texture, PLAYER_VISUAL_SIZE.y * MODE_VISUAL_SIZE_SCALE[mode])
 	active_draw_offset_fly = MODE_DRAW_OFFSET_FLY[mode]
 	active_draw_offset_happy = MODE_DRAW_OFFSET_HAPPY[mode]
 	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
@@ -3702,9 +3948,15 @@ func _reset_game() -> void:
 	player_vel = 0.0
 	score = 0
 	combo = 0
+	max_combo = 0
 	gates_passed = 0
 	gates.clear()
 	last_quiz_key = ""  # repeat guard is per-run — see last_quiz_key
+	revive_offered = false
+	run_revived = false
+	leaderboard_score = 0
+	if revive_panel != null:
+		revive_panel.visible = false
 	flash_time = 0.0
 	gate_speed_boost_elapsed = -1.0
 	last_zone_center = player_y
@@ -3713,7 +3965,6 @@ func _reset_game() -> void:
 	trail_particles.clear()
 	trail_spawn_timer = 0.0
 	fx_score_pops.clear()
-	fx_perfect_popups.clear()
 	combo_display_punch_elapsed = 0.0
 	combo_display_time = 0.0
 	fx_impact_flashes.clear()
@@ -3735,6 +3986,9 @@ func _on_pause_pressed() -> void:
 	if state != State.PLAYING:
 		return
 	paused = true
+	# 슬라이더가 현재 볼륨을 비추도록 — 팝업은 값을 들고 있지 않고, 열릴 때마다
+	# 받아 간다.
+	pause_panel.set_volumes(sfx_volume, music_volume)
 	pause_panel.visible = true
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 0.5)
 
@@ -3743,6 +3997,76 @@ func _on_resume_pressed() -> void:
 	paused = false
 	pause_panel.visible = false
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
+
+
+# 일시정지 팝업의 RESTART — 지금 모드 그대로 처음부터. _reset_game이 pause
+# 상태와 팝업 표시를 함께 정리하므로 여기서 따로 끌 필요는 없다.
+func _on_pause_restart_pressed() -> void:
+	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	_reset_game()
+	_start_countdown()
+
+
+# 일시정지 팝업의 HOME — 모드 선택 화면으로. 진행 중이던 판은 버린다.
+func _on_pause_home_pressed() -> void:
+	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
+	_reset_game()
+	_set_state(State.MODE_SELECT)
+
+
+# Master 아래에 SFX / Music 버스를 만든다. 이미 있으면 그대로 둔다.
+func _setup_audio_buses() -> void:
+	for bus_name in [BUS_SFX, BUS_MUSIC]:
+		if AudioServer.get_bus_index(bus_name) != -1:
+			continue
+		var idx: int = AudioServer.bus_count
+		AudioServer.add_bus(idx)
+		AudioServer.set_bus_name(idx, bus_name)
+		AudioServer.set_bus_send(idx, "Master")
+
+
+# 0~1 슬라이더 값을 버스에 적용한다. 0은 데시벨로 표현할 수 없으므로
+# (linear_to_db(0)이 -inf) 그 지점만 mute로 갈아탄다.
+func _apply_bus_volume(bus_name: String, linear: float) -> void:
+	var idx: int = AudioServer.get_bus_index(bus_name)
+	if idx < 0:
+		return
+	var v: float = clampf(linear, 0.0, 1.0)
+	AudioServer.set_bus_mute(idx, v <= 0.001)
+	AudioServer.set_bus_volume_db(idx, maxf(VOLUME_MIN_DB, linear_to_db(v)) if v > 0.001 else VOLUME_MIN_DB)
+
+
+func set_sfx_volume(v: float) -> void:
+	sfx_volume = clampf(v, 0.0, 1.0)
+	_apply_bus_volume(BUS_SFX, sfx_volume)
+	_save_audio_settings()
+
+
+func set_music_volume(v: float) -> void:
+	music_volume = clampf(v, 0.0, 1.0)
+	_apply_bus_volume(BUS_MUSIC, music_volume)
+	_save_audio_settings()
+
+
+func _load_audio_settings() -> void:
+	# 버스가 아직 없으면 볼륨을 적을 곳이 없어 조용히 사라진다. 호출 순서에
+	# 기대지 않도록 여기서 먼저 확보한다 — 이미 있으면 아무 일도 하지 않는다.
+	_setup_audio_buses()
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		sfx_volume = clampf(float(cfg.get_value(SAVE_SECTION_AUDIO, SAVE_KEY_SFX, sfx_volume)), 0.0, 1.0)
+		music_volume = clampf(float(cfg.get_value(SAVE_SECTION_AUDIO, SAVE_KEY_MUSIC, music_volume)), 0.0, 1.0)
+	_apply_bus_volume(BUS_SFX, sfx_volume)
+	_apply_bus_volume(BUS_MUSIC, music_volume)
+
+
+# 최고 점수와 같은 파일을 쓰므로, 먼저 읽어 들여 다른 값을 지우지 않는다.
+func _save_audio_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)
+	cfg.set_value(SAVE_SECTION_AUDIO, SAVE_KEY_SFX, sfx_volume)
+	cfg.set_value(SAVE_SECTION_AUDIO, SAVE_KEY_MUSIC, music_volume)
+	cfg.save(SAVE_PATH)
 
 
 func _on_mute_pressed() -> void:
@@ -3812,9 +4136,19 @@ func _draw_splash(view_size: Vector2) -> void:
 	var top_left: Vector2 = (view_size - draw_size) * 0.5
 	draw_texture_rect(splash_texture, Rect2(top_left, draw_size), false)
 
+	if splash_title_texture != null:
+		var tw: float = view_size.x * SPLASH_TITLE_WIDTH_FRAC
+		var th: float = tw * (float(splash_title_texture.get_height())
+			/ float(splash_title_texture.get_width()))
+		draw_texture_rect(splash_title_texture, Rect2(
+			(view_size.x - tw) * 0.5,
+			view_size.y * SPLASH_TITLE_MID_Y_FRAC - th * 0.5,
+			tw, th), false)
+
 
 	var alpha: float
 	var prompt_scale := 1.0
+	var glow_pulse := 0.0   # 0 at the trough, 1 at the peak of the breath
 	if splash_exit_elapsed >= 0.0:
 		var e: float = clampf(splash_exit_elapsed / SPLASH_EXIT_DURATION, 0.0, 1.0)
 		# Cubic ease-out: the prompt jumps at the moment of the tap and eases
@@ -3825,9 +4159,14 @@ func _draw_splash(view_size: Vector2) -> void:
 		alpha = 1.0 - eased
 	else:
 		var t: float = fposmod(splash_elapsed, SPLASH_PROMPT_PULSE_PERIOD) / SPLASH_PROMPT_PULSE_PERIOD
-		# sin over the full cycle gives a smooth in-and-out with no hard turn.
+		# sin over the full cycle gives a smooth in-and-out with no hard turn
+		# — the ease-in-out shape, without needing a Tween to drive it. The
+		# clock is free-running (splash_elapsed), so the breath is already
+		# going the moment the screen appears and keeps going until the tap.
 		var pulse: float = (sin(t * TAU - PI * 0.5) + 1.0) * 0.5
 		alpha = lerpf(SPLASH_PROMPT_ALPHA_RANGE.x, SPLASH_PROMPT_ALPHA_RANGE.y, pulse)
+		prompt_scale = lerpf(SPLASH_PROMPT_SCALE_RANGE.x, SPLASH_PROMPT_SCALE_RANGE.y, pulse)
+		glow_pulse = pulse
 	if alpha <= 0.001:
 		return
 	var font_size := int(round(view_size.y * SPLASH_PROMPT_FONT_SCALE))
@@ -3837,8 +4176,36 @@ func _draw_splash(view_size: Vector2) -> void:
 	# Drawn about the origin with the transform placing and scaling it, so
 	# the swell grows from the prompt's centre instead of its top-left.
 	draw_set_transform(centre, 0.0, Vector2(prompt_scale, prompt_scale))
+	# Glow first, so the text sits on top of its own bloom rather than under it.
+	_draw_splash_prompt_glow(font_size, glow_pulse * alpha)
 	_draw_centered_text(SPLASH_PROMPT_TEXT, Vector2.ZERO, font_size, fill, outline, combo_font)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+# Gold bloom behind the prompt. Called inside the prompt's own transform, so
+# it is placed about the origin and scales with the swell. `strength` is
+# 0..1 and rides the same pulse as the text.
+func _draw_splash_prompt_glow(font_size: int, strength: float) -> void:
+	if strength <= 0.001:
+		return
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var text_size := font.get_string_size(SPLASH_PROMPT_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	# Same baseline _draw_centered_text uses with no baseline_frac, so the
+	# bloom lands exactly under the glyphs instead of offset from them.
+	var base := Vector2(-text_size.x * 0.5, text_size.y * 0.25)
+	for ring_index in range(SPLASH_PROMPT_GLOW_RADII.size()):
+		var radius: float = SPLASH_PROMPT_GLOW_RADII[ring_index]
+		# Outer rings fade out, which is what makes the edge soft rather than
+		# a series of visible outlines.
+		var falloff: float = 1.0 - float(ring_index) / float(SPLASH_PROMPT_GLOW_RADII.size())
+		var a: float = SPLASH_PROMPT_GLOW_ALPHA * falloff * strength
+		if a <= 0.002:
+			continue
+		var col := Color(SPLASH_PROMPT_GLOW_COLOR.r, SPLASH_PROMPT_GLOW_COLOR.g, SPLASH_PROMPT_GLOW_COLOR.b, a)
+		for i in range(SPLASH_PROMPT_GLOW_STEPS):
+			var angle: float = TAU * float(i) / float(SPLASH_PROMPT_GLOW_STEPS)
+			var offset := Vector2(cos(angle), sin(angle)) * radius
+			draw_string(font, base + offset, SPLASH_PROMPT_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, col)
 
 
 # Finds a track by name, preferring OGG over WAV — see BGM_EXTENSIONS.
@@ -3927,8 +4294,15 @@ func _set_state(new_state: int) -> void:
 		splash_char_layer.visible = state == State.SPLASH
 	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT
 	mode_select_panel.visible = state == State.MODE_SELECT
+	# 카드의 BEST 판은 화면에 들어올 때마다 새로 채운다 — 방금 끝난 판에서
+	# 기록을 갈아치웠을 수 있다.
+	if state == State.MODE_SELECT:
+		mode_select_panel.set_best_scores(best_scores)
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
+	# 띄우는 쪽은 _finish_run(어느 갈래인지 아는 쪽)이라, 여기서는 끄기만 한다.
+	if gameover_popup != null and state != State.GAMEOVER:
+		gameover_popup.visible = false
 
 
 # ---- Layer 3: HUD bar + quiz box (always drawn above the background/gate
@@ -4030,10 +4404,10 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var best_font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
 		var best_left := rect.position.x + rect.size.x * BEST_NUM_LEFT_FRAC
 		var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
-		_draw_spaced_digits("%05d" % best_score, Vector2(best_left, best_mid_y), best_font_size, SCORE_NUMBER_DIGIT_SPACING, false, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+		_draw_spaced_digits("%05d" % _best_for(current_mode), Vector2(best_left, best_mid_y), best_font_size, SCORE_NUMBER_DIGIT_SPACING, false, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
 	else:
 		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
-		_draw_centered_text("SCORE %d  BEST %d" % [score, best_score], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
+		_draw_centered_text("SCORE %d  BEST %d" % [score, _best_for(current_mode)], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
 
 
 func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
@@ -4269,8 +4643,9 @@ func _draw() -> void:
 	# ---- Layer 4: effects layer (top of everything drawn above) ----
 	_draw_impact_flashes()
 	_draw_sparks()
+	if debug_show_zones and (state == State.PLAYING or state == State.COUNTDOWN):
+		_draw_debug_zones(view_size)
 	_draw_score_pops()
-	_draw_perfect_popups()
 	_draw_combo_popups(view_size)
 	# _draw_combo_glow also moved to HudCanvas: its top band overlaps the
 	# score box, and it has to stay on top of it the way it was here.

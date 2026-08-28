@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bnwdq3300wvv4"
-path="res://.godot/imported/gate_ring_right.png-500ded0fca65ca7c1a168bf2fae2692e.ctex"
+uid="uid://bgkpob23lbsty"
+path="res://.godot/imported/button_cream_v3.png-1f54b7aa8ab182e1ce854e90c4262e15.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/gates/gate_ring_dream/gate_ring_right.png"
-dest_files=["res://.godot/imported/gate_ring_right.png-500ded0fca65ca7c1a168bf2fae2692e.ctex"]
+source_file="res://assets/ui_assets/popup/button_cream_v3.png"
+dest_files=["res://.godot/imported/button_cream_v3.png-1f54b7aa8ab182e1ce854e90c4262e15.ctex"]
 
 [params]
 

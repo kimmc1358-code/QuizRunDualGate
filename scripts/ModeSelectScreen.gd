@@ -79,6 +79,10 @@ const CARD_BEST_CROWN_HEIGHT_FRAC := 0.78   # of the plate's height
 const CARD_BEST_ROW_SEPARATION_FRAC := 0.22 # of the plate's height, between items
 const CARD_SCORE_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const CARD_SCORE_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
+# Extra px between the BEST digits. Fredoka sets figures tight, and at this
+# size the five zeros run together into one block; a single pixel is enough
+# to read them as separate digits without the number looking spaced out.
+const CARD_SCORE_TRACKING := 1
 const CARD_SCORE_OUTLINE_FRAC := 0.12       # of the font size — the digits are small, and a
 											# heavier outline closes up the 0s
 
@@ -162,7 +166,7 @@ const CARD_BOB_PERIOD := 1.5
 
 const ART_DIR := "res://assets/ui_assets/main/"
 const BACKGROUND_FILE := "background_main.png"
-const TITLE_FILE := "title_main.png"
+const TITLE_FILE := "title_main_v2.png"
 const CARD_SHEET_FILE := "modeselect_main.png"
 const EXPLAIN_FILE := "explain_box.png"
 const LEADERBOARD_FILE := "leaderboard_v2.png"
@@ -331,6 +335,17 @@ func _weighted(base: Font, wght_tag: int, weight: int) -> Font:
 	var fv := FontVariation.new()
 	fv.base_font = base
 	fv.variation_opentype = {wght_tag: weight}
+	return fv
+
+
+# Same face with extra space between glyphs. Wrapping rather than mutating,
+# because the base is shared with several other labels that must not shift.
+func _tracked(base: Font, extra_px: int) -> Font:
+	if extra_px == 0:
+		return base
+	var fv := FontVariation.new()
+	fv.base_font = base
+	fv.spacing_glyph = extra_px
 	return fv
 
 
@@ -627,7 +642,10 @@ func _build() -> void:
 		var score_label := _add_card_text(row, "0".repeat(CARD_BEST_DIGITS), CARD_SCORE_COLOR)
 		score_label.add_theme_color_override("font_outline_color", CARD_SCORE_OUTLINE)
 		if _font_heavy != null:
-			score_label.add_theme_font_override("font", _font_heavy)
+			# Its own face rather than _font_heavy directly: the extra
+			# tracking is for the digits only, and _font_heavy is shared with
+			# the card name, START and the leaderboard label.
+			score_label.add_theme_font_override("font", _tracked(_font_heavy, CARD_SCORE_TRACKING))
 		_card_score.append(score_label)
 
 	# Drawn after the cards so the outline lands on top of the chosen one.
@@ -1139,10 +1157,21 @@ func _draw_start_glow() -> void:
 			_start_bounds.position.x * _start.size.x,
 			_start_bounds.position.y * _start.size.y),
 		Vector2(_start_bounds.size.x * _start.size.x, _start_bounds.size.y * _start.size.y))
-	var radius: int = int(round(START_CORNER_NATIVE * (_start.size.x / START_SHEET_WIDTH_NATIVE)))
+	# The halo lives on its own node, so it does not inherit the button's
+	# press scale the way a child would — without this it stayed full size
+	# while the button shrank under it, and the button looked like it was
+	# sinking out of its own glow. Reproduce the button's transform by hand:
+	# scale about its pivot, which _layout parks at the button's centre.
+	var press: float = _start.scale.x
+	if not is_equal_approx(press, 1.0):
+		var pivot: Vector2 = _start.position + _start.pivot_offset
+		plate = Rect2(pivot + (plate.position - pivot) * press, plate.size * press)
+	var radius: int = int(round(START_CORNER_NATIVE * (_start.size.x / START_SHEET_WIDTH_NATIVE) * press))
 	for i in range(START_GLOW_RINGS):
 		var t: float = float(i + 1) / float(START_GLOW_RINGS)
-		var grow: float = START_GLOW_BORDER * START_GLOW_SPREAD * t
+		# Spread scales too, so the halo tightens with the button instead of
+		# hanging at its resting width around a smaller plate.
+		var grow: float = START_GLOW_BORDER * START_GLOW_SPREAD * t * press
 		var glow := StyleBoxFlat.new()
 		glow.draw_center = false
 		glow.set_corner_radius_all(radius + int(round(grow)))
@@ -1303,6 +1332,7 @@ func _animate_press(button: Control) -> void:
 	var tween := create_tween()
 	tween.tween_property(button, "scale", Vector2.ONE * PRESS_SCALE, PRESS_ANIM_DURATION) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_follow_with_glow(tween, button)
 
 
 func _animate_release(button: Control) -> void:
@@ -1311,6 +1341,32 @@ func _animate_release(button: Control) -> void:
 	var tween := create_tween()
 	tween.tween_property(button, "scale", Vector2.ONE, PRESS_ANIM_DURATION) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	_follow_with_glow(tween, button)
+
+
+# START's halo is a sibling node, so nothing repaints it when the button's
+# scale animates — it would hold its old shape until the next layout pass.
+# Drive a redraw alongside the scale tween so the two move together. The
+# overshoot at the end of a release is included, which is the point: the
+# halo springs with the button rather than snapping after it.
+func _follow_with_glow(tween: Tween, button: Control) -> void:
+	if button != _start or _start_glow == null:
+		return
+	tween.parallel().tween_method(
+		func(_t: float) -> void: _start_glow.queue_redraw(),
+		0.0, 1.0, PRESS_ANIM_DURATION)
+
+
+## Fills each card's BEST plate. The array is indexed by mode, and the
+## cards are built in CARD_MODES order, so index i belongs to CARD_MODES[i].
+##
+## Digits are zero-padded to CARD_BEST_DIGITS so the plates all stay the
+## same width — a record that grows a digit must not reflow the card.
+func set_best_scores(values: PackedInt32Array) -> void:
+	for i in range(_card_score.size()):
+		var mode: int = CARD_MODES[i]
+		var value: int = values[mode] if mode < values.size() else 0
+		_card_score[i].text = "%0*d" % [CARD_BEST_DIGITS, value]
 
 
 func _on_card_pressed(index: int) -> void:
