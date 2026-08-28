@@ -790,6 +790,30 @@ const FX_SHAKE_DURATION := 0.14
 const FX_SHAKE_PEAK_AMPLITUDE := 4.5   # px
 
 # Score pop — bigger and longer-lived so the +score reads clearly.
+# ============================================================
+# Pass precision — PERFECT / GOOD. Shared by all four modes: it reads the
+# lane's precision zone, which every mode already rolls the same way, and
+# touches nothing mode-specific.
+#
+# A pass is graded only AFTER it is already a pass. Hitting the wrong gate
+# still ends the run exactly as before — precision never rescues a wrong
+# answer, and never fails a right one.
+# ============================================================
+## PERFECT 판정 폭 — 구역 높이 대비 중앙에서의 허용 오차 (0.20 = 중앙 ±20%).
+## 이 안이면 PERFECT, 구역 안이지만 벗어나면 GOOD.
+@export_range(0.01, 0.5, 0.01) var perfect_center_tolerance_frac: float = 0.20
+## PERFECT 시 획득 점수에 곱해지는 배율. GOOD은 항상 1.0배.
+@export_range(1.0, 5.0, 0.1) var perfect_score_multiplier: float = 1.5
+
+const PERFECT_POPUP_TEXT := "PERFECT!"
+const PERFECT_POPUP_DURATION := 0.75
+const PERFECT_POPUP_RISE := 42.0        # px the text drifts upward over its life
+const PERFECT_POPUP_OFFSET := Vector2(0.0, -62.0)  # from the character's centre — clears the sprite
+const PERFECT_POPUP_FONT_SIZE := 30
+const PERFECT_POPUP_COLOR := Color(1.0, 0.85, 0.25)
+const PERFECT_POPUP_OUTLINE := Color(0.20, 0.10, 0.0, 1.0)
+const PERFECT_POPUP_POP_IN := 0.18      # seconds of the overshoot scale-in at the start
+
 const FX_SCORE_POP_DURATION := 0.7
 const FX_SCORE_POP_RISE := 34.0
 const FX_SCORE_POP_COLOR := Color(1.0, 0.93, 0.6)
@@ -1350,6 +1374,7 @@ var trail_textures: Array[Texture2D] = []   # sparkle subset of the mode's fx_sm
 var trail_particles: Array = []      # each: {pos, drift_y, size, rotation, spin, lifetime, elapsed, texture} — see the TRAIL_* consts
 var trail_spawn_timer: float = 0.0
 var fx_score_pops: Array = []        # each: {pos, elapsed}
+var fx_perfect_popups: Array = []    # each: {pos, elapsed} — PERFECT text rising off the character
 var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
 var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
 var fx_impact_flashes: Array = []    # each: {pos, radius, elapsed}
@@ -2853,22 +2878,38 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	# Being in the correct lane is necessary but not sufficient — you must
 	# also be inside that lane's precision zone this gate rolled.
 	var passed: bool
+	# Graded only once `passed` is true — see the PERFECT/GOOD block above.
+	var perfect: bool = false
 	if not in_correct_lane:
 		passed = false
 	else:
 		var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
 		var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
 		passed = p_top >= zone_top and p_bottom <= zone_bottom
+		if passed:
+			# Distance from the zone's own centre, against a window measured
+			# as a fraction of the zone's full height. Uses the player's
+			# centre rather than its edges: the hitbox is a fixed 50px, so
+			# the centre is the only thing the player actually steers.
+			var zone_center: float = (zone_top + zone_bottom) * 0.5
+			var window: float = (zone_bottom - zone_top) * perfect_center_tolerance_frac
+			perfect = absf(player_y - zone_center) <= window
 
 	if passed:
 		gates_passed += 1
 		combo += 1
-		score += 10
+		# PERFECT multiplies the award; GOOD is the plain 10 it always was.
+		# Rounded rather than truncated so a 1.5x on 10 is 15, not 14.
+		score += int(round(10.0 * (perfect_score_multiplier if perfect else 1.0)))
 		flash_color = Color(0.3, 0.8, 0.4, 0.35)
 		flash_time = FLASH_DURATION
 		gate_speed_boost_elapsed = 0.0
 		_play_gate_success_fx(g, in_top)
 		_spawn_combo_popup(view_size)
+		# GOOD keeps exactly the effects and sound it had; PERFECT only adds
+		# the popup on top, so the two never read as different events.
+		if perfect:
+			_spawn_perfect_popup()
 	else:
 		_game_over()
 
@@ -3000,6 +3041,17 @@ func _spawn_speed_lines() -> void:
 			"elapsed": 0.0,
 			"color": line_color,
 		})
+
+
+# Anchored to the character, not the gate: PERFECT is feedback about where
+# YOU were, so it reads better rising off the player than off the ring.
+# Position is captured at spawn — the popup does not follow the player
+# afterwards, so it stays put while the character flies on.
+func _spawn_perfect_popup() -> void:
+	fx_perfect_popups.append({
+		"pos": Vector2(PLAYER_X, player_y) + PERFECT_POPUP_OFFSET,
+		"elapsed": 0.0,
+	})
 
 
 func _spawn_score_pop(gate_center: Vector2) -> void:
@@ -3145,6 +3197,10 @@ func _update_fx(delta: float) -> void:
 	for p in fx_score_pops:
 		p.elapsed += delta
 	fx_score_pops = fx_score_pops.filter(func(p): return p.elapsed < FX_SCORE_POP_DURATION)
+
+	for p in fx_perfect_popups:
+		p.elapsed += delta
+	fx_perfect_popups = fx_perfect_popups.filter(func(p): return p.elapsed < PERFECT_POPUP_DURATION)
 
 	if combo > 0:
 		combo_display_punch_elapsed += delta
@@ -3354,6 +3410,33 @@ func _draw_score_pops() -> void:
 		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 			draw_string(font, draw_pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, outline_col)
 		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, main_col)
+
+
+# "PERFECT!" rising off the character. Scaled about its own centre so the
+# pop-in grows from the middle rather than the baseline — draw_set_transform
+# rather than a bigger font size, which would only re-rasterise the glyphs.
+func _draw_perfect_popups() -> void:
+	if fx_perfect_popups.is_empty():
+		return
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var text_size := font.get_string_size(PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE)
+	for p in fx_perfect_popups:
+		var t: float = p.elapsed / PERFECT_POPUP_DURATION
+		# Hold full opacity through the first half, then fade — the word has
+		# to be readable before it starts leaving.
+		var alpha: float = 1.0 if t < 0.5 else 1.0 - (t - 0.5) / 0.5
+		# Overshoot in, settle to 1.0. _pop_scale is the same curve the
+		# countdown art uses, so the two read as one language.
+		var scale: float = _pop_scale(minf(1.0, p.elapsed / PERFECT_POPUP_POP_IN))
+		var pos: Vector2 = p.pos + Vector2(0.0, -PERFECT_POPUP_RISE * t)
+		var fill := Color(PERFECT_POPUP_COLOR.r, PERFECT_POPUP_COLOR.g, PERFECT_POPUP_COLOR.b, alpha)
+		var outline := Color(PERFECT_POPUP_OUTLINE.r, PERFECT_POPUP_OUTLINE.g, PERFECT_POPUP_OUTLINE.b, PERFECT_POPUP_OUTLINE.a * alpha)
+		draw_set_transform(pos, 0.0, Vector2(scale, scale))
+		var local := Vector2(-text_size.x * 0.5, text_size.y * 0.25)
+		for offset in [Vector2(-2, -2), Vector2(2, -2), Vector2(-2, 2), Vector2(2, 2), Vector2(0, -2), Vector2(0, 2), Vector2(-2, 0), Vector2(2, 0)]:
+			draw_string(font, local + offset, PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE, outline)
+		draw_string(font, local, PERFECT_POPUP_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, PERFECT_POPUP_FONT_SIZE, fill)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _combo_tier_color(tier: int, elapsed: float) -> Color:
@@ -3630,6 +3713,7 @@ func _reset_game() -> void:
 	trail_particles.clear()
 	trail_spawn_timer = 0.0
 	fx_score_pops.clear()
+	fx_perfect_popups.clear()
 	combo_display_punch_elapsed = 0.0
 	combo_display_time = 0.0
 	fx_impact_flashes.clear()
@@ -4186,6 +4270,7 @@ func _draw() -> void:
 	_draw_impact_flashes()
 	_draw_sparks()
 	_draw_score_pops()
+	_draw_perfect_popups()
 	_draw_combo_popups(view_size)
 	# _draw_combo_glow also moved to HudCanvas: its top band overlaps the
 	# score box, and it has to stay on top of it the way it was here.
