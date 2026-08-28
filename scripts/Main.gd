@@ -3703,7 +3703,7 @@ func _offer_revive() -> void:
 		fx_sound_gameover.play()
 	revive_panel.set_character(sad_face_texture, PLAYER_VISUAL_SIZE.y * active_visual_size_scale)
 	# 이어 뛰어도 순위표는 여기서 멈춘다는 걸 숫자로 보여 준다.
-	revive_panel.set_leaderboard_score(leaderboard_score)
+	revive_panel.set_leaderboard_score(leaderboard_score, player_logged_in)
 	revive_panel.visible = true
 
 

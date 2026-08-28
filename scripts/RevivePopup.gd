@@ -84,6 +84,7 @@ var _sad_draw_size := SAD_FALLBACK_SIZE
 var _sad_rest_y := 0.0
 # 이어 뛰어도 순위표에 남는 점수. Main이 넣어 준다.
 var _leaderboard_score := 0
+var _logged_in := false
 
 
 # 캐릭터를 제자리에서 아주 조금 띄웠다 내린다. 글로우는 부모가 계속 돌려야
@@ -174,13 +175,21 @@ func _load_oops() -> Texture2D:
 
 
 ## 이어 뛰어도 순위표에 남는 점수 — 지금까지 번 점수다.
-func set_leaderboard_score(value: int) -> void:
+##
+## 로그인하지 않았으면 순위표 자체가 없으므로 그 줄은 띄우지 않는다.
+func set_leaderboard_score(value: int, logged_in: bool) -> void:
 	_leaderboard_score = value
+	_logged_in = logged_in
 	_layout()
 
 
 # 안내 상자 아랫줄. 점수가 들어가므로 상수가 아니라 그때그때 만든다.
+# 로그인 전에는 빈 문자열 — 순위표에 올라간 적이 없는 사람에게 "당신의
+# 순위표 점수"를 말해 봐야 무슨 소린지 알 수 없다. 상자는 굵은 한 줄만
+# 남는다.
 func _note_body_text() -> String:
+	if not _logged_in:
+		return ""
 	return NOTE_BODY_FORMAT % _group(_leaderboard_score)
 
 
@@ -306,6 +315,8 @@ func _measure_note(width: float) -> float:
 	# 첫 줄이 차지하는 높이 — 아이콘이 글자보다 크므로 둘 중 큰 쪽.
 	_note_line_h = maxf(fs * 1.25, _note_icon_size.y)
 
+	if _note_body_text() == "":
+		return NOTE_PAD * 2.0 + _note_line_h
 	var body_h: float = _font_bold.get_multiline_string_size(
 		_note_body_text(), HORIZONTAL_ALIGNMENT_LEFT,
 		width - NOTE_PAD - _note_text_x, _note_body_fs).y
@@ -332,9 +343,12 @@ func _draw_note() -> void:
 	# 글자 가운데가 아이콘 가운데와 맞는다.
 	_note.draw_string(_font_bold, Vector2(_note_text_x, line_mid + _note_strong_fs * 0.35),
 		NOTE_STRONG_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, _note_strong_fs, INK)
+	var body := _note_body_text()
+	if body == "":
+		return
 	_note.draw_multiline_string(_font_bold,
 		Vector2(_note_text_x, NOTE_PAD + _note_line_h + NOTE_LINE_GAP + _note_body_fs),
-		_note_body_text(), HORIZONTAL_ALIGNMENT_LEFT,
+		body, HORIZONTAL_ALIGNMENT_LEFT,
 		w - NOTE_PAD - _note_text_x, _note_body_fs, -1, INK)
 
 
