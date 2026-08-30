@@ -215,15 +215,21 @@ const QUIZ_BOX_GAP := 10.0           # score box bottom edge -> quiz box top edg
 # loosely stacked pieces. Derived from the art rather than hard-coded, so it
 # still holds if the sheet is redrawn — see _hud_button_mult. This is a
 # further nudge on top of that: >1 makes the buttons overhang the row.
-const HUD_BUTTON_EXTRA := 1.0
+# 버튼 높이를 퀴즈 박스 높이에 맞추는 배수.
+#
+# 버튼 높이 = 스코어박스 높이 x 이 값인데, 버튼을 키우면 행 배율이 줄어
+# 스코어박스가 같이 작아진다. 그 되먹임까지 풀어서 얻은 값이다 — 이 값이면
+# 버튼이 퀴즈 박스와 같은 57.5px가 된다.
+const HUD_BUTTON_EXTRA := 0.9633
 # The buttons are hung off the score box's bottom edge rather than centred on
 # it. Aligning the *rects* would not do it: the slicer pads every canvas to
 # make the panel interiors line up across modes, so the painted art stops
 # short of the canvas bottom by a different amount in each mode and each
 # piece. These are where the art actually ends, as a fraction of canvas
 # height, measured off the sliced PNGs — indexed by Mode.
-const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [0.9778, 1.0000, 0.9926, 0.9778]
-const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [0.9908, 1.0000, 0.9908, 0.9908]
+const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [1.0, 1.0, 1.0, 1.0]
+# 새 버튼 아트는 네 모드 모두 실루엣에 딱 맞게 잘라 냈으므로 보정이 없다.
+const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [1.0, 1.0, 1.0, 1.0]
 const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) from that alignment
 # Stretches the quiz box taller than its art's aspect. The box already spans
 # the full screen width, so it cannot grow taller proportionally — anything
@@ -239,13 +245,27 @@ const QUIZ_BOX_SRC := Vector2(1190.0, 117.0)
 const HUD_BUTTON_SRC := Vector2(117.0, 109.0)
 const QUIZ_BOX_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const QUIZ_BOX_CORNER_RADIUS := 12.0
+# 늘리지 않고 그대로 둘 양 끝의 폭(원본 px).
+#
+# 이 경계 바깥은 원본 그대로, 안쪽은 가로로만 늘어난다. 그러니 경계는
+# 장식(보석 + 둥근 모서리 곡선)이 완전히 끝난 뒤에 놓여야 한다. 예전 값 60 은
+# 보석 한가운데를 지나서, 보석의 왼쪽 절반만 늘어나 찌그러져 보였다.
+#
+# 각 모드 아트에서 "이웃한 두 열이 거의 같아지는" 지점을 재 보면
+# sky 120(엄밀히는 146) / jungle 72 / ocean 72 / dream 92 다. 네 모드를 한
+# 값으로 덮으려면 146 이상이어야 하고, 동시에 가운데 구간(155..581)이 모든
+# 모드의 균일 구간 안에 들어와야 한다.
+const QUIZ_BOX_CAP := 155.0
 # Blank writing area inside the quiz box art, right of the painted "QUIZ"
 # label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
 # one set of fractions covers all three modes.
-const QUIZ_TEXT_LEFT_FRAC := 0.1588       # of width — inner edge of the "QUIZ" label pill
-const QUIZ_TEXT_RIGHT_FRAC := 0.9832      # of width — inner right edge of the frame
+# 새 아트에는 "QUIZ" 라벨이 없어 글자가 박스 전체를 쓴다. 양 끝 장식만
+# 피하면 되는데, 그 장식은 늘어나지 않고 고정 폭으로 그려지므로 비율도
+# 박스 폭에 대한 그 폭으로 잡는다.
+const QUIZ_TEXT_LEFT_FRAC := 0.055        # of width
+const QUIZ_TEXT_RIGHT_FRAC := 0.945       # of width
 const QUIZ_TEXT_SIDE_PAD_FRAC := 0.020    # of width — keeps text off both edges
-const QUIZ_TEXT_CENTER_Y_FRAC := 0.5085
+const QUIZ_TEXT_CENTER_Y_FRAC := 0.480
 # The text is centred within LEFT_FRAC..RIGHT_FRAC — the writing area with
 # the painted "QUIZ" pill excluded — not within the box as a whole.
 # Font size is pinned to the box's WIDTH, not its height. Height would be the
@@ -348,10 +368,22 @@ const GATE_ZONE_HEIGHT_MARGIN_LOCAL := 20.0
 # little from an exact edge-to-edge touch so the ring's bottom rim visibly
 # rests IN the base's top platform instead of a hairline seam. See
 # _gate_base_center_y_offset/_draw_gate_base.
+# 어느 모드가 베이스를 쓰는가. 드림의 아치는 땅에 선 문이라 발치에 받침이
+# 있어야 말이 되지만, 나머지 셋은 공중에 뜬 고리라 받침이 붙으면 오히려
+# 매달린 부유물처럼 보인다. Mode 순서.
+const MODE_GATE_BASE_ENABLED := [false, false, false, true]
 const GATE_BASE_CANVAS_SIZE := 512.0
 const GATE_BASE_TOP_LOCAL_Y := 112.0
-const GATE_BASE_OVERLAP_LOCAL := 78.0
-const GATE_BASE_SCALE_MULTIPLIER := 0.62  # shrinks the drawn base independently of the ring's own size
+# 링 바닥과 베이스 윗면이 얼마나 겹치는가. 모드마다 베이스 아트의 생김새가
+# 달라(스카이/정글/오션은 두툼한 받침, 드림은 납작한 꽃밭 판) 같은 값으로는
+# 맞지 않는다. 커질수록 베이스가 위로 올라와 기둥 발치를 더 깊이 문다.
+# Mode 순서.
+const GATE_BASE_OVERLAP_LOCAL := [78.0, 78.0, 78.0, 191.0]
+# 베이스를 링과 별개로 줄이는 배수. 모드마다 아트의 생김새가 달라 값이
+# 다르다 — 스카이/정글/오션은 링 발치를 받치는 작은 받침이지만, 드림은
+# 게이트가 통째로 올라선 널찍한 꽃밭 판이라 링보다 좌우로 조금 더 나가야
+# 한다. Mode 순서.
+const GATE_BASE_SCALE_MULTIPLIER := [0.62, 0.62, 0.62, 0.764]
 const GATE_BASE_OFFSET_X_LOCAL := 10.0  # nudges the base right of the ring's own center
 # Safety margin so the FX_GATE_PUNCH_KEYFRAMES peak (+8%) can't push the
 # frame's edges past the screen bounds this clamp is meant to guarantee.
@@ -399,7 +431,6 @@ const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 const GATE_FLAG_ICON_WIDTH := 72.0
 const GATE_FLAG_ICON_HEIGHT := 48.0
 const GATE_FLAG_GAP_ABOVE_ZONE := 20.0  # extra clearance lifting the flag+panel further above the zone
-const GATE_FLAG_CARD_COLOR := Color(0.96, 0.90, 0.78)  # cream, matching the panel/score/quiz-box family's tone — fills a non-3:2 flag's letterbox padding
 
 # Backing panel image behind the flag (replaces the old procedural
 # gold-border+corner-gem drawing). Sized so its own inner window — measured
@@ -420,19 +451,34 @@ const GATE_FLAG_CARD_COLOR := Color(0.96, 0.90, 0.78)  # cream, matching the pan
 # then bbox of the largest enclosed blob (skips small incidental gaps in the
 # frame's own decoration, e.g. ocean's corner-gem gap).
 const MODE_GATE_FLAG_PANEL_PATH := [
-	"res://assets/gates/flag_panel/gate_panel.png",
-	"res://assets/gates/flag_panel/gate_panel_jungle.png",
-	"res://assets/gates/flag_panel/gate_panel_ocean.png",
-	"res://assets/gates/flag_panel/gate_panel.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/gates/flag_panel/panel_sky.png",
+	"res://assets/gates/flag_panel/panel_jungle.png",
+	"res://assets/gates/flag_panel/panel_ocean.png",
+	"res://assets/gates/flag_panel/panel_dream.png",
 ]
-const MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL := [Vector2(253.0, 473.0), Vector2(254.0, 508.5), Vector2(250.0, 497.5), Vector2(253.0, 473.0)]
-const MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL := [265.0, 313.0, 277.0, 265.0]
-# Flags are fit by width only (see _draw_gate_answer_box) — every panel's
-# window is close enough to the flags' own fixed 3:2 that the sub-pixel
-# height mismatch is invisible. JUNGLE's math-quiz number instead has no
-# fixed aspect of its own, so it fits both width AND height exactly to
-# each panel's real window — this array is what that needs.
-const MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL := [173.0, 186.0, 180.0, 173.0]
+# 네 패널은 색만 다른 같은 둥근 사각형이라(394x122) 치수가 하나로 통한다.
+# 예전 아트는 모드마다 창 위치·크기를 따로 재야 했지만, 이제는 답 카드
+# 크기에 테두리 두께만 더하면 패널 크기가 나온다.
+#
+# 9-slice로 그리므로(_draw_nine_patch) 패널을 어떤 크기로 늘려도 모서리
+# 곡률과 테두리 두께는 그대로다. 여백은 모서리 반경(20)에 맞춘다.
+const GATE_PANEL_BORDER := 7.0      # 아트에서 잰 테두리 두께(px)
+# 모서리 곡률 반경(px)에 여유를 조금 더한 값.
+#
+# 곡선은 아트에서 x=22(= 반경 18 + 여백 4)에서 정확히 끝난다. 9-slice
+# 경계를 딱 거기에 두면 모서리 조각과 변 조각이 서로 다른 배율로 같은
+# 전환점을 훑게 되어, 모서리 안쪽에 1px짜리 어긋남이 남는다. 평평해진
+# 구간으로 3px 밀어 두면 양쪽이 같은 픽셀에서 출발한다.
+const GATE_PANEL_CORNER := 9.0
+# 아트 둘레의 투명 여백(px). 실루엣이 텍스처 경계에 닿아 있으면 줄여 그릴 때
+# 가장자리가 계단으로 남아서, 구울 때 여백을 둘렀다. 9-slice 모서리 여백은
+# 그만큼 커야 곡선을 온전히 담고, 그리는 사각형도 그만큼 키워야 눈에 보이는
+# 패널 크기가 그대로다.
+const GATE_PANEL_PAD := 2.0
+# 아트 픽셀을 화면에 몇 배로 그릴지. 9-slice라 이 값이 곧 화면상 테두리
+# 굵기를 정한다. 1.0이면 아트 픽셀 그대로 — 모서리에 리샘플링이 없어
+# 이음매가 가장 깨끗하다. 아트를 그 크기에 맞춰 구워 두었다.
+const GATE_PANEL_SCALE := 1.0
 
 # ============================================================
 # Combo tier popup — an "×N" burst in the gate zone's top-right corner,
@@ -586,7 +632,10 @@ const MODE_BG_TEXTURE_PATH := [
 	"res://assets/backgrounds/sky_world/background_single_blur.png",
 	"res://assets/backgrounds/jungle_world/background_single_blur.png",
 	"res://assets/backgrounds/ocean_world/background_single_blur.png",
-	"res://assets/backgrounds/dream_world/background_single_blur.png",
+	# 드림의 블러는 다른 모드보다 훨씬 약하다. 이 그림은 처음부터 부드러운
+	# 파스텔이라(선명도 3.25 대 다른 모드 블러본 4.7~5.9) 세게 걸면 꽃
+	# 모양만 뭉개진다. 절반으로 줄였다가 되돌리는 정도만 걸었다.
+	"res://assets/backgrounds/dream_world/background_single_v2_blur.png",
 ]
 
 @export_group("Sky Background")
@@ -820,7 +869,16 @@ const FX_SCORE_POP_OFFSET := Vector2(0.0, -18.0)
 # per tap (see _unhandled_input).
 const FX_SOUND_WHOOSH_PATH := "res://assets/audio/gate_whoosh.ogg"
 const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
-const FX_SOUND_FLAP_PATH := "res://assets/audio/bird_flap.wav"
+# 탭 소리는 모드마다 다르다. 확장자 없이 적고 _resolve_audio가 .ogg -> .wav
+# 순으로 찾는다. 정글은 예전부터 쓰던 파일을 그대로 쓴다. 파일이 없는 모드는
+# FX_SOUND_FLAP_FALLBACK으로 되돌아가므로 하나씩 채워 넣어도 된다.
+const MODE_FLAP_SOUND_NAME := [
+	"sky_flap",     # SKY
+	"bird_flap",    # JUNGLE — 기존 소리 유지
+	"ocean_flap",   # OCEAN
+	"unicorn_flap", # DREAM — 캐릭터 이름을 딴 파일명
+]
+const FX_SOUND_FLAP_FALLBACK := "res://assets/audio/bird_flap.wav"
 # Background music — starts once in _ready() and loops for the whole
 # session (menu, playing, game over all keep it going, same as the
 # parallax background), independent of the FX players above. Respects the
@@ -839,14 +897,14 @@ const BGM_EXTENSIONS := [".ogg", ".wav"]
 # MODE_CHARACTER_DIR/MODE_GATE_DIR — all four point at the one existing
 # game track for now, so adding a per-mode file later is one line each.
 const BGM_MENU_NAME := "splash_main_bgm"
-# No per-mode tracks exist yet. An empty name means "leave whatever is
-# playing alone", so a run carries the menu music rather than dropping into
-# silence at the countdown. Fill an entry in as each mode's track arrives.
+# 모드마다 자기 곡. 확장자 없이 적고 불러올 때 .ogg -> .wav 순으로 찾는다
+# (BGM_EXTENSIONS). 파일이 아직 없으면 _bgm_path_for_state가 메뉴 곡으로
+# 되돌아가므로, 이름을 미리 적어 둬도 안전하다 — 파일만 넣으면 바뀐다.
 const MODE_BGM_NAME := [
-	"",  # SKY
-	"",  # JUNGLE
-	"",  # OCEAN
-	"",  # DREAM
+	"sky_bgm",     # SKY
+	"jungle_bgm",  # JUNGLE
+	"ocean_bgm",   # OCEAN
+	"dream_bgm",   # DREAM
 ]
 # Swapping tracks hard-cuts audibly, so the outgoing player fades down while
 # the incoming one fades up over this long. Two players exist purely to make
@@ -1199,28 +1257,34 @@ const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the 
 # land in exactly the same place at exactly the same size in all three modes.
 # Re-run the slicer if the sheet is ever redrawn; it prints the fractions.
 const MODE_PAUSE_ICON_PATH := [
-	"res://assets/ui_assets/sky/pause.png",
-	"res://assets/ui_assets/jungle/pause.png",
-	"res://assets/ui_assets/ocean/pause.png",
-	"res://assets/ui_assets/sky/pause.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/ui_assets/sky/pause_v2.png",
+	"res://assets/ui_assets/jungle/pause_v2.png",
+	"res://assets/ui_assets/ocean/pause_v2.png",
+	"res://assets/ui_assets/dream/pause_v2.png",
 ]
 const MODE_MUTE_ICON_PATH := [
-	"res://assets/ui_assets/sky/mute.png",
-	"res://assets/ui_assets/jungle/mute.png",
-	"res://assets/ui_assets/ocean/mute.png",
-	"res://assets/ui_assets/sky/mute.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/ui_assets/sky/mute_v2.png",
+	"res://assets/ui_assets/jungle/mute_v2.png",
+	"res://assets/ui_assets/ocean/mute_v2.png",
+	"res://assets/ui_assets/dream/mute_v2.png",
 ]
+# 스코어 박스는 게이트 위 보기답 패널과 같은 아트를 9-slice로 늘려 쓴다.
+# 예전 아트에는 "SCORE"·"BEST"·왕관·구분선이 그려져 있었지만 이 패널은
+# 빈 상자라, 그 넷을 아래 _draw_hud_bar가 직접 그린다.
 const MODE_SCORE_BOX_PATH := [
-	"res://assets/ui_assets/sky/score_box.png",
-	"res://assets/ui_assets/jungle/score_box.png",
-	"res://assets/ui_assets/ocean/score_box.png",
-	"res://assets/ui_assets/sky/score_box.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/gates/flag_panel/panel_sky.png",
+	"res://assets/gates/flag_panel/panel_jungle.png",
+	"res://assets/gates/flag_panel/panel_ocean.png",
+	"res://assets/gates/flag_panel/panel_dream.png",
 ]
+# 퀴즈 박스는 모드마다 자기 아트를 쓴다(hud_quizbox.png에서 잘라 냄). 양 끝에
+# 보석 장식이 박혀 있어 9-slice로 늘리면 그 장식이 늘어나므로, 통째로 그려
+# 아트 비율을 그대로 지킨다.
 const MODE_QUIZ_BOX_PATH := [
-	"res://assets/ui_assets/sky/quiz_box.png",
-	"res://assets/ui_assets/jungle/quiz_box.png",
-	"res://assets/ui_assets/ocean/quiz_box.png",
-	"res://assets/ui_assets/sky/quiz_box.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/ui_assets/sky/quiz_box_v2.png",
+	"res://assets/ui_assets/jungle/quiz_box_v2.png",
+	"res://assets/ui_assets/ocean/quiz_box_v2.png",
+	"res://assets/ui_assets/dream/quiz_box_v2.png",
 ]
 const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
 # Best score persistence. user:// is the per-user writable location Godot
@@ -1269,16 +1333,45 @@ const VOLUME_MIN_DB := -32.0
 # Font size converts from ink height: Fredoka's digits occupy 0.72 em (0.700
 # above the baseline, 0.020 below — see DIGIT_BASELINE_FROM_CENTER_FRAC), so
 # font = ink_height / 0.72.
-const SCORE_NUM_RIGHT_FRAC := 0.5379      # of width — the divider; the score is right-aligned to just inside it
-const SCORE_NUMBER_FONT_FRAC := 0.397     # of height — 0.286 ink / 0.72
-const SCORE_NUMBER_MID_Y_FRAC := 0.548    # of height — matches the painted "SCORE"
-# BEST is left-aligned instead, starting just past its label, so the number
-# sits beside the word rather than stranded at the far edge of the half.
-const BEST_NUM_LEFT_FRAC := 0.702         # of width — label ends at 0.6734, plus a gap so the number does not crowd it
-const BEST_NUMBER_FONT_FRAC := 0.336      # of height — 0.242 ink / 0.72
-const BEST_NUMBER_MID_Y_FRAC := 0.696     # of height — matches the painted "BEST"
+# 빈 패널 위에 직접 그리는 것들.
+#
+# 왼쪽 칸은 "SCORE" 글자 + 점수, 오른쪽 칸은 왕관 + 최고 점수다. 오른쪽에는
+# "BEST"라고 쓰지 않는다 — 왕관이 그 뜻을 대신한다.
+const SCORE_LABEL_TEXT := "SCORE"
+const SCORE_LABEL_FONT_FRAC := 0.485     # 박스 높이 대비
+const SCORE_LABEL_LEFT_FRAC := 0.0428     # 박스 너비 대비 — 왼쪽 여백
+const SCORE_LABEL_COLOR := Color(0.13, 0.20, 0.45, 1.0)   # 진한 네이비
+const SCORE_DIVIDER_COLOR := Color(0.55, 0.47, 0.36, 0.55)
+const SCORE_DIVIDER_WIDTH := 2.0
+const SCORE_DIVIDER_INSET_FRAC := 0.20   # 박스 높이 대비 위아래 여백
+const BEST_CROWN_PATH := "res://assets/ui_assets/popup/icon_crown.png"
+const BEST_CROWN_LEFT_FRAC := 0.032      # 구분선에서 왕관까지(박스 너비 대비)
+const BEST_CROWN_HEIGHT_FRAC := 0.52     # 박스 높이 대비
+const BEST_CROWN_GAP_FRAC := 0.38        # 글자 크기 대비 왕관-숫자 간격
+# 최고 점수는 오른쪽 끝자리를 박스 오른쪽 테두리 가까이에 붙여 오른쪽 정렬한다.
+const BEST_NUMBER_RIGHT_INSET_FRAC := 0.0377   # 박스 너비 대비
+# 스코어 박스 테두리는 일시정지/음소거 버튼과 비슷한 두께로. 패널 아트를
+# 9-slice로 그릴 때의 배수이고, 게이트 위 보기답 패널과는 따로 둔다.
+const SCORE_PANEL_SCALE := 0.877
+# 버튼 사이를 꽉 채우지 않고 살짝 줄여 그린다 — 버튼과의 간격이 그만큼 넓어진다.
+const SCORE_BOX_WIDTH_TRIM := 0.96
+# panel_*.png 는 가장자리에 투명 여백이 2px 있다(잉크 y 2..50 of 53). 9-slice
+# 모서리 조각째로 그려지니 화면에서도 SCORE_PANEL_SCALE 배만큼 안쪽으로
+# 밀려 들어가, 같은 rect 를 줘도 버튼보다 4px 작아 보였다. 그만큼 넓혀서
+# 그린다 — rect 는 "칠해진 테두리가 놓일 자리"라는 뜻을 유지한다.
+const SCORE_PANEL_ART_PAD := 2.0
+# 구분선 위치 = 왼쪽 칸(SCORE)과 오른쪽 칸(최고 점수)의 비율 3:2.
+const SCORE_NUM_RIGHT_FRAC := 0.55        # of width
+const SCORE_NUMBER_FONT_FRAC := 0.455     # of height
+# 두 칸의 내용이 한 줄에 놓인다. 예전 값(0.548 / 0.696)은 아트에 그려져
+# 있던 SCORE/BEST 두 줄에 맞춘 것이라, 빈 패널에서는 어긋나 보인다.
+const SCORE_NUMBER_MID_Y_FRAC := 0.50     # of height
+# 최고 점수도 점수와 같은 크기, 같은 줄. 예전 값(0.336 / 0.696)은 아트에
+# 그려져 있던 BEST 줄에 맞춘 것이었다.
+const BEST_NUMBER_FONT_FRAC := 0.455      # of height
+const BEST_NUMBER_MID_Y_FRAC := 0.50      # of height
 const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.015  # of box width — keeps the ones digit off the divider
-const SCORE_NUMBER_DIGIT_SPACING := 1.0     # extra px between digit cells, on top of the tabular cell width
+const SCORE_NUMBER_DIGIT_SPACING := 1.7     # extra px between digit cells, on top of the tabular cell width
 # Baseline offset from a digit row's visual center, as a fraction of the
 # font size — see _draw_spaced_digits. Measured by rendering
 # "0123456789" at a known baseline and reading the ink box back: Fredoka's
@@ -1348,9 +1441,6 @@ var active_draw_offset_fly := Vector2.ZERO
 var active_draw_offset_happy := Vector2.ZERO
 var active_draw_offset_sad := Vector2.ZERO
 var active_visual_size_scale: float = 1.0
-var active_flag_panel_window_center := Vector2.ZERO
-var active_flag_panel_window_width: float = 0.0
-var active_flag_panel_window_height: float = 0.0
 var active_theme_motion: int = ThemeMotion.SCATTER
 
 var flap_frames: Array[Texture2D] = []
@@ -1371,6 +1461,7 @@ var best_scores := PackedInt32Array()
 # 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — leaderboard_score 참고.
 var leaderboard_bests := PackedInt32Array()
 var score_box_texture: Texture2D
+var score_crown_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
 var splash_texture: Texture2D
@@ -1495,6 +1586,14 @@ func _ready() -> void:
 	pause_button.expand_icon = true
 	mute_button.text = ""
 	mute_button.expand_icon = true
+	# flat=true 라도 Button 은 기본 테마 스타일박스의 content margin(사방 4px)을
+	# 그대로 써서 아이콘을 그 안쪽에 맞춘다. 57.5px 버튼이면 그림은 49.5px 밖에
+	# 안 되고, 그래서 옆의 스코어박스보다 눈에 띄게 작아 보였다. 여백 0 인
+	# 스타일박스를 씌워 아이콘이 버튼 사각형을 그대로 채우게 한다.
+	for b: Button in [pause_button, mute_button]:
+		var empty := StyleBoxEmpty.new()
+		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
+			b.add_theme_stylebox_override(slot, empty)
 	_layout_hud_buttons()
 	var base_font: Font = ThemeDB.fallback_font
 	if ResourceLoader.exists(COMBO_FONT_PATH):
@@ -1532,8 +1631,8 @@ func _ready() -> void:
 	fx_sound_flap = AudioStreamPlayer.new()
 	add_child(fx_sound_flap)
 	fx_sound_flap.bus = BUS_SFX
-	if ResourceLoader.exists(FX_SOUND_FLAP_PATH):
-		fx_sound_flap.stream = load(FX_SOUND_FLAP_PATH)
+	if ResourceLoader.exists(FX_SOUND_FLAP_FALLBACK):
+		fx_sound_flap.stream = load(FX_SOUND_FLAP_FALLBACK)
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
 		add_child(player)
@@ -1631,7 +1730,52 @@ func _weighted_font(base: Font, wght_tag: int, weight: int) -> Font:
 # and the slack differs per file, so the numbers here would stop meaning
 # anything the moment the art is redrawn. Cropping first makes the width
 # fraction describe the letters themselves.
-func _load_trimmed(path: String) -> Texture2D:
+# icon_crown.png 처럼 캔버스 대부분이 거의 안 보이는 픽셀인 아트는
+# get_used_rect() 가 캔버스를 통째로 돌려준다. 그러면 높이를 지정해도
+# 실제 그림은 그 40% 밖에 안 되어 "작게" 보인다. 알파 문턱값으로 다시 잰다.
+const TRIM_INK_ALPHA := 0.06
+const TRIM_INK_MIN_RUN := 2
+# 잘라 낸 뒤 사방에 두르는 투명 여백(잉크 크기 대비)과, 미리 줄여 둘 높이.
+# 507px 짜리 왕관을 26px 로 그리면 축소가 전부 GPU 밉맵 체인에서 일어나는데,
+# 홀수 크기에서 마지막 열이 버려져 오른쪽이 깎여 보인다. 미리 짝수 크기로
+# 줄여 굽고 여백을 둘러 실루엣이 가장자리에서 흐려질 자리를 만든다.
+const TRIM_INK_PAD_FRAC := 0.06
+const TRIM_INK_BAKE_H := 192
+
+func _ink_rect(img: Image) -> Rect2i:
+	var w := img.get_width()
+	var h := img.get_height()
+	var top := -1
+	var bottom := -1
+	var left := w
+	var right := -1
+	for y in range(h):
+		var n := 0
+		var row_left := -1
+		var row_right := -1
+		for x in range(w):
+			if img.get_pixel(x, y).a < TRIM_INK_ALPHA:
+				continue
+			n += 1
+			if row_left < 0:
+				row_left = x
+			row_right = x
+		if n < TRIM_INK_MIN_RUN:
+			continue
+		if top < 0:
+			top = y
+		bottom = y
+		left = mini(left, row_left)
+		right = maxi(right, row_right)
+	if top < 0 or right < 0:
+		return img.get_used_rect()
+	# 반투명 가장자리 한 겹은 남긴다 — 잘라 내면 계단이 진다.
+	return Rect2i(maxi(0, left - 1), maxi(0, top - 1),
+		mini(w - 1, right + 1) - maxi(0, left - 1) + 1,
+		mini(h - 1, bottom + 1) - maxi(0, top - 1) + 1)
+
+
+func _load_trimmed(path: String, by_ink := false) -> Texture2D:
 	if not ResourceLoader.exists(path):
 		push_warning("missing art: %s" % path)
 		return null
@@ -1640,11 +1784,67 @@ func _load_trimmed(path: String) -> Texture2D:
 		img.decompress()
 	img.convert(Image.FORMAT_RGBA8)
 	img.clear_mipmaps()
-	var used := img.get_used_rect()
+	var used := _ink_rect(img) if by_ink else img.get_used_rect()
 	if used.size.x > 0 and used.size.y > 0 and used.size != img.get_size():
 		img = img.get_region(used)
+	var ink_frac := Vector2.ONE
+	if by_ink:
+		img = _bake_small(img)
+		var ink := img.get_size()
+		var pad: int = maxi(4, roundi(maxi(ink.x, ink.y) * TRIM_INK_PAD_FRAC))
+		# 짝수 크기로 맞춰 밉맵 체인이 잉크를 갉아먹지 않게 한다.
+		var pw: int = ink.x + pad * 2
+		var ph: int = ink.y + pad * 2
+		pw += pw % 2
+		ph += ph % 2
+		var padded := Image.create_empty(pw, ph, false, Image.FORMAT_RGBA8)
+		# 투명 여백의 RGB 는 검정이 아니라 실루엣 테두리 색으로 채운다.
+		# 검정으로 두면 축소할 때 그 색이 끌려 들어와 가장자리가 어두워진다.
+		padded.fill(Color(_edge_color(img), 0.0))
+		padded.blit_rect(img, Rect2i(Vector2i.ZERO, ink), Vector2i(pad, pad))
+		ink_frac = Vector2(float(ink.x) / pw, float(ink.y) / ph)
+		img = padded
 	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
+	var tex := ImageTexture.create_from_image(img)
+	# 그릴 때 여백을 빼고 실제 그림 크기를 맞출 수 있도록 남겨 둔다.
+	tex.set_meta("ink_frac", ink_frac)
+	return tex
+
+
+# 그릴 크기에 가깝게 미리 줄인다. 알파를 곱한 채로 줄여야 투명한 쪽 RGB 가
+# 끌려 들어오지 않는다.
+func _bake_small(img: Image) -> Image:
+	if img.get_height() <= TRIM_INK_BAKE_H:
+		return img
+	var w: int = maxi(2, roundi(img.get_width() * float(TRIM_INK_BAKE_H) / float(img.get_height())))
+	var out := img.duplicate() as Image
+	out.premultiply_alpha()
+	out.resize(w + w % 2, TRIM_INK_BAKE_H, Image.INTERPOLATE_LANCZOS)
+	for y in range(out.get_height()):
+		for x in range(out.get_width()):
+			var c: Color = out.get_pixel(x, y)
+			if c.a > 0.0:
+				out.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
+	return out
+
+
+# 실루엣 가장자리(알파가 반쯤 있는 픽셀)의 평균 색.
+func _edge_color(img: Image) -> Color:
+	var r := 0.0
+	var g := 0.0
+	var b := 0.0
+	var n := 0
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			var c: Color = img.get_pixel(x, y)
+			if c.a > 0.35 and c.a < 0.95:
+				r += c.r
+				g += c.g
+				b += c.b
+				n += 1
+	if n == 0:
+		return Color(0, 0, 0)
+	return Color(r / n, g / n, b / n)
 
 func _load_face(path: String, fallback_path: String) -> Texture2D:
 	if ResourceLoader.exists(path):
@@ -2116,7 +2316,7 @@ func _gate_base_center_y_offset() -> float:
 	# GATE_BASE_OVERLAP_LOCAL of intentional overlap — see the const comment).
 	var ring_bottom_from_center: float = GATE_PILLAR_BOTTOM_LOCAL_Y - GATE_PILLAR_CANVAS_SIZE * 0.5
 	var base_top_from_center: float = GATE_BASE_CANVAS_SIZE * 0.5 - GATE_BASE_TOP_LOCAL_Y
-	return ring_bottom_from_center + base_top_from_center - GATE_BASE_OVERLAP_LOCAL
+	return ring_bottom_from_center + base_top_from_center - GATE_BASE_OVERLAP_LOCAL[current_mode]
 
 
 func _draw_gate_base(center_x: float, center_y: float) -> void:
@@ -2129,7 +2329,7 @@ func _draw_gate_base(center_x: float, center_y: float) -> void:
 	# to the ring's edges), but the draw SIZE gets its own independent
 	# shrink — so making the base smaller doesn't also drag its anchor point.
 	var base_center_y: float = center_y + _gate_base_center_y_offset() * scale_factor
-	var draw_size: Vector2 = tex_size * scale_factor * GATE_BASE_SCALE_MULTIPLIER
+	var draw_size: Vector2 = tex_size * scale_factor * GATE_BASE_SCALE_MULTIPLIER[current_mode]
 	var base_center_x: float = center_x + GATE_BASE_OFFSET_X_LOCAL * scale_factor
 	var top_left := Vector2(base_center_x - draw_size.x * 0.5, base_center_y - draw_size.y * 0.5)
 	draw_texture_rect(gate_base_texture, Rect2(top_left, draw_size), false)
@@ -2149,6 +2349,66 @@ func _draw_gate_base(center_x: float, center_y: float) -> void:
 # the bottom of that function), after both ring halves and the bird, so the
 # flag is guaranteed to never end up hidden behind the (now much bigger)
 # ring art.
+# 텍스처를 9칸으로 나눠 그린다 — 네 모서리는 크기를 유지하고 변과 가운데만
+# 늘어난다. NinePatchRect는 노드라서 이 즉시 그리기 방식에는 못 쓰고,
+# draw_texture_rect_region으로 아홉 조각을 직접 그린다.
+#
+# margin은 원본 픽셀 기준 모서리 크기, scale은 그 모서리를 화면에 몇 배로
+# 그릴지다. scale이 없으면 394px짜리 패널이 그 크기 그대로 나온다.
+func _draw_nine_patch(texture: Texture2D, rect: Rect2, margin: float, scale: float, ci: CanvasItem = null) -> void:
+	var target: CanvasItem = ci if ci != null else self
+	var tex_w: float = texture.get_width()
+	var tex_h: float = texture.get_height()
+	var m: float = margin
+	var d: float = margin * scale
+	# 그릴 사각형이 모서리 둘을 담지 못할 만큼 작으면 모서리를 줄인다 —
+	# 안 그러면 좌우(또는 상하) 모서리가 서로 겹쳐 그려진다.
+	d = minf(d, rect.size.x * 0.5)
+	d = minf(d, rect.size.y * 0.5)
+	var sx := [0.0, m, tex_w - m, tex_w]
+	var sy := [0.0, m, tex_h - m, tex_h]
+	var dx := [rect.position.x, rect.position.x + d, rect.end.x - d, rect.end.x]
+	var dy := [rect.position.y, rect.position.y + d, rect.end.y - d, rect.end.y]
+	for row in range(3):
+		for col in range(3):
+			var src := Rect2(sx[col], sy[row], sx[col + 1] - sx[col], sy[row + 1] - sy[row])
+			var dst := Rect2(dx[col], dy[row], dx[col + 1] - dx[col], dy[row + 1] - dy[row])
+			if dst.size.x <= 0.0 or dst.size.y <= 0.0:
+				continue
+			target.draw_texture_rect_region(texture, dst, src)
+
+
+# 좌우 끝은 그대로 두고 가운데만 가로로 늘려 그린다.
+#
+# 퀴즈 박스 아트는 양 끝에 보석 장식이 박혀 있어 통째로 늘리면 그 장식이
+# 함께 찌그러진다. 9-slice처럼 나누되 세로로는 쪼개지 않는다 — 장식이
+# 위아래 모서리가 아니라 좌우 변의 한가운데에 있어서, 세로로 쪼개면 오히려
+# 장식을 가로지른다.
+#
+# 끝 조각은 세로 배율에 맞춰 가로도 같은 비율로 그리므로 장식의 생김새가
+# 그대로 유지된다.
+func _draw_horizontal_slice(texture: Texture2D, rect: Rect2, cap: float, ci: CanvasItem = null) -> void:
+	var target: CanvasItem = ci if ci != null else self
+	var tex_w: float = texture.get_width()
+	var tex_h: float = texture.get_height()
+	var scale: float = rect.size.y / tex_h
+	var cap_dst: float = minf(cap * scale, rect.size.x * 0.5)
+	# 왼쪽 끝
+	target.draw_texture_rect_region(texture,
+		Rect2(rect.position, Vector2(cap_dst, rect.size.y)),
+		Rect2(0.0, 0.0, cap, tex_h))
+	# 오른쪽 끝
+	target.draw_texture_rect_region(texture,
+		Rect2(Vector2(rect.end.x - cap_dst, rect.position.y), Vector2(cap_dst, rect.size.y)),
+		Rect2(tex_w - cap, 0.0, cap, tex_h))
+	# 가운데 — 가로로만 늘어난다
+	var mid_w: float = rect.size.x - cap_dst * 2.0
+	if mid_w > 0.0:
+		target.draw_texture_rect_region(texture,
+			Rect2(Vector2(rect.position.x + cap_dst, rect.position.y), Vector2(mid_w, rect.size.y)),
+			Rect2(cap, 0.0, tex_w - cap * 2.0, tex_h))
+
+
 func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
 	# JUNGLE draws its answer as plain number text instead of a flag texture
 	# — everything else about the box (panel, position, card fill) is shared.
@@ -2174,28 +2434,31 @@ func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bo
 	# a panel whose window aspect isn't ~3:2 (jungle's is noticeably taller)
 	# leaves the fixed-height card overflowing past the window into the
 	# panel's own frame artwork.
-	var panel_scale: float = GATE_FLAG_ICON_WIDTH / active_flag_panel_window_width
+	# 네 모드가 같은 크기로 그려진다 — 국기 모드 카드(72x48)가 기준이고,
+	# 글자 모드도 같은 카드를 쓴다. 예전에는 패널마다 창 비율이 달라 글자
+	# 카드만 높이가 따로 놀았다.
 	var icon_size := Vector2(GATE_FLAG_ICON_WIDTH, GATE_FLAG_ICON_HEIGHT)
-	if is_text:
-		icon_size.y = active_flag_panel_window_height * panel_scale
 	var half_h: float = icon_size.y * 0.5
 	var center_y: float = maxf(zone_top - half_h - GATE_FLAG_GAP_ABOVE_ZONE, _gate_zone_top(view_size) + half_h)
 	var icon_top_left := Vector2(center_x, center_y) - icon_size * 0.5
 
 	if gate_flag_panel_texture != null:
-		var panel_tex_size := Vector2(gate_flag_panel_texture.get_width(), gate_flag_panel_texture.get_height())
-		var panel_draw_size: Vector2 = panel_tex_size * panel_scale
-		var window_offset_from_center: Vector2 = active_flag_panel_window_center - panel_tex_size * 0.5
-		var panel_center: Vector2 = Vector2(center_x, center_y) - window_offset_from_center * panel_scale
-		draw_texture_rect(gate_flag_panel_texture, Rect2(panel_center - panel_draw_size * 0.5, panel_draw_size), false)
+		# 패널은 답 카드를 테두리 두께만큼 사방으로 키운 사각형이다. 9-slice라
+		# 이 사각형이 어떤 크기든 모서리와 테두리는 그려진 굵기 그대로다.
+		var inset: float = (GATE_PANEL_BORDER + GATE_PANEL_PAD) * GATE_PANEL_SCALE
+		var panel_rect := Rect2(icon_top_left - Vector2(inset, inset),
+			icon_size + Vector2(inset, inset) * 2.0)
+		_draw_nine_patch(gate_flag_panel_texture, panel_rect,
+			GATE_PANEL_CORNER + GATE_PANEL_PAD, GATE_PANEL_SCALE)
 
-	# Fill card behind the flag/number itself — flags are letterboxed to a
-	# unified 3:2 (see assets/flags/flags_data.json), so non-3:2 flags
-	# (Switzerland's true square, etc.) have real transparent padding baked
-	# into the PNG. This shows through as a solid color instead of
-	# see-through gaps, without touching any of the 193 flag images
-	# themselves — and doubles as the number's backdrop for JUNGLE.
-	draw_rect(Rect2(icon_top_left, icon_size), GATE_FLAG_CARD_COLOR)
+	# 예전에는 여기서 답 뒤에 크림색 판을 깔았다. 국기는 3:2로 레터박스
+	# 처리돼 있어(assets/flags/flags_data.json) 스위스처럼 정사각인 깃발은
+	# 투명한 여백을 안고 있는데, 그 구멍을 메우고 숫자·색이름의 바탕도
+	# 겸하던 판이다.
+	#
+	# 새 패널 아트는 자기 바탕색을 갖고 있어서 그 판이 필요 없어졌다.
+	# 빼는 편이 낫다 — 패널마다 바탕 톤이 다른데 그 위에 한 가지 크림색을
+	# 덮으면 모드 색이 죽는다.
 	if is_text:
 		# Capped by height too, not just width — the window's real height
 		# varies per panel (see the note above), so a flat max wide enough
@@ -3845,6 +4108,13 @@ func _apply_mode(mode: int) -> void:
 	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
 	active_visual_size_scale = MODE_VISUAL_SIZE_SCALE[mode]
 
+	# 탭 소리도 모드를 따라간다. 없으면 기본 소리로 남겨 둔다.
+	var flap_path: String = _resolve_audio(MODE_FLAP_SOUND_NAME[mode])
+	if flap_path == "":
+		flap_path = FX_SOUND_FLAP_FALLBACK
+	if fx_sound_flap != null and ResourceLoader.exists(flap_path):
+		fx_sound_flap.stream = load(flap_path)
+
 	var gate_dir: String = MODE_GATE_DIR[mode]
 	gate_left_pillar_texture = null
 	if ResourceLoader.exists(gate_dir + "gate_ring_left.png"):
@@ -3853,7 +4123,7 @@ func _apply_mode(mode: int) -> void:
 	if ResourceLoader.exists(gate_dir + "gate_ring_right.png"):
 		gate_right_pillar_texture = load(gate_dir + "gate_ring_right.png")
 	gate_base_texture = null
-	if ResourceLoader.exists(gate_dir + "gate_ring_base.png"):
+	if MODE_GATE_BASE_ENABLED[mode] and ResourceLoader.exists(gate_dir + "gate_ring_base.png"):
 		gate_base_texture = load(gate_dir + "gate_ring_base.png")
 
 	bg_texture = null
@@ -3876,9 +4146,6 @@ func _apply_mode(mode: int) -> void:
 	var panel_path: String = MODE_GATE_FLAG_PANEL_PATH[mode]
 	if ResourceLoader.exists(panel_path):
 		gate_flag_panel_texture = load(panel_path)
-	active_flag_panel_window_center = MODE_GATE_FLAG_PANEL_WINDOW_CENTER_LOCAL[mode]
-	active_flag_panel_window_width = MODE_GATE_FLAG_PANEL_WINDOW_WIDTH_LOCAL[mode]
-	active_flag_panel_window_height = MODE_GATE_FLAG_PANEL_WINDOW_HEIGHT_LOCAL[mode]
 
 	ready_texture = null
 	if ResourceLoader.exists(MODE_READY_TEXTURE_PATH[mode]):
@@ -3894,6 +4161,10 @@ func _apply_mode(mode: int) -> void:
 	# All four top-HUD pieces are per-mode. They share one canvas size per
 	# piece across the modes, so nothing about the layout has to change here
 	# — only which texture is drawn.
+	if score_crown_texture == null:
+		# 아이콘 캔버스에 투명 여백이 넉넉히 붙어 있어, 잘라 내지 않으면 같은
+		# 높이로 그려도 왕관만 작아 보인다.
+		score_crown_texture = _load_trimmed(BEST_CROWN_PATH, true)
 	score_box_texture = null
 	if ResourceLoader.exists(MODE_SCORE_BOX_PATH[mode]):
 		score_box_texture = load(MODE_SCORE_BOX_PATH[mode])
@@ -4208,10 +4479,11 @@ func _draw_splash_prompt_glow(font_size: int, strength: float) -> void:
 			draw_string(font, base + offset, SPLASH_PROMPT_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size, col)
 
 
-# Finds a track by name, preferring OGG over WAV — see BGM_EXTENSIONS.
-# Returns "" when neither exists, which _play_bgm treats as "leave the
+# Finds an audio file by name, preferring OGG over WAV — see BGM_EXTENSIONS.
+# Used for music and for the per-mode tap sound. Returns "" when neither
+# exists, which _play_bgm treats as "leave the
 # current music alone" rather than dropping to silence.
-func _resolve_bgm(track_name: String) -> String:
+func _resolve_audio(track_name: String) -> String:
 	if track_name == "":
 		return ""
 	for ext in BGM_EXTENSIONS:
@@ -4225,8 +4497,16 @@ func _resolve_bgm(track_name: String) -> String:
 # everything from the countdown onward uses the chosen mode's.
 func _bgm_path_for_state() -> String:
 	if state == State.SPLASH or state == State.MODE_SELECT:
-		return _resolve_bgm(BGM_MENU_NAME)
-	return _resolve_bgm(MODE_BGM_NAME[current_mode])
+		return _resolve_audio(BGM_MENU_NAME)
+	# 모드 곡이 아직 없으면 메뉴 곡으로 되돌아간다.
+	#
+	# 예전에는 빈 문자열을 돌려주고 "틀어 두던 걸 그대로 두라"는 뜻으로 썼는데,
+	# 판이 끝날 때 _stop_bgm()이 이미 다 꺼 버린 뒤라 이어질 음악이 없었다.
+	# 그래서 다시 시작하면 아무 소리도 나지 않았다.
+	var mode_track: String = _resolve_audio(MODE_BGM_NAME[current_mode])
+	if mode_track != "":
+		return mode_track
+	return _resolve_audio(BGM_MENU_NAME)
 
 
 func _play_bgm(path: String) -> void:
@@ -4269,6 +4549,13 @@ func _stop_bgm() -> void:
 func _enable_stream_loop(stream: AudioStream) -> void:
 	if stream is AudioStreamOggVorbis or stream is AudioStreamMP3:
 		stream.loop = true
+	elif stream is AudioStreamWAV:
+		# WAV는 루프 켜는 이름이 다르고, 임포트 기본값이 "루프 없음"이다.
+		# 여기서 켜 두면 .import 파일 설정에 기대지 않아도 되고, 아트를
+		# 다시 임포트해도 그대로다.
+		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
+		stream.loop_begin = 0
+		stream.loop_end = 0   # 0이면 끝까지
 
 
 func _on_bgm_finished(player: AudioStreamPlayer) -> void:
@@ -4318,7 +4605,7 @@ func _hud_src(texture: Texture2D, fallback: Vector2) -> Vector2:
 
 # Extra scale on the buttons so they end up exactly as tall as the score box.
 func _hud_button_mult() -> float:
-	var score_src := _hud_src(score_box_texture, SCORE_BOX_SRC)
+	var score_src := SCORE_BOX_SRC
 	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
 	return (score_src.y / button_src.y) * HUD_BUTTON_EXTRA
 
@@ -4328,7 +4615,7 @@ func _hud_button_mult() -> float:
 # from this, so enlarging the buttons automatically takes width back off the
 # score box instead of overflowing the screen.
 func _hud_row_scale(view_size: Vector2) -> float:
-	var score_src := _hud_src(score_box_texture, SCORE_BOX_SRC)
+	var score_src := SCORE_BOX_SRC
 	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
 	var available: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
 	return available / (score_src.x + button_src.x * 2.0 * _hud_button_mult())
@@ -4337,8 +4624,13 @@ func _hud_row_scale(view_size: Vector2) -> float:
 # Screen rect of the score box art. The art is cropped tight to its frame, so
 # this rect IS what you see.
 func _score_box_rect(view_size: Vector2) -> Rect2:
-	var src := _hud_src(score_box_texture, SCORE_BOX_SRC)
-	var draw_size: Vector2 = src * _hud_row_scale(view_size)
+	# 크기는 아트가 아니라 SCORE_BOX_SRC 비율로 정한다. 패널 아트는 2.9:1이라
+	# 아트 비율을 따르면 박스가 세 배 높아진다 — 9-slice로 늘려 그리므로
+	# 아트 비율에 맞출 이유가 없다.
+	var src := SCORE_BOX_SRC
+	# 높이는 버튼과 같은 식으로 뽑는다(HUD_BUTTON_EXTRA 한 번 더). 그래야
+	# 세 조각의 위/아래 테두리가 한 줄에 딱 맞는다.
+	var draw_size := Vector2(src.x * SCORE_BOX_WIDTH_TRIM, src.y * HUD_BUTTON_EXTRA) * _hud_row_scale(view_size)
 	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, SCORE_BOX_TOP), draw_size)
 
 
@@ -4346,7 +4638,13 @@ func _score_box_rect(view_size: Vector2) -> Rect2:
 # spans the full width inside the margins rather than following the row
 # scale — it has no neighbours to share the line with.
 func _quiz_box_rect(view_size: Vector2) -> Rect2:
-	var src := _hud_src(quiz_box_texture, QUIZ_BOX_SRC)
+	# 크기는 아트가 아니라 QUIZ_BOX_SRC 비율로 정한다.
+	#
+	# 새 아트는 테두리가 두꺼워 3.2:1인데(예전 아트는 10:1), 그 비율대로
+	# 화면 폭을 채우면 박스 높이가 146px이 되어 레인이 10% 짧아진다.
+	# 좌우 끝만 남기고 가운데를 늘리는 방식(_draw_horizontal_slice)으로
+	# 그리므로 아트 비율에 맞출 이유가 없다.
+	var src := QUIZ_BOX_SRC
 	var width: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0
 	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
 	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
@@ -4382,6 +4680,43 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	_draw_combo_glow(view_size, ci)
 
 
+# 빈 패널 위에 "SCORE" / 구분선 / 왕관+"BEST"를 얹는다. 예전 스코어 박스
+# 아트에 그려져 있던 것들이라, 패널로 갈아끼우면서 코드로 옮겼다.
+func _draw_score_box_labels(rect: Rect2, ci: CanvasItem) -> void:
+	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
+	# SCORE — 왼쪽. 숫자와 같은 높이에 맞춘다.
+	var score_size := int(round(rect.size.y * SCORE_LABEL_FONT_FRAC))
+	var score_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC + score_size * 0.35
+	ci.draw_string(font, Vector2(rect.position.x + rect.size.x * SCORE_LABEL_LEFT_FRAC, score_y),
+		SCORE_LABEL_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, score_size, SCORE_LABEL_COLOR)
+
+	# 두 칸을 가르는 세로 점선 대신 얇은 실선. 숫자가 오른쪽 정렬로 붙는 기준선이다.
+	var dx: float = rect.position.x + rect.size.x * SCORE_NUM_RIGHT_FRAC
+	var inset: float = rect.size.y * SCORE_DIVIDER_INSET_FRAC
+	ci.draw_line(Vector2(dx, rect.position.y + inset), Vector2(dx, rect.end.y - inset),
+		SCORE_DIVIDER_COLOR, SCORE_DIVIDER_WIDTH)
+
+	# 왕관 + 최고 점수 — 오른쪽 칸. 글자 없이 왕관이 곧 "BEST"다.
+	var best_num_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
+	var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
+	# 왕관은 오른쪽 칸의 왼쪽 끝(구분선 바로 옆), 숫자는 박스 오른쪽 테두리
+	# 가까이에 오른쪽 정렬. 둘 사이가 벌어지는 대신 자릿수가 늘어도 끝자리가
+	# 움직이지 않는다.
+	if score_crown_texture != null:
+		# BEST_CROWN_HEIGHT_FRAC / LEFT_FRAC 은 "눈에 보이는 왕관" 기준이다.
+		# 텍스처에 두른 투명 여백만큼 키우고 왼쪽으로 되돌려 그린다.
+		var ink_frac: Vector2 = score_crown_texture.get_meta("ink_frac", Vector2.ONE)
+		var ch: float = rect.size.y * BEST_CROWN_HEIGHT_FRAC / ink_frac.y
+		var cw: float = ch * (float(score_crown_texture.get_width()) / float(score_crown_texture.get_height()))
+		var cx: float = dx + rect.size.x * BEST_CROWN_LEFT_FRAC - cw * (1.0 - ink_frac.x) * 0.5
+		ci.draw_texture_rect(score_crown_texture,
+			Rect2(cx, best_mid_y - ch * 0.5, cw, ch), false)
+	_draw_spaced_digits("%05d" % _best_for(current_mode),
+		Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC, best_mid_y),
+		best_num_size, SCORE_NUMBER_DIGIT_SPACING, true,
+		Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+
+
 func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if ci == null:
 		ci = self
@@ -4391,7 +4726,9 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	# _draw_combo_popups), not here — this only ever draws the score box.
 	if score_box_texture != null:
 		var rect := _score_box_rect(view_size)
-		ci.draw_texture_rect(score_box_texture, rect, false)
+		_draw_nine_patch(score_box_texture, rect.grow(SCORE_PANEL_ART_PAD * SCORE_PANEL_SCALE),
+			GATE_PANEL_CORNER + GATE_PANEL_PAD, SCORE_PANEL_SCALE, ci)
+		_draw_score_box_labels(rect, ci)
 		# Two halves of the same box, each number matched to its own painted
 		# label rather than sharing one size and line: the live score is the
 		# big one, right-aligned to just inside the divider so its ones digit
@@ -4401,10 +4738,6 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var score_right := rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
 		var score_mid_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC
 		_draw_spaced_digits("%05d" % score, Vector2(score_right, score_mid_y), score_font_size, SCORE_NUMBER_DIGIT_SPACING, true, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
-		var best_font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
-		var best_left := rect.position.x + rect.size.x * BEST_NUM_LEFT_FRAC
-		var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
-		_draw_spaced_digits("%05d" % _best_for(current_mode), Vector2(best_left, best_mid_y), best_font_size, SCORE_NUMBER_DIGIT_SPACING, false, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
 	else:
 		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
 		_draw_centered_text("SCORE %d  BEST %d" % [score, _best_for(current_mode)], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
@@ -4427,7 +4760,7 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var rect := _quiz_box_rect(view_size)
 		var draw_size: Vector2 = rect.size
 		var top_left: Vector2 = rect.position
-		ci.draw_texture_rect(quiz_box_texture, rect, false)
+		_draw_horizontal_slice(quiz_box_texture, rect, QUIZ_BOX_CAP, ci)
 		var pad: float = draw_size.x * QUIZ_TEXT_SIDE_PAD_FRAC
 		var area_left: float = top_left.x + draw_size.x * QUIZ_TEXT_LEFT_FRAC + pad
 		var area_right: float = top_left.x + draw_size.x * QUIZ_TEXT_RIGHT_FRAC - pad
@@ -4488,7 +4821,7 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 		return
 	var rect := _quiz_box_rect(view_size)
 	if quiz_box_texture != null:
-		ci.draw_texture_rect(quiz_box_texture, rect, false)
+		_draw_horizontal_slice(quiz_box_texture, rect, QUIZ_BOX_CAP, ci)
 	else:
 		var style := StyleBoxFlat.new()
 		style.bg_color = QUIZ_BOX_COLOR

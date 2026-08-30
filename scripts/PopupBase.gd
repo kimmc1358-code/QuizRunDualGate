@@ -24,6 +24,17 @@ const PANEL_CORNER := 121
 const GOLD_CORNER := 88
 const CREAM_CORNER := 202
 
+# 버튼 누르는 소리. 골드(주 동작)와 크림(보조)이 다른 소리를 낸다.
+#
+# 확장자 없이 적고 .ogg -> .wav 순으로 찾는다. 파일이 없으면 소리 없이
+# 동작만 하므로, 한쪽만 넣어도 된다.
+const BUTTON_SOUND_DIR := "res://assets/audio/"
+const BUTTON_SOUND_EXTENSIONS := [".ogg", ".wav"]
+const GOLD_SOUND_NAME := "button_gold"
+const CREAM_SOUND_NAME := "button_cream"
+# 일시정지 팝업의 SFX 슬라이더가 이 소리도 함께 조절하도록 같은 버스에 태운다.
+const BUTTON_SOUND_BUS := "SFX"
+
 # 골드 버튼 안의 내용(아이콘 + 글자)을 위로 미는 거리(px).
 #
 # 골드 아트는 아래쪽에 입체감을 주는 두툼한 턱이 있어, 눈에 보이는 판의
@@ -158,6 +169,8 @@ var _elapsed := 0.0
 # 판의 논리 크기(화면에 보이는 크기). _panel.size는 UI_SUPERSAMPLE 배로
 # 부풀려져 있어 글자 크기나 글로우 위치의 기준으로 쓰면 안 된다.
 var _panel_rect := Rect2()
+# 버튼 소리 재생기. 아트 종류(골드/크림)마다 하나씩, 팝업이 만들어질 때 한 번만.
+var _button_players := {}
 
 
 func _ready() -> void:
@@ -381,6 +394,8 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 	icon_rect.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	button.add_child(icon_rect)
 
+	# 어느 아트로 만든 버튼인지 남겨 둔다 — _play_button_sound가 쓴다.
+	button.set_meta("sound", GOLD_SOUND_NAME if file == GOLD_FILE else CREAM_SOUND_NAME)
 	button.button_down.connect(_press.bind(button))
 	button.button_up.connect(_release.bind(button))
 	return button
@@ -826,7 +841,37 @@ func _make_label(text: String, font: Font) -> Label:
 
 # 눌림: 살짝 줄면서 아래로 가라앉고, 동시에 그림자가 짧아진다. 셋이 함께
 # 움직여야 "판에 눌러 넣었다"로 읽힌다 — 크기만 줄면 그냥 납작해진다.
+# 버튼을 누르는 순간 나는 소리. 어느 아트로 만든 버튼인지는 _make_button이
+# 메타로 남겨 둔다 — 버튼 모양이 곧 소리를 정한다.
+#
+# 재생기는 아트마다 하나씩 만들어 재사용한다. 누를 때마다 새로 만들면
+# 연타할 때 노드가 쌓인다.
+func _play_button_sound(button: Control) -> void:
+	var art: String = button.get_meta("sound", "")
+	if art == "":
+		return
+	if not _button_players.has(art):
+		var path := ""
+		for ext in BUTTON_SOUND_EXTENSIONS:
+			var candidate: String = BUTTON_SOUND_DIR + art + ext
+			if ResourceLoader.exists(candidate):
+				path = candidate
+				break
+		if path == "":
+			_button_players[art] = null   # 파일이 없다 — 다시 찾지 않는다
+		else:
+			var player := AudioStreamPlayer.new()
+			player.stream = load(path)
+			player.bus = BUTTON_SOUND_BUS
+			add_child(player)
+			_button_players[art] = player
+	var p: AudioStreamPlayer = _button_players[art]
+	if p != null:
+		p.play()
+
+
 func _press(button: Control) -> void:
+	_play_button_sound(button)
 	var tween := create_tween()
 	tween.set_parallel(true)
 	tween.tween_property(button, "scale", Vector2.ONE * PRESS_SCALE, PRESS_ANIM_DURATION) \
