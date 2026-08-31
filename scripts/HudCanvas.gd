@@ -23,9 +23,12 @@ extends Node2D
 # the original glow-over-HUD look.
 
 var main: Node = null
+# 어느 그리기 함수를 부를지. 점수 숫자 속칠 캔버스가 같은 스크립트를 쓰되
+# 다른 함수를 부르도록 바꿀 수 있게 열어 둔다.
+var draw_method := "draw_hud_into"
 
 
 func _draw() -> void:
 	if main == null:
 		return
-	main.draw_hud_into(self, get_viewport_rect().size)
+	main.call(draw_method, self, get_viewport_rect().size)

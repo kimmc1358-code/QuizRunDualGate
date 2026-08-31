@@ -74,17 +74,22 @@ const CARD_BEST_COLOR := Color(0.18, 0.26, 0.38, 1.0)
 # The plate holds three things in a row — crown, the word BEST, the number —
 # centred as a group. The number is styled like the card titles rather than
 # like the word beside it, so the score is what the eye lands on.
-const CARD_BEST_CROWN_FILE := "crown_icon.png"
+# 게임 화면 HUD 와 같은 왕관을 쓴다. ART_DIR 바깥이라 전체 경로로 준다.
+const CARD_BEST_CROWN_FILE := "res://assets/ui_assets/popup/icon_crown.png"
 const CARD_BEST_CROWN_HEIGHT_FRAC := 0.78   # of the plate's height
+# 잘라 낸 그림 둘레에 두르는 투명 여백(그림 크기 대비)과 미리 줄여 둘 높이.
+const TRIM_INK_PAD_FRAC := 0.06
+const TRIM_INK_BAKE_H := 128
 const CARD_BEST_ROW_SEPARATION_FRAC := 0.22 # of the plate's height, between items
-const CARD_SCORE_COLOR := Color(1.0, 1.0, 1.0, 1.0)
+const CARD_SCORE_COLOR := Color(0.0, 0.0, 0.0, 1.0)
 const CARD_SCORE_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
 # Extra px between the BEST digits. Fredoka sets figures tight, and at this
 # size the five zeros run together into one block; a single pixel is enough
 # to read them as separate digits without the number looking spaced out.
 const CARD_SCORE_TRACKING := 1
-const CARD_SCORE_OUTLINE_FRAC := 0.12       # of the font size — the digits are small, and a
-											# heavier outline closes up the 0s
+# 속색과 같은 검정 테두리라 "테두리"로 보이지 않고 글자가 그만큼 굵어진다.
+# Fredoka 는 wght 700 이 끝이라, 더 굵게 하려면 이 방법밖에 없다.
+const CARD_SCORE_OUTLINE_FRAC := 0.16
 
 # Fredoka is variable on a wght axis (300-700). Main.gd uses 600 for text and
 # 700 for the score digits; the same two weights are used here.
@@ -405,7 +410,8 @@ func _use_smooth_filter(control: CanvasItem) -> void:
 
 
 func _load_art(file_name: String) -> Texture2D:
-	var path: String = ART_DIR + file_name
+	# 다른 폴더의 파일은 전체 경로로 준다.
+	var path: String = file_name if file_name.begins_with("res://") else ART_DIR + file_name
 	if not ResourceLoader.exists(path):
 		push_warning("main menu: missing %s" % path)
 		return null
@@ -791,8 +797,62 @@ func _load_trimmed(file_name: String) -> Texture2D:
 	var trimmed: Image = image.get_region(Rect2i(
 		int(bounds.position.x * w), int(bounds.position.y * h),
 		maxi(1, int(bounds.size.x * w)), maxi(1, int(bounds.size.y * h))))
-	trimmed.generate_mipmaps()
-	return ImageTexture.create_from_image(trimmed)
+	# 505px 짜리 왕관이 14px 로 그려진다. 그 축소를 GPU 밉맵 체인에 통째로
+	# 맡기면 홀수 크기에서 마지막 열이 버려져 오른쪽이 깎여 보인다. 미리
+	# 짝수 크기로 줄여 굽고 투명 여백을 둘러 가장자리가 흐려질 자리를 만든다.
+	trimmed = _bake_small(trimmed)
+	var ink := trimmed.get_size()
+	var pad: int = maxi(4, int(round(maxi(ink.x, ink.y) * TRIM_INK_PAD_FRAC)))
+	var pw: int = ink.x + pad * 2
+	var ph: int = ink.y + pad * 2
+	pw += pw % 2
+	ph += ph % 2
+	var padded := Image.create_empty(pw, ph, false, Image.FORMAT_RGBA8)
+	# 여백의 RGB 는 검정이 아니라 실루엣 테두리 색 — 검정이면 줄일 때
+	# 그 색이 끌려 들어와 가장자리가 어두워진다.
+	padded.fill(Color(_edge_color(trimmed), 0.0))
+	padded.blit_rect(trimmed, Rect2i(Vector2i.ZERO, ink), Vector2i(pad, pad))
+	padded.generate_mipmaps()
+	var texture_out := ImageTexture.create_from_image(padded)
+	# 크기를 정할 때 여백을 빼고 실제 그림에 맞출 수 있도록 남겨 둔다.
+	texture_out.set_meta("ink_frac", Vector2(float(ink.x) / pw, float(ink.y) / ph))
+	return texture_out
+
+
+# 그릴 크기에 가깝게 미리 줄인다. 알파를 곱한 채로 줄여야 투명한 쪽 RGB 가
+# 끌려 들어오지 않는다.
+func _bake_small(image: Image) -> Image:
+	if image.get_height() <= TRIM_INK_BAKE_H:
+		return image
+	var w: int = maxi(2, int(round(image.get_width() * float(TRIM_INK_BAKE_H) / float(image.get_height()))))
+	var out := image.duplicate() as Image
+	out.premultiply_alpha()
+	out.resize(w + w % 2, TRIM_INK_BAKE_H, Image.INTERPOLATE_LANCZOS)
+	for y in range(out.get_height()):
+		for x in range(out.get_width()):
+			var c: Color = out.get_pixel(x, y)
+			if c.a > 0.0:
+				out.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
+	return out
+
+
+# 실루엣 가장자리(알파가 반쯤 있는 픽셀)의 평균 색.
+func _edge_color(image: Image) -> Color:
+	var r := 0.0
+	var g := 0.0
+	var b := 0.0
+	var n := 0
+	for y in range(image.get_height()):
+		for x in range(image.get_width()):
+			var c: Color = image.get_pixel(x, y)
+			if c.a > 0.35 and c.a < 0.95:
+				r += c.r
+				g += c.g
+				b += c.b
+				n += 1
+	if n == 0:
+		return Color(0, 0, 0)
+	return Color(r / n, g / n, b / n)
 
 
 # One icon out of the sheet, trimmed to its own art. The cells carry a lot of
@@ -1072,10 +1132,21 @@ func _layout_card_contents(index: int, card_w: float, card_h: float) -> void:
 	_card_best[index].add_theme_font_size_override("font_size", score_size)
 	_card_score[index].add_theme_font_size_override("font_size", score_size)
 	_card_score[index].add_theme_constant_override(
-		"outline_size", maxi(1, int(round(score_size * CARD_SCORE_OUTLINE_FRAC))))
+		"outline_size", int(round(score_size * CARD_SCORE_OUTLINE_FRAC)))
 
+	# 높이를 기준으로 잡고 가로는 그림 비율대로. 정사각으로 두면 가로로 넓은
+	# 왕관이 그 안에 눕혀지면서 요청한 높이보다 낮게 나온다.
 	var crown_h: float = best_h * CARD_BEST_CROWN_HEIGHT_FRAC
-	_card_crown[index].custom_minimum_size = Vector2(crown_h, crown_h)
+	var crown_ratio := 1.0
+	var crown_ink := Vector2.ONE
+	if _crown_texture != null and _crown_texture.get_height() > 0:
+		crown_ratio = float(_crown_texture.get_width()) / float(_crown_texture.get_height())
+		crown_ink = _crown_texture.get_meta("ink_frac", Vector2.ONE)
+	# CARD_BEST_CROWN_HEIGHT_FRAC 은 "눈에 보이는 왕관" 기준이다. 텍스처에
+	# 두른 투명 여백만큼 상자를 키우고, 가로는 그림 비율대로 잡는다 — 정사각에
+	# 넣으면 가로로 넓은 왕관이 그 안에 눕혀져 요청한 높이보다 낮게 나온다.
+	var box_h: float = crown_h / maxf(crown_ink.y, 0.01)
+	_card_crown[index].custom_minimum_size = Vector2(box_h * crown_ratio, box_h)
 	_card_best_row[index].add_theme_constant_override(
 		"separation", int(round(best_h * CARD_BEST_ROW_SEPARATION_FRAC)))
 	_card_best_row[index].set_anchors_preset(Control.PRESET_FULL_RECT)

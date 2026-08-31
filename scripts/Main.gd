@@ -220,7 +220,7 @@ const QUIZ_BOX_GAP := 10.0           # score box bottom edge -> quiz box top edg
 # 버튼 높이 = 스코어박스 높이 x 이 값인데, 버튼을 키우면 행 배율이 줄어
 # 스코어박스가 같이 작아진다. 그 되먹임까지 풀어서 얻은 값이다 — 이 값이면
 # 버튼이 퀴즈 박스와 같은 57.5px가 된다.
-const HUD_BUTTON_EXTRA := 0.9633
+const HUD_BUTTON_EXTRA := 0.9517
 # The buttons are hung off the score box's bottom edge rather than centred on
 # it. Aligning the *rects* would not do it: the slicer pads every canvas to
 # make the panel interiors line up across modes, so the painted art stops
@@ -251,11 +251,11 @@ const QUIZ_BOX_CORNER_RADIUS := 12.0
 # 장식(보석 + 둥근 모서리 곡선)이 완전히 끝난 뒤에 놓여야 한다. 예전 값 60 은
 # 보석 한가운데를 지나서, 보석의 왼쪽 절반만 늘어나 찌그러져 보였다.
 #
-# 각 모드 아트에서 "이웃한 두 열이 거의 같아지는" 지점을 재 보면
-# sky 120(엄밀히는 146) / jungle 72 / ocean 72 / dream 92 다. 네 모드를 한
-# 값으로 덮으려면 146 이상이어야 하고, 동시에 가운데 구간(155..581)이 모든
+# 각 모드 아트에서 "이웃한 두 열이 거의 같아지는" 지점을 재 보면 v7 시트는
+# sky 126 / jungle 179 / ocean 157 / dream 139 다(881px 원본 기준). 네 모드를
+# 한 값으로 덮으려면 179 이상이어야 하고, 동시에 가운데 구간(185..696)이 모든
 # 모드의 균일 구간 안에 들어와야 한다.
-const QUIZ_BOX_CAP := 155.0
+const QUIZ_BOX_CAP := 185.0
 # Blank writing area inside the quiz box art, right of the painted "QUIZ"
 # label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
 # one set of fractions covers all three modes.
@@ -1206,29 +1206,29 @@ var countdown_timer: float = 0.0
 const COUNTDOWN_READY_DURATION := 0.9
 const COUNTDOWN_START_DURATION := 0.4
 
-# "READY" / "START" countdown pop art and the "TRY AGAIN" game-over word, all
-# cut from one hand-authored sheet (assets/ui_assets/ready_start_sheet_v2.png)
-# by tools/slice_ready_sheet.gd. Ready/Start are drawn in place of the old
-# plain-text draw_string call (see the State.COUNTDOWN block in _draw()) and
-# fall back to that text if a file is missing; TRY AGAIN is a TextureRect in
-# the game-over panel, replacing what used to be a red "GAME OVER" label.
+# "READY" / "START" countdown pop art, cut from one hand-authored sheet
+# (assets/ui_assets/ready_start_sheet_v3.png) by tools/slice_ready_sheet_v3.gd,
+# and the "TRY AGAIN" game-over word, still from the v2 sheet. Ready/Start are
+# drawn in place of the old plain-text draw_string call (see the State.COUNTDOWN
+# block in _draw()) and fall back to that text if a file is missing; TRY AGAIN
+# is a TextureRect in the game-over panel, replacing what used to be a red
+# "GAME OVER" label.
 #
-# The slicer centres every mode's art on one canvas shared across the three,
-# which is why there are no per-mode nudge offsets here any more: this used to
-# carry MODE_READY_OFFSET_LOCAL / MODE_START_OFFSET_LOCAL to shove each mode's
-# differently-sized crop back into place, and centring by construction makes
-# that unnecessary.
+# 여덟 장(4모드 x READY/START)이 한 캔버스를 같이 쓰고, 그 위에서 글자의 중심이
+# 한 점에 모이도록 배치되어 있다 — 모드마다 장식(날개, 잎, 산호)이 튀어나온
+# 정도가 달라서 그림 전체를 가운데 맞추면 정작 글자가 제각각 다른 자리에 뜨기
+# 때문이다. 캔버스가 하나이므로 여기에는 모드별 보정값이 필요 없다.
 const MODE_READY_TEXTURE_PATH := [
-	"res://assets/ui_assets/sky/Ready.png",
-	"res://assets/ui_assets/jungle/Ready.png",
-	"res://assets/ui_assets/ocean/Ready.png",
-	"res://assets/ui_assets/sky/Ready.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/ui_assets/sky/Ready_v3.png",
+	"res://assets/ui_assets/jungle/Ready_v3.png",
+	"res://assets/ui_assets/ocean/Ready_v3.png",
+	"res://assets/ui_assets/dream/Ready_v3.png",
 ]
 const MODE_START_TEXTURE_PATH := [
-	"res://assets/ui_assets/sky/Start.png",
-	"res://assets/ui_assets/jungle/Start.png",
-	"res://assets/ui_assets/ocean/Start.png",
-	"res://assets/ui_assets/sky/Start.png",  # DREAM — placeholder, reusing SKY art
+	"res://assets/ui_assets/sky/Start_v3.png",
+	"res://assets/ui_assets/jungle/Start_v3.png",
+	"res://assets/ui_assets/ocean/Start_v3.png",
+	"res://assets/ui_assets/dream/Start_v3.png",
 ]
 const MODE_TRY_AGAIN_TEXTURE_PATH := [
 	"res://assets/ui_assets/sky/TryAgain.png",
@@ -1236,7 +1236,12 @@ const MODE_TRY_AGAIN_TEXTURE_PATH := [
 	"res://assets/ui_assets/ocean/TryAgain.png",
 	"res://assets/ui_assets/sky/TryAgain.png",  # DREAM — placeholder, reusing SKY art
 ]
-const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the source aspect ratio
+# 화면에 그릴 가로 폭(px). 높이는 원본 비율을 따른다. START 를 READY 보다
+# 크게 잡아 "준비 -> 출발"이 커지면서 이어지게 한다. 캔버스 664px 중 배너가
+# 636px 이므로, 화면 폭 480 을 넘지 않으려면 START 는 pop 최고점까지 쳐서
+# 480 * 664 / 636 = 501 이하여야 한다.
+const COUNTDOWN_READY_WIDTH := 400.0
+const COUNTDOWN_START_WIDTH := 440.0
 
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
@@ -1257,16 +1262,16 @@ const COUNTDOWN_IMAGE_WIDTH := 330.0  # display width in px; height follows the 
 # land in exactly the same place at exactly the same size in all three modes.
 # Re-run the slicer if the sheet is ever redrawn; it prints the fractions.
 const MODE_PAUSE_ICON_PATH := [
-	"res://assets/ui_assets/sky/pause_v2.png",
-	"res://assets/ui_assets/jungle/pause_v2.png",
-	"res://assets/ui_assets/ocean/pause_v2.png",
-	"res://assets/ui_assets/dream/pause_v2.png",
+	"res://assets/ui_assets/sky/pause_v3.png",
+	"res://assets/ui_assets/jungle/pause_v3.png",
+	"res://assets/ui_assets/ocean/pause_v3.png",
+	"res://assets/ui_assets/dream/pause_v3.png",
 ]
 const MODE_MUTE_ICON_PATH := [
-	"res://assets/ui_assets/sky/mute_v2.png",
-	"res://assets/ui_assets/jungle/mute_v2.png",
-	"res://assets/ui_assets/ocean/mute_v2.png",
-	"res://assets/ui_assets/dream/mute_v2.png",
+	"res://assets/ui_assets/sky/mute_v3.png",
+	"res://assets/ui_assets/jungle/mute_v3.png",
+	"res://assets/ui_assets/ocean/mute_v3.png",
+	"res://assets/ui_assets/dream/mute_v3.png",
 ]
 # 스코어 박스는 게이트 위 보기답 패널과 같은 아트를 9-slice로 늘려 쓴다.
 # 예전 아트에는 "SCORE"·"BEST"·왕관·구분선이 그려져 있었지만 이 패널은
@@ -1281,12 +1286,34 @@ const MODE_SCORE_BOX_PATH := [
 # 보석 장식이 박혀 있어 9-slice로 늘리면 그 장식이 늘어나므로, 통째로 그려
 # 아트 비율을 그대로 지킨다.
 const MODE_QUIZ_BOX_PATH := [
-	"res://assets/ui_assets/sky/quiz_box_v2.png",
-	"res://assets/ui_assets/jungle/quiz_box_v2.png",
-	"res://assets/ui_assets/ocean/quiz_box_v2.png",
-	"res://assets/ui_assets/dream/quiz_box_v2.png",
+	"res://assets/ui_assets/sky/quiz_box_v3.png",
+	"res://assets/ui_assets/jungle/quiz_box_v3.png",
+	"res://assets/ui_assets/ocean/quiz_box_v3.png",
+	"res://assets/ui_assets/dream/quiz_box_v3.png",
 ]
 const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
+# 점수 숫자의 속만 칠하는 캔버스에 씌우는 셰이더. draw_string 은 한 가지
+# 색밖에 못 받으므로, 글리프의 알파는 그대로 두고 RGB 만 세로 위치에 따라
+# 섞는다. y_top/y_bottom 은 숫자 잉크의 위/아래 끝(캔버스 좌표)이다.
+const SCORE_FILL_SHADER := """
+shader_type canvas_item;
+uniform vec4 top_color : source_color = vec4(1.0);
+uniform vec4 bottom_color : source_color = vec4(1.0);
+uniform float y_top = 0.0;
+uniform float y_bottom = 1.0;
+varying vec2 local_pos;
+
+void vertex() {
+	local_pos = VERTEX;
+}
+
+void fragment() {
+	float t = clamp((local_pos.y - y_top) / max(y_bottom - y_top, 0.001), 0.0, 1.0);
+	vec4 g = mix(top_color, bottom_color, t);
+	COLOR.rgb = g.rgb;
+	COLOR.a *= g.a;
+}
+"""
 # Best score persistence. user:// is the per-user writable location Godot
 # maps outside the project (%APPDATA%/Godot/app_userdata/<project> on
 # Windows), so this survives reinstalls of the game files themselves.
@@ -1340,14 +1367,46 @@ const VOLUME_MIN_DB := -32.0
 const SCORE_LABEL_TEXT := "SCORE"
 const SCORE_LABEL_FONT_FRAC := 0.485     # 박스 높이 대비
 const SCORE_LABEL_LEFT_FRAC := 0.0428     # 박스 너비 대비 — 왼쪽 여백
-const SCORE_LABEL_COLOR := Color(0.13, 0.20, 0.45, 1.0)   # 진한 네이비
+# 박스를 걷어 내고 배경 위에 바로 얹으므로, 글자는 스스로 읽히게 꾸민다.
+# 바깥부터 음영 -> 검은 테두리 -> 속 순서로 겹쳐 그린다.
+const SCORE_LABEL_FILL := Color(1.0, 1.0, 1.0, 1.0)
+const SCORE_TEXT_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
+# 음영은 여덟 방향으로 겹쳐 그려 만든다. 겹치는 만큼 진해지므로 한 겹은
+# 아주 옅게 둔다 — 글자 아래로 삐져나온 부분만 보이면 된다.
+const SCORE_TEXT_SHADOW := Color(0.0, 0.0, 0.0, 0.11)
+# 테두리 두께와 음영 거리는 글꼴 크기에 비례한다. 고정 px 로 두면 작은
+# 글자("BEST")에서 테두리가 글자 사이를 메워 검은 덩어리로 보인다.
+const TEXT_OUTLINE_FONT_FRAC := 0.068
+const TEXT_SHADOW_FONT_FRAC := 0.092
+# 점수 숫자 속색 — 위는 밝게, 아래는 어둡게. 세로 그라데이션은 평범한
+# draw_string 으로는 안 되므로 전용 캔버스 + 셰이더로 칠한다
+# (score_fill_canvas / SCORE_FILL_SHADER).
+const SCORE_NUMBER_TOP := Color(1.00, 0.95, 0.55, 1.0)
+const SCORE_NUMBER_BOTTOM := Color(0.92, 0.55, 0.04, 1.0)
+# 최고 점수는 하늘색. 위아래 차이는 점수보다 얕게 둔다.
+const BEST_NUMBER_TOP := Color(0.88, 0.98, 1.00, 1.0)
+const BEST_NUMBER_BOTTOM := Color(0.44, 0.75, 0.96, 1.0)
+# 테두리/음영을 한 번에 두르려고 여덟 방향으로 겹쳐 그린다.
+const TEXT_OUTLINE_RING: Array[Vector2] = [
+	Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1),
+	Vector2(-1, 0), Vector2(1, 0),
+	Vector2(-1, 1), Vector2(0, 1), Vector2(1, 1),
+]
 const SCORE_DIVIDER_COLOR := Color(0.55, 0.47, 0.36, 0.55)
 const SCORE_DIVIDER_WIDTH := 2.0
 const SCORE_DIVIDER_INSET_FRAC := 0.20   # 박스 높이 대비 위아래 여백
 const BEST_CROWN_PATH := "res://assets/ui_assets/popup/icon_crown.png"
-const BEST_CROWN_LEFT_FRAC := 0.032      # 구분선에서 왕관까지(박스 너비 대비)
-const BEST_CROWN_HEIGHT_FRAC := 0.52     # 박스 높이 대비
-const BEST_CROWN_GAP_FRAC := 0.38        # 글자 크기 대비 왕관-숫자 간격
+const BEST_CROWN_LEFT_FRAC := 0.016      # 구분선에서 왕관까지(박스 너비 대비)
+const BEST_CROWN_HEIGHT_FRAC := 0.40     # 박스 높이 대비
+# 오른쪽 칸은 왕관 + "BEST" + 최고 점수 셋이 한 줄에 들어간다. 칸 폭이
+# 정해져 있으니 셋 다 그 안에 맞도록 줄여 잡은 값들이다.
+const BEST_LABEL_TEXT := "BEST"
+const BEST_LABEL_FONT_FRAC := 0.30       # 박스 높이 대비
+const BEST_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)   # 노란색
+const BEST_LABEL_GAP_FRAC := 0.011       # 박스 너비 대비 — 왕관과 "BEST" 사이
+# 왕관은 숫자 가운데선보다 살짝 위로. 왕관 그림은 아래쪽 받침이 무거워서
+# 가운데를 맞추면 내려앉아 보인다.
+const BEST_CROWN_Y_OFFSET_FRAC := -0.055 # 박스 높이 대비
 # 최고 점수는 오른쪽 끝자리를 박스 오른쪽 테두리 가까이에 붙여 오른쪽 정렬한다.
 const BEST_NUMBER_RIGHT_INSET_FRAC := 0.0377   # 박스 너비 대비
 # 스코어 박스 테두리는 일시정지/음소거 버튼과 비슷한 두께로. 패널 아트를
@@ -1355,6 +1414,9 @@ const BEST_NUMBER_RIGHT_INSET_FRAC := 0.0377   # 박스 너비 대비
 const SCORE_PANEL_SCALE := 0.877
 # 버튼 사이를 꽉 채우지 않고 살짝 줄여 그린다 — 버튼과의 간격이 그만큼 넓어진다.
 const SCORE_BOX_WIDTH_TRIM := 0.96
+# 패널 그림을 깔지 않고 글자만 배경 위에 얹는다. 자리와 크기는 그대로
+# _score_box_rect 에서 나오므로, 다시 켜면 예전 모습으로 돌아온다.
+const SCORE_BOX_PANEL_VISIBLE := false
 # panel_*.png 는 가장자리에 투명 여백이 2px 있다(잉크 y 2..50 of 53). 9-slice
 # 모서리 조각째로 그려지니 화면에서도 SCORE_PANEL_SCALE 배만큼 안쪽으로
 # 밀려 들어가, 같은 rect 를 줘도 버튼보다 4px 작아 보였다. 그만큼 넓혀서
@@ -1362,15 +1424,15 @@ const SCORE_BOX_WIDTH_TRIM := 0.96
 const SCORE_PANEL_ART_PAD := 2.0
 # 구분선 위치 = 왼쪽 칸(SCORE)과 오른쪽 칸(최고 점수)의 비율 3:2.
 const SCORE_NUM_RIGHT_FRAC := 0.55        # of width
-const SCORE_NUMBER_FONT_FRAC := 0.455     # of height
+const SCORE_NUMBER_FONT_FRAC := 0.52      # of height
 # 두 칸의 내용이 한 줄에 놓인다. 예전 값(0.548 / 0.696)은 아트에 그려져
 # 있던 SCORE/BEST 두 줄에 맞춘 것이라, 빈 패널에서는 어긋나 보인다.
 const SCORE_NUMBER_MID_Y_FRAC := 0.50     # of height
 # 최고 점수도 점수와 같은 크기, 같은 줄. 예전 값(0.336 / 0.696)은 아트에
 # 그려져 있던 BEST 줄에 맞춘 것이었다.
-const BEST_NUMBER_FONT_FRAC := 0.455      # of height
+const BEST_NUMBER_FONT_FRAC := 0.34       # of height
 const BEST_NUMBER_MID_Y_FRAC := 0.50      # of height
-const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.015  # of box width — keeps the ones digit off the divider
+const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.024  # of box width — keeps the ones digit off the divider
 const SCORE_NUMBER_DIGIT_SPACING := 1.7     # extra px between digit cells, on top of the tabular cell width
 # Baseline offset from a digit row's visual center, as a fraction of the
 # font size — see _draw_spaced_digits. Measured by rendering
@@ -1379,6 +1441,9 @@ const SCORE_NUMBER_DIGIT_SPACING := 1.7     # extra px between digit cells, on t
 # putting their visual middle 0.34 em up. (Mulmaru's sat at 0.38, which is
 # why this changed with the font.)
 const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.34
+# 그라데이션을 숫자 잉크 높이에 딱 맞추려고 쓰는, 같은 측정에서 나온 값.
+const DIGIT_INK_ABOVE_FRAC := 0.700
+const DIGIT_INK_BELOW_FRAC := 0.020
 
 # Pause/Mute button size comes from the shared row scale (see
 # _layout_hud_buttons) rather than a fixed height, so the buttons keep the
@@ -1478,6 +1543,13 @@ var splash_char_layer: Node2D
 # Child canvas the top HUD is drawn on, so it can use a texture filter of
 # its own (see scripts/HudCanvas.gd). Created in _ready.
 var hud_canvas: Node2D
+# 점수 숫자의 속만 그리는 캔버스. HUD 캔버스보다 뒤에 붙어 테두리 위에 얹힌다.
+var score_fill_canvas: Node2D
+var score_fill_material: ShaderMaterial
+# 최고 점수도 같은 방식으로. 셰이더 uniform 은 캔버스마다 하나씩이라,
+# 그라데이션이 둘이면 캔버스도 둘이어야 한다.
+var best_fill_canvas: Node2D
+var best_fill_material: ShaderMaterial
 var flag_records: Array = []          # [{code, name, image, tier}, ...] — see FLAGS_DATA_PATH
 var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded from flag_records
 var flag_records_by_tier: Dictionary = {}  # recognition_tier (int 1-4) -> Array of records, picks the ANSWER
@@ -1577,6 +1649,14 @@ func _ready() -> void:
 	hud_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	hud_canvas.main = self
 	add_child(hud_canvas)
+	# 숫자 속칠 전용 캔버스 둘. 셰이더가 캔버스 전체에 걸리므로, 여기에는
+	# 해당 숫자의 속 말고 아무것도 그리지 않는다.
+	score_fill_canvas = _make_gradient_canvas("ScoreFillCanvas", "draw_score_fill_into",
+		SCORE_NUMBER_TOP, SCORE_NUMBER_BOTTOM)
+	score_fill_material = score_fill_canvas.material
+	best_fill_canvas = _make_gradient_canvas("BestFillCanvas", "draw_best_fill_into",
+		BEST_NUMBER_TOP, BEST_NUMBER_BOTTOM)
+	best_fill_material = best_fill_canvas.material
 	_load_best_score()
 	_load_audio_settings()
 	_load_flags_data()
@@ -2570,6 +2650,10 @@ func _process(delta: float) -> void:
 	queue_redraw()
 	if hud_canvas != null:
 		hud_canvas.queue_redraw()
+	if score_fill_canvas != null:
+		score_fill_canvas.queue_redraw()
+	if best_fill_canvas != null:
+		best_fill_canvas.queue_redraw()
 
 
 func _update_countdown(delta: float) -> void:
@@ -4687,8 +4771,9 @@ func _draw_score_box_labels(rect: Rect2, ci: CanvasItem) -> void:
 	# SCORE — 왼쪽. 숫자와 같은 높이에 맞춘다.
 	var score_size := int(round(rect.size.y * SCORE_LABEL_FONT_FRAC))
 	var score_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC + score_size * 0.35
-	ci.draw_string(font, Vector2(rect.position.x + rect.size.x * SCORE_LABEL_LEFT_FRAC, score_y),
-		SCORE_LABEL_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, score_size, SCORE_LABEL_COLOR)
+	_draw_outlined_string(ci, font,
+		Vector2(rect.position.x + rect.size.x * SCORE_LABEL_LEFT_FRAC, score_y),
+		SCORE_LABEL_TEXT, score_size, SCORE_LABEL_FILL)
 
 	# 두 칸을 가르는 세로 점선 대신 얇은 실선. 숫자가 오른쪽 정렬로 붙는 기준선이다.
 	var dx: float = rect.position.x + rect.size.x * SCORE_NUM_RIGHT_FRAC
@@ -4697,24 +4782,32 @@ func _draw_score_box_labels(rect: Rect2, ci: CanvasItem) -> void:
 		SCORE_DIVIDER_COLOR, SCORE_DIVIDER_WIDTH)
 
 	# 왕관 + 최고 점수 — 오른쪽 칸. 글자 없이 왕관이 곧 "BEST"다.
-	var best_num_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
 	var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
-	# 왕관은 오른쪽 칸의 왼쪽 끝(구분선 바로 옆), 숫자는 박스 오른쪽 테두리
-	# 가까이에 오른쪽 정렬. 둘 사이가 벌어지는 대신 자릿수가 늘어도 끝자리가
-	# 움직이지 않는다.
+	# 왕관 -> "BEST" -> 숫자 순서로 왼쪽부터 놓는다. 숫자만 오른쪽 테두리에
+	# 붙여 오른쪽 정렬해, 자릿수가 늘어도 끝자리가 움직이지 않는다.
+	var gap: float = rect.size.x * BEST_LABEL_GAP_FRAC
+	var x: float = dx + rect.size.x * BEST_CROWN_LEFT_FRAC
 	if score_crown_texture != null:
 		# BEST_CROWN_HEIGHT_FRAC / LEFT_FRAC 은 "눈에 보이는 왕관" 기준이다.
 		# 텍스처에 두른 투명 여백만큼 키우고 왼쪽으로 되돌려 그린다.
 		var ink_frac: Vector2 = score_crown_texture.get_meta("ink_frac", Vector2.ONE)
 		var ch: float = rect.size.y * BEST_CROWN_HEIGHT_FRAC / ink_frac.y
 		var cw: float = ch * (float(score_crown_texture.get_width()) / float(score_crown_texture.get_height()))
-		var cx: float = dx + rect.size.x * BEST_CROWN_LEFT_FRAC - cw * (1.0 - ink_frac.x) * 0.5
+		var cy: float = best_mid_y + rect.size.y * BEST_CROWN_Y_OFFSET_FRAC
 		ci.draw_texture_rect(score_crown_texture,
-			Rect2(cx, best_mid_y - ch * 0.5, cw, ch), false)
-	_draw_spaced_digits("%05d" % _best_for(current_mode),
-		Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC, best_mid_y),
-		best_num_size, SCORE_NUMBER_DIGIT_SPACING, true,
-		Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+			Rect2(x - cw * (1.0 - ink_frac.x) * 0.5, cy - ch * 0.5, cw, ch), false)
+		x += cw * ink_frac.x + gap
+	var best_size := int(round(rect.size.y * BEST_LABEL_FONT_FRAC))
+	_draw_outlined_string(ci, font, Vector2(x, best_mid_y + best_size * 0.35),
+		BEST_LABEL_TEXT, best_size, BEST_LABEL_FILL)
+	# 점수와 마찬가지로 음영/테두리만 여기서. 속은 draw_best_fill_into 가
+	# 전용 캔버스에 칠한다.
+	var best_layout := _best_digit_layout(rect)
+	var best_digits: String = best_layout["text"]
+	var best_pos: PackedVector2Array = best_layout["pos"]
+	for i in range(best_digits.length()):
+		_draw_outlined_string(ci, font, best_pos[i], best_digits[i],
+			best_layout["size"], Color(0, 0, 0, 0))
 
 
 func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
@@ -4726,18 +4819,23 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	# _draw_combo_popups), not here — this only ever draws the score box.
 	if score_box_texture != null:
 		var rect := _score_box_rect(view_size)
-		_draw_nine_patch(score_box_texture, rect.grow(SCORE_PANEL_ART_PAD * SCORE_PANEL_SCALE),
-			GATE_PANEL_CORNER + GATE_PANEL_PAD, SCORE_PANEL_SCALE, ci)
+		if SCORE_BOX_PANEL_VISIBLE:
+			_draw_nine_patch(score_box_texture, rect.grow(SCORE_PANEL_ART_PAD * SCORE_PANEL_SCALE),
+				GATE_PANEL_CORNER + GATE_PANEL_PAD, SCORE_PANEL_SCALE, ci)
 		_draw_score_box_labels(rect, ci)
 		# Two halves of the same box, each number matched to its own painted
 		# label rather than sharing one size and line: the live score is the
 		# big one, right-aligned to just inside the divider so its ones digit
 		# never moves; the stored best is the small one, left-aligned so it
 		# sits directly beside the word BEST.
-		var score_font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
-		var score_right := rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC)
-		var score_mid_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC
-		_draw_spaced_digits("%05d" % score, Vector2(score_right, score_mid_y), score_font_size, SCORE_NUMBER_DIGIT_SPACING, true, Color(1.0, 1.0, 1.0, 1.0), COLOR_TEXT_OUTLINE, score_font, ci)
+		# 음영과 테두리만 여기서. 속(그라데이션)은 draw_score_fill_into 가
+		# 전용 캔버스에 칠한다.
+		var layout := _score_digit_layout(view_size)
+		var digits: String = layout["text"]
+		var digit_pos: PackedVector2Array = layout["pos"]
+		for i in range(digits.length()):
+			_draw_outlined_string(ci, layout["font"], digit_pos[i], digits[i],
+				layout["size"], Color(0, 0, 0, 0))
 	else:
 		ci.draw_rect(Rect2(Vector2.ZERO, Vector2(view_size.x, HUD_BAR_HEIGHT)), HUD_BAR_COLOR)
 		_draw_centered_text("SCORE %d  BEST %d" % [score, _best_for(current_mode)], Vector2(view_size.x * 0.5, HUD_BAR_HEIGHT * 0.5), 18, COLOR_TEXT, COLOR_TEXT_OUTLINE, null, ci)
@@ -4987,14 +5085,14 @@ func _draw() -> void:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
 			if ready_texture != null:
-				_draw_countdown_image(ready_texture, countdown_center, 1.0)
+				_draw_countdown_image(ready_texture, countdown_center, 1.0, COUNTDOWN_READY_WIDTH)
 			else:
 				_draw_centered_text("READY", countdown_center, 36)
 		else:
 			var t: float = 1.0 - (countdown_timer / COUNTDOWN_START_DURATION)
 			var pop_scale: float = _pop_scale(t)
 			if start_texture != null:
-				_draw_countdown_image(start_texture, countdown_center, pop_scale)
+				_draw_countdown_image(start_texture, countdown_center, pop_scale, COUNTDOWN_START_WIDTH)
 			else:
 				_draw_centered_text("START", countdown_center, int(round(36.0 * pop_scale)))
 
@@ -5006,19 +5104,20 @@ func _draw() -> void:
 	# content — nothing to do here for it.
 
 
-func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float) -> void:
-	# The art is centred within its own canvas by the slicer, so drawing the
-	# canvas centred on `center` is all it takes — no per-mode correction.
+func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float, width: float) -> void:
+	# 슬라이서가 글자 중심을 캔버스 정가운데에 맞춰 두었으므로, 캔버스를
+	# `center` 에 가운데 맞춰 그리기만 하면 모드가 바뀌어도 글자가 안 움직인다.
 	var tex_size := Vector2(texture.get_width(), texture.get_height())
-	var draw_size: Vector2 = tex_size * (COUNTDOWN_IMAGE_WIDTH / tex_size.x) * scale_mult
+	var draw_size: Vector2 = tex_size * (width / tex_size.x) * scale_mult
 	draw_texture_rect(texture, Rect2(center - draw_size * 0.5, draw_size), false)
 
 
 func _pop_scale(t: float) -> float:
-	# t: 0..1 progress through the "START" display. Quick overshoot to 1.3x,
-	# then eases back down to 1.0x for a short "pop" feel.
+	# t: 0..1 progress through the "START" display. Quick overshoot, then
+	# eases back down to 1.0x for a short "pop" feel. 최고점은 START 를 키운
+	# 만큼 낮췄다 — 예전 1.3 배로 튀면 배너가 화면 좌우로 삐져나간다.
 	const PEAK_T := 0.35
-	const PEAK_SCALE := 1.3
+	const PEAK_SCALE := 1.05
 	if t < PEAK_T:
 		return lerpf(1.0, PEAK_SCALE, t / PEAK_T)
 	return lerpf(PEAK_SCALE, 1.0, (t - PEAK_T) / (1.0 - PEAK_T))
@@ -5082,25 +5181,147 @@ func _draw_spaced_digits(text: String, anchor: Vector2, font_size: int, extra_sp
 	# visibly reflow every time a digit changed. Forcing a uniform cell makes
 	# the number sit rock-steady no matter what it counts up to, without
 	# depending on the font having tabular figures at all.
-	var cell := 0.0
-	for d in range(10):
-		cell = max(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	var total_width: float = cell * text.length() + extra_spacing * max(0, text.length() - 1)
-	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
-	# draw_string takes a baseline, but anchor.y is where the glyphs should
-	# look centered. Centering on the font's line height would sit the digits
-	# high, since the descent below the baseline is empty space they never
-	# use — see DIGIT_BASELINE_FROM_CENTER_FRAC for the measured offset this
-	# uses instead.
-	var y := anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
+	var positions := _digit_positions(text, anchor, font_size, extra_spacing, align_right, font)
 	for i in range(text.length()):
 		var ch: String = text[i]
-		var w: float = font.get_string_size(ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		var pos := Vector2(cursor_x + (cell - w) * 0.5, y)
 		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			ci.draw_string(font, pos + offset, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
-		ci.draw_string(font, pos, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+			ci.draw_string(font, positions[i] + offset, ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_color)
+		ci.draw_string(font, positions[i], ch, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+
+
+# 각 자리를 그릴 위치. 음영/테두리/속을 서로 다른 캔버스에 나눠 그려도
+# 자리가 어긋나지 않도록, 계산은 여기 한 곳에만 둔다.
+#
+# 자리마다 폭이 같은 칸(가장 넓은 숫자 폭)을 주고 그 안에 가운데 정렬한다.
+# Fredoka 의 숫자는 폭이 제각각이라("1" 40, "2" 61), 글자 폭대로 밀면 숫자가
+# 바뀔 때마다 점수 전체가 들썩인다. 칸을 고정하면 무엇을 세든 자리가 고정된다.
+#
+# 세로는 draw_string 이 베이스라인을 받는데 anchor.y 는 "눈에 가운데로 보이는"
+# 높이다. 줄 높이로 가운데를 잡으면 숫자가 쓰지 않는 디센더 공간 때문에 위로
+# 뜬다 — DIGIT_BASELINE_FROM_CENTER_FRAC 이 그래서 있다.
+func _digit_positions(text: String, anchor: Vector2, font_size: int, extra_spacing: float,
+		align_right: bool, font: Font) -> PackedVector2Array:
+	var cell := 0.0
+	for d in range(10):
+		cell = maxf(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	var total_width: float = cell * text.length() + extra_spacing * maxi(0, text.length() - 1)
+	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
+	var y: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
+	var out := PackedVector2Array()
+	for i in range(text.length()):
+		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		out.append(Vector2(cursor_x + (cell - w) * 0.5, y))
 		cursor_x += cell + extra_spacing
+	return out
+
+
+# 바깥부터 음영 -> 검은 테두리 -> 속. fill_color 의 알파가 0 이면 속은
+# 건너뛴다 — 점수 숫자처럼 속을 다른 캔버스에 칠할 때 쓴다.
+func _draw_outlined_string(ci: CanvasItem, font: Font, pos: Vector2, text: String,
+		font_size: int, fill_color: Color) -> void:
+	var ring: float = maxf(1.0, font_size * TEXT_OUTLINE_FONT_FRAC)
+	var shadow := Vector2(0.0, font_size * TEXT_SHADOW_FONT_FRAC)
+	for o in TEXT_OUTLINE_RING:
+		ci.draw_string(font, pos + shadow + o * ring, text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, SCORE_TEXT_SHADOW)
+	for o in TEXT_OUTLINE_RING:
+		ci.draw_string(font, pos + o * ring, text,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, SCORE_TEXT_OUTLINE)
+	if fill_color.a > 0.0:
+		ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, fill_color)
+
+
+# 점수 숫자의 글꼴 크기와 자리, 그리고 잉크의 위/아래 끝. 테두리(HUD 캔버스)와
+# 속(그라데이션 캔버스)을 따로 그리므로 두 곳에서 같은 답이 나와야 한다.
+func _score_digit_layout(view_size: Vector2) -> Dictionary:
+	var rect := _score_box_rect(view_size)
+	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
+	var font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
+	var text := "%05d" % score
+	var anchor := Vector2(
+		rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC),
+		rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC)
+	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
+	return {
+		"font": font,
+		"size": font_size,
+		"text": text,
+		"pos": _digit_positions(text, anchor, font_size, SCORE_NUMBER_DIGIT_SPACING, true, font),
+		"ink_top": baseline - font_size * DIGIT_INK_ABOVE_FRAC,
+		"ink_bottom": baseline + font_size * DIGIT_INK_BELOW_FRAC,
+	}
+
+
+# 세로 그라데이션 셰이더를 건 캔버스 하나. HUD 캔버스보다 뒤에 붙으므로
+# 여기 그리는 속칠이 테두리 위에 얹힌다.
+func _make_gradient_canvas(node_name: String, method: String, top: Color, bottom: Color) -> Node2D:
+	var shader := Shader.new()
+	shader.code = SCORE_FILL_SHADER
+	var mat := ShaderMaterial.new()
+	mat.shader = shader
+	mat.set_shader_parameter("top_color", top)
+	mat.set_shader_parameter("bottom_color", bottom)
+	var canvas := Node2D.new()
+	canvas.name = node_name
+	canvas.set_script(load(HUD_CANVAS_SCRIPT_PATH))
+	canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	canvas.material = mat
+	canvas.main = self
+	canvas.draw_method = method
+	add_child(canvas)
+	return canvas
+
+
+# 최고 점수 숫자의 글꼴 크기와 자리. 점수와 달리 왕관/"BEST" 흐름과 무관하게
+# 박스 오른쪽 테두리에 오른쪽 정렬이라, 박스 사각형만 있으면 나온다.
+func _best_digit_layout(rect: Rect2) -> Dictionary:
+	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
+	var font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
+	var text := "%05d" % _best_for(current_mode)
+	var anchor := Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC,
+		rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC)
+	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
+	return {
+		"font": font,
+		"size": font_size,
+		"text": text,
+		"pos": _digit_positions(text, anchor, font_size, SCORE_NUMBER_DIGIT_SPACING, true, font),
+		"ink_top": baseline - font_size * DIGIT_INK_ABOVE_FRAC,
+		"ink_bottom": baseline + font_size * DIGIT_INK_BELOW_FRAC,
+	}
+
+
+# BestFillCanvas._draw 에서 불린다. 최고 점수 숫자의 속만.
+func draw_best_fill_into(ci: CanvasItem, view_size: Vector2) -> void:
+	if state != State.PLAYING and state != State.COUNTDOWN:
+		return
+	if score_box_texture == null or best_fill_material == null:
+		return
+	var layout := _best_digit_layout(_score_box_rect(view_size))
+	best_fill_material.set_shader_parameter("y_top", layout["ink_top"])
+	best_fill_material.set_shader_parameter("y_bottom", layout["ink_bottom"])
+	var positions: PackedVector2Array = layout["pos"]
+	var text: String = layout["text"]
+	for i in range(text.length()):
+		ci.draw_string(layout["font"], positions[i], text[i],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, layout["size"], Color(1.0, 1.0, 1.0, 1.0))
+
+
+# ScoreFillCanvas._draw 에서 불린다. 이 캔버스에는 세로 그라데이션 셰이더가
+# 걸려 있으므로 점수 숫자의 속 말고는 아무것도 그리지 않는다.
+func draw_score_fill_into(ci: CanvasItem, view_size: Vector2) -> void:
+	if state != State.PLAYING and state != State.COUNTDOWN:
+		return
+	if score_box_texture == null or score_fill_material == null:
+		return
+	var layout := _score_digit_layout(view_size)
+	score_fill_material.set_shader_parameter("y_top", layout["ink_top"])
+	score_fill_material.set_shader_parameter("y_bottom", layout["ink_bottom"])
+	var positions: PackedVector2Array = layout["pos"]
+	var text: String = layout["text"]
+	for i in range(text.length()):
+		ci.draw_string(layout["font"], positions[i], text[i],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, layout["size"], Color(1.0, 1.0, 1.0, 1.0))
 
 
 func _fit_font_size(text: String, max_width: float, max_size: int, min_size: int, font: Font = null) -> int:
