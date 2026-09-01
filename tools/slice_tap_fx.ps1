@@ -1,7 +1,7 @@
 <#
 .SYNOPSIS
-    Cuts assets/fx/fx_small_N.png - the tap-sparkle contact sheet - into the
-    24 individual sprites Main.gd's tap flare loads.
+    Cuts assets/fx/fx_small_N.png - the sparkle contact sheet - into the 24
+    individual sprites the character trail and the gate-pass burst load.
 
 .DESCRIPTION
     The sheet is one 1536x1024 image holding the same six sparkle shapes
