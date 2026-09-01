@@ -14,6 +14,8 @@ extends Control
 ## visibly registered rather than silently ignored.
 
 signal start_pressed(mode: int)
+signal login_pressed
+signal settings_pressed
 
 # Mirrors Main.gd's Mode enum. The mode-select sheet's quadrants are read in
 # reading order, so top-left is SKY and the fourth is the hidden slot.
@@ -33,10 +35,20 @@ const CARD_CHARACTER_SHEET := [
 	"res://assets/characters/bird_v2/bird_fly.png",
 	"res://assets/characters/dragon_green/dragon_fly.png",
 	"res://assets/characters/shark_blue/shark_swim.png",
-	"",
+	"res://assets/characters/unicorn_dream/unicorn_run.png",
 ]
-const CARD_CHARACTER_GRID := Vector2i(2, 2)
+# 칸 나눔은 시트마다 다르다 — 유니콘만 3x2(6프레임)다. Main.gd 의
+# MODE_CHARACTER_SHEET_GRID 와 같은 값을 써야 게임 안팎이 같은 동작을 보인다.
+const CARD_CHARACTER_GRID := [Vector2i(2, 2), Vector2i(2, 2), Vector2i(2, 2), Vector2i(3, 2)]
 const CARD_CHARACTER_FPS := 8.0
+# Main.gd 의 MODE_VISUAL_SIZE_SCALE 과 같은 값. 이게 없으면 네 캐릭터가
+# 카드에서 모두 같은 칸에 그려져, 게임 안에서 맞춰 둔 서로의 크기 관계가
+# 깨진다 — 특히 유니콘은 게임에서 드래곤과 같은 높이로 읽히도록 1.20 배를
+# 주는데, 그게 빠지면 카드에서만 눈에 띄게 작아진다.
+#
+# 칸 한 변을 art_h * 이 배수로 잡으면, 화면에 보이는 크기의 게임 대비 비율이
+# 모드와 무관하게 art_h / PLAYER_VISUAL_SIZE.y 로 같아진다.
+const CARD_CHARACTER_SCALE := [0.92, 1.0, 1.0, 1.20]
 # Measured off each sheet the same way Main.gd's MODE_DRAW_OFFSET_FLY is,
 # and scaled to whatever size the card draws the sprite at.
 const CARD_CHARACTER_OFFSET := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0), Vector2.ZERO]
@@ -48,7 +60,7 @@ const CARD_NAME_HEIGHT_FRAC := 0.17
 const CARD_BEST_HEIGHT_FRAC := 0.15
 const CARD_ART_HEIGHT_FRAC := 0.58
 const CARD_TEXT_INSET_FRAC := 0.06     # of card height, kept clear of the border
-const CARD_NAMES := ["FLAG MODE", "MATH MODE", "STROOP MODE", "?"]
+const CARD_NAMES := ["FLAG MODE", "MATH MODE", "STROOP MODE", "MIX MODE"]
 # Sized so the longest name fits its card, then used for all of them, so the
 # titles do not step up and down from card to card.
 const CARD_NAME_WIDTH_FRAC := 0.90     # of the card's inner width
@@ -167,7 +179,12 @@ const START_GLOW_SPREAD := 2.2        # how far out the halo reaches, in ring wi
 # The chosen card's character drifts, so the selection reads as alive even
 # before the flap cycle registers.
 const CARD_BOB_AMPLITUDE_FRAC := 0.045  # of the art area's height
-const CARD_BOB_PERIOD := 1.5
+# bob 한 주기 = 날갯짓 몇 바퀴. 고정 초로 두면 안 된다 — 날갯짓 한 바퀴는
+# 프레임 수에 달려 있어서(8 FPS 기준 4장이면 0.5초, 유니콘은 5장이라 0.625초),
+# bob 을 1.5초로 못박으면 4장짜리는 정확히 3바퀴에 맞물리지만 유니콘만
+# 2.4바퀴로 어긋난다. 그러면 날갯짓이 매번 bob 의 다른 지점에서 일어나
+# 유니콘 카드만 툭툭 튀는 것처럼 보인다. 바퀴 수로 잡으면 다 맞물린다.
+const CARD_BOB_LOOPS := 3.0
 
 const ART_DIR := "res://assets/ui_assets/main/"
 const BACKGROUND_FILE := "background_main.png"
@@ -204,6 +221,8 @@ const LEADERBOARD_LABEL_PAD_FRAC := 0.05      # of the plate's width, kept off i
 const SFX_DIR := "res://assets/audio/"
 const SFX_SELECT_FILE := "modeselection.wav"
 const SFX_START_FILE := "start_main.wav"
+# 팝업의 크림 버튼과 같은 소리 — 위쪽 구석 버튼 둘이 쓴다.
+const SFX_CREAM_FILE := "button_cream.wav"
 
 # The START art is a blank plate, so the word is drawn on top of it.
 const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
@@ -241,6 +260,14 @@ const KEY_SOLID := 192     # at or above: art, left alone
 # Widths as a fraction of the screen; each piece's height follows from its
 # own aspect ratio.
 const TITLE_WIDTH_FRAC := 0.70
+# 화면 맨 위 두 구석의 작은 버튼 — 왼쪽 로그인, 오른쪽 설정.
+# tools/slice_login_setting.gd 가 한 시트에서 잘라 낸 것이라 둘의 캔버스가
+# 같고, 그래서 같은 크기로 그려진다.
+const LOGIN_FILE := "login.png"
+const SETTING_FILE := "setting.png"
+const TOP_ICON_HEIGHT_FRAC := 0.055   # of screen height
+const TOP_ICON_MARGIN_X_FRAC := 0.030 # of screen width
+const TOP_ICON_MARGIN_Y_FRAC := 0.022 # of screen height
 const CARDS_WIDTH_FRAC := 0.84
 const CARD_GAP_FRAC := 0.030      # of screen width, between the two columns
 # The explain bar takes its width from the cards rather than a fraction of
@@ -284,11 +311,14 @@ var _start_bounds := Rect2(0, 0, 1, 1)
 var _explain_src := Rect2(0, 0, 1, 1)   # the bar's art within its file, in pixels
 var _explain_cap := 1.0                 # corner radius in those same pixels
 var _cards: Array[TextureButton] = []
+var _login: TextureButton
+var _setting: TextureButton
 var _leaderboard: TextureButton
 var _start: TextureButton
 var _select_overlay: Control
 var _sfx_select: AudioStreamPlayer
 var _sfx_start: AudioStreamPlayer
+var _sfx_cream: AudioStreamPlayer
 var _start_label: Label
 var _remove_ads: Button
 var _remove_ads_rule: Control
@@ -313,10 +343,26 @@ var _leaderboard_bounds := Rect2(0, 0, 1, 1)
 var _leaderboard_label: Label
 
 
+# 조립이 끝났는가. Main 이 로고가 뜬 뒤에 ensure_built() 로 켠다.
+var _built := false
+
+
+# 카드 아트 자르기/굽기는 1초 가까이 걸린다. 첫 프레임을 붙잡지 않도록
+# 로고 화면 뒤로 미룬다. 두 번 불러도 한 번만 돈다.
+func ensure_built() -> void:
+	if _built:
+		return
+	_built = true
+	_ready()
+
+
 func _ready() -> void:
+	if not _built:
+		return
 	_load_fonts()
 	_sfx_select = _make_sfx(SFX_SELECT_FILE)
 	_sfx_start = _make_sfx(SFX_START_FILE)
+	_sfx_cream = _make_sfx(SFX_CREAM_FILE)
 	_build()
 	# Straight to _select, not _on_card_pressed: this is the opening state,
 	# not a tap, and should not make a sound.
@@ -389,7 +435,8 @@ func _process(delta: float) -> void:
 		var bob := 0.0
 		if i == selected_index:
 			frame = int(_card_anim_elapsed * CARD_CHARACTER_FPS) % frames.size()
-			bob = sin(_card_anim_elapsed / CARD_BOB_PERIOD * TAU) \
+			var period: float = frames.size() / CARD_CHARACTER_FPS * CARD_BOB_LOOPS
+			bob = sin(_card_anim_elapsed / period * TAU) \
 				* _card_art[i].size.y * CARD_BOB_AMPLITUDE_FRAC
 		_card_art[i].texture = frames[frame]
 		# Offset from the resting position the layout gave it, so a re-layout
@@ -586,7 +633,7 @@ func _build() -> void:
 
 		# Contents ride inside the card so the press animation scales them
 		# along with it; none of them take clicks.
-		_card_characters.append(_slice_character(CARD_CHARACTER_SHEET[i]))
+		_card_characters.append(_slice_character(CARD_CHARACTER_SHEET[i], CARD_CHARACTER_GRID[i]))
 		var art := TextureRect.new()
 		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -678,6 +725,13 @@ func _build() -> void:
 	_explain_label.add_theme_color_override("font_color", EXPLAIN_TEXT_COLOR)
 	_explain.add_child(_explain_label)
 
+	_login = _make_button(_load_art(LOGIN_FILE))
+	_login.pressed.connect(func(): _play(_sfx_cream); login_pressed.emit())
+	add_child(_login)
+	_setting = _make_button(_load_art(SETTING_FILE))
+	_setting.pressed.connect(func(): _play(_sfx_cream); settings_pressed.emit())
+	add_child(_setting)
+
 	_leaderboard = _make_button(_load_art(LEADERBOARD_FILE))
 	_leaderboard.pressed.connect(_on_unimplemented.bind("리더보드"))
 	add_child(_leaderboard)
@@ -746,7 +800,7 @@ func _build() -> void:
 	_remove_ads.add_child(_remove_ads_rule)
 
 	# Every button gets the same press feedback.
-	for button in [_start, _leaderboard] + _cards:
+	for button in [_start, _leaderboard, _login, _setting] + _cards:
 		button.button_down.connect(_animate_press.bind(button))
 		button.button_up.connect(_animate_release.bind(button))
 
@@ -882,7 +936,7 @@ func _load_icon(index: int) -> Texture2D:
 
 # The character sheets are the same 2x2 grids the game plays, so the cards
 # show the real animation rather than a separate still.
-func _slice_character(path: String) -> Array:
+func _slice_character(path: String, grid: Vector2i) -> Array:
 	var frames: Array = []
 	if path == "" or not ResourceLoader.exists(path):
 		return frames
@@ -892,11 +946,17 @@ func _slice_character(path: String) -> Array:
 		return frames
 	sheet.convert(Image.FORMAT_RGBA8)
 	sheet.clear_mipmaps()
-	var cell_w: int = sheet.get_width() / CARD_CHARACTER_GRID.x
-	var cell_h: int = sheet.get_height() / CARD_CHARACTER_GRID.y
-	for row in range(CARD_CHARACTER_GRID.y):
-		for col in range(CARD_CHARACTER_GRID.x):
+	var cell_w: int = sheet.get_width() / grid.x
+	var cell_h: int = sheet.get_height() / grid.y
+	for row in range(grid.y):
+		for col in range(grid.x):
 			var cell: Image = sheet.get_region(Rect2i(col * cell_w, row * cell_h, cell_w, cell_h))
+			# 칸 수가 프레임 수와 딱 맞아떨어지지 않는 시트가 있다 — 유니콘의
+			# 달리기는 3x2 칸에 5프레임이라 마지막 칸이 비어 있다. 그대로 넣으면
+			# 한 바퀴에 한 번 캐릭터가 사라져 깜빡인다. Main.gd 의
+			# _slice_spritesheet 도 같은 이유로 빈 칸을 건너뛴다.
+			if cell.is_invisible():
+				continue
 			# The card draws a 256px frame at about 89, so it needs mip levels
 			# for the same reason the menu art does — see _use_smooth_filter.
 			cell.generate_mipmaps()
@@ -982,6 +1042,16 @@ func _layout() -> void:
 		(view.y - top - bottom - content_h - explain_clearance) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
 
 	var y: float = top
+	# 두 구석 버튼은 세로 흐름에 끼지 않는다 — 화면 맨 위에 그대로 붙인다.
+	if _login != null and _setting != null:
+		var icon: float = view.y * TOP_ICON_HEIGHT_FRAC
+		var mx: float = view.x * TOP_ICON_MARGIN_X_FRAC
+		var my: float = view.y * TOP_ICON_MARGIN_Y_FRAC
+		_login.position = Vector2(mx, my)
+		_login.size = Vector2(icon, icon)
+		_setting.position = Vector2(view.x - mx - icon, my)
+		_setting.size = Vector2(icon, icon)
+
 	_place(_title, title_w, title_h, y)
 	y += title_h + gap
 
@@ -1120,9 +1190,15 @@ func _layout_card_contents(index: int, card_w: float, card_h: float) -> void:
 	_card_name[index].offset_right = 0.0
 	_card_name[index].offset_bottom = 0.0
 
-	_card_art[index].position = origin + Vector2(inset, inset + name_h)
+	# 칸은 정사각형이다 — 스프라이트 시트가 256x256 이라, 게임 쪽과 같은
+	# "칸 한 변" 개념으로 맞춰야 크기가 비교된다. 세로로 넘치는 몫은 투명
+	# 여백이라(유니콘 1.20 배면 칸이 art_h 를 넘는다) 이름/점수 판을 가리지 않는다.
+	var char_side: float = art_h * CARD_CHARACTER_SCALE[index]
+	_card_art[index].size = Vector2(char_side, char_side)
+	_card_art[index].position = origin + Vector2(
+		inset + (inner_w - char_side) * 0.5,
+		inset + name_h + (art_h - char_side) * 0.5)
 	_card_art_rest_y[index] = _card_art[index].position.y
-	_card_art[index].size = Vector2(inner_w, art_h)
 
 	var plate_w: float = inner_w * CARD_BEST_PLATE_WIDTH_FRAC
 	_card_best_plate[index].position = origin + Vector2(

@@ -1,0 +1,419 @@
+extends PopupBase
+
+## 설정 팝업. 메인 화면 오른쪽 위 톱니바퀴에서 연다.
+##
+## 판 위로 SETTINGS 아트가 걸터앉고, 판 안은 점선으로 세 칸이다:
+##   소리 조절(SFX / MUSIC) — 일시정지 팝업과 같은 슬라이더를 쓴다
+##   계정         — 동그란 자리 + 상태 글자 + LOGIN 크림 버튼
+##   약관         — Privacy Policy / Terms of Service, 밑줄 + 오른쪽 ">"
+##
+## 닫기 버튼은 따로 두지 않았다. 판 바깥을 누르면 닫힌다 — 설정은 되돌릴 것이
+## 없는 화면이라 "확인/취소"가 필요 없고, 버튼 하나를 아끼는 편이 깔끔하다.
+
+signal close_pressed
+signal login_pressed
+signal logout_pressed
+signal remove_ads_pressed
+signal contact_pressed
+signal about_pressed
+signal privacy_pressed
+signal terms_pressed
+signal sfx_volume_changed(value: float)
+signal music_volume_changed(value: float)
+
+# 2172px 짜리 원본을 그대로 GPU 밉맵에 맡겨 줄이면 테두리에 계단이 남는다.
+# _load_icon_from 은 알파를 곱한 채 Lanczos 로 미리 줄이고 여백까지 둘러 주므로
+# (트로피·리본과 같은 길) 그 길로 읽는다. 아트를 바꾸면 다시 구워야 한다 —
+# tools/bake_popup_art.gd.
+const TITLE_FILE := "res://assets/ui_assets/popup/settings_popup.png"
+const TITLE_TEXTURE_HEIGHT := 240
+# 제목 아트가 판 위로 얼마나 걸터앉는가 — 부활 팝업의 OOPS와 같은 방식.
+const TITLE_WIDTH_FRAC := 0.68    # 판 너비 대비 — 오른쪽 위 닫기 버튼 자리를 비워 둔다
+const TITLE_OVERHANG := 0.55      # 자기 높이 중 판 위로 나가는 비율
+
+# 계정 줄: [동그란 자리] [상태 글자] ......... [LOGIN 버튼]
+const ACCOUNT_ROW_HEIGHT_FRAC := 0.101   # 판 높이 대비
+const AVATAR_DIAMETER_FRAC := 0.86       # 줄 높이 대비
+const AVATAR_FILL := Color(0.86, 0.83, 0.75, 1.0)
+const AVATAR_EDGE := Color(0.72, 0.68, 0.59, 1.0)
+const AVATAR_EDGE_PX := 2.0
+const AVATAR_GLYPH := Color(0.62, 0.59, 0.52, 1.0)   # 사람 모양 자리표시
+const ACCOUNT_GAP_FRAC := 0.025          # 판 너비 대비 — 동그라미와 글자 사이
+const ACCOUNT_TEXT_SIZE_FRAC := 0.050    # 판 너비 대비
+const ACCOUNT_TEXT_COLOR := Color(0.55, 0.55, 0.58, 1.0)   # 회색
+const ACCOUNT_TEXT_MIN_SIZE := 11
+const LOGGED_OUT_TEXT := "Not logged in"
+const LOGGED_IN_FORMAT := "Logged in as %s"
+const LOGIN_TEXT := "LOGIN"
+const LOGOUT_TEXT := "LOGOUT"
+const LOGIN_WIDTH_FRAC := 0.26           # 판 너비 대비
+const ACCOUNT_BUTTON_GAP_FRAC := 0.030   # 판 너비 대비 — 글자와 버튼 사이
+const LOGIN_HEIGHT_FRAC := 0.079         # 판 높이 대비
+const LOGIN_TEXTURE_WIDTH := 105         # 9-slice 텍스처 폭 — _build_content 주석 참고
+
+# 약관 줄: 글자에 밑줄, 줄 오른쪽 끝에 ">".
+# 광고 제거 — 계정 줄 바로 아래의 골드 버튼. primary=true 면 흰 글자에
+# 네이비 테두리가 붙는다(RESUME/PLAY AGAIN 과 같은 꾸밈).
+const REMOVE_ADS_TEXT := "REMOVE ADS"
+const REMOVE_ADS_HEIGHT_FRAC := 0.081    # 판 높이 대비
+const REMOVE_ADS_WIDTH_FRAC := 0.86      # 안쪽 폭 대비
+# 골드 아트는 848x244 에 모서리 88 — 모서리는 늘 텍스처 높이의 36% 라,
+# 텍스처 높이가 버튼 높이의 1.4 배를 넘으면 위아래 모서리가 겹친다.
+# 110 이면 텍스처 220x63, 모서리 23 으로 51px 버튼 안에 들어온다.
+const REMOVE_ADS_TEXTURE_WIDTH := 110
+
+const LINK_TEXTS := ["Privacy Policy", "Terms of Service", "Contact / Feedback", "About"]
+# 아이콘 시트에 편지 그림이 없어서 직접 그린다 — 봉투 사각형 + 뚜껑 선 둘.
+const LINK_MAIL_INDEX := 2               # 편지 아이콘이 붙는 줄
+const LINK_MAIL_GAP_FRAC := 0.45         # 글자 크기 대비 글자-아이콘 간격
+const LINK_MAIL_HEIGHT_FRAC := 0.72      # 글자 크기 대비 아이콘 높이
+const LINK_MAIL_LINE_PX := 1.3
+const LINK_TEXT_SIZE_FRAC := 0.058       # 판 너비 대비
+const LINK_COLOR := Color(0.24, 0.28, 0.36, 1.0)
+const LINK_UNDERLINE_PX := 1.4
+const LINK_UNDERLINE_DROP := 0.30        # 글자 크기 대비 베이스라인 아래로
+const LINK_ROW_HEIGHT_FRAC := 0.077      # 판 높이 대비
+# 약관 두 줄은 한 묶음으로 읽혀야 하니 사이를 좁게, 그 아래 버전은 별개라
+# 넓게 띄운다. 나머지 간격들은 남는 공간을 고르게 나눠 가진다.
+const LINK_GAP_FRAC := 0.023             # 판 높이 대비 — 약관 줄 사이
+const VERSION_GAP_FRAC := 0.061          # 판 높이 대비 — 약관과 버전 사이
+const LINK_CHEVRON := ">"
+const LINK_CHEVRON_COLOR := Color(0.62, 0.62, 0.66, 1.0)
+
+# 판 맨 아래 가운데의 버전 표시.
+const VERSION_TEXT := "Version 1.0.0"
+const VERSION_SIZE_FRAC := 0.044       # 판 너비 대비
+const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
+
+var _title: TextureRect
+var _sliders: Control
+var _sfx_slider: HSlider
+var _music_slider: HSlider
+var _divider_top: Control
+var _divider_bottom: Control
+var _account: Control
+var _login: Button
+var _remove_ads: Button
+var _links: Array[Button] = []
+var _sfx_icon: Texture2D
+var _music_icon: Texture2D
+var _avatar: Texture2D          # 로그인하면 Main이 넣어 준다
+var _account_text: String = LOGGED_OUT_TEXT
+var _logged_in := false
+var _cancel: Button
+var _version: Control
+
+
+func panel_size_frac() -> Vector2:
+	# 담을 것이 늘어난 만큼 세로로 키운다.
+	return Vector2(0.90, 0.74)
+
+
+func panel_texture_width() -> int:
+	return 450
+
+
+func panel_center_y_frac() -> float:
+	# 제목이 판 위로 튀어나오므로 판을 살짝 내려 머리 공간을 만든다.
+	return 0.53
+
+
+func _build_content() -> void:
+	# 소리 조절 — 일시정지 팝업과 같은 슬라이더.
+	_sliders = Control.new()
+	_sliders.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_sliders.draw.connect(_draw_sliders)
+	add_child(_sliders)
+	_sfx_icon = _load_icon(ICON_SPEAKER)
+	_music_icon = _load_icon(ICON_NOTE)
+	_sfx_slider = _make_slider()
+	_sfx_slider.value_changed.connect(func(v: float): sfx_volume_changed.emit(v))
+	_sliders.add_child(_sfx_slider)
+	_music_slider = _make_slider()
+	_music_slider.value_changed.connect(func(v: float): music_volume_changed.emit(v))
+	_sliders.add_child(_music_slider)
+
+	_divider_top = _make_divider()
+	_divider_bottom = _make_divider()
+
+	# 계정 줄. 동그란 자리와 글자는 이 노드가 직접 그리고, 버튼만 진짜 노드다.
+	_account = Control.new()
+	_account.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_account.draw.connect(_draw_account)
+	add_child(_account)
+	# 텍스처 폭을 기본값(197)으로 두면 9-slice 모서리가 41px 이 되는데, 이
+	# 버튼은 50px 밖에 안 높아서 위아래 모서리가 서로 겹쳐 테두리가 뭉갠다.
+	# 크림 아트는 1939x613 에 모서리 202 라, 모서리는 늘 텍스처 높이의 33% 다 —
+	# 즉 텍스처 높이가 버튼 높이의 1.5 배를 넘으면 안 된다. 105 면 텍스처가
+	# 210x66, 모서리 22 로 50px 버튼 안에 넉넉히 들어온다.
+	_login = _make_button(CREAM_FILE, CREAM_CORNER, LOGIN_TEXT, null, false,
+		CREAM_GRADIENT, LOGIN_TEXTURE_WIDTH)
+	# 같은 버튼이 상태에 따라 로그인/로그아웃 둘 다 맡는다.
+	_login.pressed.connect(func(): (logout_pressed if _logged_in else login_pressed).emit())
+	add_child(_login)
+
+	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, REMOVE_ADS_TEXT, null, true,
+		Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
+	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
+	add_child(_remove_ads)
+
+	# 약관 두 줄. 글자와 밑줄, 오른쪽 ">"는 버튼 위에 직접 그린다 —
+	# 줄 전체가 누르는 자리가 되어야 손가락으로 집기 편하다.
+	for i in range(LINK_TEXTS.size()):
+		var link := Button.new()
+		link.flat = true
+		link.focus_mode = Control.FOCUS_NONE
+		var empty := StyleBoxEmpty.new()
+		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
+			link.add_theme_stylebox_override(slot, empty)
+		link.draw.connect(_draw_link.bind(link, i))
+		link.pressed.connect(_on_link_pressed.bind(i))
+		add_child(link)
+		_links.append(link)
+
+	# 판 맨 아래 가운데 버전.
+	_version = Control.new()
+	_version.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_version.draw.connect(_draw_version)
+	add_child(_version)
+
+	_cancel = _make_close_button(func(): close_pressed.emit())
+
+	# 제목은 판보다 위에 그려져야 하므로 마지막에 붙인다.
+	_title = TextureRect.new()
+	_title.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_title.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_title.texture = _load_icon_from(TITLE_FILE, Vector2i(1, 1), 0, TITLE_TEXTURE_HEIGHT)
+	add_child(_title)
+
+
+func _make_divider() -> Control:
+	var d := Control.new()
+	d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	d.draw.connect(_draw_dotted_divider.bind(d))
+	add_child(d)
+	return d
+
+
+# 판 안쪽을 위에서부터: SFX → MUSIC → 점선 → 계정 → 점선 → 약관 두 줄.
+# 남는 세로 공간을 사이사이에 고르게 나눈다.
+func _layout_content(inner: Rect2) -> void:
+	var pw: float = _panel_rect.size.x
+	var ph: float = _panel_rect.size.y
+	var inner_x: float = inner.position.x
+	var inner_w: float = inner.size.x
+	var top: float = inner.position.y
+	var bottom: float = inner.end.y
+
+	# 제목은 판 위쪽 테두리에 걸친다.
+	if _title.texture != null:
+		var tw: float = pw * TITLE_WIDTH_FRAC
+		var th: float = tw * (float(_title.texture.get_height()) / float(_title.texture.get_width()))
+		_title.size = Vector2(tw, th)
+		_title.position = Vector2(
+			_panel_rect.position.x + (pw - tw) * 0.5,
+			_panel_rect.position.y - th * TITLE_OVERHANG)
+
+	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
+	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_TRACK_HEIGHT + 6.0
+	var divider_h: float = DIVIDER_DOT_RADIUS * 2.0
+	var account_h: float = ph * ACCOUNT_ROW_HEIGHT_FRAC
+	var link_h: float = ph * LINK_ROW_HEIGHT_FRAC
+
+	var version_h: float = pw * VERSION_SIZE_FRAC * 1.6
+	var remove_h: float = ph * REMOVE_ADS_HEIGHT_FRAC
+	var link_gap: float = ph * LINK_GAP_FRAC
+	var version_gap: float = ph * VERSION_GAP_FRAC
+	var link_count: int = LINK_TEXTS.size()
+	# 따로 정한 간격(약관 줄 사이 여러 개 + 약관-버전)을 뺀 나머지를, 남은
+	# 간격 여섯이 고르게 나눈다: 슬라이더 사이 / 슬라이더-점선 / 점선-계정 /
+	# 계정-광고제거 / 광고제거-점선 / 점선-첫 약관.
+	var used: float = slider_h * 2.0 + divider_h * 2.0 + account_h + remove_h \
+		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap
+	var gap: float = maxf(6.0, (bottom - top - used) / 6.0)
+
+	var y := top
+	_sliders.position = Vector2(inner_x, y)
+	_sliders.size = Vector2(inner_w, slider_h * 2.0 + gap)
+	_sliders.set_meta("gap", gap)
+	_sliders.set_meta("row_h", slider_h)
+	var track_x: float = minf(_slider_label_column(slider_font, ["SFX", "MUSIC"]), inner_w * 0.55)
+	var track_w: float = inner_w - track_x
+	# 손잡이가 트랙 양끝에서 반쯤 걸치므로 그만큼 안쪽으로.
+	var knob_pad: float = SLIDER_KNOB_SIZE * 0.5
+	for i in range(2):
+		var s: HSlider = _sfx_slider if i == 0 else _music_slider
+		s.position = Vector2(track_x + knob_pad,
+			i * (slider_h + gap) + slider_h * 0.5 - SLIDER_KNOB_SIZE * 0.5)
+		s.size = Vector2(maxf(10.0, track_w - knob_pad * 2.0), SLIDER_KNOB_SIZE)
+	_sliders.queue_redraw()
+	y += slider_h * 2.0 + gap + gap
+
+	_divider_top.position = Vector2(inner_x, y)
+	_divider_top.size = Vector2(inner_w, divider_h)
+	_divider_top.queue_redraw()
+	y += divider_h + gap
+
+	var login_w: float = pw * LOGIN_WIDTH_FRAC
+	var login_h: float = ph * LOGIN_HEIGHT_FRAC
+	_account.position = Vector2(inner_x, y)
+	_account.size = Vector2(inner_w - login_w - pw * ACCOUNT_BUTTON_GAP_FRAC, account_h)
+	_account.queue_redraw()
+	_place(_login, inner_x + inner_w - login_w, y + (account_h - login_h) * 0.5, login_w, login_h)
+	y += account_h + gap
+
+	var remove_w: float = inner_w * REMOVE_ADS_WIDTH_FRAC
+	_place(_remove_ads, inner_x + (inner_w - remove_w) * 0.5, y, remove_w, remove_h,
+		1.0, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	y += remove_h + gap
+
+	_divider_bottom.position = Vector2(inner_x, y)
+	_divider_bottom.size = Vector2(inner_w, divider_h)
+	_divider_bottom.queue_redraw()
+	y += divider_h + gap
+
+	for i in range(_links.size()):
+		_links[i].position = Vector2(inner_x, y)
+		_links[i].size = Vector2(inner_w, link_h)
+		_links[i].queue_redraw()
+		# 약관 줄끼리는 좁게, 마지막 줄과 버전 사이는 넓게.
+		y += link_h + (version_gap if i == _links.size() - 1 else link_gap)
+
+	_version.position = Vector2(inner_x, y)
+	_version.size = Vector2(inner_w, version_h)
+	_version.queue_redraw()
+
+	_place_close_button(_cancel)
+
+
+## 팝업을 열 때 Main이 현재 볼륨을 넣어 준다. value_changed를 잠시 끊어,
+## 값을 세팅하는 것만으로 신호가 되돌아가 저장이 일어나지 않게 한다.
+func set_volumes(sfx: float, music: float) -> void:
+	if _sfx_slider != null:
+		_sfx_slider.set_value_no_signal(clampf(sfx, 0.0, 1.0))
+	if _music_slider != null:
+		_music_slider.set_value_no_signal(clampf(music, 0.0, 1.0))
+
+
+## 계정 줄의 내용. 로그인하면 동그라미가 프로필 사진으로, 글자가
+## "Logged in as [닉네임]"으로, 버튼이 LOGOUT 으로 바뀐다.
+## 아직 인증이 붙지 않아 기본은 "로그인 안 됨"이다.
+func set_account(avatar: Texture2D, display_name: String, logged_in: bool) -> void:
+	_avatar = avatar
+	_logged_in = logged_in
+	_account_text = (LOGGED_IN_FORMAT % display_name) if logged_in else LOGGED_OUT_TEXT
+	if _login != null:
+		var caption: Label = _login.get_node_or_null("Caption")
+		if caption != null:
+			caption.text = LOGOUT_TEXT if logged_in else LOGIN_TEXT
+		# 글자 길이가 바뀌었으니 버튼 안쪽 배치를 다시 맞춘다.
+		_layout()
+	if _account != null:
+		_account.queue_redraw()
+
+
+func _draw_sliders() -> void:
+	_draw_slider_labels(_sliders,
+		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
+		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
+		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
+
+
+# 동그란 프로필 자리 + 상태 글자. 그림이 아직 없으면 사람 모양 자리표시를 그린다.
+func _draw_account() -> void:
+	var h: float = _account.size.y
+	var d: float = h * AVATAR_DIAMETER_FRAC
+	var centre := Vector2(d * 0.5, h * 0.5)
+	if _avatar != null:
+		# 사진을 동그랗게 오려 넣는다. draw_texture_rect 는 네모로만 그려서,
+		# 원 모양 다각형에 UV 를 물려 그린다.
+		var steps := 48
+		var pts := PackedVector2Array()
+		var uvs := PackedVector2Array()
+		for i in range(steps):
+			var a: float = TAU * i / steps
+			var dir := Vector2(cos(a), sin(a))
+			pts.append(centre + dir * d * 0.5)
+			uvs.append(Vector2(0.5, 0.5) + dir * 0.5)
+		_account.draw_colored_polygon(pts, Color(1, 1, 1, 1), uvs, _avatar)
+		_account.draw_arc(centre, d * 0.5 - AVATAR_EDGE_PX * 0.5, 0.0, TAU, 48,
+			AVATAR_EDGE, AVATAR_EDGE_PX, true)
+	else:
+		_account.draw_circle(centre, d * 0.5, AVATAR_FILL)
+		_account.draw_arc(centre, d * 0.5 - AVATAR_EDGE_PX * 0.5, 0.0, TAU, 48,
+			AVATAR_EDGE, AVATAR_EDGE_PX, true)
+		# 사람 모양: 머리 동그라미 + 어깨 호.
+		_account.draw_circle(centre + Vector2(0.0, -d * 0.13), d * 0.16, AVATAR_GLYPH)
+		_account.draw_arc(centre + Vector2(0.0, d * 0.34), d * 0.27, PI, TAU, 32,
+			AVATAR_GLYPH, d * 0.13, true)
+	var x: float = d + _panel_rect.size.x * ACCOUNT_GAP_FRAC
+	# 남는 폭에 맞춰 줄인다 — 로그인하면 이름이 들어올 자리라, 길이가
+	# 얼마가 되든 LOGIN 버튼을 밀거나 잘리지 않아야 한다.
+	var room: float = maxf(10.0, _account.size.x - x)
+	var font_size: int = int(round(_panel_rect.size.x * ACCOUNT_TEXT_SIZE_FRAC))
+	while font_size > ACCOUNT_TEXT_MIN_SIZE \
+			and _font_bold.get_string_size(_account_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x > room:
+		font_size -= 1
+	_account.draw_string(_font_bold, Vector2(x, h * 0.5 + font_size * 0.36),
+		_account_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, ACCOUNT_TEXT_COLOR)
+
+
+# 판 맨 아래 가운데의 버전 표시.
+func _draw_version() -> void:
+	var font_size: int = int(round(_panel_rect.size.x * VERSION_SIZE_FRAC))
+	var w: float = _font_bold.get_string_size(VERSION_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	_version.draw_string(_font_bold,
+		Vector2((_version.size.x - w) * 0.5, _version.size.y * 0.5 + font_size * 0.36),
+		VERSION_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, VERSION_COLOR)
+
+
+# 약관 한 줄: 왼쪽에 밑줄 친 글자, 오른쪽 끝에 ">".
+func _draw_link(link: Button, index: int) -> void:
+	var font_size: int = int(round(_panel_rect.size.x * LINK_TEXT_SIZE_FRAC))
+	var text: String = LINK_TEXTS[index]
+	var baseline: float = link.size.y * 0.5 + font_size * 0.36
+	link.draw_string(_font_bold, Vector2(0.0, baseline), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, LINK_COLOR)
+	var text_w: float = _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var uy: float = baseline + font_size * LINK_UNDERLINE_DROP
+	link.draw_line(Vector2(0.0, uy), Vector2(text_w, uy), LINK_COLOR, LINK_UNDERLINE_PX, true)
+	if index == LINK_MAIL_INDEX:
+		_draw_mail(link, text_w + font_size * LINK_MAIL_GAP_FRAC,
+			link.size.y * 0.5, font_size * LINK_MAIL_HEIGHT_FRAC)
+	var chev_w: float = _font_bold.get_string_size(LINK_CHEVRON, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	link.draw_string(_font_bold, Vector2(link.size.x - chev_w, baseline), LINK_CHEVRON,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, LINK_CHEVRON_COLOR)
+
+
+# 봉투 아이콘. 아이콘 시트에 편지 그림이 없어서 선으로 직접 그린다 —
+# 이 크기(12px 남짓)에서는 사각형 하나와 뚜껑 선 둘이면 편지로 읽힌다.
+func _draw_mail(ctrl: Control, x: float, centre_y: float, h: float) -> void:
+	var w: float = h * 1.45
+	var r := Rect2(x, centre_y - h * 0.5, w, h)
+	ctrl.draw_rect(r, LINK_CHEVRON_COLOR, false, LINK_MAIL_LINE_PX, true)
+	ctrl.draw_line(r.position, r.position + Vector2(w * 0.5, h * 0.55),
+		LINK_CHEVRON_COLOR, LINK_MAIL_LINE_PX, true)
+	ctrl.draw_line(r.position + Vector2(w, 0.0), r.position + Vector2(w * 0.5, h * 0.55),
+		LINK_CHEVRON_COLOR, LINK_MAIL_LINE_PX, true)
+
+
+# 약관 줄을 눌렀을 때 어느 신호를 보낼지.
+func _on_link_pressed(index: int) -> void:
+	match index:
+		0: privacy_pressed.emit()
+		1: terms_pressed.emit()
+		2: contact_pressed.emit()
+		_: about_pressed.emit()
+
+
+# 판 바깥을 누르면 닫는다.
+func _gui_input(event: InputEvent) -> void:
+	var pressed := false
+	if event is InputEventScreenTouch and event.pressed:
+		pressed = true
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		pressed = true
+	if pressed and not _panel_rect.has_point(event.position):
+		close_pressed.emit()

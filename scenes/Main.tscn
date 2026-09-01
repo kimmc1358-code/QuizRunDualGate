@@ -5,6 +5,8 @@
 [ext_resource type="Script" path="res://scripts/PausePopup.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/RevivePopup.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/GameOverPopup.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/SettingsPopup.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/AboutPopup.gd" id="7"]
 
 [node name="Main" type="Node2D" unique_id=1993625809]
 script = ExtResource("1")
@@ -118,6 +120,26 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("5")
+
+[node name="SettingsPopupPanel" type="Control" parent="UI"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("6")
+
+[node name="AboutPopupPanel" type="Control" parent="UI"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("7")
 
 [node name="GameOverPanel" type="Control" parent="UI" unique_id=3637394]
 visible = false

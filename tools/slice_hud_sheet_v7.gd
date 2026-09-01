@@ -56,25 +56,57 @@ func _init() -> void:
 		DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path("%s/%s" % [OUT_DIR, m]))
 
 	for ci in range(NAMES.size()):
+		# 퀴즈박스만 "안쪽 면"의 세로 가운데를 기준으로 얹는다. 모드마다 테두리
+		# 두께와 아래로 늘어진 장식이 달라서, 그림 전체를 가운데 맞추면 글자가
+		# 놓이는 안쪽 면이 모드마다 다른 높이에 온다 — 재 보면 원본 높이 대비
+		# sky 0.539 / jungle 0.500 / ocean 0.520 / dream 0.542 로 흩어져 있었다.
+		# 버튼은 안쪽이랄 게 없으므로 그냥 경계상자 가운데.
+		var align_inner: bool = NAMES[ci] == "quiz_box_v3"
+		var anchors := PackedInt32Array()
 		var cw := 0
-		var chh := 0
+		var above := 0
+		var below := 0
 		for mi in range(MODES.size()):
 			var o: Rect2i = cells[mi][ci]
+			var ay: int = _inner_center_y(img, o) if align_inner else o.position.y + o.size.y / 2
+			anchors.append(ay)
 			cw = maxi(cw, o.size.x)
-			chh = maxi(chh, o.size.y)
+			above = maxi(above, ay - o.position.y)
+			below = maxi(below, o.position.y + o.size.y - ay)
+		var chh := above + below
 		print("")
-		print("=== %s : 캔버스 %dx%d" % [NAMES[ci], cw, chh])
+		print("=== %s : 캔버스 %dx%d, 기준선 y %d (%.4f of h)" % [
+			NAMES[ci], cw, chh, above, float(above) / chh])
 		for mi in range(MODES.size()):
 			var o: Rect2i = cells[mi][ci]
 			var canvas := Image.create_empty(cw, chh, false, Image.FORMAT_RGBA8)
 			canvas.fill(Color(0, 0, 0, 0))
 			var px: int = int(round((cw - o.size.x) * 0.5))
-			var py: int = int(round((chh - o.size.y) * 0.5))
+			var py: int = above - (anchors[mi] - o.position.y)
 			canvas.blit_rect(img, o, Vector2i(px, py))
 			canvas.save_png(ProjectSettings.globalize_path(
 				"%s/%s/%s.png" % [OUT_DIR, MODES[mi], NAMES[ci]]))
 			print("   %-6s 그림 %dx%d -> (%d,%d)" % [MODES[mi], o.size.x, o.size.y, px, py])
 	quit(0)
+
+
+func _close(a: Color, b: Color) -> bool:
+	return abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b) < 0.10
+
+
+# 글자가 놓이는 안쪽 면의 세로 가운데. 가로 가운데 열을 따라, 한가운데 픽셀과
+# 같은 색이 이어지는 구간을 위아래로 넓혀 잡는다.
+func _inner_center_y(img: Image, box: Rect2i) -> int:
+	var x: int = box.position.x + box.size.x / 2
+	var y0: int = box.position.y + box.size.y / 2
+	var inner: Color = img.get_pixel(x, y0)
+	var top := y0
+	while top > box.position.y and _close(img.get_pixel(x, top - 1), inner):
+		top -= 1
+	var bottom := y0
+	while bottom < box.position.y + box.size.y - 1 and _close(img.get_pixel(x, bottom + 1), inner):
+		bottom += 1
+	return int((top + bottom) / 2)
 
 
 func _bands(img: Image, want: int) -> Array:

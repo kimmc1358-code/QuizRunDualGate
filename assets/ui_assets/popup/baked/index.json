@@ -1,0 +1,118 @@
+{
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|1|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_563bf45b.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|2|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_9dcddde8.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|3|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_7dd933dc.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|4|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_f219448f.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|5|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_2ae6b972.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/main/icon_sheet.png|5|3|6|96": {
+		"file": "icon_assets_ui_assets_main_icon_sheet_pn_b2fa3c60.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/button_cancel.png|1|1|0|160": {
+		"file": "icon_assets_ui_assets_popup_button_cance_432c01e8.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_crown.png|1|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_crown_p_eae65ab5.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_fire.png|1|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_fire_pn_ebf453dd.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_google.png|1|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_google__2f7d4776.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_information.png|1|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_informa_0f3ab557.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_popup.png|3|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_popup_p_08a71f04.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_popup.png|3|1|1|96": {
+		"file": "icon_assets_ui_assets_popup_icon_popup_p_bc95a813.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_popup.png|3|1|2|96": {
+		"file": "icon_assets_ui_assets_popup_icon_popup_p_5983449e.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_popup_2.png|2|1|0|96": {
+		"file": "icon_assets_ui_assets_popup_icon_popup_2_ef50554e.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_popup_2.png|2|1|1|96": {
+		"file": "icon_assets_ui_assets_popup_icon_popup_2_77692ddf.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/icon_trophy.png|1|1|0|260": {
+		"file": "icon_assets_ui_assets_popup_icon_trophy__1428695d.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/popup_best.png|1|1|0|320": {
+		"file": "icon_assets_ui_assets_popup_popup_best_p_fdb9a040.png",
+		"margin": 0
+	},
+	"icon|res://assets/ui_assets/popup/settings_popup.png|1|1|0|240": {
+		"file": "icon_assets_ui_assets_popup_settings_pop_a80fb8b7.png",
+		"margin": 0
+	},
+	"np|best_box.png|91|680|0.000|0.000": {
+		"file": "np_best_box_png_91_680_0_000_0_000_9d8bf578.png",
+		"margin": 29
+	},
+	"np|button_cream_v4.png|202|210|0.000|0.000": {
+		"file": "np_button_cream_v4_png_202_210_0_000_0_0_b8cf4a1b.png",
+		"margin": 22
+	},
+	"np|button_cream_v4.png|202|210|1.045|0.925": {
+		"file": "np_button_cream_v4_png_202_210_1_045_0_9_907fb66c.png",
+		"margin": 22
+	},
+	"np|button_cream_v4.png|202|394|0.000|0.000": {
+		"file": "np_button_cream_v4_png_202_394_0_000_0_0_b0067bf3.png",
+		"margin": 41
+	},
+	"np|button_cream_v4.png|202|394|1.045|0.925": {
+		"file": "np_button_cream_v4_png_202_394_1_045_0_9_9eb98ab8.png",
+		"margin": 41
+	},
+	"np|button_gold_v2.png|88|220|0.000|0.000": {
+		"file": "np_button_gold_v2_png_88_220_0_000_0_000_321993b6.png",
+		"margin": 23
+	},
+	"np|button_gold_v2.png|88|640|0.000|0.000": {
+		"file": "np_button_gold_v2_png_88_640_0_000_0_000_c1a0e5cc.png",
+		"margin": 67
+	},
+	"np|popup_panel.png|121|860|0.000|0.000": {
+		"file": "np_popup_panel_png_121_860_0_000_0_000_50915176.png",
+		"margin": 109
+	},
+	"np|popup_panel.png|121|900|0.000|0.000": {
+		"file": "np_popup_panel_png_121_900_0_000_0_000_ef9ef027.png",
+		"margin": 114
+	},
+	"np|popup_panel.png|121|940|0.000|0.000": {
+		"file": "np_popup_panel_png_121_940_0_000_0_000_6ccef337.png",
+		"margin": 119
+	}
+}

@@ -335,6 +335,8 @@ func _cols(img: Image, y0: int, y1: int, want: int) -> Array:
 	var min_px := int(rows * COL_SPARSE_FRAC)
 	var dense := []
 	dense.resize(w)
+	var counts := PackedInt32Array()
+	counts.resize(w)
 	var first := -1
 	var last := -1
 	for x in range(w):
@@ -342,12 +344,31 @@ func _cols(img: Image, y0: int, y1: int, want: int) -> Array:
 		for y in range(y0, y1 + 1):
 			if img.get_pixel(x, y).a > A_THR:
 				n += 1
+		counts[x] = n
 		dense[x] = n > min_px
 		if n > 0:
 			if first < 0:
 				first = x
 			last = x
 	var groups := _reduce_to(_runs(dense), want)
+	# 두 칸 사이가 완전히 비지 않으면(부드럽게 다듬은 시트는 옅은 글로우가
+	# 틈을 메운다) 하나로 붙어 나온다. 그럴 때는 가장 넓은 구간을 가장 성긴
+	# 열에서 잘라 개수를 맞춘다 — 행을 나눌 때와 같은 방법이다.
+	while groups.size() < want and groups.size() > 0:
+		var widest := 0
+		for i in range(groups.size()):
+			if groups[i][1] - groups[i][0] > groups[widest][1] - groups[widest][0]:
+				widest = i
+		var lo: int = groups[widest][0]
+		var hi: int = groups[widest][1]
+		var margin: int = int((hi - lo) * 0.25)
+		var cut: int = lo + margin
+		for x in range(lo + margin, hi - margin + 1):
+			if counts[x] < counts[cut]:
+				cut = x
+		groups.remove_at(widest)
+		groups.insert(widest, [cut + 1, hi])
+		groups.insert(widest, [lo, cut - 1])
 	if groups.size() <= 1:
 		return [[first, last]] if first >= 0 else []
 	var out := []

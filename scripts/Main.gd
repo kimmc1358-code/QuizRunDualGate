@@ -209,7 +209,7 @@ const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallb
 const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
 const HUD_ROW_GAP := 4.0             # button -> score box
-const QUIZ_BOX_GAP := 10.0           # score box bottom edge -> quiz box top edge
+const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
 # Pause/mute are scaled so their height matches the score box's exactly,
 # which is what makes the top row read as one flush band rather than three
 # loosely stacked pieces. Derived from the art rather than hard-coded, so it
@@ -232,11 +232,17 @@ const MODE_SCORE_BOX_ART_BOTTOM_FRAC := [1.0, 1.0, 1.0, 1.0]
 const MODE_HUD_BUTTON_ART_BOTTOM_FRAC := [1.0, 1.0, 1.0, 1.0]
 const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) from that alignment
 # Stretches the quiz box taller than its art's aspect. The box already spans
-# the full screen width, so it cannot grow taller proportionally — anything
-# above 1.0 scales the art vertically only, which ovalises the rounded caps
-# and stretches the painted "QUIZ" letters. 1.0 = untouched art.
+# the full screen width, so it cannot grow taller proportionally.
+#
+# 그래도 양 끝 장식은 안 깨진다: _draw_horizontal_slice 가 좌우 끝
+# QUIZ_BOX_CAP 만큼은 세로 배율과 같은 배율로(찌그러짐 없이) 그리고, 늘어나는
+# 것은 가운데 밋밋한 테두리 구간뿐이기 때문이다. 그러니 이 값을 키우면 날개/
+# 잎/불가사리/꽃은 비율 그대로 커지고, 남는 폭을 가운데가 흡수한다.
+#
+# 1.0 = 원본 비율. 1.429 -> 화면에서 468x65.7 — 캔버스가 179 에서 184 로
+# 높아진(안쪽 면 정렬용 여백) 만큼 올려, 눈에 보이는 박스 크기는 그대로다.
 # The quiz TEXT does not grow with it; see QUIZ_TEXT_*_FONT_FRAC.
-const QUIZ_BOX_HEIGHT_STRETCH := 1.25
+const QUIZ_BOX_HEIGHT_STRETCH := 1.429
 # Canvas sizes the slicer produced — see tools/slice_hud_sheet_v5.gd, which
 # prints them. Used for layout maths and as the aspect fallback when a
 # texture is missing; the real texture's size wins when it is loaded.
@@ -265,7 +271,10 @@ const QUIZ_BOX_CAP := 185.0
 const QUIZ_TEXT_LEFT_FRAC := 0.055        # of width
 const QUIZ_TEXT_RIGHT_FRAC := 0.945       # of width
 const QUIZ_TEXT_SIDE_PAD_FRAC := 0.020    # of width — keeps text off both edges
-const QUIZ_TEXT_CENTER_Y_FRAC := 0.480
+# 슬라이서가 네 모드의 "안쪽 면" 세로 가운데를 캔버스의 한 지점(184px 중 94)에
+# 모아 두었으므로, 한 값으로 네 모드가 다 맞는다. 예전 0.480 은 안쪽 면이
+# 모드마다 다른 높이에 있던 시절의 절충값이었다.
+const QUIZ_TEXT_CENTER_Y_FRAC := 0.5109
 # The text is centred within LEFT_FRAC..RIGHT_FRAC — the writing area with
 # the painted "QUIZ" pill excluded — not within the box as a whole.
 # Font size is pinned to the box's WIDTH, not its height. Height would be the
@@ -1127,7 +1136,40 @@ const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 # SPLASH is the boot screen (title art + "Tap to START"); it hands off to
 # MODE_SELECT on the first tap. Appended rather than placed first so the
 # existing states keep their values.
-enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH }
+# LOGO 는 그보다도 앞, 부팅 직후의 제작사 화면이다. 값이 밀리지 않게 뒤에 붙인다.
+enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH, LOGO }
+
+# ============================================================
+# 로고 화면 — 부팅 직후, 스플래시보다 먼저. 검은 바탕에 로고와 크레딧만
+# 띄우고 페이드 인/유지/페이드 아웃 뒤 스스로 스플래시로 넘어간다.
+# 아무 데나 누르면 바로 페이드 아웃으로 건너뛴다. 음악은 아직 틀지 않는다 —
+# 스플래시로 넘어갈 때 시작해야 로고가 조용히 뜬다.
+# ============================================================
+const LOGO_TEXTURE_PATH := "res://assets/ui_assets/title/logo.png"
+const LOGO_BACKGROUND := Color(0.0, 0.0, 0.0, 1.0)
+const LOGO_FADE_IN := 0.45
+const LOGO_HOLD := 1.5
+const LOGO_FADE_OUT := 0.45
+const LOGO_WIDTH_FRAC := 0.78        # of view width
+# 로고와 글자를 한 덩어리로 묶어 화면 가운데에 놓는다.
+const LOGO_BLOCK_CENTER_FRAC := 0.46  # of view height
+const LOGO_TO_BETA_GAP_FRAC := 0.055  # of view height
+const LOGO_BETA_TO_CREDIT_GAP_FRAC := 0.040
+const LOGO_CREDIT_LINE_GAP_FRAC := 0.028
+const LOGO_BETA_TEXT := "BETA VERSION"
+const LOGO_BETA_FONT_FRAC := 0.026    # of view height
+const LOGO_BETA_COLOR := Color(1.0, 0.84, 0.32, 1.0)
+const LOGO_CREDIT_FONT_FRAC := 0.019
+const LOGO_CREDIT_ROLE_COLOR := Color(0.62, 0.66, 0.74, 1.0)
+const LOGO_CREDIT_NAME_COLOR := Color(0.92, 0.94, 0.98, 1.0)
+const LOGO_CREDIT_DOT := "·"
+# 역할 칸을 가장 긴 역할에 맞춰 잡고 그 뒤에 점과 이름을 놓으므로, 글꼴이
+# 바뀌어도 두 줄의 점이 세로로 맞는다.
+const LOGO_CREDIT_GAP_FRAC := 0.030   # of view width — 역할|점|이름 사이 간격
+const LOGO_CREDITS := [
+	["Game Design & Development", "Kim Min Cheol"],
+	["Art & Design", "Kang Sol Ji"],
+]
 
 # ============================================================
 # Splash / title screen — the first thing shown on boot, before the mode
@@ -1240,8 +1282,14 @@ const MODE_TRY_AGAIN_TEXTURE_PATH := [
 # 크게 잡아 "준비 -> 출발"이 커지면서 이어지게 한다. 캔버스 664px 중 배너가
 # 636px 이므로, 화면 폭 480 을 넘지 않으려면 START 는 pop 최고점까지 쳐서
 # 480 * 664 / 636 = 501 이하여야 한다.
-const COUNTDOWN_READY_WIDTH := 400.0
-const COUNTDOWN_START_WIDTH := 440.0
+const COUNTDOWN_READY_WIDTH := 360.0
+const COUNTDOWN_START_WIDTH := 400.0
+# 배너 아트는 픽셀아트 풍이라 테두리가 원본에서부터 계단으로 꺾이기 쉽다.
+# 시트 캔버스를 그대로 GPU 밉맵에 맡겨 줄이면 그 계단이 그대로 남으므로,
+# 미리 Lanczos 로 구워 풀어 준다. 굽는 폭은 그릴 폭의 이 배수 —
+# 1.0 이면 가장 부드럽지만 고해상도 기기에서 다시 확대돼 뭉개지고, 1.2 면
+# 계단은 충분히 사라지면서 여유도 남는다.
+const COUNTDOWN_ART_OVERSAMPLE := 1.2
 
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
@@ -1519,6 +1567,9 @@ var start_texture: Texture2D
 # No sign-in exists yet. The game-over popup branches on this, so it lives
 # here as an export rather than a bare false — it can be flipped in the
 # inspector to see the logged-in variants once they are built.
+# 인증이 붙기 전까지의 자리표시 — 설정 팝업의 계정 줄이 이걸 읽는다.
+var player_avatar: Texture2D = null
+var player_display_name: String = ""
 @export var player_logged_in: bool = false
 # 모드별 최고 점수. 인덱스가 곧 Mode 값이다. _ready에서 불러오고, 기록을
 # 갈아치울 때만 저장한다.
@@ -1529,6 +1580,10 @@ var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
+var logo_texture: Texture2D
+var logo_elapsed: float = 0.0
+# 무거운 부팅이 아직 남아 있는가. 로고가 다 밝아진 뒤 한 번 돈다.
+var boot_pending := false
 var splash_texture: Texture2D
 var splash_title_texture: Texture2D
 var splash_elapsed: float = 0.0   # free-running clock for the prompt pulse
@@ -1623,6 +1678,8 @@ var fx_sound_splash_start: AudioStreamPlayer
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_popup: Control = $UI/GameOverPopupPanel
+@onready var settings_popup: Control = $UI/SettingsPopupPanel
+@onready var about_popup: Control = $UI/AboutPopupPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
 @onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
@@ -1634,12 +1691,53 @@ var fx_sound_splash_start: AudioStreamPlayer
 @onready var revive_panel: Control = $UI/RevivePanel
 
 
+# 부팅을 둘로 나눈다.
+#
+# 나머지 전부(_boot_load)는 약 2초가 걸리는데, 그걸 여기서 다 하면 첫 프레임이
+# 그만큼 늦어져서 앱을 켜고 2초 동안 검은 화면만 보인다. 그래서 여기서는 로고
+# 화면을 그리는 데 꼭 필요한 것 — 글꼴과 로고 그림 — 만 챙기고 바로 넘어간다.
+#
+# 무거운 쪽은 로고가 다 밝아진 뒤(_process 의 LOGO 갈래)에 한 번에 돈다.
+# 그 사이 화면은 로고가 가만히 떠 있는 상태 — 어차피 유지 구간이라 멈춰 있어도
+# 티가 나지 않는다. 끝나면 유지 시간을 처음부터 다시 세어 로고가 제 길이만큼
+# 머문다.
 func _ready() -> void:
 	# Filter for everything Main draws: background, gates, character, flags,
 	# particles. draw_texture_rect has no per-call filter option, so it has to
 	# be set on the CanvasItem itself — which is also why the HUD needs its
 	# own node to differ. See SMOOTH_WORLD_FILTER to revert this.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if SMOOTH_WORLD_FILTER else CanvasItem.TEXTURE_FILTER_NEAREST
+	_setup_fonts()
+	if ResourceLoader.exists(LOGO_TEXTURE_PATH):
+		logo_texture = load(LOGO_TEXTURE_PATH)
+	if logo_texture != null:
+		boot_pending = true
+		_set_state(State.LOGO)
+		return
+	_boot_load()
+
+
+# 글꼴만 먼저. 로고 화면의 크레딧이 이걸 쓴다.
+func _setup_fonts() -> void:
+	var base_font: Font = ThemeDB.fallback_font
+	if ResourceLoader.exists(COMBO_FONT_PATH):
+		base_font = load(COMBO_FONT_PATH)
+	# Real weight axis rather than the faux-bold this used to need: Mulmaru
+	# shipped a single weight, Fredoka carries 300-700.
+	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
+	combo_font = _weighted_font(base_font, wght, TEXT_FONT_WEIGHT)
+	score_font = _weighted_font(base_font, wght, SCORE_FONT_WEIGHT)
+
+
+# 부팅의 무거운 쪽. _ready 에서 곧바로, 또는 로고가 뜬 뒤에 불린다.
+func _boot_load() -> void:
+	# 팝업 셋과 모드 선택 화면은 씬의 자식이라 원래 Main 보다 먼저 _ready 가
+	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
+	# 이제 조립을 여기서 시킨다.
+	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
+			mode_select_panel]:
+		if panel != null and panel.has_method("ensure_built"):
+			panel.ensure_built()
 	# ...except the top HUD, whose painted frames are minified hard enough
 	# that nearest breaks their outlines. It gets its own canvas with linear
 	# + mipmap filtering — see scripts/HudCanvas.gd for the why.
@@ -1675,14 +1773,6 @@ func _ready() -> void:
 		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
 			b.add_theme_stylebox_override(slot, empty)
 	_layout_hud_buttons()
-	var base_font: Font = ThemeDB.fallback_font
-	if ResourceLoader.exists(COMBO_FONT_PATH):
-		base_font = load(COMBO_FONT_PATH)
-	# Real weight axis rather than the faux-bold this used to need: Mulmaru
-	# shipped a single weight, Fredoka carries 300-700.
-	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
-	combo_font = _weighted_font(base_font, wght, TEXT_FONT_WEIGHT)
-	score_font = _weighted_font(base_font, wght, SCORE_FONT_WEIGHT)
 	for path in MOUNTAIN_TEXTURE_PATHS:
 		mountain_textures.append(load(path))
 	for path in BG_SPARKLE_TEXTURE_PATHS:
@@ -1745,6 +1835,18 @@ func _ready() -> void:
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
+	mode_select_panel.settings_pressed.connect(_open_settings)
+	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
+	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
+	settings_popup.music_volume_changed.connect(set_music_volume)
+	settings_popup.login_pressed.connect(_on_login_pressed)
+	settings_popup.logout_pressed.connect(_on_logout_pressed)
+	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
+	settings_popup.terms_pressed.connect(_on_terms_pressed)
+	settings_popup.contact_pressed.connect(_on_contact_pressed)
+	settings_popup.about_pressed.connect(_on_about_pressed)
+	about_popup.close_pressed.connect(func(): about_popup.visible = false)
+	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
 	gameover_popup.play_again_pressed.connect(_on_gameover_play_again_pressed)
@@ -1782,9 +1884,12 @@ func _ready() -> void:
 		splash_character_frames.append(
 			_slice_spritesheet(MODE_CHARACTER_DIR[mode] + MODE_CHARACTER_FLY_FILE[mode], grid.x, grid.y))
 	_reset_game()
-	# Boot into the title screen; with no art on disk, straight to the mode
-	# picker as before.
-	_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
+	# 로고를 이미 띄우고 있으면 그대로 두고, 로고가 끝날 때 스플래시로 간다.
+	# 다만 방금 만든 노드들의 보이기 상태는 지금 화면 기준으로 다시 잡아 준다.
+	if state == State.LOGO:
+		_apply_screen_visibility()
+	else:
+		_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
 
 
 # Slices a cols x rows spritesheet (equal-size cells) into individual
@@ -1853,6 +1958,44 @@ func _ink_rect(img: Image) -> Rect2i:
 	return Rect2i(maxi(0, left - 1), maxi(0, top - 1),
 		mini(w - 1, right + 1) - maxi(0, left - 1) + 1,
 		mini(h - 1, bottom + 1) - maxi(0, top - 1) + 1)
+
+
+# READY/START 배너를 그릴 크기 가까이로 미리 구워 테두리 계단을 푼다.
+# 알파를 곱한 채 줄여야 투명한 쪽 RGB 가 끌려 들어오지 않는다.
+# 모드 전환 때 한 번만 돌므로 캐시해 둔다.
+var _word_art_cache := {}
+
+func _softened_word_art(tex: Texture2D, draw_width: float) -> Texture2D:
+	if tex == null:
+		return null
+	var key: String = "%s@%d" % [tex.resource_path, int(draw_width)]
+	if _word_art_cache.has(key):
+		return _word_art_cache[key]
+	var img: Image = tex.get_image()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	img.clear_mipmaps()
+	var target: int = int(round(draw_width * COUNTDOWN_ART_OVERSAMPLE))
+	if target < img.get_width():
+		var h: int = int(round(img.get_height() * float(target) / img.get_width()))
+		img.premultiply_alpha()
+		img.resize(target, h, Image.INTERPOLATE_LANCZOS)
+		img = _unpremultiplied(img)
+	img.generate_mipmaps()
+	var out: Texture2D = ImageTexture.create_from_image(img)
+	_word_art_cache[key] = out
+	return out
+
+
+# 알파를 곱해 둔 이미지를 되돌린다.
+func _unpremultiplied(img: Image) -> Image:
+	for y in range(img.get_height()):
+		for x in range(img.get_width()):
+			var c: Color = img.get_pixel(x, y)
+			if c.a > 0.0:
+				img.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
+	return img
 
 
 func _load_trimmed(path: String, by_ink := false) -> Texture2D:
@@ -2591,6 +2734,11 @@ func _unhandled_input(event: InputEvent) -> void:
 		tapped = true
 	elif event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_SPACE:
 		tapped = true
+	if state == State.LOGO:
+		# 누르면 남은 시간을 건너뛰고 페이드 아웃부터 — 화면을 뚝 끊지 않는다.
+		if tapped:
+			logo_elapsed = maxf(logo_elapsed, LOGO_FADE_IN + LOGO_HOLD)
+		return
 	if state == State.SPLASH:
 		# Any tap leaves the title screen; the flap below must not also fire.
 		# The screen does not hand over immediately — it starts the prompt's
@@ -2614,6 +2762,21 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	# The title screen draws nothing but its own art, so it skips the whole
 	# world update below — it only needs its prompt clock running.
+	if state == State.LOGO:
+		# 다 밝아진 뒤에 무거운 부팅을 한 번에 돌린다. 그 프레임의 delta 는
+		# 통째로 로딩 시간이므로 유지 시간에 더하지 않고, 시계를 방금 밝아진
+		# 지점으로 되돌려 로고가 제 길이만큼 머물게 한다.
+		if boot_pending and logo_elapsed >= LOGO_FADE_IN:
+			boot_pending = false
+			_boot_load()
+			logo_elapsed = LOGO_FADE_IN
+			queue_redraw()
+			return
+		logo_elapsed += delta
+		if not boot_pending and logo_elapsed >= LOGO_FADE_IN + LOGO_HOLD + LOGO_FADE_OUT:
+			_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
+		queue_redraw()
+		return
 	if state == State.SPLASH:
 		splash_elapsed += delta
 		splash_char_layer.queue_redraw()
@@ -4154,9 +4317,50 @@ func _on_restart_pressed() -> void:
 	_set_state(State.MODE_SELECT)
 
 
+# 메인 화면 오른쪽 위 톱니바퀴. 지금 볼륨을 넣어 열어 준다.
+func _open_settings() -> void:
+	settings_popup.set_volumes(sfx_volume, music_volume)
+	# 프로필 사진과 닉네임은 인증이 붙으면 여기로 들어온다.
+	settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
+	settings_popup.visible = true
+
+
+func _on_login_pressed() -> void:
+	push_warning("설정: 로그인 아직 연결 안 됨")
+
+
+func _on_logout_pressed() -> void:
+	push_warning("설정: 로그아웃 아직 연결 안 됨")
+
+
+func _on_privacy_pressed() -> void:
+	push_warning("설정: 개인정보 처리방침 링크 아직 연결 안 됨")
+
+
+func _on_terms_pressed() -> void:
+	push_warning("설정: 이용약관 링크 아직 연결 안 됨")
+
+
+func _on_contact_pressed() -> void:
+	push_warning("설정: 문의/피드백 아직 연결 안 됨")
+
+
+# About 은 설정 위에 겹쳐 띄운다 — 닫으면 설정으로 돌아온다.
+func _on_about_pressed() -> void:
+	about_popup.visible = true
+
+
+func _on_remove_ads_pressed() -> void:
+	push_warning("설정: 광고 제거 결제 아직 연결 안 됨")
+
+
 func _on_mode_selected(mode: int) -> void:
+	# 메인 화면의 START 가 곧 시작이다. 예전에는 여기서 State.READY 로 가서
+	# PLAY 를 한 번 더 눌러야 했는데, 버튼을 두 번 누르게 할 이유가 없다.
+	# ReadyPanel/PlayButton 은 그대로 두었다 — 되돌리려면 이 두 줄만 바꾸면 된다.
 	_apply_mode(mode)
-	_set_state(State.READY)
+	_reset_game()
+	_start_countdown()
 
 
 # Loads the character/gate/FX asset set for the given Mode into the existing
@@ -4233,10 +4437,10 @@ func _apply_mode(mode: int) -> void:
 
 	ready_texture = null
 	if ResourceLoader.exists(MODE_READY_TEXTURE_PATH[mode]):
-		ready_texture = load(MODE_READY_TEXTURE_PATH[mode])
+		ready_texture = _softened_word_art(load(MODE_READY_TEXTURE_PATH[mode]), COUNTDOWN_READY_WIDTH)
 	start_texture = null
 	if ResourceLoader.exists(MODE_START_TEXTURE_PATH[mode]):
-		start_texture = load(MODE_START_TEXTURE_PATH[mode])
+		start_texture = _softened_word_art(load(MODE_START_TEXTURE_PATH[mode]), COUNTDOWN_START_WIDTH)
 	# TRY AGAIN is a node in the game-over panel rather than something
 	# _draw() paints, so it is assigned rather than cached.
 	if ResourceLoader.exists(MODE_TRY_AGAIN_TEXTURE_PATH[mode]):
@@ -4446,7 +4650,71 @@ func _animate_button_release(button: Button) -> void:
 # minified. The layer is a child CanvasItem carrying its own filter, so the
 # title screen gets smooth minification without changing how the game itself
 # draws a single pixel.
+# 로고 화면. 검은 바탕 + 로고 + "BETA VERSION" + 크레딧 두 줄을 한 덩어리로
+# 묶어 가운데에 놓고, 전체에 같은 페이드를 건다.
+func _draw_logo(view_size: Vector2) -> void:
+	draw_rect(Rect2(Vector2.ZERO, view_size), LOGO_BACKGROUND)
+	if logo_texture == null:
+		return
+	var alpha := 1.0
+	if logo_elapsed < LOGO_FADE_IN:
+		alpha = clampf(logo_elapsed / LOGO_FADE_IN, 0.0, 1.0)
+	elif logo_elapsed > LOGO_FADE_IN + LOGO_HOLD:
+		var out_t: float = (logo_elapsed - LOGO_FADE_IN - LOGO_HOLD) / LOGO_FADE_OUT
+		alpha = clampf(1.0 - out_t, 0.0, 1.0)
+	if alpha <= 0.0:
+		return
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+
+	var logo_w: float = view_size.x * LOGO_WIDTH_FRAC
+	var logo_h: float = logo_w * float(logo_texture.get_height()) / float(logo_texture.get_width())
+	var beta_size: int = maxi(8, int(round(view_size.y * LOGO_BETA_FONT_FRAC)))
+	var credit_size: int = maxi(7, int(round(view_size.y * LOGO_CREDIT_FONT_FRAC)))
+	var beta_h: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).y
+	var credit_h: float = font.get_string_size("Ag", HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).y
+	var gap1: float = view_size.y * LOGO_TO_BETA_GAP_FRAC
+	var gap2: float = view_size.y * LOGO_BETA_TO_CREDIT_GAP_FRAC
+	var line_gap: float = view_size.y * LOGO_CREDIT_LINE_GAP_FRAC
+
+	var block_h: float = logo_h + gap1 + beta_h + gap2 + credit_h * LOGO_CREDITS.size() \
+		+ line_gap * (LOGO_CREDITS.size() - 1)
+	var top: float = view_size.y * LOGO_BLOCK_CENTER_FRAC - block_h * 0.5
+
+	draw_texture_rect(logo_texture,
+		Rect2(view_size.x * 0.5 - logo_w * 0.5, top, logo_w, logo_h),
+		false, Color(1.0, 1.0, 1.0, alpha))
+
+	var beta_w: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).x
+	var beta_baseline: float = top + logo_h + gap1 + beta_h * 0.78
+	draw_string(font, Vector2(view_size.x * 0.5 - beta_w * 0.5, beta_baseline),
+		LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size,
+		Color(LOGO_BETA_COLOR, LOGO_BETA_COLOR.a * alpha))
+
+	# 역할 칸을 가장 긴 역할에 맞춰 두면 두 줄의 점이 세로로 맞는다.
+	var gap: float = view_size.x * LOGO_CREDIT_GAP_FRAC
+	var role_w := 0.0
+	var name_w := 0.0
+	for row in LOGO_CREDITS:
+		role_w = maxf(role_w, font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
+		name_w = maxf(name_w, font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
+	var dot_w: float = font.get_string_size(LOGO_CREDIT_DOT, HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x
+	var block_w: float = role_w + gap + dot_w + gap + name_w
+	var left: float = view_size.x * 0.5 - block_w * 0.5
+	var y: float = top + logo_h + gap1 + beta_h + gap2 + credit_h * 0.78
+	for row in LOGO_CREDITS:
+		draw_string(font, Vector2(left, y), row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
+			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
+		draw_string(font, Vector2(left + role_w + gap, y), LOGO_CREDIT_DOT,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
+			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
+		draw_string(font, Vector2(left + role_w + gap + dot_w + gap, y), row[1],
+			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
+			Color(LOGO_CREDIT_NAME_COLOR, LOGO_CREDIT_NAME_COLOR.a * alpha))
+		y += credit_h + line_gap
+
+
 func _draw_splash_characters() -> void:
+
 	var view_size := get_viewport_rect().size
 	if splash_character_frames.is_empty():
 		return
@@ -4653,27 +4921,42 @@ func _set_state(new_state: int) -> void:
 	state = new_state
 	# GAMEOVER keeps the existing behaviour of cutting the music (see
 	# _game_over); every other screen gets the track that belongs to it.
-	if state != State.GAMEOVER:
+	# LOGO 는 조용히 지나간다 — 음악은 스플래시부터.
+	if state != State.GAMEOVER and state != State.LOGO:
 		_play_bgm(_bgm_path_for_state())
+	if new_state == State.LOGO:
+		logo_elapsed = 0.0
 	if new_state == State.SPLASH:
 		splash_elapsed = 0.0
 		splash_exit_elapsed = -1.0
+	_apply_screen_visibility()
+	# 카드의 BEST 판은 화면에 들어올 때마다 새로 채운다 — 방금 끝난 판에서
+	# 기록을 갈아치웠을 수 있다.
+	if state == State.MODE_SELECT:
+		mode_select_panel.set_best_scores(best_scores)
+
+
+# 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
+# 로고가 떠 있는 동안 만들어진 노드(스플래시 캐릭터 층 등)는 기본값이 "보임"이라,
+# 다시 적용하지 않으면 로고 위로 튀어나온다.
+func _apply_screen_visibility() -> void:
 	# The menu screens have no audio control of their own, and the mute button
 	# sits exactly where the mode picker puts its settings icon — so it is an
 	# in-game control only.
 	if splash_char_layer != null:
 		splash_char_layer.visible = state == State.SPLASH
-	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT
+	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT and state != State.LOGO
 	mode_select_panel.visible = state == State.MODE_SELECT
-	# 카드의 BEST 판은 화면에 들어올 때마다 새로 채운다 — 방금 끝난 판에서
-	# 기록을 갈아치웠을 수 있다.
-	if state == State.MODE_SELECT:
-		mode_select_panel.set_best_scores(best_scores)
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
 	# 띄우는 쪽은 _finish_run(어느 갈래인지 아는 쪽)이라, 여기서는 끄기만 한다.
 	if gameover_popup != null and state != State.GAMEOVER:
 		gameover_popup.visible = false
+	# 설정과 About 은 메인 화면에서만 열 수 있고, 화면이 바뀌면 닫는다.
+	if settings_popup != null:
+		settings_popup.visible = false
+	if about_popup != null:
+		about_popup.visible = false
 
 
 # ---- Layer 3: HUD bar + quiz box (always drawn above the background/gate
@@ -4968,6 +5251,9 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 
 func _draw() -> void:
 	var view_size := get_viewport_rect().size
+	if state == State.LOGO:
+		_draw_logo(view_size)
+		return
 	if state == State.SPLASH:
 		_draw_splash(view_size)
 		return
@@ -5114,10 +5400,14 @@ func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: floa
 
 func _pop_scale(t: float) -> float:
 	# t: 0..1 progress through the "START" display. Quick overshoot, then
-	# eases back down to 1.0x for a short "pop" feel. 최고점은 START 를 키운
-	# 만큼 낮췄다 — 예전 1.3 배로 튀면 배너가 화면 좌우로 삐져나간다.
+	# eases back down to 1.0x for a short "pop" feel.
+	#
+	# 최고점은 START 가 화면 밖으로 나가지 않는 선에서 최대로 잡는다. 캔버스
+	# 664px 중 START 그림이 616px(0.928)이므로, 화면 폭 480 을 넘지 않으려면
+	# COUNTDOWN_START_WIDTH * PEAK_SCALE * 0.928 <= 480, 즉 400 기준 1.29 까지.
+	# 여유를 두고 1.22 — 튀는 맛이 있어야 "출발" 느낌이 산다.
 	const PEAK_T := 0.35
-	const PEAK_SCALE := 1.05
+	const PEAK_SCALE := 1.22
 	if t < PEAK_T:
 		return lerpf(1.0, PEAK_SCALE, t / PEAK_T)
 	return lerpf(PEAK_SCALE, 1.0, (t - PEAK_T) / (1.0 - PEAK_T))

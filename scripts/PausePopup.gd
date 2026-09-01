@@ -22,21 +22,7 @@ const PRIMARY_HEIGHT_FRAC := 0.178    # 판 높이 대비 RESUME 높이
 const SECONDARY_HEIGHT_FRAC := 0.118  # RESTART / HOME
 const SECONDARY_WIDTH_FRAC := 0.88
 
-const SLIDER_LABEL_FRAC := 0.062
-const SLIDER_TRACK_HEIGHT := 12.0
-const SLIDER_TRACK_COLOR := Color(0.84, 0.80, 0.70, 1.0)   # 빈 구간
-const SLIDER_FILL_COLOR := Color(1.0, 0.78, 0.22, 1.0)     # 채워진 구간 — 판의 골드와 같은 계열
-const SLIDER_TRACK_RADIUS := 6
-const SLIDER_KNOB_SIZE := 26        # 손잡이 지름(px). 손가락으로 잡을 만한 크기
-const SLIDER_KNOB_FILL := Color(1.0, 0.99, 0.96, 1.0)
-const SLIDER_KNOB_EDGE := Color(0.055, 0.180, 0.435, 1.0)  # 테두리 네이비와 동일
-const SLIDER_KNOB_EDGE_PX := 3.0
-const SLIDER_ICON_GAP_FRAC := 0.34  # 글자 크기 대비 아이콘-글자 간격
-
-# 구분선: 판을 가로지르는 점선. 위쪽(조작)과 아래쪽(나가기)을 나눈다.
-const DIVIDER_DOTS := 22
-const DIVIDER_DOT_RADIUS := 2.6
-const DIVIDER_COLOR := Color(0.80, 0.75, 0.63, 1.0)   # 진한 크림
+# 슬라이더와 점선 구분선은 PopupBase 가 들고 있다 — 설정 팝업과 같은 것을 쓴다.
 
 var _title: Label
 var _resume: Button
@@ -131,12 +117,7 @@ func _layout_content(inner: Rect2) -> void:
 	# 트랙은 이름표 칸 오른쪽부터. 칸 너비는 고정 비율이 아니라 실제로 재서
 	# 정한다 — MUSIC이 SFX보다 길어서 비율로 잡으면 긴 쪽이 트랙에 물린다.
 	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
-	var label_col := 0.0
-	for text in ["SFX", "MUSIC"]:
-		label_col = maxf(label_col, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, slider_font).x)
-	# 아이콘(글자 높이와 같은 정사각형 가정) + 간격 + 글자 + 트랙까지 숨돌릴 틈
-	label_col += slider_font * (1.0 + SLIDER_ICON_GAP_FRAC) + slider_font * 0.5
-	var track_x: float = minf(label_col, inner_w * 0.55)
+	var track_x: float = minf(_slider_label_column(slider_font, ["SFX", "MUSIC"]), inner_w * 0.55)
 	var track_w: float = inner_w - track_x
 	# 손잡이가 트랙 양끝에서 반쯤 걸치므로, 그만큼 안쪽으로 넣어 판 밖으로
 	# 삐져나가지 않게 한다.
@@ -168,89 +149,13 @@ func set_volumes(sfx: float, music: float) -> void:
 # 두 줄의 왼쪽 칸: 아이콘 + 이름표. 트랙과 손잡이는 HSlider가 그린다.
 # 아이콘과 글자를 같은 높이로 맞춰 한 줄로 읽히게 한다.
 func _draw_sliders() -> void:
-	var font_size: int = int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC))
-	var row_h: float = _sliders.get_meta("row_h", 30.0)
-	var gap: float = _sliders.get_meta("gap", 8.0)
-	var rows := [["SFX", _sfx_icon], ["MUSIC", _music_icon]]
-	for i in range(rows.size()):
-		var text: String = rows[i][0]
-		var icon: Texture2D = rows[i][1]
-		# 줄의 세로 중심 — 트랙과 같은 높이에 놓아 나란히 보이게.
-		var centre_y: float = i * (row_h + gap) + row_h * 0.5
-		var x := 0.0
-		if icon != null:
-			# 아이콘 높이를 글자 크기에 맞춘다.
-			var ih: float = font_size
-			var iw: float = ih * (float(icon.get_width()) / float(icon.get_height()))
-			_sliders.draw_texture_rect(icon,
-				Rect2(Vector2(x, centre_y - ih * 0.5), Vector2(iw, ih)), false, INK)
-			x += iw + font_size * SLIDER_ICON_GAP_FRAC
-		# draw_string은 베이스라인 기준이라, 대문자 높이의 절반만큼 내려야
-		# 글자 가운데가 아이콘 가운데와 맞는다.
-		_sliders.draw_string(_font_bold, Vector2(x, centre_y + font_size * 0.36),
-			text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, INK)
+	_draw_slider_labels(_sliders,
+		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
+		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
+		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
 
 
 # 판을 가로지르는 점선. 위쪽 조작과 아래쪽 나가기를 갈라 준다.
 func _draw_divider() -> void:
-	var w: float = _divider.size.x
-	var y: float = _divider.size.y * 0.5
-	var step: float = w / float(maxi(1, DIVIDER_DOTS - 1))
-	for i in range(DIVIDER_DOTS):
-		_divider.draw_circle(Vector2(i * step, y), DIVIDER_DOT_RADIUS, DIVIDER_COLOR)
+	_draw_dotted_divider(_divider)
 
-
-# 팔레트에 맞춘 HSlider. 트랙·채움·손잡이를 전부 갈아끼워 기본 회색 테마가
-# 남지 않게 한다.
-func _make_slider() -> HSlider:
-	var s := HSlider.new()
-	s.min_value = 0.0
-	s.max_value = 1.0
-	s.step = 0.01
-	s.focus_mode = Control.FOCUS_NONE
-	s.mouse_filter = Control.MOUSE_FILTER_STOP
-
-	var track := StyleBoxFlat.new()
-	track.bg_color = SLIDER_TRACK_COLOR
-	track.set_corner_radius_all(SLIDER_TRACK_RADIUS)
-	track.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
-	track.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
-	track.anti_aliasing = true
-	s.add_theme_stylebox_override("slider", track)
-
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = SLIDER_FILL_COLOR
-	fill.set_corner_radius_all(SLIDER_TRACK_RADIUS)
-	fill.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
-	fill.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
-	fill.anti_aliasing = true
-	s.add_theme_stylebox_override("grabber_area", fill)
-	s.add_theme_stylebox_override("grabber_area_highlight", fill)
-
-	var knob := _make_knob()
-	s.add_theme_icon_override("grabber", knob)
-	s.add_theme_icon_override("grabber_highlight", knob)
-	return s
-
-
-# 손잡이 텍스처를 코드로 그린다. 크림 채움 + 네이비 테두리, 가장자리는
-# 픽셀 단위로 부드럽게 — 팝업의 다른 테두리와 같은 결을 내기 위해서다.
-func _make_knob() -> Texture2D:
-	var ss := 2                       # 2배로 그린 뒤 줄여 가장자리를 더 곱게
-	var d: int = SLIDER_KNOB_SIZE * ss
-	var img := Image.create(d, d, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var r: float = d * 0.5
-	var edge: float = SLIDER_KNOB_EDGE_PX * ss
-	for y in range(d):
-		for x in range(d):
-			var dist: float = Vector2(x + 0.5 - r, y + 0.5 - r).length()
-			if dist > r:
-				continue
-			# 바깥 1px은 알파로 흐려 계단을 없앤다.
-			var a: float = clampf(r - dist, 0.0, 1.0)
-			var c: Color = SLIDER_KNOB_EDGE if dist > r - edge else SLIDER_KNOB_FILL
-			img.set_pixel(x, y, Color(c.r, c.g, c.b, c.a * a))
-	img.resize(SLIDER_KNOB_SIZE, SLIDER_KNOB_SIZE, Image.INTERPOLATE_LANCZOS)
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)

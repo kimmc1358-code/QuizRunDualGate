@@ -14,6 +14,22 @@ class_name PopupBase
 ## 표시 크기로 미리 축소하고 9-slice 여백도 같은 비율로 줄인다 (_nine_patch).
 
 const ART_DIR := "res://assets/ui_assets/popup/"
+# ---- 미리 구워 둔 아트 ----
+#
+# _nine_patch 와 _load_icon_from 은 픽셀 단위 처리를 GDScript 로 돌린다.
+# 결과는 좋지만 느려서, 팝업 셋을 만드는 데만 부팅에서 9.6초가 걸렸다
+# (게임오버 팝업 혼자 6.6초). 아직 열지도 않은 화면 때문에 앱이 12초를
+# 멈춰 있던 셈이다.
+#
+# 그래서 결과를 파일로 구워 두고 런타임에는 읽기만 한다. 계산하는 코드는
+# 그대로 두어(캐시가 없으면 그대로 돈다) 아트를 바꿔도 동작은 같고,
+# 다시 구우려면 tools/bake_popup_art.gd 만 돌리면 된다.
+const BAKE_DIR := "res://assets/ui_assets/popup/baked/"
+const BAKE_INDEX_PATH := "res://assets/ui_assets/popup/baked/index.json"
+static var bake_writing := false          # 도구가 켠다. 켜지면 계산 결과를 저장.
+static var _bake_index: Dictionary = {}
+static var _bake_index_loaded := false
+static var _bake_written: Dictionary = {}
 const PANEL_FILE := "popup_panel.png"
 const GOLD_FILE := "button_gold_v2.png"
 const CREAM_FILE := "button_cream_v4.png"
@@ -109,6 +125,34 @@ const PRIMARY_LABEL_OUTLINE_FRAC := 0.20   # 글자 크기 대비 외곽선 두�
 
 # 글자는 판/버튼 테두리와 같은 진한 네이비 — 화면 전체가 한 팔레트로 묶인다.
 const INK := Color(0.055, 0.180, 0.435, 1.0)
+# 소리 조절 슬라이더 — 일시정지 팝업과 설정 팝업이 같은 것을 쓴다.
+const SLIDER_LABEL_FRAC := 0.062
+const SLIDER_TRACK_HEIGHT := 12.0
+const SLIDER_TRACK_COLOR := Color(0.84, 0.80, 0.70, 1.0)   # 빈 구간
+const SLIDER_FILL_COLOR := Color(1.0, 0.78, 0.22, 1.0)     # 채워진 구간 — 판의 골드와 같은 계열
+const SLIDER_TRACK_RADIUS := 6
+const SLIDER_KNOB_SIZE := 26        # 손잡이 지름(px). 손가락으로 잡을 만한 크기
+const SLIDER_KNOB_FILL := Color(1.0, 0.99, 0.96, 1.0)
+const SLIDER_KNOB_EDGE := Color(0.055, 0.180, 0.435, 1.0)  # 테두리 네이비와 동일
+const SLIDER_KNOB_EDGE_PX := 3.0
+const SLIDER_ICON_GAP_FRAC := 0.34  # 글자 크기 대비 아이콘-글자 간격
+# 판을 가로지르는 점선 구분선.
+const DIVIDER_DOTS := 22
+const DIVIDER_DOT_RADIUS := 2.6
+const DIVIDER_COLOR := Color(0.80, 0.75, 0.63, 1.0)   # 진한 크림
+
+# 오른쪽 위 모서리의 동그란 닫기 버튼. 아트는 빈 원판이라 X 는 직접 그린다.
+const CANCEL_FILE := "res://assets/ui_assets/popup/button_cancel.png"
+const CANCEL_TEXTURE_HEIGHT := 160
+const CANCEL_SIZE_FRAC := 0.125        # 판 너비 대비 지름
+# 버튼 가운데를 판의 "보이는" 테두리 위에 얹는다 — 반은 안, 반은 밖.
+# _panel_rect 는 아트 사각형이라 투명 여백이 있으므로, PANEL_ART_INSET_* 만큼
+# 안으로 들어온 자리가 실제로 그려진 테두리다.
+# 지름 대비: x 는 오른쪽 테두리에서 이만큼 왼쪽, y 는 위 테두리에서 이만큼 아래.
+const CANCEL_ON_BORDER := Vector2(0.45, 0.0)
+const CANCEL_X_COLOR := Color(0.055, 0.180, 0.435, 1.0)  # 네이비
+const CANCEL_X_ARM_FRAC := 0.19        # 지름 대비 X 팔 길이(중심에서)
+const CANCEL_X_WIDTH_FRAC := 0.095     # 지름 대비 선 굵기
 const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
@@ -173,6 +217,19 @@ var _panel_rect := Rect2()
 var _button_players := {}
 
 
+# 조립이 끝났는가. Main 이 로고가 뜬 뒤에 ensure_built() 로 켠다.
+var _built := false
+
+
+# 팝업의 무거운 조립(9-slice, 아이콘 굽기, 배치)을 여기서 한다. 두 번 불러도
+# 한 번만 돈다.
+func ensure_built() -> void:
+	if _built:
+		return
+	_built = true
+	_ready()
+
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP  # 팝업 뒤로 탭이 새지 않게
 	# 프로젝트 기본 필터가 Nearest다(project.godot의 default_texture_filter=0).
@@ -186,6 +243,10 @@ func _ready() -> void:
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)
 
+	# 나머지 조립은 Main 이 로고 화면 뒤에서 ensure_built() 로 부른다 —
+	# 아직 열지도 않은 팝업 때문에 첫 프레임이 늦어지지 않도록.
+	if not _built:
+		return
 	_backdrop = ColorRect.new()
 	_backdrop.color = BACKDROP_COLOR
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -319,6 +380,17 @@ func _bake_gradient(img: Image, top_mul: float, bottom_mul: float) -> void:
 func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.ZERO) -> NinePatchRect:
 	var np := NinePatchRect.new()
 	np.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	np.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	var key := "np|%s|%d|%d|%.3f|%.3f" % [file, corner, target_w, gradient.x, gradient.y]
+	var baked := _baked(key)
+	if not baked.is_empty():
+		np.texture = baked["texture"]
+		var bm: int = baked["margin"]
+		np.patch_margin_left = bm
+		np.patch_margin_right = bm
+		np.patch_margin_top = bm
+		np.patch_margin_bottom = bm
+		return np
 	var path: String = ART_DIR + file
 	if not ResourceLoader.exists(path):
 		push_warning("팝업 아트 없음: %s" % path)
@@ -346,10 +418,10 @@ func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.Z
 		_bake_gradient(img, gradient.x, gradient.y)
 	# 축소해 놓은 그림을 다시 조금 줄여 그리는 경우가 있어 밉맵과 부드러운
 	# 필터를 준다. 없으면 얇은 테두리에 계단이 생긴다.
+	var m: int = int(round(corner * scale))
+	_bake_store(key, img, m)
 	img.generate_mipmaps()
 	np.texture = ImageTexture.create_from_image(img)
-	np.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	var m: int = int(round(corner * scale))
 	np.patch_margin_left = m
 	np.patch_margin_right = m
 	np.patch_margin_top = m
@@ -727,6 +799,10 @@ func _line_has_ink(img: Image, horizontal: bool, line: int, from: int, to: int) 
 
 
 func _load_icon_from(sheet_path: String, grid: Vector2i, index: int, target_h := ICON_TEXTURE_HEIGHT) -> Texture2D:
+	var key := "icon|%s|%d|%d|%d|%d" % [sheet_path, grid.x, grid.y, index, target_h]
+	var baked := _baked(key)
+	if not baked.is_empty():
+		return baked["texture"]
 	if not ResourceLoader.exists(sheet_path):
 		push_warning("아이콘 시트 없음: %s" % sheet_path)
 		return null
@@ -807,8 +883,59 @@ func _load_icon_from(sheet_path: String, grid: Vector2i, index: int, target_h :=
 		cell.premultiply_alpha()
 		cell.resize(maxi(1, int(round(cell.get_width() * s))), target_h, Image.INTERPOLATE_LANCZOS)
 		_unpremultiply(cell)
+	_bake_store(key, cell, 0)
 	cell.generate_mipmaps()
 	return ImageTexture.create_from_image(cell)
+
+
+# ---- 구운 아트 읽기/쓰기 ----
+
+static func _bake_load_index() -> void:
+	if _bake_index_loaded:
+		return
+	_bake_index_loaded = true
+	if not FileAccess.file_exists(BAKE_INDEX_PATH):
+		return
+	var parsed = JSON.parse_string(FileAccess.get_file_as_string(BAKE_INDEX_PATH))
+	if parsed is Dictionary:
+		_bake_index = parsed
+
+
+# 있으면 {"texture": Texture2D, "margin": int}, 없으면 빈 Dictionary.
+func _baked(key: String) -> Dictionary:
+	_bake_load_index()
+	if bake_writing or not _bake_index.has(key):
+		return {}
+	var entry: Dictionary = _bake_index[key]
+	var path: String = BAKE_DIR + str(entry.get("file", ""))
+	if not ResourceLoader.exists(path):
+		return {}
+	return {"texture": load(path) as Texture2D, "margin": int(entry.get("margin", 0))}
+
+
+func _bake_store(key: String, img: Image, margin: int) -> void:
+	if not bake_writing:
+		return
+	# 파일 이름은 사람이 알아볼 수 있게 앞부분을 남기고, 뒤에 해시를 붙여
+	# 같은 그림의 다른 크기끼리 부딪히지 않게 한다.
+	var stem: String = key.replace("res://", "").replace("/", "_").replace("|", "_").replace(".", "_")
+	var name: String = "%s_%s.png" % [stem.substr(0, 40), key.sha1_text().substr(0, 8)]
+	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(BAKE_DIR))
+	var flat: Image = img.duplicate() as Image
+	flat.clear_mipmaps()
+	flat.save_png(ProjectSettings.globalize_path(BAKE_DIR + name))
+	_bake_written[key] = {"file": name, "margin": margin}
+
+
+# 도구가 마지막에 부른다.
+static func bake_flush() -> void:
+	var file := FileAccess.open(BAKE_INDEX_PATH, FileAccess.WRITE)
+	if file == null:
+		printerr("index.json 을 쓸 수 없다: %s" % BAKE_INDEX_PATH)
+		return
+	file.store_string(JSON.stringify(_bake_written, "\t", true))
+	file.close()
+	print("구운 조각 %d개 -> %s" % [_bake_written.size(), BAKE_INDEX_PATH])
 
 
 # premultiply_alpha()를 되돌린다. 줄인 뒤에 부르므로 픽셀 수가 적어 싸다.
@@ -825,6 +952,147 @@ func _unpremultiply(img: Image) -> void:
 				clampf(c.r / a, 0.0, 1.0),
 				clampf(c.g / a, 0.0, 1.0),
 				clampf(c.b / a, 0.0, 1.0), a))
+
+
+# 팔레트에 맞춘 HSlider. 트랙·채움·손잡이를 전부 갈아끼워 기본 회색 테마가
+# 남지 않게 한다.
+func _make_slider() -> HSlider:
+	var s := HSlider.new()
+	s.min_value = 0.0
+	s.max_value = 1.0
+	s.step = 0.01
+	s.focus_mode = Control.FOCUS_NONE
+	s.mouse_filter = Control.MOUSE_FILTER_STOP
+
+	var track := StyleBoxFlat.new()
+	track.bg_color = SLIDER_TRACK_COLOR
+	track.set_corner_radius_all(SLIDER_TRACK_RADIUS)
+	track.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
+	track.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
+	track.anti_aliasing = true
+	s.add_theme_stylebox_override("slider", track)
+
+	var fill := StyleBoxFlat.new()
+	fill.bg_color = SLIDER_FILL_COLOR
+	fill.set_corner_radius_all(SLIDER_TRACK_RADIUS)
+	fill.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
+	fill.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
+	fill.anti_aliasing = true
+	s.add_theme_stylebox_override("grabber_area", fill)
+	s.add_theme_stylebox_override("grabber_area_highlight", fill)
+
+	var knob := _make_knob()
+	s.add_theme_icon_override("grabber", knob)
+	s.add_theme_icon_override("grabber_highlight", knob)
+	return s
+
+
+# 손잡이 텍스처를 코드로 그린다. 크림 채움 + 네이비 테두리, 가장자리는
+# 픽셀 단위로 부드럽게 — 팝업의 다른 테두리와 같은 결을 내기 위해서다.
+func _make_knob() -> Texture2D:
+	var ss := 2                       # 2배로 그린 뒤 줄여 가장자리를 더 곱게
+	var d: int = SLIDER_KNOB_SIZE * ss
+	var img := Image.create_empty(d, d, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var r: float = d * 0.5
+	var edge: float = SLIDER_KNOB_EDGE_PX * ss
+	for y in range(d):
+		for x in range(d):
+			var dist: float = Vector2(x + 0.5 - r, y + 0.5 - r).length()
+			if dist > r:
+				continue
+			# 바깥 1px은 알파로 흐려 계단을 없앤다.
+			var a: float = clampf(r - dist, 0.0, 1.0)
+			var c: Color = SLIDER_KNOB_EDGE if dist > r - edge else SLIDER_KNOB_FILL
+			img.set_pixel(x, y, Color(c.r, c.g, c.b, c.a * a))
+	img.resize(SLIDER_KNOB_SIZE, SLIDER_KNOB_SIZE, Image.INTERPOLATE_LANCZOS)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+# 슬라이더 두 줄의 왼쪽 칸(아이콘 + 이름표)을 ctrl 위에 그린다.
+# 트랙과 손잡이는 HSlider 자신이 그린다.
+func _draw_slider_labels(ctrl: Control, rows: Array, font_size: int, row_h: float, gap: float) -> void:
+	for i in range(rows.size()):
+		var text: String = rows[i][0]
+		var icon: Texture2D = rows[i][1]
+		# 줄의 세로 중심 — 트랙과 같은 높이에 놓아 나란히 보이게.
+		var centre_y: float = i * (row_h + gap) + row_h * 0.5
+		var x := 0.0
+		if icon != null:
+			# 아이콘 높이를 글자 크기에 맞춘다.
+			var ih: float = font_size
+			var iw: float = ih * (float(icon.get_width()) / float(icon.get_height()))
+			ctrl.draw_texture_rect(icon,
+				Rect2(Vector2(x, centre_y - ih * 0.5), Vector2(iw, ih)), false, INK)
+			x += iw + font_size * SLIDER_ICON_GAP_FRAC
+		# draw_string은 베이스라인 기준이라, 대문자 높이의 절반만큼 내려야
+		# 글자 가운데가 아이콘 가운데와 맞는다.
+		ctrl.draw_string(_font_bold, Vector2(x, centre_y + font_size * 0.36),
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, INK)
+
+
+# 이름표 칸의 폭. 비율로 잡으면 긴 이름("MUSIC")이 트랙에 물려서, 실제로 재서 정한다.
+func _slider_label_column(font_size: int, texts: Array) -> float:
+	var w := 0.0
+	for text in texts:
+		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	# 아이콘(글자 높이와 같은 정사각형 가정) + 간격 + 글자 + 트랙까지 숨돌릴 틈
+	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
+
+
+# 판을 가로지르는 점선.
+func _draw_dotted_divider(ctrl: Control) -> void:
+	var w: float = ctrl.size.x
+	var y: float = ctrl.size.y * 0.5
+	var step: float = w / float(maxi(1, DIVIDER_DOTS - 1))
+	for i in range(DIVIDER_DOTS):
+		ctrl.draw_circle(Vector2(i * step, y), DIVIDER_DOT_RADIUS, DIVIDER_COLOR)
+
+
+# 오른쪽 위 닫기 버튼. 누르면 넘겨준 Callable 을 부른다.
+# 크림 버튼과 같은 누름 효과와 소리를 쓴다(_press/_release 가 "sound" 메타를 본다).
+func _make_close_button(on_pressed: Callable) -> Button:
+	var button := Button.new()
+	button.flat = true
+	button.focus_mode = Control.FOCUS_NONE
+	var empty := StyleBoxEmpty.new()
+	for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
+		button.add_theme_stylebox_override(slot, empty)
+	button.set_meta("sound", CREAM_SOUND_NAME)
+	button.set_meta("art", _load_icon_from(CANCEL_FILE, Vector2i(1, 1), 0, CANCEL_TEXTURE_HEIGHT))
+	button.button_down.connect(_press.bind(button))
+	button.button_up.connect(_release.bind(button))
+	button.draw.connect(_draw_close_button.bind(button))
+	button.pressed.connect(on_pressed)
+	add_child(button)
+	return button
+
+
+# 판 오른쪽 위 테두리에 가운데가 얹히도록 놓는다.
+func _place_close_button(button: Button) -> void:
+	var pw: float = _panel_rect.size.x
+	var ph: float = _panel_rect.size.y
+	var d: float = pw * CANCEL_SIZE_FRAC
+	button.size = Vector2(d, d)
+	button.pivot_offset = Vector2(d, d) * 0.5
+	var centre := Vector2(
+		_panel_rect.end.x - pw * PANEL_ART_INSET_X - d * CANCEL_ON_BORDER.x,
+		_panel_rect.position.y + ph * PANEL_ART_INSET_Y + d * CANCEL_ON_BORDER.y)
+	button.position = centre - Vector2(d, d) * 0.5
+	button.queue_redraw()
+
+
+func _draw_close_button(button: Button) -> void:
+	var d: float = button.size.x
+	var art: Texture2D = button.get_meta("art", null)
+	if art != null:
+		button.draw_texture_rect(art, Rect2(Vector2.ZERO, Vector2(d, d)), false)
+	var c := Vector2(d, d) * 0.5
+	var arm: float = d * CANCEL_X_ARM_FRAC
+	var w: float = d * CANCEL_X_WIDTH_FRAC
+	button.draw_line(c + Vector2(-arm, -arm), c + Vector2(arm, arm), CANCEL_X_COLOR, w, true)
+	button.draw_line(c + Vector2(arm, -arm), c + Vector2(-arm, arm), CANCEL_X_COLOR, w, true)
 
 
 func _make_label(text: String, font: Font) -> Label:
