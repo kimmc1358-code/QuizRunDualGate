@@ -935,7 +935,24 @@ static func bake_flush() -> void:
 		return
 	file.store_string(JSON.stringify(_bake_written, "\t", true))
 	file.close()
-	print("구운 조각 %d개 -> %s" % [_bake_written.size(), BAKE_INDEX_PATH])
+	# 지난번에 구웠지만 이번에는 안 쓰인 파일을 지운다. 크기 상수를 만질 때마다
+	# 키가 바뀌어 새 파일이 생기므로, 치우지 않으면 죽은 그림이 쌓인다.
+	var keep := {}
+	for entry in _bake_written.values():
+		keep[str(entry.get("file", ""))] = true
+	var dir := DirAccess.open(BAKE_DIR)
+	var removed := 0
+	if dir != null:
+		for name in dir.get_files():
+			if not name.ends_with(".png") or keep.has(name):
+				continue
+			DirAccess.remove_absolute(ProjectSettings.globalize_path(BAKE_DIR + name))
+			var meta: String = ProjectSettings.globalize_path(BAKE_DIR + name + ".import")
+			if FileAccess.file_exists(meta):
+				DirAccess.remove_absolute(meta)
+			removed += 1
+	print("구운 조각 %d개 (안 쓰는 %d개 삭제) -> %s" % [
+		_bake_written.size(), removed, BAKE_INDEX_PATH])
 
 
 # premultiply_alpha()를 되돌린다. 줄인 뒤에 부르므로 픽셀 수가 적어 싸다.

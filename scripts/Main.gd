@@ -1845,7 +1845,7 @@ func _boot_load() -> void:
 	settings_popup.terms_pressed.connect(_on_terms_pressed)
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
 	settings_popup.about_pressed.connect(_on_about_pressed)
-	about_popup.close_pressed.connect(func(): about_popup.visible = false)
+	about_popup.close_pressed.connect(_on_about_closed)
 	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
@@ -4341,12 +4341,19 @@ func _on_terms_pressed() -> void:
 	push_warning("설정: 이용약관 링크 아직 연결 안 됨")
 
 
+func _on_about_closed() -> void:
+	about_popup.visible = false
+	settings_popup.visible = true
+
+
 func _on_contact_pressed() -> void:
 	push_warning("설정: 문의/피드백 아직 연결 안 됨")
 
 
-# About 은 설정 위에 겹쳐 띄운다 — 닫으면 설정으로 돌아온다.
+# About 을 여는 동안 설정은 감춘다. 겹쳐 두면 두 판의 테두리와 닫기 버튼이
+# 서로 비어져 나와 지저분하다. 닫으면 설정으로 돌아온다.
 func _on_about_pressed() -> void:
+	settings_popup.visible = false
 	about_popup.visible = true
 
 

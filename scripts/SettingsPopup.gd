@@ -32,7 +32,9 @@ const TITLE_WIDTH_FRAC := 0.68    # 판 너비 대비 — 오른쪽 위 닫기 �
 const TITLE_OVERHANG := 0.55      # 자기 높이 중 판 위로 나가는 비율
 
 # 계정 줄: [동그란 자리] [상태 글자] ......... [LOGIN 버튼]
-const ACCOUNT_ROW_HEIGHT_FRAC := 0.101   # 판 높이 대비
+# 줄 높이는 판 "너비" 기준이다. 높이 기준으로 두면 판을 세로로 키울 때
+# 줄들도 같이 커져서 아무리 키워도 계속 넘친다.
+const ACCOUNT_ROW_HEIGHT_FRAC := 0.155   # 판 너비 대비
 const AVATAR_DIAMETER_FRAC := 0.86       # 줄 높이 대비
 const AVATAR_FILL := Color(0.86, 0.83, 0.75, 1.0)
 const AVATAR_EDGE := Color(0.72, 0.68, 0.59, 1.0)
@@ -48,19 +50,30 @@ const LOGIN_TEXT := "LOGIN"
 const LOGOUT_TEXT := "LOGOUT"
 const LOGIN_WIDTH_FRAC := 0.26           # 판 너비 대비
 const ACCOUNT_BUTTON_GAP_FRAC := 0.030   # 판 너비 대비 — 글자와 버튼 사이
-const LOGIN_HEIGHT_FRAC := 0.079         # 판 높이 대비
+const LOGIN_HEIGHT_FRAC := 0.122         # 판 너비 대비
 const LOGIN_TEXTURE_WIDTH := 105         # 9-slice 텍스처 폭 — _build_content 주석 참고
 
 # 약관 줄: 글자에 밑줄, 줄 오른쪽 끝에 ">".
 # 광고 제거 — 계정 줄 바로 아래의 골드 버튼. primary=true 면 흰 글자에
 # 네이비 테두리가 붙는다(RESUME/PLAY AGAIN 과 같은 꾸밈).
 const REMOVE_ADS_TEXT := "REMOVE ADS"
-const REMOVE_ADS_HEIGHT_FRAC := 0.081    # 판 높이 대비
-const REMOVE_ADS_WIDTH_FRAC := 0.86      # 안쪽 폭 대비
-# 골드 아트는 848x244 에 모서리 88 — 모서리는 늘 텍스처 높이의 36% 라,
-# 텍스처 높이가 버튼 높이의 1.4 배를 넘으면 위아래 모서리가 겹친다.
-# 110 이면 텍스처 220x63, 모서리 23 으로 51px 버튼 안에 들어온다.
-const REMOVE_ADS_TEXTURE_WIDTH := 110
+const REMOVE_ADS_ICON := "res://assets/ui_assets/popup/icon_noads.png"
+# 아이콘 텍스처는 그릴 크기보다 넉넉히 구워 둔다 — 작게 구워 놓고 늘리면
+# 가장자리가 뭉갠다. _load_icon_from 이 둘레에 투명 여백까지 둘러 주므로
+# 실루엣이 텍스처 가장자리에 닿아 잘려 보이는 일도 없다.
+const REMOVE_ADS_ICON_HEIGHT := 128
+# 글자 높이에 맞춘다 — _place 의 기본값은 글자의 1.18 배라 그 역수를 준다.
+const REMOVE_ADS_ICON_SCALE := 1.15
+const REMOVE_ADS_HEIGHT_FRAC := 0.215    # 판 너비 대비
+const REMOVE_ADS_WIDTH_FRAC := 0.92      # 안쪽 폭 대비
+# 위아래 점선과의 간격은 따로 크게 잡는다 — 버튼이 커서 점선에 붙으면 답답하다.
+const REMOVE_ADS_GAP_FRAC := 0.048       # 판 너비 대비
+# 일시정지의 RESUME, 게임오버의 PLAY AGAIN 과 같은 그림으로 보이게 하려면
+# 9-slice 텍스처 크기가 같아야 한다 — 테두리 굵기가 버튼 크기가 아니라
+# 텍스처 크기에 비례해서 그려지기 때문이다(작게 구우면 테두리도 얇아진다).
+# 그래서 기본값(BUTTON_TEXTURE_WIDTH)을 쓰고, 버튼 높이도 RESUME 과
+# 비슷하게 잡는다.
+const REMOVE_ADS_TEXTURE_WIDTH := BUTTON_TEXTURE_WIDTH
 
 const LINK_TEXTS := ["Privacy Policy", "Terms of Service", "Contact / Feedback", "About"]
 # 아이콘 시트에 편지 그림이 없어서 직접 그린다 — 봉투 사각형 + 뚜껑 선 둘.
@@ -68,15 +81,15 @@ const LINK_MAIL_INDEX := 2               # 편지 아이콘이 붙는 줄
 const LINK_MAIL_GAP_FRAC := 0.45         # 글자 크기 대비 글자-아이콘 간격
 const LINK_MAIL_HEIGHT_FRAC := 0.72      # 글자 크기 대비 아이콘 높이
 const LINK_MAIL_LINE_PX := 1.3
-const LINK_TEXT_SIZE_FRAC := 0.058       # 판 너비 대비
+const LINK_TEXT_SIZE_FRAC := 0.048       # 판 너비 대비
 const LINK_COLOR := Color(0.24, 0.28, 0.36, 1.0)
 const LINK_UNDERLINE_PX := 1.4
 const LINK_UNDERLINE_DROP := 0.30        # 글자 크기 대비 베이스라인 아래로
-const LINK_ROW_HEIGHT_FRAC := 0.077      # 판 높이 대비
+const LINK_ROW_HEIGHT_FRAC := 0.118      # 판 너비 대비
 # 약관 두 줄은 한 묶음으로 읽혀야 하니 사이를 좁게, 그 아래 버전은 별개라
 # 넓게 띄운다. 나머지 간격들은 남는 공간을 고르게 나눠 가진다.
-const LINK_GAP_FRAC := 0.023             # 판 높이 대비 — 약관 줄 사이
-const VERSION_GAP_FRAC := 0.061          # 판 높이 대비 — 약관과 버전 사이
+const LINK_GAP_FRAC := 0.010             # 판 너비 대비 — 약관 줄 사이
+const VERSION_GAP_FRAC := 0.094          # 판 너비 대비 — 약관과 버전 사이
 const LINK_CHEVRON := ">"
 const LINK_CHEVRON_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 
@@ -90,6 +103,7 @@ var _sliders: Control
 var _sfx_slider: HSlider
 var _music_slider: HSlider
 var _divider_top: Control
+var _divider_account: Control    # 계정 줄과 광고 제거 사이
 var _divider_bottom: Control
 var _account: Control
 var _login: Button
@@ -105,8 +119,9 @@ var _version: Control
 
 
 func panel_size_frac() -> Vector2:
-	# 담을 것이 늘어난 만큼 세로로 키운다.
-	return Vector2(0.90, 0.74)
+	# 담을 것이 늘어난 만큼 세로로 키운다. 줄 높이는 너비 기준이라 여기를
+	# 키우면 줄이 아니라 줄 사이 여백이 늘어난다.
+	return Vector2(0.90, 0.86)
 
 
 func panel_texture_width() -> int:
@@ -134,6 +149,7 @@ func _build_content() -> void:
 	_sliders.add_child(_music_slider)
 
 	_divider_top = _make_divider()
+	_divider_account = _make_divider()
 	_divider_bottom = _make_divider()
 
 	# 계정 줄. 동그란 자리와 글자는 이 노드가 직접 그리고, 버튼만 진짜 노드다.
@@ -152,8 +168,9 @@ func _build_content() -> void:
 	_login.pressed.connect(func(): (logout_pressed if _logged_in else login_pressed).emit())
 	add_child(_login)
 
-	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, REMOVE_ADS_TEXT, null, true,
-		Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
+	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, REMOVE_ADS_TEXT,
+		_load_icon_from(REMOVE_ADS_ICON, Vector2i(1, 1), 0, REMOVE_ADS_ICON_HEIGHT),
+		true, Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
 	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
 	add_child(_remove_ads)
 
@@ -219,20 +236,22 @@ func _layout_content(inner: Rect2) -> void:
 	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
 	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_TRACK_HEIGHT + 6.0
 	var divider_h: float = DIVIDER_DOT_RADIUS * 2.0
-	var account_h: float = ph * ACCOUNT_ROW_HEIGHT_FRAC
-	var link_h: float = ph * LINK_ROW_HEIGHT_FRAC
+	var account_h: float = pw * ACCOUNT_ROW_HEIGHT_FRAC
+	var link_h: float = pw * LINK_ROW_HEIGHT_FRAC
 
 	var version_h: float = pw * VERSION_SIZE_FRAC * 1.6
-	var remove_h: float = ph * REMOVE_ADS_HEIGHT_FRAC
-	var link_gap: float = ph * LINK_GAP_FRAC
-	var version_gap: float = ph * VERSION_GAP_FRAC
+	var remove_h: float = pw * REMOVE_ADS_HEIGHT_FRAC
+	var link_gap: float = pw * LINK_GAP_FRAC
+	var version_gap: float = pw * VERSION_GAP_FRAC
 	var link_count: int = LINK_TEXTS.size()
-	# 따로 정한 간격(약관 줄 사이 여러 개 + 약관-버전)을 뺀 나머지를, 남은
-	# 간격 여섯이 고르게 나눈다: 슬라이더 사이 / 슬라이더-점선 / 점선-계정 /
-	# 계정-광고제거 / 광고제거-점선 / 점선-첫 약관.
-	var used: float = slider_h * 2.0 + divider_h * 2.0 + account_h + remove_h \
-		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap
-	var gap: float = maxf(6.0, (bottom - top - used) / 6.0)
+	var remove_gap: float = pw * REMOVE_ADS_GAP_FRAC
+	# 따로 정한 간격(광고 제거 버튼 위아래 + 약관 줄 사이 + 약관-버전)을 뺀
+	# 나머지를, 남은 간격 다섯이 고르게 나눈다: 슬라이더 사이 / 슬라이더-점선 /
+	# 점선-계정 / 계정-점선 / 점선-첫 약관.
+	var used: float = slider_h * 2.0 + divider_h * 3.0 + account_h + remove_h \
+		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap \
+		+ remove_gap * 2.0
+	var gap: float = maxf(6.0, (bottom - top - used) / 5.0)
 
 	var y := top
 	_sliders.position = Vector2(inner_x, y)
@@ -257,17 +276,22 @@ func _layout_content(inner: Rect2) -> void:
 	y += divider_h + gap
 
 	var login_w: float = pw * LOGIN_WIDTH_FRAC
-	var login_h: float = ph * LOGIN_HEIGHT_FRAC
+	var login_h: float = pw * LOGIN_HEIGHT_FRAC
 	_account.position = Vector2(inner_x, y)
 	_account.size = Vector2(inner_w - login_w - pw * ACCOUNT_BUTTON_GAP_FRAC, account_h)
 	_account.queue_redraw()
 	_place(_login, inner_x + inner_w - login_w, y + (account_h - login_h) * 0.5, login_w, login_h)
 	y += account_h + gap
 
+	_divider_account.position = Vector2(inner_x, y)
+	_divider_account.size = Vector2(inner_w, divider_h)
+	_divider_account.queue_redraw()
+	y += divider_h + remove_gap
+
 	var remove_w: float = inner_w * REMOVE_ADS_WIDTH_FRAC
 	_place(_remove_ads, inner_x + (inner_w - remove_w) * 0.5, y, remove_w, remove_h,
-		1.0, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
-	y += remove_h + gap
+		REMOVE_ADS_ICON_SCALE, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	y += remove_h + remove_gap
 
 	_divider_bottom.position = Vector2(inner_x, y)
 	_divider_bottom.size = Vector2(inner_w, divider_h)

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://ca5xug3vuj3po"
-path="res://.godot/imported/np_button_gold_v2_png_88_220_0_000_0_000_321993b6.png-67c6606efd0285af303b154c225ec669.ctex"
+uid="uid://cvn35f3p1qc0w"
+path="res://.godot/imported/icon_noads.png-7c62c0b168403bcd53accda6db8e53e4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui_assets/popup/baked/np_button_gold_v2_png_88_220_0_000_0_000_321993b6.png"
-dest_files=["res://.godot/imported/np_button_gold_v2_png_88_220_0_000_0_000_321993b6.png-67c6606efd0285af303b154c225ec669.ctex"]
+source_file="res://assets/ui_assets/popup/icon_noads.png"
+dest_files=["res://.godot/imported/icon_noads.png-7c62c0b168403bcd53accda6db8e53e4.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

@@ -43,6 +43,10 @@
 		"file": "icon_assets_ui_assets_popup_icon_informa_0f3ab557.png",
 		"margin": 0
 	},
+	"icon|res://assets/ui_assets/popup/icon_noads.png|1|1|0|128": {
+		"file": "icon_assets_ui_assets_popup_icon_noads_p_b0113efa.png",
+		"margin": 0
+	},
 	"icon|res://assets/ui_assets/popup/icon_popup.png|3|1|0|96": {
 		"file": "icon_assets_ui_assets_popup_icon_popup_p_08a71f04.png",
 		"margin": 0
@@ -75,6 +79,10 @@
 		"file": "icon_assets_ui_assets_popup_settings_pop_a80fb8b7.png",
 		"margin": 0
 	},
+	"logo_outline|res://assets/ui_assets/title/logo.png|520|0.0050": {
+		"file": "logo_outline_assets_ui_assets_title_logo_baed7a5b.png",
+		"margin": 0
+	},
 	"np|best_box.png|91|680|0.000|0.000": {
 		"file": "np_best_box_png_91_680_0_000_0_000_9d8bf578.png",
 		"margin": 29
@@ -94,10 +102,6 @@
 	"np|button_cream_v4.png|202|394|1.045|0.925": {
 		"file": "np_button_cream_v4_png_202_394_1_045_0_9_9eb98ab8.png",
 		"margin": 41
-	},
-	"np|button_gold_v2.png|88|220|0.000|0.000": {
-		"file": "np_button_gold_v2_png_88_220_0_000_0_000_321993b6.png",
-		"margin": 23
 	},
 	"np|button_gold_v2.png|88|640|0.000|0.000": {
 		"file": "np_button_gold_v2_png_88_640_0_000_0_000_c1a0e5cc.png",
