@@ -91,6 +91,16 @@ flat = true
 focus_mode = 0
 text = "M"
 
+[node name="BoostButton" type="Button" parent="UI"]
+visible = false
+texture_filter = 4
+offset_left = 380.0
+offset_top = 700.0
+offset_right = 470.0
+offset_bottom = 790.0
+focus_mode = 0
+text = "BOOST"
+
 [node name="PausePanel" type="Control" parent="UI" unique_id=2138487738]
 visible = false
 layout_mode = 3
