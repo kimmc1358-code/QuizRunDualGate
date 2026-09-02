@@ -24,10 +24,15 @@ extends SceneTree
 #      no parallax at all, only two images sliding together.
 #   5. A pair tiles at one width, so the two wrap in step instead of
 #      drifting into an ever-changing composite.
+#   6. No background layer reaches the saturation or brightness of its own
+#      mode's character and gate ring. The backdrop is not allowed to be the
+#      loudest thing on screen, and re-exporting one background at full
+#      saturation is exactly the kind of change that looks fine in isolation
+#      and only reads wrong next to the art it sits behind.
 #
 # Re-run when MODE_BG_TEXTURE_PATH, MODE_BG_NEAR_TEXTURE_PATH,
 # bg_speed_ratio or bg_near_speed_ratio change, or when a background is
-# re-cut or re-blurred.
+# re-cut or re-graded.
 
 const MODE_NAMES := ["SKY", "JUNGLE", "OCEAN", "DREAM"]
 
@@ -41,6 +46,32 @@ const MIN_CLEAR_FRACTION := 0.15
 # window's clear colour, so it has to be opaque.
 const MAX_FAR_CLEAR_FRACTION := 0.001
 
+# Percentile the comparison is made on. The very top of either distribution
+# is a handful of pixels — a single specular dot on the gate, one bright
+# coral tip — and neither decides what the screen reads like.
+const LEVEL_PERCENTILE := 0.99
+
+# The ceilings tools/bake_background.ps1 grades every background under.
+# Deliberately duplicated here rather than derived: this exists to catch a
+# background that was re-exported without being run through the tool at all,
+# and a check that read its numbers from the same place would have nothing
+# left to compare against. Keep the two in step — the tool's $SatCap/$ValCap
+# are the source of truth and carry the reasoning.
+#
+# The tolerance is for PNG rounding; the soft cap itself lands exactly on
+# the ceiling.
+const SAT_CEILING := 0.72
+const VAL_CEILING := 0.85
+const CEILING_TOLERANCE := 0.01
+
+# And the reason those ceilings are where they are: they have to clear the
+# character and gate ring by a real margin, not a rounding error. This half
+# of the check is the weaker one — every mode's gate art has fully saturated
+# pixels, so the foreground p99 sits at ~1.00 and almost anything passes it.
+# It is here to catch art direction drifting the other way, a foreground
+# repainted so muted that the graded backdrop catches up with it.
+const MIN_LEVEL_HEADROOM := 0.05
+
 var fails := 0
 
 
@@ -52,6 +83,44 @@ func _init() -> void:
 func _fail(msg: String) -> void:
 	fails += 1
 	print("  FAIL: " + msg)
+
+
+# Saturation and value at LEVEL_PERCENTILE over the mostly-opaque pixels of
+# every texture given, pooled. Returns [saturation, value].
+func _levels(textures: Array) -> Array:
+	var sats: Array[float] = []
+	var vals: Array[float] = []
+	for tex in textures:
+		if tex == null:
+			continue
+		var image: Image = tex.get_image()
+		var w: int = image.get_width()
+		var h: int = image.get_height()
+		# Strided: these run from 512x512 sprites to 2208x1056 paintings, and
+		# a percentile does not need every pixel to be stable.
+		for y in range(0, h, 3):
+			for x in range(0, w, 3):
+				var c: Color = image.get_pixel(x, y)
+				if c.a < 0.78:
+					continue
+				var v: float = maxf(c.r, maxf(c.g, c.b))
+				var m: float = minf(c.r, minf(c.g, c.b))
+				sats.append(0.0 if v <= 0.0 else (v - m) / v)
+				vals.append(v)
+	if sats.is_empty():
+		return [0.0, 0.0]
+	sats.sort()
+	vals.sort()
+	var i: int = clampi(int(round(LEVEL_PERCENTILE * (sats.size() - 1))), 0, sats.size() - 1)
+	return [sats[i], vals[i]]
+
+
+func _load_first(dir_path: String, names: Array) -> Texture2D:
+	for n in names:
+		var p: String = dir_path + n
+		if ResourceLoader.exists(p):
+			return load(p)
+	return null
 
 
 func _clear_fraction(tex: Texture2D) -> float:
@@ -125,6 +194,36 @@ func _run() -> void:
 			var near_aspect: float = float(near_tex.get_width()) / float(near_tex.get_height())
 			if absf(far_aspect - near_aspect) > 0.001:
 				_fail("%s pair has mismatched aspect ratios (far %.4f, near %.4f) — they tile at different widths and drift apart" % [MODE_NAMES[mode], far_aspect, near_aspect])
+
+	# Re-walk the modes for the level ceilings. Separate pass because it
+	# needs the character and gate art too, which _apply_mode also loads —
+	# read off the node rather than re-opening files, so this compares what
+	# the game actually draws.
+	for mode in range(far_paths.size()):
+		main.call("_apply_mode", mode)
+		var fg: Array = []
+		for f in main.get("flap_frames"):
+			fg.append(f)
+		fg.append(main.get("gate_left_pillar_texture"))
+		fg.append(main.get("gate_right_pillar_texture"))
+		var fg_levels: Array = _levels(fg)
+		if fg_levels[0] <= 0.0 and fg_levels[1] <= 0.0:
+			_fail("%s: no character or gate art loaded to measure the background against" % MODE_NAMES[mode])
+			continue
+		for pair in [["far", main.get("bg_texture")], ["near", main.get("bg_near_texture")]]:
+			var tex: Texture2D = pair[1]
+			if tex == null:
+				continue
+			var bg_levels: Array = _levels([tex])
+			if bg_levels[0] > SAT_CEILING + CEILING_TOLERANCE:
+				_fail("%s %s layer saturation %.2f is over the %.2f ceiling — re-exported without tools/bake_background.ps1?" % [MODE_NAMES[mode], pair[0], bg_levels[0], SAT_CEILING])
+			if bg_levels[1] > VAL_CEILING + CEILING_TOLERANCE:
+				_fail("%s %s layer brightness %.2f is over the %.2f ceiling — re-exported without tools/bake_background.ps1?" % [MODE_NAMES[mode], pair[0], bg_levels[1], VAL_CEILING])
+			if bg_levels[0] > fg_levels[0] - MIN_LEVEL_HEADROOM:
+				_fail("%s %s layer saturation %.2f is not clear of the character/gate's %.2f — the backdrop would out-colour what is played against it" % [MODE_NAMES[mode], pair[0], bg_levels[0], fg_levels[0]])
+			if bg_levels[1] > fg_levels[1] - MIN_LEVEL_HEADROOM:
+				_fail("%s %s layer brightness %.2f is not clear of the character/gate's %.2f — the backdrop would out-shine what is played against it" % [MODE_NAMES[mode], pair[0], bg_levels[1], fg_levels[1]])
+			print("  %-7s %-4s sat %.2f (cap %.2f, fg %.2f)   val %.2f (cap %.2f, fg %.2f)" % [MODE_NAMES[mode], pair[0], bg_levels[0], SAT_CEILING, fg_levels[0], bg_levels[1], VAL_CEILING, fg_levels[1]])
 
 	var far_ratio: float = main.get("bg_speed_ratio")
 	var near_ratio: float = main.get("bg_near_speed_ratio")

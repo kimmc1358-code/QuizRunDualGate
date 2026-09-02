@@ -24,7 +24,7 @@
     Every sprite is blurred (-Sigma) so the backdrop stays soft and never
     competes with the gate the player has to read. This project has no
     runtime blur shader — the softness is baked into the file, exactly as
-    tools/blur_background.ps1 does for the backgrounds themselves.
+    tools/bake_background.ps1 does for the backgrounds themselves.
 
     Unlike that tool, this one blurs the ALPHA channel too, and does it in
     premultiplied space. Backgrounds are opaque so it can leave alpha

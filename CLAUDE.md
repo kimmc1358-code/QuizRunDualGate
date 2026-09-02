@@ -61,7 +61,7 @@ on failure.
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
-| `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
+| `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, it outruns its far layer, and no background reaches its own mode's character/gate saturation or brightness | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, `bake_background.ps1`'s ceilings, or any background/character/gate art is re-cut or re-graded |
 | `check_boost_hold.gd` | the looping hold sound really loops, and stops on all three release paths | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, or `_enable_stream_loop` change |
 
 Most of them instantiate the real `Main.tscn` and call its own functions
@@ -120,57 +120,79 @@ Use it first; the detection is alpha-band based, so a stray near-transparent
 pixel can invent a row and shift the whole name mapping.
 
 **Effects are baked into the files, not applied at runtime.** This project
-has no blur shader in its custom-draw setup, so:
+has no shader pass in its custom-draw setup, so:
 
-- Background softness is baked by `tools/blur_background.ps1`.
+- Backgrounds — blur *and* colour grading — are baked by
+  `tools/bake_background.ps1`.
 - Ambient particle blur is baked by `slice_ambient_sheet.ps1 -Sigma`.
+
+The one exception is a flat modulate, which `draw_texture_rect` does
+natively: the near layer's alpha lives in `Main.gd` as `bg_near_alpha`, not
+in the PNG.
 
 When blurring or downscaling a cut-out, **premultiply alpha first**. Blurring
 colour and alpha separately drags the transparent pixels' colour inward as a
-dark fringe. `blur_background.ps1` takes a per-file `CutOut` flag for this:
+dark fringe. `bake_background.ps1` takes a per-file `CutOut` flag for this:
 `$false` blurs RGB only (correct for a full-bleed background, where there is
 no alpha edge to soften), `$true` premultiplies, blurs all four channels,
 then divides alpha back out.
 
-**Far layers are blurred hard; near layers are only lightly touched.** That
-is depth of field the way a camera does it, and it is deliberate — the pairs
-first shipped the other way round, with the near layer as the softest thing
-on screen, and it flattened the parallax, because softness is the main cue
-telling the eye which layer is further away. Far layers are matched onto a
-common softness (1.08–1.48); every near layer shares `$NearSigma` (0.9) so
-each painting keeps its own crispness instead (1.47–7.46).
+#### How the parallax layers are graded
 
-`-SelfTest` prints each pair's far/near margin and warns when one inverts,
-comparing **measured sharpness, not sigma** — sigma predicts almost nothing
-across paintings this different (OCEAN's near layer sits at 7.46 on the same
-0.9 that leaves SKY's at 1.47). **SKY is the pair that will invert first**,
-at a margin of 0.25 against JUNGLE's 2.52 and OCEAN's 6.38: its near layer is
-cloud, which arrives barely sharper than its own far layer, so raising
-`$NearSigma` and lightening SKY's far sigma both eat the same margin. The
-floor on `$NearSigma` is 0.3, where the kernel — `ceil(3*sigma)` — collapses
-to a near-delta and does nothing at all.
+**Far and near are pulled apart by colour, not by focus.** Distance does not
+just soften an outline — it washes the colour out and floods it with
+whatever the air in between is made of. So a far layer is desaturated,
+flattened in contrast and blended into a fog, with only a light blur
+helping; a near layer keeps every outline it arrived with and is pulled back
+on *presence* instead: a small desaturation, an evened-out value range, and
+`bg_near_alpha`.
 
-Far-layer strength is **measured, not eyeballed**. `blur_background.ps1
--Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
-blur, **measured after resampling to the 854px height the game draws it at**
-— not on the source pixels. That distinction is load-bearing: SKY's far
-layer is 1472x704 and gets magnified 1.21x, while every other layer is
-1056 tall and minified to 0.81x, so the same sigma spreads 1.5x further on
-one than the other. `-SelfTest` re-derives every file from its source and
-diffs it against what is committed — anything but a residual around 1/255
-means the sigma table and the PNGs have drifted apart. The table is the only
-record of how each file was made, so keep it in step.
+That is the second arrangement. The pairs first shipped with the near layer
+as the *softest* thing on screen, which flattened the parallax outright —
+softness is the main cue telling the eye which layer is further away, so
+blurring the near layer hardest says "this is the distant one".
+
+The fog colour is **derived from each painting's own mean**, lightened
+toward white, which is why one setting suits all four modes: JUNGLE hazes to
+misty green, OCEAN to misty blue, SKY to pale sky. SKY needs a weaker dose
+than the others (its own row overrides the shared value) because the scene
+is already high-key, and a full-strength fog washes it into the near cloud
+layer it is supposed to sit behind.
+
+**Ceilings.** No background pixel may reach the saturation or brightness of
+its own mode's character and gate ring — the backdrop is never the loudest
+thing on screen. `$SatCap`/`$ValCap` are soft-kneed rather than clamped, so
+the brightest coral compresses instead of posterising into a flat band.
+`bake_background.ps1 -Foreground` measures what they are set against;
+`check_bg_layers.gd` fails if a committed background breaks them, which is
+what catches art re-exported without being run through the tool.
+
+**Sharpness is measured, not eyeballed**, and is what keeps the far layer
+provably the softer one. `bake_background.ps1 -Sharpness` reports the mean
+|Laplacian| over opaque RGB, **after resampling to the 854px height the game
+draws it at** — not on the source pixels. That distinction is load-bearing:
+SKY's far layer is 1472x704 and gets magnified 1.21x, while every other
+layer is 1056 tall and minified to 0.81x, so the same sigma spreads 1.5x
+further on one than the other. It tracks contrast as well as blur, so
+grading a far layer down shows up here too.
+
+`-SelfTest` re-derives every file from its source and diffs it against what
+is committed — anything but a residual around 1/255 means the table and the
+PNGs have drifted apart — and prints each pair's far/near margin, comparing
+**measured sharpness, not sigma**. Sigma predicts almost nothing across
+paintings this different. **SKY is the pair that will invert first**: its
+near layer is cloud, which arrives barely sharper than its own far layer.
 
 The metric is a proxy, not a verdict: it averages over the whole image, so a
 painting that is mostly flat with a few hard-outlined structures scores
-softer than it looks. OCEAN's far layer is the one row where that was worth
+softer than it looks. OCEAN's far layer is the row where that was worth
 overruling; the table says so.
 
-Blur is not a fix for a background that **competes in shape** with gameplay.
+None of this fixes a background that **competes in shape** with gameplay.
 SKY's far layer paints stone arches in the same white-and-gold-with-a-blue-gem
-palette as the SKY gate ring; blurring it until the whole painting is softer
-than anything else shipped still leaves an arch reading as an arch. Those
-are art problems, not sigma problems.
+palette as the SKY gate ring. Washing the colour out of them helps more than
+blur ever did, but an arch that size still reads as an arch. That is an art
+problem, not a sigma problem.
 
 ### Texture filtering and mipmaps
 
