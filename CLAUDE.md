@@ -132,7 +132,17 @@ dark fringe. `blur_background.ps1` takes a per-file `CutOut` flag for this:
 no alpha edge to soften), `$true` premultiplies, blurs all four channels,
 then divides alpha back out.
 
-Blur strength is **measured, not eyeballed**. `blur_background.ps1
+**Far layers are blurred; near layers are barely touched.** That is depth of
+field the way a camera does it, and it is deliberate — the pairs first
+shipped the other way round, with the near layer as the softest thing on
+screen, and it flattened the parallax, because softness is the main cue
+telling the eye which layer is further away. Every near layer shares
+`$NearSigma` (0.5) so each painting keeps its own crispness; only the far
+layers are matched onto a common softness. 0.5 is also the floor — the
+kernel runs to `ceil(3*sigma)`, so at 0.3 it collapses to a near-delta and
+does nothing at all.
+
+Far-layer strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
 blur, **measured after resampling to the 854px height the game draws it at**
 — not on the source pixels. That distinction is load-bearing: SKY's far
@@ -142,6 +152,11 @@ one than the other. `-SelfTest` re-derives every file from its source and
 diffs it against what is committed — anything but a residual around 1/255
 means the sigma table and the PNGs have drifted apart. The table is the only
 record of how each file was made, so keep it in step.
+
+The metric is a proxy, not a verdict: it averages over the whole image, so a
+painting that is mostly flat with a few hard-outlined structures scores
+softer than it looks. OCEAN's far layer is the one row where that was worth
+overruling; the table says so.
 
 Blur is not a fix for a background that **competes in shape** with gameplay.
 SKY's far layer paints stone arches in the same white-and-gold-with-a-blue-gem

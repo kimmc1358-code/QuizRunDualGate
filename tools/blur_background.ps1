@@ -11,9 +11,14 @@
     character like the rest.
 
     $ModeBackgrounds below names every file the game actually loads, one row
-    per file, because a mode is no longer always one image: SKY and JUNGLE
-    are far/near parallax pairs. Each row carries its own sigma and its own
-    CutOut flag.
+    per file, because a mode is no longer always one image: SKY, JUNGLE and
+    OCEAN are far/near parallax pairs, and only DREAM is still single. Each
+    row carries its own CutOut flag; far rows carry their own sigma, near
+    rows all share $NearSigma.
+
+    Far and near are tuned to opposite ends. A far layer is measured onto a
+    common softness; a near layer is barely touched, so it keeps whatever
+    crispness its painting arrived with. See $NearSigma for why.
 
     CutOut is the difference between a full-bleed painting and a near layer
     with transparency. An opaque background can be blurred on RGB alone —
@@ -22,13 +27,13 @@
     the silhouette as a dark fringe. CutOut rows premultiply, blur all four
     channels, then divide alpha back out.
 
-    Strength was not picked by eye. Sharpness here is the mean |Laplacian|
-    over RGB sampled only where the pixel is fully opaque, measured after
-    resampling to the height the game draws the layer at (-Sharpness reports
-    it, with each file's source height and draw scale). Screen space is the
-    only space worth comparing in, and it stopped being the same as source
-    space once SKY's far layer arrived at 1472x704 while everything else is
-    2208x1056.
+    Far-layer strength was not picked by eye. Sharpness here is the mean
+    |Laplacian| over RGB sampled only where the pixel is fully opaque,
+    measured after resampling to the height the game draws the layer at
+    (-Sharpness reports it, with each file's source height and draw scale).
+    Screen space is the only space worth comparing in, and it stopped being
+    the same as source space once SKY's far layer arrived at 1472x704 while
+    everything else is 2208x1056.
 
     The scale is anchored on art nobody chose by eye. DREAM's sigma was
     recovered by re-blurring its source across a range of values and finding
@@ -254,6 +259,29 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 # record of how each file was made — the PNGs themselves do not say, so a
 # bare re-run is what would otherwise quietly flatten a deliberate value
 # back to a shared one.
+# Every near layer's sigma, shared rather than per-mode on purpose.
+#
+# The far layers are blurred and the near layers are only just touched. That
+# is depth of field the way a camera does it — the backdrop goes soft, the
+# thing near the lens stays sharp — and it is a deliberate reversal of how
+# these pairs first shipped, which had the near layer as the *softest* thing
+# on screen on the theory that a fast-moving layer over the gate lanes
+# needed the most help receding. It looked wrong: blurring the near layer
+# hardest flattens the parallax, because softness is the main cue telling
+# the eye which layer is further away.
+#
+# Shared, because the point of a light touch is that each painting keeps its
+# own natural crispness. Matching them to a common sharpness the way the far
+# layers are matched would mean blurring OCEAN's near layer five times
+# harder than SKY's, which is exactly what was just undone.
+#
+# 0.5 is the lightest value that does anything: the kernel is built out to
+# ceil(3*sigma), so at 0.3 it collapses to a near-delta and every near layer
+# measures its raw sharpness back, unchanged. Half the far layers' sigma,
+# and enough to take the alpha edge off a cut-out so its silhouette does not
+# sit on the far layer as a hard line.
+$NearSigma = 0.5
+
 $ModeBackgrounds = @{
     sky = @(
         # The one source that is not 2208x1056. At 1472x704 it is *magnified*
@@ -270,10 +298,9 @@ $ModeBackgrounds = @{
         # shape-and-palette problem, so the fix is in the art.
         @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
         # Clouds, and only over the bottom half of the screen (0% coverage
-        # above y=512 of 854, ~65% below). They come pre-softened by their
-        # own subject, so 1.0 already lands at 1.37 — under JUNGLE's near
-        # layer without having to be smeared into fog.
-        @{ File = 'background_near'; Sigma = 1.0; CutOut = $true }
+        # above y=512 of 854, ~65% below). Softest raw near layer of the
+        # three (2.52), so NEAR_SIGMA barely moves it: 2.32.
+        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     jungle = @(
         # Two layers, so neither can be as strong as a lone background would
@@ -283,13 +310,12 @@ $ModeBackgrounds = @{
         # now stacks its own detail on top. It needs *less* sigma than the
         # 1.55 those singles used, not more: the painting is already hazy.
         @{ File = 'background_far';  Sigma = 1.2; CutOut = $false }
-        # 2.5 lands the near layer at 1.57, the softest full-strength layer
-        # here. It both moves fast (bg_near_speed_ratio is 2.7x the far
-        # layer) and sits over the gate lanes — it clears only 28% of the
-        # play area's midriff and 21% of the bottom strip — and detail
-        # travelling that quickly across the play area is what actually
-        # pulls the eye off the gates.
-        @{ File = 'background_near'; Sigma = 2.5; CutOut = $true }
+        # Busiest near layer of the three (raw 6.76), and the one that sits
+        # most heavily over the play area — it covers 28% of the midriff and
+        # 79% of the bottom strip. NEAR_SIGMA leaves it at 5.85. Watch this
+        # one first if the foreground ever starts pulling the eye off the
+        # gates.
+        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     ocean = @(
         # The painting arrives gentle — an underwater scene carries its own
@@ -306,12 +332,12 @@ $ModeBackgrounds = @{
         # 0.6 and 1.0 composite almost identically on screen despite reading
         # 2.49 against 1.72. When the extra softness is that cheap, spend it.
         @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
-        # And the strongest, because this one arrives sharp: coral and
-        # pillar detail put the raw art at 12.48, nearly twice JUNGLE's near
-        # layer (6.76) and five times SKY's (2.52). 4.0 is what it costs to
-        # land at 1.56, the same place JUNGLE's near layer sits — it is the
-        # landing that is being matched, not the sigma.
-        @{ File = 'background_near'; Sigma = 4.0; CutOut = $true }
+        # Sharpest art in the project: coral and pillar detail put it at
+        # 12.48 raw, nearly twice JUNGLE's near layer and five times SKY's.
+        # NEAR_SIGMA leaves it at 10.73, far and away the crispest thing on
+        # screen behind the gates — which is the point, but it is also the
+        # layer most likely to want a second look in play.
+        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     dream = @(
         # 시그마 1.1로, 원경 중에서는 제일 약하게 건다. 이 그림은 처음부터
@@ -367,6 +393,16 @@ if ($Sharpness) {
 }
 
 if ($SelfTest) {
+    # The far/near relationship is the whole look, and nothing else would
+    # notice it inverting — the art would just quietly go flat again. Cheap
+    # to assert here, where both numbers live.
+    foreach ($m in $ModeOrder) {
+        foreach ($row in (Get-Rows $m)) {
+            if (-not $row.CutOut -and $row.Sigma -le $NearSigma) {
+                Write-Host ("  WARN  {0}'s far layer ({1}) is blurred no harder than NearSigma ({2}) — the near layer is supposed to be the sharp one" -f $m, $row.Sigma, $NearSigma)
+            }
+        }
+    }
     Write-Host "Self-test: re-deriving each committed blur and comparing to the file on disk."
     $tmp = [System.IO.Path]::GetTempPath()
     foreach ($m in $ModeOrder) {
