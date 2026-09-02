@@ -11,8 +11,8 @@
     character like the rest.
 
     $ModeBackgrounds below names every file the game actually loads, one row
-    per file, because a mode is no longer always one image: JUNGLE is a
-    far/near parallax pair. Each row carries its own sigma and its own
+    per file, because a mode is no longer always one image: SKY and JUNGLE
+    are far/near parallax pairs. Each row carries its own sigma and its own
     CutOut flag.
 
     CutOut is the difference between a full-bleed painting and a near layer
@@ -23,13 +23,19 @@
     channels, then divide alpha back out.
 
     Strength was not picked by eye. Sharpness here is the mean |Laplacian|
-    over RGB sampled only where the pixel is fully opaque (-Sharpness
-    reports it), and the shipped blurs sit at jungle 2.12, ocean 1.90,
-    dream 1.19. The sky/ocean sigma was recovered by re-blurring the
-    committed art across a range of values and finding which one reproduced
-    its committed *_blur.png, with a residual around 1/255 — down at PNG
-    quantisation noise. The jungle pair's values are measured against that
-    same band; see their comments in the table.
+    over RGB sampled only where the pixel is fully opaque, measured after
+    resampling to the height the game draws the layer at (-Sharpness reports
+    it, with each file's source height and draw scale). Screen space is the
+    only space worth comparing in, and it stopped being the same as source
+    space once SKY's far layer arrived at 1472x704 while everything else is
+    2208x1056.
+
+    OCEAN's sigma was recovered by re-blurring the committed art across a
+    range of values and finding which one reproduced its committed
+    *_blur.png, with a residual around 1/255 — down at PNG quantisation
+    noise; DREAM's was recovered the same way. Those two are the fixed
+    points the parallax pairs were then measured against; see the comments
+    in the table.
 
     Use -SelfTest to re-derive every row and diff against what is committed;
     anything but a near-zero residual means the table and the files have
@@ -57,6 +63,7 @@ $csharp = @"
 using System;
 using System.Drawing;
 using System.Drawing.Imaging;
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
 public static class BgBlur {
@@ -177,8 +184,29 @@ public static class BgBlur {
     // cut-out and a full-bleed painting be compared on one scale —
     // otherwise a mostly-transparent layer scores low for having little
     // opaque art rather than for being soft.
-    public static double Sharpness(string path) {
-        Bitmap b = (Bitmap)Bitmap.FromFile(path);
+    //
+    // Measured after resampling to the height the game draws at, not on the
+    // source pixels. _draw_bg_layer scales every layer to fill the view, and
+    // the sources are no longer all one size: SKY's far layer is 704 tall
+    // and gets magnified 1.21x, while the 1056-tall ones are minified to
+    // 0.81x. That is a factor of 1.5 between them, so the same sigma does
+    // not buy the same softness — and softness on screen is the only thing
+    // the player sees.
+    public static double Sharpness(string path, int viewHeight) {
+        Bitmap loaded = (Bitmap)Bitmap.FromFile(path);
+        Bitmap b = loaded;
+        if (loaded.Height != viewHeight) {
+            int sw = (int)Math.Round(loaded.Width * (double)viewHeight / loaded.Height);
+            Bitmap scaled = new Bitmap(sw, viewHeight, PixelFormat.Format32bppArgb);
+            using (Graphics g = Graphics.FromImage(scaled)) {
+                g.CompositingMode = CompositingMode.SourceCopy;
+                g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+                g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+                g.DrawImage(loaded, 0, 0, sw, viewHeight);
+            }
+            loaded.Dispose();
+            b = scaled;
+        }
         int w = b.Width, h = b.Height;
         BitmapData d = b.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
         byte[] buf = new byte[d.Stride * h];
@@ -203,6 +231,11 @@ public static class BgBlur {
 "@
 Add-Type -TypeDefinition $csharp -ReferencedAssemblies System.Drawing
 
+# The height _draw_bg_layer scales every layer to fill (project.godot
+# window/size/viewport_height). Sharpness is measured after resampling to
+# it, so sources of different resolutions stay comparable.
+$ViewHeight = 854
+
 $repo = Split-Path -Parent $PSScriptRoot
 $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 
@@ -216,22 +249,39 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 # back to a shared one.
 $ModeBackgrounds = @{
     sky = @(
-        @{ File = 'background_single'; Sigma = 1.55; CutOut = $false }
+        # The one source that is not 2208x1056. At 1472x704 it is *magnified*
+        # 1.21x to fill the view, where every other layer is minified to
+        # 0.81x — a factor of 1.5 in how far the same sigma spreads on
+        # screen, which is exactly why Sharpness measures after resampling.
+        # 1.0 lands it at 1.70, level with the single background it replaces
+        # (1.76) and a touch under it for the near layer now on top.
+        #
+        # Do not reach for a bigger number to hide the stone arches, which
+        # share the SKY gate's white-and-gold-with-a-blue-gem look. Blur does
+        # not fix that: at 1.6 the whole painting is softer than anything
+        # this project ships and the arch still reads as an arch. It is a
+        # shape-and-palette problem, so the fix is in the art.
+        @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
+        # Clouds, and only over the bottom half of the screen (0% coverage
+        # above y=512 of 854, ~65% below). They come pre-softened by their
+        # own subject, so 1.0 already lands at 1.37 — under JUNGLE's near
+        # layer without having to be smeared into fog.
+        @{ File = 'background_near'; Sigma = 1.0; CutOut = $true }
     )
     jungle = @(
         # Two layers, so neither can be as strong as a lone background would
-        # be. 1.2 lands the far layer at sharpness 1.79, just under the
-        # softest shipped full-scene mode (ocean, 1.90) — it gives up a
+        # be. 1.2 lands the far layer at sharpness 2.53, just under the
+        # sharpest shipped full-scene mode (ocean, 2.71) — it gives up a
         # little more than it would alone because the near layer now stacks
         # its own detail on top. It needs *less* sigma than the 1.55 the
-        # other modes use, not more: the painting is already hazy (raw 4.26,
-        # against the old single background's 6.35).
+        # other modes use, not more: the painting is already hazy.
         @{ File = 'background_far';  Sigma = 1.2; CutOut = $false }
-        # 2.5 lands the near layer at 1.19 — level with DREAM, the softest
-        # thing this project ships. It is the only background layer that
-        # both moves fast (bg_near_speed_ratio is 2.7x the far layer) and
-        # sits over the gate lanes, and detail travelling that quickly
-        # across the play area is what actually pulls the eye off the gates.
+        # 2.5 lands the near layer at 1.57, the softest full-strength layer
+        # here. It both moves fast (bg_near_speed_ratio is 2.7x the far
+        # layer) and sits over the gate lanes — it clears only 28% of the
+        # play area's midriff and 21% of the bottom strip — and detail
+        # travelling that quickly across the play area is what actually
+        # pulls the eye off the gates.
         @{ File = 'background_near'; Sigma = 2.5; CutOut = $true }
     )
     ocean = @(
@@ -271,12 +321,17 @@ function Get-Sigma($row) {
 }
 
 if ($Sharpness) {
-    Write-Host "Sharpness (mean |Laplacian| over opaque RGB) of every committed blur:"
+    Write-Host "Sharpness of every committed blur, measured at the $ViewHeight px height the game draws it."
+    Write-Host "(mean |Laplacian| over opaque RGB; 'draw' is how far the source is scaled to get there)"
     foreach ($m in $ModeOrder) {
         foreach ($row in (Get-Rows $m)) {
             $p = Get-Paths $m $row
             if (-not [System.IO.File]::Exists($p.Out)) { continue }
-            Write-Host ("  {0,-7} {1,-22} {2,6:N3}" -f $m, $row.File, ([BgBlur]::Sharpness($p.Out)))
+            $img = [System.Drawing.Bitmap]::FromFile($p.Out)
+            $srcH = $img.Height
+            $img.Dispose()
+            Write-Host ("  {0,-7} {1,-22} src {2,5}px  draw {3,5:N2}x  sigma {4,4} -> sharpness {5,6:N3}" -f `
+                $m, $row.File, $srcH, ($ViewHeight / $srcH), $row.Sigma, ([BgBlur]::Sharpness($p.Out, $ViewHeight)))
         }
     }
     return
@@ -314,5 +369,5 @@ foreach ($row in (Get-Rows $Mode)) {
     $s = Get-Sigma $row
     [BgBlur]::Run($p.In, $p.Out, $s, $row.CutOut)
     $kind = if ($row.CutOut) { 'cut-out' } else { 'opaque ' }
-    Write-Host ("  {0,-22} {1} sigma {2,4} -> sharpness {3,6:N3}" -f $row.File, $kind, $s, ([BgBlur]::Sharpness($p.Out)))
+    Write-Host ("  {0,-22} {1} sigma {2,4} -> sharpness {3,6:N3}" -f $row.File, $kind, $s, ([BgBlur]::Sharpness($p.Out, $ViewHeight)))
 }

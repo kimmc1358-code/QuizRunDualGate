@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://blfheaf8ch1ay"
-path="res://.godot/imported/Sky_mid_object_v2.png-b6dc88d129bbc69eb2cee8ab09062867.ctex"
+uid="uid://cca4kd3orj0ls"
+path="res://.godot/imported/background_far_blur.png-eb32c4cf41f24483bda157319957b2ae.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/sky_world/Sky_mid_object_v2.png"
-dest_files=["res://.godot/imported/Sky_mid_object_v2.png-b6dc88d129bbc69eb2cee8ab09062867.ctex"]
+source_file="res://assets/backgrounds/sky_world/background_far_blur.png"
+dest_files=["res://.godot/imported/background_far_blur.png-eb32c4cf41f24483bda157319957b2ae.ctex"]
 
 [params]
 

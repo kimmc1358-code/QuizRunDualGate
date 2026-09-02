@@ -134,11 +134,20 @@ then divides alpha back out.
 
 Blur strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
-blur; the shipped band is jungle-far 1.79, ocean 1.90, jungle-near 1.19,
-dream 1.19. `-SelfTest` re-derives every file from its source and diffs it
-against what is committed — anything but a residual around 1/255 means the
-sigma table and the PNGs have drifted apart. The table is the only record of
-how each file was made, so keep it in step.
+blur, **measured after resampling to the 854px height the game draws it at**
+— not on the source pixels. That distinction is load-bearing: SKY's far
+layer is 1472x704 and gets magnified 1.21x, while every other layer is
+1056 tall and minified to 0.81x, so the same sigma spreads 1.5x further on
+one than the other. `-SelfTest` re-derives every file from its source and
+diffs it against what is committed — anything but a residual around 1/255
+means the sigma table and the PNGs have drifted apart. The table is the only
+record of how each file was made, so keep it in step.
+
+Blur is not a fix for a background that **competes in shape** with gameplay.
+SKY's far layer paints stone arches in the same white-and-gold-with-a-blue-gem
+palette as the SKY gate ring; blurring it until the whole painting is softer
+than anything else shipped still leaves an arch reading as an arch. Those
+are art problems, not sigma problems.
 
 ### Texture filtering and mipmaps
 

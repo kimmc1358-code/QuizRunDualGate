@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dks7qq053dlbd"
-path="res://.godot/imported/Sky_Far.png-304c5a6383dd30edaa58eb314ca1d19f.ctex"
+uid="uid://ccg137o06388j"
+path="res://.godot/imported/background_near_blur.png-79785f2534ae1d21592e9d780382879d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/sky_world/Sky_Far.png"
-dest_files=["res://.godot/imported/Sky_Far.png-304c5a6383dd30edaa58eb314ca1d19f.ctex"]
+source_file="res://assets/backgrounds/sky_world/background_near_blur.png"
+dest_files=["res://.godot/imported/background_near_blur.png-79785f2534ae1d21592e9d780382879d.ctex"]
 
 [params]
 
