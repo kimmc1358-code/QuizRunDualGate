@@ -18,6 +18,9 @@ data_*/
 .vscode/
 .idea/
 *.tmp
+# Claude Code's per-clone working state (scratch worktrees, task locks).
+# CLAUDE.md is the part meant to be shared, and it sits at the repo root.
+.claude/
 
 # Flag generation pipeline — source library and intermediate sizes.
 # Only assets/flags/256x171 is loaded by the game (see flags_data.json);
