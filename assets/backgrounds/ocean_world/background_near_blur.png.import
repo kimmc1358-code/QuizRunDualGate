@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://2ym1inw18u5g"
-path="res://.godot/imported/background_single.png-53149733457532e7bc314247d7ce760a.ctex"
+uid="uid://bnkycwbcv4me1"
+path="res://.godot/imported/background_near_blur.png-76ae341e65faceaa8b3ad3715e9356f7.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/ocean_world/background_single.png"
-dest_files=["res://.godot/imported/background_single.png-53149733457532e7bc314247d7ce760a.ctex"]
+source_file="res://assets/backgrounds/ocean_world/background_near_blur.png"
+dest_files=["res://.godot/imported/background_near_blur.png-76ae341e65faceaa8b3ad3715e9356f7.ctex"]
 
 [params]
 

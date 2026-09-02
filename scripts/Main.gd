@@ -776,9 +776,9 @@ const CLOUD_MID_Y_BAND := Vector2(0.20, 0.65)
 # or the file just doesn't exist on disk) — see bg_texture's null-check in
 # _draw()/_process().
 #
-# A mode is either one image or two: SKY and JUNGLE are a far painting plus
-# a near cut-out, drawn over it at a faster scroll for parallax depth.
-# OCEAN and DREAM are still single. A mode opts in by filling its
+# A mode is either one image or two: SKY, JUNGLE and OCEAN are a far
+# painting plus a near cut-out, drawn over it at a faster scroll for
+# parallax depth. DREAM is still single. A mode opts in by filling its
 # MODE_BG_NEAR_TEXTURE_PATH row; an empty row is the single-image case and
 # costs nothing.
 # ============================================================
@@ -789,10 +789,10 @@ const MODE_BG_TEXTURE_PATH := [
 	# tools/blur_background.ps1 bakes these and records each file's sigma.
 	"res://assets/backgrounds/sky_world/background_far_blur.png",
 	"res://assets/backgrounds/jungle_world/background_far_blur.png",
-	"res://assets/backgrounds/ocean_world/background_single_blur.png",
-	# 드림의 블러는 다른 모드보다 훨씬 약하다. 이 그림은 처음부터 부드러운
-	# 파스텔이라(블러본 선명도 1.19로 넷 중 제일 낮다) 세게 걸면 꽃 모양만
-	# 뭉개진다.
+	"res://assets/backgrounds/ocean_world/background_far_blur.png",
+	# 드림의 블러는 다른 모드보다 훨씬 약하다(시그마 1.1). 이 그림은 처음부터
+	# 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다. 이제 유일하게 근경이
+	# 없는 모드이기도 하다.
 	"res://assets/backgrounds/dream_world/background_single_v2_blur.png",
 ]
 
@@ -807,7 +807,7 @@ const MODE_BG_TEXTURE_PATH := [
 const MODE_BG_NEAR_TEXTURE_PATH := [
 	"res://assets/backgrounds/sky_world/background_near_blur.png",
 	"res://assets/backgrounds/jungle_world/background_near_blur.png",
-	"",
+	"res://assets/backgrounds/ocean_world/background_near_blur.png",
 	"",
 ]
 

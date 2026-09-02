@@ -30,12 +30,19 @@
     space once SKY's far layer arrived at 1472x704 while everything else is
     2208x1056.
 
-    OCEAN's sigma was recovered by re-blurring the committed art across a
-    range of values and finding which one reproduced its committed
-    *_blur.png, with a residual around 1/255 — down at PNG quantisation
-    noise; DREAM's was recovered the same way. Those two are the fixed
-    points the parallax pairs were then measured against; see the comments
-    in the table.
+    The scale is anchored on art nobody chose by eye. DREAM's sigma was
+    recovered by re-blurring its source across a range of values and finding
+    which one reproduced the committed *_blur.png, with a residual around
+    1/255 — down at PNG quantisation noise; the single backgrounds SKY,
+    JUNGLE and OCEAN shipped with before their parallax pairs were recovered
+    the same way, and they are what the pairs were measured against. Those
+    singles are gone from the tree now (git has them), so the numbers quoted
+    in the table comments are the record of where they sat.
+
+    The metric is a proxy, not a verdict. It averages over the whole image,
+    so a painting that is mostly flat with a few hard-outlined structures
+    scores softer than it looks — see OCEAN's far layer, the one row where
+    that was worth overruling.
 
     Use -SelfTest to re-derive every row and diff against what is committed;
     anything but a near-zero residual means the table and the files have
@@ -271,10 +278,10 @@ $ModeBackgrounds = @{
     jungle = @(
         # Two layers, so neither can be as strong as a lone background would
         # be. 1.2 lands the far layer at sharpness 2.53, just under the
-        # sharpest shipped full-scene mode (ocean, 2.71) — it gives up a
-        # little more than it would alone because the near layer now stacks
-        # its own detail on top. It needs *less* sigma than the 1.55 the
-        # other modes use, not more: the painting is already hazy.
+        # sharpest of the retired single backgrounds (OCEAN's, at 2.71) — it
+        # gives up a little more than it would alone because the near layer
+        # now stacks its own detail on top. It needs *less* sigma than the
+        # 1.55 those singles used, not more: the painting is already hazy.
         @{ File = 'background_far';  Sigma = 1.2; CutOut = $false }
         # 2.5 lands the near layer at 1.57, the softest full-strength layer
         # here. It both moves fast (bg_near_speed_ratio is 2.7x the far
@@ -285,17 +292,39 @@ $ModeBackgrounds = @{
         @{ File = 'background_near'; Sigma = 2.5; CutOut = $true }
     )
     ocean = @(
-        @{ File = 'background_single'; Sigma = 1.55; CutOut = $false }
+        # The painting arrives gentle — an underwater scene carries its own
+        # haze, so raw it is already at 3.16 where JUNGLE's far layer was
+        # 4.26 — and 0.6 would be enough to land it at 2.49, level with
+        # JUNGLE's far layer and just under what OCEAN shipped alone (2.71).
+        #
+        # 1.0 anyway, landing at 1.72 beside SKY's far layer (1.70, the other
+        # already-hazy source). This is the one place the metric had to be
+        # overruled, and it is worth knowing why: mean |Laplacian| averages
+        # over the whole image, and this one is mostly flat blue water around
+        # a few hard-outlined stone structures. The flat majority drags the
+        # mean down while the ruins stay every bit as crisp to the eye —
+        # 0.6 and 1.0 composite almost identically on screen despite reading
+        # 2.49 against 1.72. When the extra softness is that cheap, spend it.
+        @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
+        # And the strongest, because this one arrives sharp: coral and
+        # pillar detail put the raw art at 12.48, nearly twice JUNGLE's near
+        # layer (6.76) and five times SKY's (2.52). 4.0 is what it costs to
+        # land at 1.56, the same place JUNGLE's near layer sits — it is the
+        # landing that is being matched, not the sigma.
+        @{ File = 'background_near'; Sigma = 4.0; CutOut = $true }
     )
     dream = @(
-        # 드림의 블러는 다른 모드보다 훨씬 약하다. 이 그림은 처음부터 부드러운
-        # 파스텔이라(블러본 선명도 1.19로 넷 중 제일 낮다) 세게 걸면 꽃 모양만
-        # 뭉개진다.
+        # 시그마 1.1로, 원경 중에서는 제일 약하게 건다. 이 그림은 처음부터
+        # 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다. 그러고도 1.63으로
+        # 앉는 건 원본이 그만큼 부드럽다는 뜻이다.
+        #
+        # 근경이 없는 유일한 모드이기도 하다. 나머지 셋은 전부 원경/근경 쌍이라,
+        # 이 값은 위에서 쌍을 맞출 때 쓴 기준점 중 하나다.
         #
         # 이 줄은 예전에 background_single(v1)을 3.5로 가리키고 있었다. 게임이
         # 읽는 건 v2 쪽이라, 자체 테스트는 아무도 쓰지 않는 파일만 초록으로
         # 통과시키고 있었고 v2의 값은 검증된 적이 없었다. 커밋된 v2 블러본에서
-        # 되찾은 실제 값은 1.1이다(RMSE 1.06/255, sky·ocean과 같은 잡음 수준).
+        # 되찾은 실제 값이 1.1이다(RMSE 1.06/255, PNG 양자화 잡음 수준).
         @{ File = 'background_single_v2'; Sigma = 1.1; CutOut = $false }
     )
 }
