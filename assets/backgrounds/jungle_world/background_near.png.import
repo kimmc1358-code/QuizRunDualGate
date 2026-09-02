@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cpnc6e5nr25xy"
-path="res://.godot/imported/background_single_blur.png-ac007223f99c83c4bae7bb069366b52a.ctex"
+uid="uid://bd32i8thoyor1"
+path="res://.godot/imported/background_near.png-927b38b114191eaf59cc1fb0fe6dcafe.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/jungle_world/background_single_blur.png"
-dest_files=["res://.godot/imported/background_single_blur.png-ac007223f99c83c4bae7bb069366b52a.ctex"]
+source_file="res://assets/backgrounds/jungle_world/background_near.png"
+dest_files=["res://.godot/imported/background_near.png-927b38b114191eaf59cc1fb0fe6dcafe.ctex"]
 
 [params]
 

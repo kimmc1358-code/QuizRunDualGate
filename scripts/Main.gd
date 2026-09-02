@@ -769,28 +769,55 @@ const CLOUD_MID_FAR_SPEED_RATIO := 0.20     # fraction of GATE_SPEED
 const CLOUD_MID_Y_BAND := Vector2(0.20, 0.65)
 
 # ============================================================
-# Per-mode single-image scrolling background (see current_mode/_apply_mode/
-# _draw()). One painted scene per mode, scaled to fill the view height and
-# tiled horizontally. Falls back to the old mountains/sparkle/castle/
-# cloud_mid layers below for any mode without a dedicated image yet (empty
-# path here, or the file just doesn't exist on disk) — see bg_texture's
-# null-check in _draw()/_process().
+# Per-mode scrolling background (see current_mode/_apply_mode/_draw()). A
+# painted scene per mode, scaled to fill the view height and tiled
+# horizontally. Falls back to the old mountains/sparkle/castle/cloud_mid
+# layers below for any mode without a dedicated image yet (empty path here,
+# or the file just doesn't exist on disk) — see bg_texture's null-check in
+# _draw()/_process().
+#
+# A mode is normally one image. JUNGLE is two: a far painting plus a near
+# cut-out, drawn over it at a faster scroll for parallax depth. Any mode can
+# opt in by filling its MODE_BG_NEAR_TEXTURE_PATH row; an empty row is the
+# single-image case and costs nothing.
 # ============================================================
 const MODE_BG_TEXTURE_PATH := [
 	# _blur variants — a pre-blurred copy of the same art (no runtime blur
 	# shader in this custom-draw setup), so the background reads as soft/
 	# out-of-focus instead of competing for detail with the gate/character.
+	# tools/blur_background.ps1 bakes these and records each file's sigma.
 	"res://assets/backgrounds/sky_world/background_single_blur.png",
-	"res://assets/backgrounds/jungle_world/background_single_blur.png",
+	"res://assets/backgrounds/jungle_world/background_far_blur.png",
 	"res://assets/backgrounds/ocean_world/background_single_blur.png",
 	# 드림의 블러는 다른 모드보다 훨씬 약하다. 이 그림은 처음부터 부드러운
-	# 파스텔이라(선명도 3.25 대 다른 모드 블러본 4.7~5.9) 세게 걸면 꽃
-	# 모양만 뭉개진다. 절반으로 줄였다가 되돌리는 정도만 걸었다.
+	# 파스텔이라(블러본 선명도 1.19로 넷 중 제일 낮다) 세게 걸면 꽃 모양만
+	# 뭉개진다.
 	"res://assets/backgrounds/dream_world/background_single_v2_blur.png",
+]
+
+# Optional near layer, index-aligned to MODE_BG_TEXTURE_PATH. "" = this mode
+# has none. Drawn over its far layer at bg_near_speed_ratio, and still
+# behind everything gameplay — it is a backdrop, not something the bird can
+# pass behind.
+#
+# The art has to be a cut-out (mostly transparent), or it just hides the far
+# layer and the parallax buys nothing. tools/check_bg_layers.gd asserts
+# that.
+const MODE_BG_NEAR_TEXTURE_PATH := [
+	"",
+	"res://assets/backgrounds/jungle_world/background_near_blur.png",
+	"",
+	"",
 ]
 
 @export_group("Sky Background")
 @export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.15  # fraction of GATE_SPEED
+# The near layer's own rate, for modes that have one. 2.7x the far layer is
+# what sells the depth; the old cloud parallax used the same spread (0.20
+# far / 0.40 near) and 0.40 was the fastest anything in the background ever
+# moved. Going past that starts to read as the backdrop racing the gates
+# rather than sitting behind them — the gates themselves travel at 1.0.
+@export_range(0.0, 2.0, 0.01) var bg_near_speed_ratio: float = 0.40
 # Dims the background art so its own strong color/detail doesn't compete
 # with the gate/flag/character sitting on top of it — 1.0 = full original
 # brightness, lower recedes it further into the background.
@@ -1930,9 +1957,13 @@ var castle_cooldown_timer: float = 3.0  # short initial wait so the first castle
 var cloud_mid_textures: Array[Texture2D] = []
 var cloud_mid_list: Array = []  # fixed pool, each: {texture, x, y, scale, alpha, speed, flip, near}
 
-# Per-mode single-image background state — loaded in _apply_mode, see the const/export block above.
+# Per-mode background state — loaded in _apply_mode, see the const/export block above.
 var bg_texture: Texture2D
 var bg_scroll_x: float = 0.0  # ever-increasing distance scrolled; wrapped with fposmod at draw time
+# Optional near parallax layer. null for a mode with no MODE_BG_NEAR_TEXTURE_PATH
+# row; it keeps its own scroll distance because it travels at a different rate.
+var bg_near_texture: Texture2D
+var bg_near_scroll_x: float = 0.0
 
 # Ambient background particle state (see the const/export block above).
 var particle_textures: Array[Texture2D] = []
@@ -2662,19 +2693,34 @@ func _draw_cloud_mid(near: bool) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-# ---- Per-mode single-image background (see _apply_mode/_draw()) ----
-# One painted scene, scaled to exactly fill the view height and tiled
-# horizontally — same infinite-scroll technique as before, just a single
-# layer now instead of three.
+# ---- Per-mode background (see _apply_mode/_draw()) ----
+# A painted scene, scaled to exactly fill the view height and tiled
+# horizontally — the same infinite-scroll technique the old three-layer sky
+# used. Modes that declare a near cut-out get a second pass of it at a
+# faster rate, which is the whole of the parallax: one tiler, two
+# independent scroll distances.
 
 func _update_sky_background(delta: float) -> void:
-	bg_scroll_x += bg_speed_ratio * GATE_SPEED * _boost_bg_multiplier() * delta
+	var world_speed: float = GATE_SPEED * _boost_bg_multiplier() * delta
+	bg_scroll_x += bg_speed_ratio * world_speed
+	# Advanced even with no near texture loaded. It costs one multiply-add,
+	# and it keeps the two distances from having to be reasoned about
+	# separately — _apply_mode zeroes both on every mode switch anyway.
+	bg_near_scroll_x += bg_near_speed_ratio * world_speed
 
 
 func _draw_sky_background(view_size: Vector2) -> void:
-	if bg_texture == null:
+	_draw_bg_layer(bg_texture, bg_scroll_x, view_size)
+	# Second, so its foliage and pillars frame what the far layer paints
+	# through its transparent middle. Both still draw behind the gate zone —
+	# see the call site in _draw().
+	_draw_bg_layer(bg_near_texture, bg_near_scroll_x, view_size)
+
+
+func _draw_bg_layer(tex: Texture2D, scroll_x: float, view_size: Vector2) -> void:
+	if tex == null:
 		return
-	var tex_size := Vector2(bg_texture.get_width(), bg_texture.get_height())
+	var tex_size := Vector2(tex.get_width(), tex.get_height())
 	if tex_size.y <= 0.0 or view_size.y <= 0.0:
 		return
 	var draw_scale: float = view_size.y / tex_size.y
@@ -2685,9 +2731,9 @@ func _draw_sky_background(view_size: Vector2) -> void:
 	if tile_w <= 1.0:
 		return
 	var tint := Color(bg_brightness, bg_brightness, bg_brightness, 1.0)
-	var x: float = -fposmod(bg_scroll_x, tile_w)
+	var x: float = -fposmod(scroll_x, tile_w)
 	while x < view_size.x:
-		draw_texture_rect(bg_texture, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
+		draw_texture_rect(tex, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
 		x += tile_w
 
 
@@ -4949,6 +4995,11 @@ func _apply_mode(mode: int) -> void:
 	if bg_path != "" and ResourceLoader.exists(bg_path):
 		bg_texture = load(bg_path)
 	bg_scroll_x = 0.0
+	bg_near_texture = null
+	var bg_near_path: String = MODE_BG_NEAR_TEXTURE_PATH[mode]
+	if bg_near_path != "" and ResourceLoader.exists(bg_near_path):
+		bg_near_texture = load(bg_near_path)
+	bg_near_scroll_x = 0.0
 
 	# SKY used to be skipped here — its old twinkling lights did not suit the
 	# scene and were dropped. It has drifting feathers now, so every mode

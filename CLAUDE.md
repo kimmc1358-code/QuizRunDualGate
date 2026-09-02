@@ -61,12 +61,15 @@ on failure.
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
+| `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 | `check_boost_hold.gd` | the looping hold sound really loops, and stops on all three release paths | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, or `_enable_stream_loop` change |
 
-Two of them instantiate the real `Main.tscn` and call its own functions
+Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
 it that way — if a checker needs a calculation, extract it from the draw
-code and call it (see `_boost_pop_layout`).
+code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` and
+`check_sparkle_pools.gd` still re-derive; a copy of a table is exactly what
+passes while the game itself loads nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -124,8 +127,18 @@ has no blur shader in its custom-draw setup, so:
 
 When blurring or downscaling a cut-out, **premultiply alpha first**. Blurring
 colour and alpha separately drags the transparent pixels' colour inward as a
-dark fringe. `blur_background.ps1` skips alpha entirely on purpose — its
-inputs are opaque backgrounds — so it is not a template for cut-outs.
+dark fringe. `blur_background.ps1` takes a per-file `CutOut` flag for this:
+`$false` blurs RGB only (correct for a full-bleed background, where there is
+no alpha edge to soften), `$true` premultiplies, blurs all four channels,
+then divides alpha back out.
+
+Blur strength is **measured, not eyeballed**. `blur_background.ps1
+-Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
+blur; the shipped band is jungle-far 1.79, ocean 1.90, jungle-near 1.19,
+dream 1.19. `-SelfTest` re-derives every file from its source and diffs it
+against what is committed — anything but a residual around 1/255 means the
+sigma table and the PNGs have drifted apart. The table is the only record of
+how each file was made, so keep it in step.
 
 ### Texture filtering and mipmaps
 
