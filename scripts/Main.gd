@@ -428,33 +428,27 @@ const BOOST_BG_SPEED_SHARE := 1.0
 const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at full blend
 const BOOST_BUTTON_SIZE := 92.0        # diameter, px
 const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's right/bottom edges
-# Drawn as a round chip rather than the theme's default rectangle: a
-# StyleBoxFlat whose corner radius is half the button's size, rebuilt in
-# _layout_hud_buttons because that radius has to follow the size.
+# Painted per-mode art, like pause/mute — this replaced a code-drawn chip
+# (StyleBoxFlat circle + the word "BOOST") once the art existed. The four
+# icons are the same round badge in each mode's colours, cut off one sheet
+# onto a shared square canvas so this one size constant covers all four.
+const MODE_BOOST_ICON_PATH := [
+	"res://assets/ui_assets/sky/boost_v1.png",
+	"res://assets/ui_assets/jungle/boost_v1.png",
+	"res://assets/ui_assets/ocean/boost_v1.png",
+	"res://assets/ui_assets/dream/boost_v1.png",
+]
+# 반투명하게 깐다. 게이트 구역이 화면 바닥까지 내려와서 새와 게이트가 이 버튼
+# 뒤를 지나가기 때문이다 — 불투명하면 오른쪽 아래 구석이 그냥 막힌 벽이 된다.
 #
-# No art for this one (the pause/mute buttons have painted per-mode icons),
-# so it is styled in code and carries a word instead. Gold matches the boost
-# bar's top tier, which is what the button is for.
-const BOOST_BUTTON_LABEL := "BOOST"
-# Translucent, but not arbitrarily so: white label on a dark grey chip, and
-# how well it reads depends on what the chip is sitting on. Composited
-# against each mode's background and measured, white-on-fill contrast is
-# worst over DREAM — the one mode with a near-white backdrop, which lifts
-# the translucent grey toward the label rather than away from it:
-#   alpha 0.45 -> dream 3.4   alpha 0.55 -> dream 4.3   alpha 0.65 -> 5.6
-# (jungle, the worst case for the old gold-and-dark-ink version, is now the
-# BEST at ~11 — its dark canopy and a dark chip agree.) 0.55 keeps the chip
-# clearly see-through while the worst mode still clears the 3.0 large-text
-# bar comfortably.
-const BOOST_BUTTON_FILL := Color(0.16, 0.17, 0.20, 0.55)
-const BOOST_BUTTON_FILL_PRESSED := Color(0.34, 0.36, 0.42, 0.8)  # lighter as well as firmer, so the press reads
-const BOOST_BUTTON_BORDER := Color(1.0, 1.0, 1.0, 0.75)          # kept crisp — at this fill the ring is what defines the shape
-const BOOST_BUTTON_BORDER_WIDTH := 3
-# Of the diameter. "BOOST" is five caps and has to fit a CIRCLE, not a box:
-# the room it has is the chord at the text's own half-height, not the full
-# width. Measured with combo_font at 92px diameter, 0.24 gives a 71px string
-# against an 81px chord — filling the chip without touching the border ring.
-const BOOST_BUTTON_FONT_FRAC := 0.24
+# 앞의 코드로 그리던 칩은 흰 글씨의 대비 때문에 0.55 가 하한이었지만, 이제는
+# 읽어야 할 글씨가 없고 그림 자체가 뭘 누르는지 말해 준다. 그래서 더 내려
+# 잡아도 되지만, 너무 옅으면 배경이 밝은 DREAM 에서 버튼이 사라진다 — 0.55 는
+# 그 둘 사이에서 네 모드 모두 형태가 남는 값이다.
+const BOOST_BUTTON_ALPHA := 0.55
+# 눌린 동안에는 거의 불투명해진다. 크기만 줄이는 pause/mute 와 달리 이 버튼은
+# 평소가 반투명이라, 진해지는 쪽이 눌렸다는 신호로 훨씬 잘 보인다.
+const BOOST_BUTTON_PRESSED_ALPHA := 0.92
 
 # Gate visual: the image's hollow center is the real passage and its
 # stonework is the obstacle, drawn centered on the precision zone (the
@@ -1209,6 +1203,15 @@ const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 # doubles as the "audio is working" confirmation. Optional like the rest —
 # a missing file just means the transition stays silent.
 const FX_SOUND_SPLASH_START_PATH := "res://assets/audio/splash_start.wav"
+
+# 부스트 버튼을 누르고 있는 동안 계속 나는 소리. 다른 효과음과 달리 한 번
+# 울리고 끝나는 게 아니라 홀드와 길이를 같이 한다 — 누를 때 play, 뗄 때 stop.
+#
+# 그래서 이 하나만 루프를 켠다(_enable_stream_loop). 파일은 2.25초라 그보다
+# 오래 누르면 그냥 끊기기 때문이다. 홀드가 풀리는 길은 손을 떼는 것 말고도
+# 죽거나 일시정지해서 버튼이 숨는 경우가 있는데, 숨겨진 Button 은 button_up 을
+# 쏘지 않으므로 그쪽은 _process 에서 boost_button_held 와 함께 꺼 준다.
+const FX_SOUND_BOOST_PATH := "res://assets/audio/boost.wav"
 
 
 # ---- Phase curve, shared by all three modes ----
@@ -1966,6 +1969,8 @@ var fx_sound_countdown_ready: AudioStreamPlayer
 var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
 var fx_sound_splash_start: AudioStreamPlayer
+var fx_sound_boost: AudioStreamPlayer
+var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be killed
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
 @onready var ready_panel: Control = $UI/ReadyPanel
@@ -2057,11 +2062,16 @@ func _boot_load() -> void:
 	pause_button.expand_icon = true
 	mute_button.text = ""
 	mute_button.expand_icon = true
+	boost_button.expand_icon = true
+	boost_button.modulate = Color(1.0, 1.0, 1.0, BOOST_BUTTON_ALPHA)
 	# flat=true 라도 Button 은 기본 테마 스타일박스의 content margin(사방 4px)을
 	# 그대로 써서 아이콘을 그 안쪽에 맞춘다. 57.5px 버튼이면 그림은 49.5px 밖에
 	# 안 되고, 그래서 옆의 스코어박스보다 눈에 띄게 작아 보였다. 여백 0 인
 	# 스타일박스를 씌워 아이콘이 버튼 사각형을 그대로 채우게 한다.
-	for b: Button in [pause_button, mute_button]:
+	#
+	# 부스트 버튼도 같은 이유로 함께 씌운다 — 예전에는 자기 StyleBoxFlat 로
+	# 둥근 칩을 그렸지만, 이제는 그림이 원판이라 배경 상자가 필요 없다.
+	for b: Button in [pause_button, mute_button, boost_button]:
 		var empty := StyleBoxEmpty.new()
 		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
 			b.add_theme_stylebox_override(slot, empty)
@@ -2134,6 +2144,14 @@ func _boot_load() -> void:
 	fx_sound_splash_start.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_SPLASH_START_PATH):
 		fx_sound_splash_start.stream = load(FX_SOUND_SPLASH_START_PATH)
+	fx_sound_boost = AudioStreamPlayer.new()
+	add_child(fx_sound_boost)
+	fx_sound_boost.bus = BUS_SFX
+	if ResourceLoader.exists(FX_SOUND_BOOST_PATH):
+		fx_sound_boost.stream = load(FX_SOUND_BOOST_PATH)
+		# 홀드는 클립(2.25초)보다 길어질 수 있으므로 이 소리만 이어 붙인다.
+		# BGM 과 같은 헬퍼를 쓴다 — .import 의 loop_mode 에 기대지 않는다.
+		_enable_stream_loop(fx_sound_boost.stream)
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
@@ -3151,6 +3169,16 @@ func _process(delta: float) -> void:
 		# the world accelerated forever after dying with it held down. The
 		# release is re-derived here rather than trusted to the signal.
 		boost_button_held = false
+		# Same reason the alpha has to be put back by hand: without this the
+		# button would come back for the next run stuck at its pressed alpha.
+		# The press tween has to be killed first or it just repaints it.
+		if boost_alpha_tween != null and boost_alpha_tween.is_valid():
+			boost_alpha_tween.kill()
+		boost_button.modulate.a = BOOST_BUTTON_ALPHA
+		# ...and the same for the hold sound, which loops — dying or pausing
+		# with the button down would otherwise leave it droning forever.
+		if fx_sound_boost != null:
+			fx_sound_boost.stop()
 	if not paused:
 		if state == State.PLAYING:
 			_update_playing(delta)
@@ -4967,6 +4995,8 @@ func _apply_mode(mode: int) -> void:
 		pause_button.icon = load(MODE_PAUSE_ICON_PATH[mode])
 	if ResourceLoader.exists(MODE_MUTE_ICON_PATH[mode]):
 		mute_button.icon = load(MODE_MUTE_ICON_PATH[mode])
+	if ResourceLoader.exists(MODE_BOOST_ICON_PATH[mode]):
+		boost_button.icon = load(MODE_BOOST_ICON_PATH[mode])
 	# Re-run now that the icons are loaded: _ready lays the row out before
 	# any mode is applied, so it sizes off the HUD_BUTTON_SRC fallback.
 	_layout_hud_buttons()
@@ -5035,6 +5065,8 @@ func _reset_game() -> void:
 	flash_time = 0.0
 	gate_speed_boost_elapsed = -1.0
 	boost_button_held = false
+	if fx_sound_boost != null:
+		fx_sound_boost.stop()
 	boost_visual_blend = 0.0
 	boost_bar_elapsed = -1.0
 	boost_bar_flash_elapsed = -1.0
@@ -5160,10 +5192,28 @@ func _on_mute_pressed() -> void:
 # effect on the very next frame with no decay to unwind.
 func _on_boost_pressed() -> void:
 	boost_button_held = true
+	_tween_boost_alpha(BOOST_BUTTON_PRESSED_ALPHA)
+	if fx_sound_boost.stream != null:
+		fx_sound_boost.play()
 
 
 func _on_boost_released() -> void:
 	boost_button_held = false
+	_tween_boost_alpha(BOOST_BUTTON_ALPHA)
+	fx_sound_boost.stop()
+
+
+# modulate:a 만 민다 — 크기는 _animate_button_press/_release 가 따로 맡는다.
+#
+# 진행 중인 것은 먼저 죽인다. 빠르게 눌렀다 떼면 반대 방향 트윈이 겹쳐 서로
+# 덮어쓰고, 무엇보다 버튼이 숨을 때 알파를 되돌려도 살아남은 트윈이 다음
+# 프레임에 눌린 값으로 다시 칠해 버린다(_process 의 리셋 참고).
+func _tween_boost_alpha(alpha: float) -> void:
+	if boost_alpha_tween != null and boost_alpha_tween.is_valid():
+		boost_alpha_tween.kill()
+	boost_alpha_tween = create_tween()
+	boost_alpha_tween.tween_property(boost_button, "modulate:a", alpha, BUTTON_PRESS_ANIM_DURATION) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _animate_button_press(button: Button) -> void:
@@ -5439,7 +5489,11 @@ func _enable_stream_loop(stream: AudioStream) -> void:
 		# 다시 임포트해도 그대로다.
 		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		stream.loop_begin = 0
-		stream.loop_end = 0   # 0이면 끝까지
+		# loop_end 는 "끝까지"가 아니라 마지막 프레임 번호다. 0으로 두면 길이
+		# 0짜리 구간을 돌게 되어 재생이 첫 프레임에 그냥 끝난다. BGM 은 전부
+		# .ogg 라 위 갈래로 빠져서 이게 드러나지 않았고, 부스트 홀드 소리가
+		# 이 갈래를 처음 쓰면서 나왔다.
+		stream.loop_end = int(round(stream.get_length() * stream.mix_rate))
 
 
 func _on_bgm_finished(player: AudioStreamPlayer) -> void:
@@ -5594,30 +5648,6 @@ func _layout_hud_buttons() -> void:
 		view_size.x - BOOST_BUTTON_MARGIN - boost_size.x,
 		view_size.y - BOOST_BUTTON_MARGIN - boost_size.y))
 	boost_button.set_deferred("pivot_offset", boost_size * 0.5)
-	_style_boost_button(boost_size)
-
-
-# Round chip + label. Rebuilt whenever the button is laid out, because the
-# corner radius that turns the box into a circle is half the size — a
-# constant radius would go square again the moment the size changed.
-func _style_boost_button(button_size: Vector2) -> void:
-	var radius: int = int(round(minf(button_size.x, button_size.y) * 0.5))
-	for slot in ["normal", "hover", "focus", "disabled", "pressed"]:
-		var box := StyleBoxFlat.new()
-		box.bg_color = BOOST_BUTTON_FILL_PRESSED if slot == "pressed" else BOOST_BUTTON_FILL
-		box.border_color = BOOST_BUTTON_BORDER
-		box.set_border_width_all(BOOST_BUTTON_BORDER_WIDTH)
-		box.set_corner_radius_all(radius)
-		# Zero content margin: the label is centred by the Button itself, and
-		# the default theme's 4px padding would shrink the text inside an
-		# already tight circle.
-		box.set_content_margin_all(0.0)
-		boost_button.add_theme_stylebox_override(slot, box)
-	boost_button.add_theme_font_size_override("font_size", maxi(int(round(button_size.x * BOOST_BUTTON_FONT_FRAC)), 8))
-	for slot in ["font_color", "font_pressed_color", "font_hover_color"]:
-		boost_button.add_theme_color_override(slot, Color.WHITE)
-	if combo_font != null:
-		boost_button.add_theme_font_override("font", combo_font)
 
 
 # Called from HudCanvas._draw. Everything here draws onto `ci` (the HUD's
