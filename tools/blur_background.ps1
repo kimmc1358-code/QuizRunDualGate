@@ -278,15 +278,19 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 #
 # The floor is 0.3, where the kernel — built out to ceil(3*sigma) —
 # collapses to a near-delta and every near layer measures its raw sharpness
-# back, unchanged. 0.5 was the first setting above that and read too crisp
-# once the far layers came down; 0.8 keeps the near layers clearly the sharp
-# ones (SKY 1.58, JUNGLE 4.36, OCEAN 8.14 against far layers at 0.95-1.28)
-# while taking enough off the alpha edge that a cut-out's silhouette does not
-# sit on the far layer as a hard line.
+# back, unchanged. 0.9 lands SKY 1.47, JUNGLE 4.00, OCEAN 7.46 against far
+# layers at 1.08-1.48.
 #
-# Keep it well under every far sigma. -SelfTest warns if it creeps up to
-# meet one, because nothing else would notice the depth going flat again.
-$NearSigma = 0.8
+# SKY is what caps this. Its near layer is cloud, which arrives at 2.52 raw
+# — barely above where its far layer sits once blurred — so every step up
+# here eats the SKY pair's margin from one side while every step down on
+# SKY's far sigma eats it from the other. It is at 0.25 now, against 2.52
+# for JUNGLE and 6.38 for OCEAN. Push this much past 0.9 without giving SKY
+# back some far blur and that pair inverts; -SelfTest prints all three
+# margins and warns when one crosses, comparing measured sharpness rather
+# than sigma, because sigma predicts almost nothing across paintings this
+# different.
+$NearSigma = 0.9
 
 $ModeBackgrounds = @{
     sky = @(
@@ -294,31 +298,33 @@ $ModeBackgrounds = @{
         # 1.21x to fill the view, where every other layer is minified to
         # 0.81x — a factor of 1.5 in how far the same sigma spreads on
         # screen, which is exactly why Sharpness measures after resampling.
-        # 1.8 lands it at 1.13.
+        # 1.6 lands it at 1.21 — the lightest far layer of the three, and
+        # deliberately so: it is the only pair whose near layer cannot get
+        # much sharper, so its margin has to be bought on this side.
         #
         # The softening does not buy separation from the stone arches, which
         # share the SKY gate's white-and-gold-with-a-blue-gem look — an arch
         # this size still reads as an arch at any sigma that leaves the
         # mountains standing. That is a shape-and-palette problem and the fix
         # is in the art; this value is set for depth, not for hiding it.
-        @{ File = 'background_far';  Sigma = 1.8; CutOut = $false }
+        @{ File = 'background_far';  Sigma = 1.6; CutOut = $false }
         # Clouds, and only over the bottom half of the screen (0% coverage
         # above y=512 of 854, ~65% below). Softest raw near layer of the
-        # three (2.52), so it lands lowest of them too: 1.58. The narrowest
-        # far/near gap of any pair, but clouds have no more crispness to
-        # give — that is the subject, not the sigma.
+        # three (2.52), so it lands lowest of them too: 1.47. The narrowest
+        # far/near gap of any pair at 0.25, and clouds have no more
+        # crispness to give — that is the subject, not the sigma.
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     jungle = @(
         # By far the biggest sigma among the far layers, and it buys the
         # least: uniformly busy foliage has no flat areas to go quiet, so
-        # 3.2 only just reaches 1.28 where SKY and OCEAN get below it on
-        # roughly half that. The number is what the art costs to bring into
-        # the same band, not a judgement that this painting needed more.
-        @{ File = 'background_far';  Sigma = 3.2; CutOut = $false }
+        # 2.4 only just reaches 1.48 where SKY gets below it on 1.6. The
+        # number is what the art costs to reach the same band, not a
+        # judgement that this painting needed more.
+        @{ File = 'background_far';  Sigma = 2.4; CutOut = $false }
         # Busiest near layer of the three (raw 6.76), and the one that sits
         # most heavily over the play area — it covers 28% of the midriff and
-        # 79% of the bottom strip. Lands at 4.36. Watch this one first if the
+        # 79% of the bottom strip. Lands at 4.00. Watch this one first if the
         # foreground ever starts pulling the eye off the gates.
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
@@ -328,14 +334,15 @@ $ModeBackgrounds = @{
         # over the whole image, and this one is mostly flat blue water around
         # a few hard-outlined stone ruins: the flat majority drags the mean
         # down while the arch and the steps stay exactly as crisp to the eye.
-        # 1.8 already scores 1.15, level with SKY's far layer, and still
-        # shows a clearly drawn arch. 2.6 takes it to 0.95 — the lowest
-        # number in the table, and only there does the outlining actually lie
-        # down. Trust the composite over the figure here.
-        @{ File = 'background_far';  Sigma = 2.6; CutOut = $false }
+        # 1.8 scores 1.15, level with SKY, and still draws a clean arch; 2.6
+        # took it to 0.95, where the outlining finally lay down. 2.0 is the
+        # settled middle at 1.08 — softer than the figure alone would ask
+        # for, which is the standing correction for this row. Trust the
+        # composite over the figure here.
+        @{ File = 'background_far';  Sigma = 2.0; CutOut = $false }
         # Sharpest art in the project: coral and pillar detail put it at
         # 12.48 raw, nearly twice JUNGLE's near layer and five times SKY's.
-        # Lands at 8.14, far and away the crispest thing on screen behind the
+        # Lands at 7.46, far and away the crispest thing on screen behind the
         # gates — which is the point, but it is also the layer most likely to
         # want a second look in play, especially as the OCEAN gate ring is
         # coral-decorated too.
@@ -345,7 +352,7 @@ $ModeBackgrounds = @{
         # 시그마 1.1로, 배경 중에서는 제일 약하게 건다. 이 그림은 처음부터
         # 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다.
         #
-        # 근경이 없는 유일한 모드다. 그래서 1.63으로, 이제 원경들(0.95~1.28)
+        # 근경이 없는 유일한 모드다. 그래서 1.63으로, 이제 원경들(1.08~1.48)
         # 보다 또렷한 채로 남아 있다 — 앞에 겹칠 레이어가 없으니 뒤로 물러날
         # 이유도 없다. 나머지 셋과 나란히 놓고 비교할 값이 아니다.
         #
@@ -396,15 +403,31 @@ if ($Sharpness) {
 
 if ($SelfTest) {
     # The far/near relationship is the whole look, and nothing else would
-    # notice it inverting — the art would just quietly go flat again. Cheap
-    # to assert here, where both numbers live.
+    # notice it inverting — the art would just quietly go flat again.
+    #
+    # Compared on the committed files' sharpness, not on their sigmas. Sigma
+    # is a poor proxy for how these particular paintings land: OCEAN's near
+    # layer sits at 7.46 on 0.9 while SKY's sits at 1.47 on the same value,
+    # and JUNGLE's far layer needs 2.4 to reach where SKY's gets on 1.6. Only
+    # the measured result says whether the far layer is actually the softer
+    # one.
     foreach ($m in $ModeOrder) {
-        foreach ($row in (Get-Rows $m)) {
-            if (-not $row.CutOut -and $row.Sigma -le $NearSigma) {
-                Write-Host ("  WARN  {0}'s far layer ({1}) is blurred no harder than NearSigma ({2}) — the near layer is supposed to be the sharp one" -f $m, $row.Sigma, $NearSigma)
-            }
+        $rows = Get-Rows $m
+        $farRow  = $rows | Where-Object { -not $_.CutOut } | Select-Object -First 1
+        $nearRow = $rows | Where-Object { $_.CutOut } | Select-Object -First 1
+        if ($null -eq $farRow -or $null -eq $nearRow) { continue }
+        $farOut  = (Get-Paths $m $farRow).Out
+        $nearOut = (Get-Paths $m $nearRow).Out
+        if (-not ([System.IO.File]::Exists($farOut) -and [System.IO.File]::Exists($nearOut))) { continue }
+        $farSharp  = [BgBlur]::Sharpness($farOut, $ViewHeight)
+        $nearSharp = [BgBlur]::Sharpness($nearOut, $ViewHeight)
+        if ($farSharp -ge $nearSharp) {
+            Write-Host ("  WARN  {0}: far layer measures {1:N2} against near {2:N2} — the far layer is supposed to be the softer one, and this pair has gone flat" -f $m, $farSharp, $nearSharp)
+        } else {
+            Write-Host ("  {0,-7} far {1,5:N2} < near {2,5:N2}   margin {3,5:N2}" -f $m, $farSharp, $nearSharp, ($nearSharp - $farSharp))
         }
     }
+    Write-Host ""
     Write-Host "Self-test: re-deriving each committed blur and comparing to the file on disk."
     $tmp = [System.IO.Path]::GetTempPath()
     foreach ($m in $ModeOrder) {

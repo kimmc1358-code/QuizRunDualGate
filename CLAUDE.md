@@ -137,12 +137,18 @@ is depth of field the way a camera does it, and it is deliberate — the pairs
 first shipped the other way round, with the near layer as the softest thing
 on screen, and it flattened the parallax, because softness is the main cue
 telling the eye which layer is further away. Far layers are matched onto a
-common softness (0.95–1.28); every near layer shares `$NearSigma` (0.8) so
-each painting keeps its own crispness instead (1.58–8.14). Keep
-`$NearSigma` well under every far sigma — `-SelfTest` warns if it creeps up
-to meet one, since nothing else would notice the depth going flat. The floor
-is 0.3: the kernel runs to `ceil(3*sigma)`, so below that it collapses to a
-near-delta and does nothing at all.
+common softness (1.08–1.48); every near layer shares `$NearSigma` (0.9) so
+each painting keeps its own crispness instead (1.47–7.46).
+
+`-SelfTest` prints each pair's far/near margin and warns when one inverts,
+comparing **measured sharpness, not sigma** — sigma predicts almost nothing
+across paintings this different (OCEAN's near layer sits at 7.46 on the same
+0.9 that leaves SKY's at 1.47). **SKY is the pair that will invert first**,
+at a margin of 0.25 against JUNGLE's 2.52 and OCEAN's 6.38: its near layer is
+cloud, which arrives barely sharper than its own far layer, so raising
+`$NearSigma` and lightening SKY's far sigma both eat the same margin. The
+floor on `$NearSigma` is 0.3, where the kernel — `ceil(3*sigma)` — collapses
+to a near-delta and does nothing at all.
 
 Far-layer strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
