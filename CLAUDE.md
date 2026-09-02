@@ -132,15 +132,17 @@ dark fringe. `blur_background.ps1` takes a per-file `CutOut` flag for this:
 no alpha edge to soften), `$true` premultiplies, blurs all four channels,
 then divides alpha back out.
 
-**Far layers are blurred; near layers are barely touched.** That is depth of
-field the way a camera does it, and it is deliberate — the pairs first
-shipped the other way round, with the near layer as the softest thing on
-screen, and it flattened the parallax, because softness is the main cue
-telling the eye which layer is further away. Every near layer shares
-`$NearSigma` (0.5) so each painting keeps its own crispness; only the far
-layers are matched onto a common softness. 0.5 is also the floor — the
-kernel runs to `ceil(3*sigma)`, so at 0.3 it collapses to a near-delta and
-does nothing at all.
+**Far layers are blurred hard; near layers are only lightly touched.** That
+is depth of field the way a camera does it, and it is deliberate — the pairs
+first shipped the other way round, with the near layer as the softest thing
+on screen, and it flattened the parallax, because softness is the main cue
+telling the eye which layer is further away. Far layers are matched onto a
+common softness (0.95–1.28); every near layer shares `$NearSigma` (0.8) so
+each painting keeps its own crispness instead (1.58–8.14). Keep
+`$NearSigma` well under every far sigma — `-SelfTest` warns if it creeps up
+to meet one, since nothing else would notice the depth going flat. The floor
+is 0.3: the kernel runs to `ceil(3*sigma)`, so below that it collapses to a
+near-delta and does nothing at all.
 
 Far-layer strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed

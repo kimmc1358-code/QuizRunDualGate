@@ -259,6 +259,7 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 # record of how each file was made — the PNGs themselves do not say, so a
 # bare re-run is what would otherwise quietly flatten a deliberate value
 # back to a shared one.
+
 # Every near layer's sigma, shared rather than per-mode on purpose.
 #
 # The far layers are blurred and the near layers are only just touched. That
@@ -275,12 +276,17 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 # layers are matched would mean blurring OCEAN's near layer five times
 # harder than SKY's, which is exactly what was just undone.
 #
-# 0.5 is the lightest value that does anything: the kernel is built out to
-# ceil(3*sigma), so at 0.3 it collapses to a near-delta and every near layer
-# measures its raw sharpness back, unchanged. Half the far layers' sigma,
-# and enough to take the alpha edge off a cut-out so its silhouette does not
+# The floor is 0.3, where the kernel — built out to ceil(3*sigma) —
+# collapses to a near-delta and every near layer measures its raw sharpness
+# back, unchanged. 0.5 was the first setting above that and read too crisp
+# once the far layers came down; 0.8 keeps the near layers clearly the sharp
+# ones (SKY 1.58, JUNGLE 4.36, OCEAN 8.14 against far layers at 0.95-1.28)
+# while taking enough off the alpha edge that a cut-out's silhouette does not
 # sit on the far layer as a hard line.
-$NearSigma = 0.5
+#
+# Keep it well under every far sigma. -SelfTest warns if it creeps up to
+# meet one, because nothing else would notice the depth going flat again.
+$NearSigma = 0.8
 
 $ModeBackgrounds = @{
     sky = @(
@@ -288,64 +294,60 @@ $ModeBackgrounds = @{
         # 1.21x to fill the view, where every other layer is minified to
         # 0.81x — a factor of 1.5 in how far the same sigma spreads on
         # screen, which is exactly why Sharpness measures after resampling.
-        # 1.0 lands it at 1.70, level with the single background it replaces
-        # (1.76) and a touch under it for the near layer now on top.
+        # 1.8 lands it at 1.13.
         #
-        # Do not reach for a bigger number to hide the stone arches, which
-        # share the SKY gate's white-and-gold-with-a-blue-gem look. Blur does
-        # not fix that: at 1.6 the whole painting is softer than anything
-        # this project ships and the arch still reads as an arch. It is a
-        # shape-and-palette problem, so the fix is in the art.
-        @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
+        # The softening does not buy separation from the stone arches, which
+        # share the SKY gate's white-and-gold-with-a-blue-gem look — an arch
+        # this size still reads as an arch at any sigma that leaves the
+        # mountains standing. That is a shape-and-palette problem and the fix
+        # is in the art; this value is set for depth, not for hiding it.
+        @{ File = 'background_far';  Sigma = 1.8; CutOut = $false }
         # Clouds, and only over the bottom half of the screen (0% coverage
         # above y=512 of 854, ~65% below). Softest raw near layer of the
-        # three (2.52), so NEAR_SIGMA barely moves it: 2.32.
+        # three (2.52), so it lands lowest of them too: 1.58. The narrowest
+        # far/near gap of any pair, but clouds have no more crispness to
+        # give — that is the subject, not the sigma.
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     jungle = @(
-        # Two layers, so neither can be as strong as a lone background would
-        # be. 1.2 lands the far layer at sharpness 2.53, just under the
-        # sharpest of the retired single backgrounds (OCEAN's, at 2.71) — it
-        # gives up a little more than it would alone because the near layer
-        # now stacks its own detail on top. It needs *less* sigma than the
-        # 1.55 those singles used, not more: the painting is already hazy.
-        @{ File = 'background_far';  Sigma = 1.2; CutOut = $false }
+        # By far the biggest sigma among the far layers, and it buys the
+        # least: uniformly busy foliage has no flat areas to go quiet, so
+        # 3.2 only just reaches 1.28 where SKY and OCEAN get below it on
+        # roughly half that. The number is what the art costs to bring into
+        # the same band, not a judgement that this painting needed more.
+        @{ File = 'background_far';  Sigma = 3.2; CutOut = $false }
         # Busiest near layer of the three (raw 6.76), and the one that sits
         # most heavily over the play area — it covers 28% of the midriff and
-        # 79% of the bottom strip. NEAR_SIGMA leaves it at 5.85. Watch this
-        # one first if the foreground ever starts pulling the eye off the
-        # gates.
+        # 79% of the bottom strip. Lands at 4.36. Watch this one first if the
+        # foreground ever starts pulling the eye off the gates.
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     ocean = @(
-        # The painting arrives gentle — an underwater scene carries its own
-        # haze, so raw it is already at 3.16 where JUNGLE's far layer was
-        # 4.26 — and 0.6 would be enough to land it at 2.49, level with
-        # JUNGLE's far layer and just under what OCEAN shipped alone (2.71).
-        #
-        # 1.0 anyway, landing at 1.72 beside SKY's far layer (1.70, the other
-        # already-hazy source). This is the one place the metric had to be
-        # overruled, and it is worth knowing why: mean |Laplacian| averages
+        # The row where the metric has to be read with suspicion, and the
+        # reason the docstring calls it a proxy. Mean |Laplacian| averages
         # over the whole image, and this one is mostly flat blue water around
-        # a few hard-outlined stone structures. The flat majority drags the
-        # mean down while the ruins stay every bit as crisp to the eye —
-        # 0.6 and 1.0 composite almost identically on screen despite reading
-        # 2.49 against 1.72. When the extra softness is that cheap, spend it.
-        @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
+        # a few hard-outlined stone ruins: the flat majority drags the mean
+        # down while the arch and the steps stay exactly as crisp to the eye.
+        # 1.8 already scores 1.15, level with SKY's far layer, and still
+        # shows a clearly drawn arch. 2.6 takes it to 0.95 — the lowest
+        # number in the table, and only there does the outlining actually lie
+        # down. Trust the composite over the figure here.
+        @{ File = 'background_far';  Sigma = 2.6; CutOut = $false }
         # Sharpest art in the project: coral and pillar detail put it at
         # 12.48 raw, nearly twice JUNGLE's near layer and five times SKY's.
-        # NEAR_SIGMA leaves it at 10.73, far and away the crispest thing on
-        # screen behind the gates — which is the point, but it is also the
-        # layer most likely to want a second look in play.
+        # Lands at 8.14, far and away the crispest thing on screen behind the
+        # gates — which is the point, but it is also the layer most likely to
+        # want a second look in play, especially as the OCEAN gate ring is
+        # coral-decorated too.
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     dream = @(
-        # 시그마 1.1로, 원경 중에서는 제일 약하게 건다. 이 그림은 처음부터
-        # 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다. 그러고도 1.63으로
-        # 앉는 건 원본이 그만큼 부드럽다는 뜻이다.
+        # 시그마 1.1로, 배경 중에서는 제일 약하게 건다. 이 그림은 처음부터
+        # 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다.
         #
-        # 근경이 없는 유일한 모드이기도 하다. 나머지 셋은 전부 원경/근경 쌍이라,
-        # 이 값은 위에서 쌍을 맞출 때 쓴 기준점 중 하나다.
+        # 근경이 없는 유일한 모드다. 그래서 1.63으로, 이제 원경들(0.95~1.28)
+        # 보다 또렷한 채로 남아 있다 — 앞에 겹칠 레이어가 없으니 뒤로 물러날
+        # 이유도 없다. 나머지 셋과 나란히 놓고 비교할 값이 아니다.
         #
         # 이 줄은 예전에 background_single(v1)을 3.5로 가리키고 있었다. 게임이
         # 읽는 건 v2 쪽이라, 자체 테스트는 아무도 쓰지 않는 파일만 초록으로
