@@ -786,8 +786,7 @@ const MODE_BG_TEXTURE_PATH := [
 	# _blur variants — a pre-blurred copy of the same art (no runtime blur
 	# shader in this custom-draw setup), so the background reads as soft/
 	# out-of-focus instead of competing for detail with the gate/character.
-	# tools/bake_background.ps1 bakes these — blur, and the colour grading the
-	# custom-draw setup has no shader for — and records every value.
+	# tools/blur_background.ps1 bakes these and records each file's sigma.
 	"res://assets/backgrounds/sky_world/background_far_blur.png",
 	"res://assets/backgrounds/jungle_world/background_far_blur.png",
 	"res://assets/backgrounds/ocean_world/background_far_blur.png",
@@ -824,14 +823,6 @@ const MODE_BG_NEAR_TEXTURE_PATH := [
 # with the gate/flag/character sitting on top of it — 1.0 = full original
 # brightness, lower recedes it further into the background.
 @export_range(0.3, 1.0, 0.01) var bg_brightness: float = 0.95
-# The near layer alone is drawn slightly transparent, so the foreground it
-# frames stays the loudest thing on screen. This is the one part of the
-# background grading that is NOT baked into the PNG: a flat alpha needs no
-# shader, so draw_texture_rect's own modulate does it and the value stays
-# tunable here. Everything else — desaturation, contrast, the saturation
-# and value ceilings — is baked by tools/bake_background.ps1, which cannot
-# be expressed as a modulate.
-@export_range(0.5, 1.0, 0.01) var bg_near_alpha: float = 0.88
 
 @export_group("")  # closes "Sky Background" so every @export below lands back in the default Inspector category
 
@@ -2720,14 +2711,14 @@ func _update_sky_background(delta: float) -> void:
 
 
 func _draw_sky_background(view_size: Vector2) -> void:
-	_draw_bg_layer(bg_texture, bg_scroll_x, view_size, 1.0)
+	_draw_bg_layer(bg_texture, bg_scroll_x, view_size)
 	# Second, so its foliage and pillars frame what the far layer paints
 	# through its transparent middle. Both still draw behind the gate zone —
 	# see the call site in _draw().
-	_draw_bg_layer(bg_near_texture, bg_near_scroll_x, view_size, bg_near_alpha)
+	_draw_bg_layer(bg_near_texture, bg_near_scroll_x, view_size)
 
 
-func _draw_bg_layer(tex: Texture2D, scroll_x: float, view_size: Vector2, alpha: float) -> void:
+func _draw_bg_layer(tex: Texture2D, scroll_x: float, view_size: Vector2) -> void:
 	if tex == null:
 		return
 	var tex_size := Vector2(tex.get_width(), tex.get_height())
@@ -2740,7 +2731,7 @@ func _draw_bg_layer(tex: Texture2D, scroll_x: float, view_size: Vector2, alpha: 
 	# caused before it was guarded.
 	if tile_w <= 1.0:
 		return
-	var tint := Color(bg_brightness, bg_brightness, bg_brightness, alpha)
+	var tint := Color(bg_brightness, bg_brightness, bg_brightness, 1.0)
 	var x: float = -fposmod(scroll_x, tile_w)
 	while x < view_size.x:
 		draw_texture_rect(tex, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
