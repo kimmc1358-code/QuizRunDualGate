@@ -1207,9 +1207,22 @@ const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0, -4.0]
 # going. It also means the transition is per-particle rather than the whole
 # field snapping over at once.
 #
-# Per-mode, because whether it suits the art is a separate question for each
-# — bubbles and leaves may well want to keep tumbling. SKY only for now.
-const TRAIL_BOOST_STREAK_PER_MODE := [true, false, false, false]  # SKY, JUNGLE, OCEAN, DREAM
+# All four now. It shipped as SKY-only to see whether it suited the art
+# before committing the rest, and it does; the flags stay per-mode so one
+# can be pulled back out without touching anything else, the same way
+# TRAIL_ENABLED_PER_MODE is written.
+#
+# OCEAN is the one that changes most, and it is worth knowing why before
+# judging it. Its bubbles rise at -26px/s, the strongest drift of any mode,
+# so its idle trail scatters over 22.6px of height where SKY's covers 4.5.
+# A streak flattens all of them to about the same 1.2-1.9px, which means
+# OCEAN gives up the most character for it.
+#
+# DREAM draws the heaviest line: its particles are 11-19px against everyone
+# else's 7-13, so at boost_streak_stretch they are 52-77px long rather than
+# 32-58, and they overlap into something noticeably thicker. It also steps
+# through four colours, so its streak is a rainbow rather than one hue.
+const TRAIL_BOOST_STREAK_PER_MODE := [true, true, true, true]  # SKY, JUNGLE, OCEAN, DREAM
 # NOT given any extra speed of its own, which was the first thing tried and
 # is worth recording as a dead end. PLAYER_X is 130 on a 480-wide screen and
 # the spawn point sits 30px behind that, so a streak has 100px of room
