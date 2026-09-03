@@ -451,7 +451,20 @@ const MODE_BOOST_GLOW_COLOR := [
 	Color(1.60, 1.32, 0.30),  # SKY — yellow
 	Color(0.38, 1.50, 0.45),  # JUNGLE — green
 	Color(0.32, 0.80, 1.65),  # OCEAN — blue
-	Color(1.60, 0.62, 1.15),  # DREAM — pink
+	# DREAM — violet, and it is the one row that cannot lean on the
+	# overexposure above. Its background is the only bright one: mean luma
+	# 0.85 against 0.34-0.63 for the other three, so adding light to it
+	# barely moves anything. The pink this started as scored 0.035 of
+	# separation from that backdrop where the other modes' colours have most
+	# of the value range to work with; being pink against a pale pink sky,
+	# it was invisible.
+	#
+	# So this one separates by pulling R and G DOWN rather than by pushing
+	# everything up, and only B stays over 1.0 — enough to still read as
+	# light instead of a shadow. Lands at 0.083, 2.4x the pink, at hue 270
+	# which is violet proper rather than the blue 262 or magenta 284 that
+	# scored either side of it.
+	Color(0.78, 0.18, 1.40),
 ]
 # Size and strength are @exports rather than consts because they are the two
 # that have to be settled by eye, and headless cannot see the screen: the
