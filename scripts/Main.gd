@@ -445,17 +445,22 @@ const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at
 const BOOST_BURST_DIR := "res://assets/fx/boost_burst/"
 const BOOST_BURST_FILE_PER_MODE := ["boost_effect_sky.png", "boost_effect_jungle.png", "boost_effect_ocean.png", "boost_effect_dream.png"]
 const BOOST_BURST_SHEET_GRID := Vector2i(6, 1)
-# Of PLAYER_VISUAL_SIZE, and deliberately NOT of the character's own
-# per-mode scale. The art's ring already grows and thins across its own
-# frames, so nothing here animates scale — 2.1 just sizes the widest frame
-# to read as bursting past a 100px character rather than sitting on it.
-const BOOST_BURST_SIZE_SCALE := 2.1
 # Fraction of the animation after which it eases to nothing. The last frames
 # are already sparse, so this only has to carry the very end; starting it
 # earlier dims the ring while it is still the thing being looked at.
 const BOOST_BURST_FADE_START := 0.55
 
 @export_group("Boost Burst")
+# Of PLAYER_VISUAL_SIZE, and deliberately NOT of the character's own
+# per-mode scale — that is what kept the same effect a different size in
+# each mode. The art's ring already grows and thins across its own frames,
+# so nothing here animates scale.
+#
+# Halved from the 2.1 this shipped at, which drew the ring at 210px on a
+# 480px-wide screen — nearly half the width, and read as an explosion the
+# character happened to be inside rather than something it threw off. At
+# 1.05 the ring lands close to the character's own 100px.
+@export_range(0.4, 3.0, 0.05) var boost_burst_size_scale: float = 1.05
 # Whole animation, seconds. 6 frames in 0.28s is ~21fps, which is the fastest
 # this art can run and still be read as a ring rather than a single blink.
 @export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
@@ -4525,7 +4530,7 @@ func _draw_boost_burst() -> void:
 	# mode (0.92 to 1.20) and letting the burst follow made the same effect a
 	# different size in each one; it is the boost's own art, not part of the
 	# body.
-	var size: Vector2 = PLAYER_VISUAL_SIZE * BOOST_BURST_SIZE_SCALE
+	var size: Vector2 = PLAYER_VISUAL_SIZE * boost_burst_size_scale
 	# boost_burst_pos, not the character's: the burst was left behind at the
 	# spot it went off and the character flies out of it. See _update_fx.
 	draw_texture_rect(frame, Rect2(boost_burst_pos - size * 0.5, size), false,
