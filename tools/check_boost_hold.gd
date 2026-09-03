@@ -13,15 +13,14 @@ extends SceneTree
 # 2번이 신호가 아니라 손으로 푸는 길이라, 여기가 조용히 어긋나기 쉽다. 그
 # 안에서도 죽는 길과 멈추는 길은 다르게 굴어야 해서 따로 본다 — 일시정지는
 # _update_fx 가 멈추므로 겉모습이 그대로 얼어 있는 것이 맞고, 게임 오버는
-# 멈추지 않으므로 스스로 사그라들어야 한다.
+# 멈추지 않으므로 스스로 끝나야 한다.
+#
+# 프레스 버스트(BOOST_BURST_*)도 여기서 본다. 홀드 안에 사는 원샷이라,
+# 버튼을 계속 누르고 있어도 스스로 끝나야 하는 쪽이 조용히 끈적해지기 쉽다.
 #
 # 알파도 같이 본다. 누를 때 트윈으로 진해지는데, 2번에서 알파만 되돌리고
 # 트윈을 안 죽이면 살아남은 트윈이 다음 프레임에 도로 눌린 값으로 칠한다 —
 # 실제로 그렇게 새 버튼이 눌린 채로 돌아온 적이 있다.
-#
-# 캐릭터 글로우(BOOST_GLOW_*)도 여기서 본다. boost_visual_blend 를 타므로
-# 따로 정리할 것이 없어야 맞는데, "없어야 맞다"가 바로 조용히 어긋나는
-# 조건이다. 세 길 모두에서 후광이 실제로 0 으로 내려가는지 확인한다.
 #
 # 실제 Main.tscn 을 띄워 게임 자기 함수를 부른다(다른 체커와 같은 규칙).
 
@@ -68,20 +67,7 @@ func _run() -> void:
 	_check("still playing past the clip length", sfx.playing, true)
 	sfx.stop()
 
-	print("\n0. glow art and per-mode colours")
-	_check("glow texture loaded", main.get("character_glow_texture") != null, true)
-	var glow_colors: Array = main.get("MODE_BOOST_GLOW_COLOR")
-	_check("one colour per mode", glow_colors.size(), 4)
-	# 네 색이 서로 달라야 한다. 배열을 복사해 붙이다 한 줄이 중복되면 두 모드가
-	# 같은 후광을 쓰게 되는데, 화면에서는 그 두 모드를 나란히 볼 일이 없어
-	# 눈으로는 거의 잡히지 않는다.
-	for i in range(glow_colors.size()):
-		for j in range(i + 1, glow_colors.size()):
-			if glow_colors[i] == glow_colors[j]:
-				_check("mode %d and %d have different glow colours" % [i, j], false, true)
-	_check("dark before any press", main.call("_boost_glow_alpha_and_scale").x, 0.0)
-
-	print("\n0b. burst art, every mode")
+	print("\n0. burst art, every mode")
 	# 여섯 칸이 다 살아 있어야 한다. _slice_spritesheet 는 빈 칸을 버리므로,
 	# 시트를 잘못 잘랐거나 한 칸이 비면 조용히 다섯 장짜리 애니메이션이 된다.
 	for m in range(4):
@@ -93,11 +79,20 @@ func _run() -> void:
 	print("\n1. button_up")
 	await _arm(main)
 	main.call("_on_boost_pressed")
+	# 버스트는 터진 자리에 남아 월드를 타고 흘러간다 — 캐릭터에 붙어 있으면
+	# 세상이 지나가는 동안 링만 고정돼 스티커처럼 보인다.
+	#
+	# 시작점은 프레임을 돌리기 전에 읽어야 한다. _update_fx 가 한 번만 돌아도
+	# 이미 왼쪽으로 밀려 있어서, 그 뒤에 PLAYER_X 와 비교하면 항상 어긋난다.
+	var burst_x0: float = main.get("boost_burst_pos").x
+	_check("burst starts at the character", is_equal_approx(burst_x0, main.get("PLAYER_X")), true)
 	await process_frame
 	_check("press -> playing", sfx.playing, true)
 	_check("press -> held", main.get("boost_button_held"), true)
-	_check("press -> glow lit", main.call("_boost_glow_alpha_and_scale").x > 0.0, true)
 	_check("press -> burst playing", main.get("boost_burst_elapsed") >= 0.0, true)
+	for i in 12:
+		await process_frame
+	_check("burst rides the world left", main.get("boost_burst_pos").x < burst_x0, true)
 	# 버스트는 홀드가 아니라 원샷이다. 버튼을 계속 누르고 있어도 스스로
 	# 끝나야 하고, 그 뒤에도 -1 로 남아 있어야 한다.
 	await _settle(main.get("boost_burst_duration"))
@@ -107,10 +102,6 @@ func _run() -> void:
 	await process_frame
 	_check("release -> stopped", sfx.playing, false)
 	_check("release -> not held", main.get("boost_button_held"), false)
-	# 알파와 달리 후광은 트윈이 아니라 blend 를 타고 사그라든다. 그래서 놓은
-	# 직후가 아니라 BOOST_VISUAL_BLEND_OUT 이 지난 뒤에 본다.
-	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
-	_check("release -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	print("\n2. hidden mid-press (death / pause)")
 	await _arm(main)
@@ -123,27 +114,18 @@ func _run() -> void:
 	_check("hidden -> stopped", sfx.playing, false)
 	_check("hidden -> not held", main.get("boost_button_held"), false)
 	_check("hidden -> alpha back to idle", is_equal_approx(button.modulate.a, idle_alpha), true)
-	# 여기서 후광이 아직 켜져 있는 것이 맞다. _update_fx 는 `if not paused` 안에
-	# 있어서 멈춘 화면에서는 blend 도 멈춘다 — 세상이 정지한 채 후광만 사그라
-	# 들면 그게 더 이상하다. 확인할 것은 홀드가 풀렸다는 것(위에서 봤다)과,
-	# 다시 풀렸을 때 남은 것 없이 빠진다는 것이다.
-	main.set("paused", false)
-	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
-	_check("unpaused -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	print("\n2b. died mid-press")
 	await _arm(main)
 	main.call("_on_boost_pressed")
 	await process_frame
-	_check("press -> glow lit", main.call("_boost_glow_alpha_and_scale").x > 0.0, true)
 	# 죽는 길은 일시정지와 다르다. 멈추지 않으므로 _update_fx 가 계속 돌고,
-	# 후광은 스스로 사그라들어야 한다. Main 의 _update_fx 가 _update_playing
-	# 바깥에 있는 이유가 이것이다.
+	# 버스트도 스스로 끝난다. Main 의 _update_fx 가 _update_playing 바깥에
+	# 있는 이유가 이것이다.
 	main.set("state", 4)  # State.GAMEOVER
 	main.call("_apply_screen_visibility")
 	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
 	_check("game over -> not held", main.get("boost_button_held"), false)
-	_check("game over -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	print("\n3. _reset_game")
 	await _arm(main)
@@ -153,11 +135,9 @@ func _run() -> void:
 	main.call("_reset_game")
 	await process_frame
 	_check("reset -> stopped", sfx.playing, false)
-	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
-	_check("reset -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	if fails == 0:
-		print("\nPASS — the hold and its glow release cleanly on every path")
+		print("\nPASS — the hold releases cleanly on every path")
 	else:
 		print("\nFAIL (%d)" % fails)
 	quit(1 if fails > 0 else 0)
