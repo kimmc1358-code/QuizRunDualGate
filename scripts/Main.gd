@@ -1127,6 +1127,9 @@ const FX_SPEED_LINE_WHITE := Color(1.0, 1.0, 1.0)
 # gate pass's speed boost stretches the trail out for free — see
 # _gate_speed_boost_multiplier.
 #
+# While the boost button is held this stops being a wake and becomes speed
+# lines instead — see the TRAIL_BOOST_STREAK_* block below.
+#
 # Deliberately sparse: the character is small and the quiz gate is what
 # the player actually has to read, so a steady plume would just dirty the
 # screen. The baseline holds 3-4 tiny particles alive at a time, and the
@@ -1184,6 +1187,71 @@ const TRAIL_SPIN_RANGE := Vector2(-0.9, 0.9) # radians/s
 # pushes them left read as a shark actually swimming forward. SKY drifts
 # up a hair so sparkles hang; JUNGLE settles, like shaken-loose leaves.
 const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0, -4.0]
+
+# --- Boost streak: while the button is held, the trail stops being a wake
+# that follows the character and becomes speed lines shooting straight back
+# from it.
+#
+# The baseline trail already rides the faster world during a boost, which
+# spaces the particles out — but spacing alone did not read as speed,
+# because three other things were still saying "wake". Each particle carries
+# a random +/-10px/s of vertical wander plus a slice of player_vel, so the
+# stream scattered; each one spawns with a random tilt and a slow spin, so
+# it read as tumbling debris; and the sprite stayed a symmetric 4-point
+# star, which has no direction in it at all. This block turns off all three
+# and stretches the star along its travel instead.
+#
+# Baked per particle at spawn from boost_visual_blend (see the "streak"
+# field), not read live: a particle launched during a boost should keep
+# streaking after the button comes up, the same way a thrown thing keeps
+# going. It also means the transition is per-particle rather than the whole
+# field snapping over at once.
+#
+# Per-mode, because whether it suits the art is a separate question for each
+# — bubbles and leaves may well want to keep tumbling. SKY only for now.
+const TRAIL_BOOST_STREAK_PER_MODE := [true, false, false, false]  # SKY, JUNGLE, OCEAN, DREAM
+# NOT given any extra speed of its own, which was the first thing tried and
+# is worth recording as a dead end. PLAYER_X is 130 on a 480-wide screen and
+# the spawn point sits 30px behind that, so a streak has 100px of room
+# before it is culled at the left edge — there is nowhere for a longer trail
+# to go. Measured: riding the boosted world alone (260px/s) keeps a particle
+# on screen 0.38s, and adding 200px/s of its own cut that to 0.26s, which
+# left FEWER alive at once and a shorter line, not a longer one. The world
+# scroll is already carrying them away from the character; what was missing
+# was direction in the sprite, below.
+# Squash across the direction of travel. Pairs with boost_streak_stretch
+# below: stretched along X and thinned on Y is the whole reason a symmetric
+# 4-point star can read as a speed line. Rotation and spin are killed to 0
+# in step with it — a stretched star that is also tilted and turning reads
+# as a spinning blade rather than a streak.
+const TRAIL_BOOST_STREAK_SQUASH := 0.38
+# Spawn scatter is redistributed rather than removed: collapsed on Y so the
+# particles share one line, widened on X so they populate its length
+# immediately instead of stacking on the spawn point and only spreading as
+# they travel.
+const TRAIL_BOOST_STREAK_Y_JITTER_SCALE := 0.18
+const TRAIL_BOOST_STREAK_X_JITTER := 26.0
+# Longer-lived — though during a boost this changes the FADE, not the
+# lifespan. Position culls a streak at 0.38s, well inside even the base
+# 0.5-0.8s lifetime, so what the scale actually buys is a slower alpha ramp:
+# the streak is still at ~0.87 alpha when it reaches the left edge instead
+# of ~0.66, which keeps the line even along its length rather than dimming
+# toward the tail. A speed line wants to be uniform.
+const TRAIL_BOOST_STREAK_LIFETIME_SCALE := 1.5
+
+@export_group("Boost Streak")
+# How far each particle is stretched along its travel. These are 7-13px
+# sparkles, so this is what decides whether the streak reads as a bold line
+# or a row of specks: at 4.5 a particle draws 32-59px long, comfortably
+# longer than the ~12px gap between spawns, so they overlap into something
+# continuous rather than dotted.
+@export_range(1.0, 8.0, 0.1) var boost_streak_stretch: float = 4.5
+# Emission multiplier while streaking, on top of the BOOST_TRAIL_INTERVAL_SCALE
+# every mode already gets. Density is the other half of "continuous": with
+# only 100px of room behind the character, a bolder streak has to come from
+# packing that space rather than extending it.
+@export_range(1.0, 4.0, 0.1) var boost_streak_density: float = 2.0
+@export_group("")  # closes "Boost Streak"
 # ---- Shared sparkle art ----
 # One sheet, assets/fx/fx_small_N.png, feeds BOTH the trail above and the
 # gate-pass burst below. Four rows, one per colour; six shapes across
@@ -4630,6 +4698,11 @@ func _update_bird_trail(delta: float) -> void:
 	# rather than just stretching out — the particles already ride the faster
 	# world, which spaces them further apart on its own.
 	var spawn_interval: float = TRAIL_SPAWN_INTERVAL * lerpf(1.0, BOOST_TRAIL_INTERVAL_SCALE, boost_visual_blend)
+	# Streak modes pack it tighter still — see boost_streak_density. Applied
+	# here rather than baked per particle because it governs emission, not the
+	# particle itself.
+	if TRAIL_BOOST_STREAK_PER_MODE[current_mode]:
+		spawn_interval /= lerpf(1.0, boost_streak_density, boost_visual_blend)
 	while trail_spawn_timer >= spawn_interval:
 		trail_spawn_timer -= spawn_interval
 		_spawn_trail_particle()
@@ -4652,9 +4725,14 @@ func _spawn_trail_burst() -> void:
 
 func _spawn_trail_particle(size_scale: float = 1.0, jitter: float = TRAIL_ORIGIN_JITTER) -> void:
 	var size_range: Vector2 = TRAIL_SIZE_RANGE_PER_MODE[current_mode] * size_scale
+	# 0 = the usual tumbling wake, 1 = a speed line. Frozen here rather than
+	# read at draw time — see the TRAIL_BOOST_STREAK_* block.
+	var streak: float = boost_visual_blend if TRAIL_BOOST_STREAK_PER_MODE[current_mode] else 0.0
+	var jitter_x: float = lerpf(jitter, maxf(jitter, TRAIL_BOOST_STREAK_X_JITTER), streak)
+	var jitter_y: float = jitter * lerpf(1.0, TRAIL_BOOST_STREAK_Y_JITTER_SCALE, streak)
 	var origin := Vector2(
-		PLAYER_X + PLAYER_VISUAL_SIZE.x * TRAIL_ORIGIN_FRAC.x + randf_range(-jitter, jitter),
-		player_y + PLAYER_VISUAL_SIZE.y * TRAIL_ORIGIN_FRAC.y + randf_range(-jitter, jitter))
+		PLAYER_X + PLAYER_VISUAL_SIZE.x * TRAIL_ORIGIN_FRAC.x + randf_range(-jitter_x, jitter_x),
+		player_y + PLAYER_VISUAL_SIZE.y * TRAIL_ORIGIN_FRAC.y + randf_range(-jitter_y, jitter_y))
 	# One colour step per particle, and the cursor is never reset between
 	# spawns: that is what turns DREAM's four colours into a rainbow that
 	# keeps advancing, rather than a random pick that repeats itself. The
@@ -4662,18 +4740,26 @@ func _spawn_trail_particle(size_scale: float = 1.0, jitter: float = TRAIL_ORIGIN
 	# no-op for them.
 	var color_set: Array = trail_texture_sets[trail_color_cursor % trail_texture_sets.size()]
 	trail_color_cursor += 1
+	# Per-mode drift (bubbles rise, leaves settle) plus a little of the
+	# character's own vertical motion, so a hard dive throws the trail
+	# downward instead of leaving it hanging level. A streak eases all of
+	# that to zero — vertical wander is exactly what stops a stream of
+	# particles reading as one line.
+	var drift_y: float = TRAIL_DRIFT_Y_PER_MODE[current_mode] + player_vel * TRAIL_INHERIT_VEL_Y \
+			+ randf_range(TRAIL_DRIFT_Y_RANGE.x, TRAIL_DRIFT_Y_RANGE.y)
 	trail_particles.append({
 		"pos": origin,
-		# Per-mode drift (bubbles rise, leaves settle) plus a little of the
-		# character's own vertical motion, so a hard dive throws the trail
-		# downward instead of leaving it hanging level.
-		"drift_y": TRAIL_DRIFT_Y_PER_MODE[current_mode] + player_vel * TRAIL_INHERIT_VEL_Y + randf_range(TRAIL_DRIFT_Y_RANGE.x, TRAIL_DRIFT_Y_RANGE.y),
+		"drift_y": lerpf(drift_y, 0.0, streak),
+		"streak": streak,
 		"size": randf_range(size_range.x, size_range.y),
 		# Near-upright rather than any angle: these are 4-point stars now,
-		# and a fully random spin reads as a smear at this size.
-		"rotation": randf_range(-TRAIL_ROTATION_JITTER, TRAIL_ROTATION_JITTER),
-		"spin": randf_range(TRAIL_SPIN_RANGE.x, TRAIL_SPIN_RANGE.y),
-		"lifetime": randf_range(TRAIL_LIFETIME_RANGE.x, TRAIL_LIFETIME_RANGE.y),
+		# and a fully random spin reads as a smear at this size. A streak
+		# goes fully upright and stops turning, so the stretch below lands
+		# on the screen's own X axis.
+		"rotation": lerpf(randf_range(-TRAIL_ROTATION_JITTER, TRAIL_ROTATION_JITTER), 0.0, streak),
+		"spin": lerpf(randf_range(TRAIL_SPIN_RANGE.x, TRAIL_SPIN_RANGE.y), 0.0, streak),
+		"lifetime": randf_range(TRAIL_LIFETIME_RANGE.x, TRAIL_LIFETIME_RANGE.y) \
+				* lerpf(1.0, TRAIL_BOOST_STREAK_LIFETIME_SCALE, streak),
 		"elapsed": 0.0,
 		"texture": color_set[randi() % color_set.size()],
 	})
@@ -4697,7 +4783,16 @@ func _draw_bird_trail() -> void:
 			continue
 		var draw_scale: float = p.size * (1.0 - t * TRAIL_SHRINK) / max(tex_size.x, tex_size.y)
 		var size: Vector2 = tex_size * draw_scale
-		draw_set_transform(p.pos, p.rotation, Vector2.ONE)
+		# The one thing that actually gives a symmetric star a direction:
+		# stretched along travel and squashed across it. Applied through the
+		# transform, so it works with p.rotation — which a streak has already
+		# driven to 0, putting the stretch on the screen's X axis.
+		var stretch := Vector2.ONE
+		if p.streak > 0.0:
+			stretch = Vector2(
+				lerpf(1.0, boost_streak_stretch, p.streak),
+				lerpf(1.0, TRAIL_BOOST_STREAK_SQUASH, p.streak))
+		draw_set_transform(p.pos, p.rotation, stretch)
 		draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
