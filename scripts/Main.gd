@@ -874,7 +874,18 @@ const MODE_PARTICLE_MOTION := [
 # drift is leftward, so the spawn band is widened past the right edge by the
 # same ratio in _make_ambient_particle — otherwise everything would enter
 # through the top and nothing through the right side.
-const PARTICLE_DRIFT_X_RATIO := 0.55
+#
+# 1.0 是 45°: 가로 이동 속도가 낙하 속도와 같다. 이전 값 0.55 는 수직에서
+# 29° 밖에 안 기울어서, 대각선이 아니라 "떨어지면서 좌우로 흔들리는" 것으로
+# 읽혔다. 흔들림(particle_flutter_amplitude_range, ±10~25px)이 한 주기에
+# 움직이는 거리가 그 완만한 드리프트와 비슷했던 게 원인이다 — 눈에는 흔들림이
+# 먼저 들어오고 드리프트는 그 안에 묻힌다. 1.0 이면 초당 35px 를 왼쪽으로
+# 가므로 흔들림 폭을 확실히 넘어선다.
+#
+# 이 값은 모드가 아니라 모션의 각도다. 지금 이 모션을 쓰는 건 DREAM 뿐이지만
+# (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
+# 것이 맞다.
+const PARTICLE_DRIFT_X_RATIO := 1.0
 # Radians. Sprites are drawn upright on the sheet; a feather or leaf pinned
 # to one angle for its whole fall looks stamped on, so each gets a random
 # start angle and a slow tumble.
