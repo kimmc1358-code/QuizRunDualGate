@@ -459,6 +459,20 @@ const BOOST_BURST_FADE_START := 0.55
 # Whole animation, seconds. 6 frames in 0.28s is ~21fps, which is the fastest
 # this art can run and still be read as a ring rather than a single blink.
 @export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
+# Extra backward speed the moment it goes off, px/s, easing to 0 across the
+# animation.
+#
+# Riding the world alone only made the burst hold still in the scene, which
+# is correct but reads as the character drifting out of it rather than being
+# kicked forward. This is what turns that into a shove: it starts well
+# faster than the world and settles back to its rate, the way a thrown thing
+# does, instead of holding a constant extra speed that would just look like
+# a second scroll layer.
+#
+# Decaying linearly means the extra distance is only half of speed x
+# duration — at 320 over 0.28s that is 45px on top of the world's own 73,
+# opening the gap to about 118px against a 100px character.
+@export_range(0.0, 800.0, 10.0) var boost_burst_recoil_speed: float = 320.0
 @export_group("")  # closes "Boost Burst"
 
 const BOOST_BUTTON_SIZE := 92.0        # diameter, px
@@ -4601,9 +4615,13 @@ func _update_fx(delta: float) -> void:
 	boost_visual_blend = move_toward(boost_visual_blend, blend_target, delta / maxf(blend_span, 0.001))
 	if boost_burst_elapsed >= 0.0:
 		boost_burst_elapsed += delta
-		# Rides the world at the same rate the trail does, so it sits still
-		# in the scene while the character keeps its screen position.
-		boost_burst_pos.x -= GATE_SPEED * _gate_speed_multiplier() * delta
+		# Rides the world at the rate the trail does — that alone only holds
+		# it still in the scene — plus a recoil that starts fast and eases
+		# out, which is what actually reads as the character being shoved
+		# forward out of it. See boost_burst_recoil_speed.
+		var recoil_t: float = clampf(boost_burst_elapsed / maxf(boost_burst_duration, 0.001), 0.0, 1.0)
+		var recoil: float = boost_burst_recoil_speed * (1.0 - recoil_t)
+		boost_burst_pos.x -= (GATE_SPEED * _gate_speed_multiplier() + recoil) * delta
 		if boost_burst_elapsed >= boost_burst_duration:
 			boost_burst_elapsed = -1.0
 

@@ -93,6 +93,11 @@ func _run() -> void:
 	for i in 12:
 		await process_frame
 	_check("burst rides the world left", main.get("boost_burst_pos").x < burst_x0, true)
+	# 그리고 월드보다 빨라야 한다. 월드 속도로만 흘러가면 씬 안에서 제자리에
+	# 있는 것이라, 캐릭터가 밀려난 게 아니라 흘러 나온 것으로 읽힌다.
+	# 반동이 죽으면 여기서 같아진다.
+	var world_only: float = main.get("GATE_SPEED") * main.call("_gate_speed_multiplier") * main.get("boost_burst_elapsed")
+	_check("burst outruns the world", (burst_x0 - main.get("boost_burst_pos").x) > world_only, true)
 	# 버스트는 홀드가 아니라 원샷이다. 버튼을 계속 누르고 있어도 스스로
 	# 끝나야 하고, 그 뒤에도 -1 로 남아 있어야 한다.
 	await _settle(main.get("boost_burst_duration"))
