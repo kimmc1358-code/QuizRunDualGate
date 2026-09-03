@@ -81,6 +81,15 @@ func _run() -> void:
 				_check("mode %d and %d have different glow colours" % [i, j], false, true)
 	_check("dark before any press", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
+	print("\n0b. burst art, every mode")
+	# 여섯 칸이 다 살아 있어야 한다. _slice_spritesheet 는 빈 칸을 버리므로,
+	# 시트를 잘못 잘랐거나 한 칸이 비면 조용히 다섯 장짜리 애니메이션이 된다.
+	for m in range(4):
+		main.call("_apply_mode", m)
+		_check("mode %d burst frames" % m, main.get("boost_burst_frames").size(), 6)
+	main.call("_apply_mode", 0)
+	_check("idle before any press", main.get("boost_burst_elapsed"), -1.0)
+
 	print("\n1. button_up")
 	await _arm(main)
 	main.call("_on_boost_pressed")
@@ -88,6 +97,12 @@ func _run() -> void:
 	_check("press -> playing", sfx.playing, true)
 	_check("press -> held", main.get("boost_button_held"), true)
 	_check("press -> glow lit", main.call("_boost_glow_alpha_and_scale").x > 0.0, true)
+	_check("press -> burst playing", main.get("boost_burst_elapsed") >= 0.0, true)
+	# 버스트는 홀드가 아니라 원샷이다. 버튼을 계속 누르고 있어도 스스로
+	# 끝나야 하고, 그 뒤에도 -1 로 남아 있어야 한다.
+	await _settle(main.get("boost_burst_duration"))
+	_check("burst ends while still held", main.get("boost_burst_elapsed"), -1.0)
+	_check("still held after the burst", main.get("boost_button_held"), true)
 	main.call("_on_boost_released")
 	await process_frame
 	_check("release -> stopped", sfx.playing, false)

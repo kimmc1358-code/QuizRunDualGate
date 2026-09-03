@@ -62,7 +62,7 @@ on failure.
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
-| `check_boost_hold.gd` | the looping hold sound really loops, and both it and the character glow release on every path (button_up, pause, death, reset) | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, or the `BOOST_GLOW_*` block change |
+| `check_boost_hold.gd` | the looping hold sound really loops, both it and the character glow release on every path (button_up, pause, death, reset), and every mode's press-burst strip slices to all 6 frames | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, or the `BOOST_GLOW_*`/`BOOST_BURST_*` blocks change |
 
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
@@ -118,6 +118,12 @@ powershell -ExecutionPolicy Bypass -File tools/slice_ambient_sheet.ps1 -Measure
 Every slicer takes `-Measure` to report the detected layout without writing.
 Use it first; the detection is alpha-band based, so a stray near-transparent
 pixel can invent a row and shift the whole name mapping.
+
+The exception is an **animation strip** — the character sheets and the boost
+burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
+which takes a cell grid, drops fully transparent cells and rebuilds each
+cell's mipmaps. A regular grid needs no detection, so there is nothing for a
+tool to measure and nothing to commit twice.
 
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:

@@ -479,6 +479,35 @@ const BOOST_GLOW_PULSE_HZ := 1.6
 const BOOST_GLOW_PULSE_ALPHA := 0.18   # +/- fraction of boost_glow_alpha
 const BOOST_GLOW_PULSE_SCALE := 0.06   # +/- fraction of boost_glow_size_scale
 
+# --- Boost burst: a one-shot flash-and-ring thrown off the character at the
+# moment the button goes down. Whole feature = these consts + boost_burst_frames
+# /boost_burst_elapsed + _draw_boost_burst + its call sites in
+# _on_boost_pressed/_update_fx/_reset_game/_apply_mode/_draw() + the art in
+# assets/fx/boost_burst/. Delete those to remove it.
+#
+# The counterpart to the glow: the glow says "boosting" for as long as the
+# button is down, this says "just started" and is gone. So it is driven by
+# its own one-shot timer rather than boost_visual_blend — a blend has no
+# moment in it, and the press is the whole point.
+#
+# 6 frames on one row, 256px cells, one sheet per mode. Sliced at runtime by
+# _slice_spritesheet like the character sheets rather than cut by a tool into
+# separate files: it is an animation strip, which is the same thing those
+# are, and the cell grid is regular.
+const BOOST_BURST_DIR := "res://assets/fx/boost_burst/"
+const BOOST_BURST_FILE_PER_MODE := ["boost_effect_sky.png", "boost_effect_jungle.png", "boost_effect_ocean.png", "boost_effect_dream.png"]
+const BOOST_BURST_SHEET_GRID := Vector2i(6, 1)
+# Of PLAYER_VISUAL_SIZE. The art's ring already grows and thins across its
+# own frames, so nothing here animates scale — 2.1 just sizes the widest
+# frame to read as bursting past a 100px character rather than sitting on it.
+const BOOST_BURST_SIZE_SCALE := 2.1
+
+@export_group("Boost Burst")
+# Whole animation, seconds. 6 frames in 0.28s is ~21fps, which is the fastest
+# this art can run and still be read as a ring rather than a single blink.
+@export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
+@export_group("")  # closes "Boost Burst"
+
 @export_group("Boost Glow")
 # Of PLAYER_VISUAL_SIZE. 2.2 puts the texture's half-alpha ring at roughly
 # the character's own silhouette, so the dense part of the halo hugs the body
@@ -2010,6 +2039,11 @@ var boost_visual_blend: float = 0.0
 # player is looking at the character.
 var boost_glow_elapsed: float = 0.0
 var character_glow_texture: Texture2D
+# Boost burst (see the BOOST_BURST_* consts). -1 = not playing; the press
+# sets it to 0 and _update_fx runs it back to -1 at the end. Same
+# -1-means-idle convention the other one-shot FX timers here use.
+var boost_burst_frames: Array[Texture2D] = []
+var boost_burst_elapsed: float = -1.0
 # Boost bonus bar (see the BOOST_BAR_* consts). elapsed counts real seconds
 # since the current gate spawned and is deliberately NOT scaled by boost —
 # that is the entire mechanic.
@@ -4537,6 +4571,21 @@ func _boost_glow_alpha_and_scale() -> Vector2:
 	return Vector2(maxf(alpha, 0.0), scale)
 
 
+func _draw_boost_burst(pos: Vector2) -> void:
+	if boost_burst_elapsed < 0.0 or boost_burst_frames.is_empty():
+		return
+	# Floor of the normalised time, clamped: at exactly t = 1 the index would
+	# run one past the last frame.
+	var t: float = clampf(boost_burst_elapsed / maxf(boost_burst_duration, 0.001), 0.0, 0.9999)
+	var frame: Texture2D = boost_burst_frames[int(t * boost_burst_frames.size())]
+	if frame == null:
+		return
+	# Square art, and sized off PLAYER_VISUAL_SIZE rather than the frame's own
+	# pixels so re-cutting the sheet at another resolution changes nothing.
+	var size: Vector2 = PLAYER_VISUAL_SIZE * active_visual_size_scale * BOOST_BURST_SIZE_SCALE
+	draw_texture_rect(frame, Rect2(pos - size * 0.5, size), false)
+
+
 func _draw_boost_glow(pos: Vector2) -> void:
 	if character_glow_texture == null:
 		return
@@ -4641,6 +4690,11 @@ func _update_fx(delta: float) -> void:
 	# the button goes down instead of starting from its peak. Wrapped to keep
 	# the float from growing without bound across a long session.
 	boost_glow_elapsed = fmod(boost_glow_elapsed + delta, 1.0 / BOOST_GLOW_PULSE_HZ)
+
+	if boost_burst_elapsed >= 0.0:
+		boost_burst_elapsed += delta
+		if boost_burst_elapsed >= boost_burst_duration:
+			boost_burst_elapsed = -1.0
 
 	if combo > 0:
 		combo_display_punch_elapsed += delta
@@ -5267,6 +5321,10 @@ func _apply_mode(mode: int) -> void:
 		bg_near_texture = load(bg_near_path)
 	bg_near_scroll_x = 0.0
 
+	# Per-mode animation strip, sliced the same way the character sheets are.
+	boost_burst_frames = _slice_spritesheet(BOOST_BURST_DIR + BOOST_BURST_FILE_PER_MODE[mode], BOOST_BURST_SHEET_GRID.x, BOOST_BURST_SHEET_GRID.y)
+	boost_burst_elapsed = -1.0
+
 	# SKY used to be skipped here — its old twinkling lights did not suit the
 	# scene and were dropped. It has drifting feathers now, so every mode
 	# loads.
@@ -5385,6 +5443,7 @@ func _reset_game() -> void:
 	if fx_sound_boost != null:
 		fx_sound_boost.stop()
 	boost_visual_blend = 0.0
+	boost_burst_elapsed = -1.0
 	boost_bar_elapsed = -1.0
 	boost_bar_flash_elapsed = -1.0
 	boost_pop_elapsed = -1.0
@@ -5512,6 +5571,10 @@ func _on_boost_pressed() -> void:
 	_tween_boost_alpha(BOOST_BUTTON_PRESSED_ALPHA)
 	if fx_sound_boost.stream != null:
 		fx_sound_boost.play()
+	# Restarted from 0 rather than only started when idle: hammering the
+	# button should re-pop each time, not be swallowed by the tail of the
+	# previous one.
+	boost_burst_elapsed = 0.0
 
 
 func _on_boost_released() -> void:
@@ -6309,6 +6372,10 @@ func _draw() -> void:
 			draw_set_transform(pos, 0.0, bird_scale)
 			draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		# Over the character, not behind it like the glow: this is something
+		# thrown OFF the body, and the art is a ring with an empty middle, so
+		# the character still reads through it.
+		_draw_boost_burst(pos)
 		if DEBUG_SHOW_HITBOX:
 			# The REAL collision rect — PLAYER_SIZE at (PLAYER_X, player_y),
 			# untouched by bird_scale/draw_offset/happy-bounce above, since
