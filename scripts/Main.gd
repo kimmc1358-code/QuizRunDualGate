@@ -875,17 +875,30 @@ const MODE_PARTICLE_MOTION := [
 # same ratio in _make_ambient_particle — otherwise everything would enter
 # through the top and nothing through the right side.
 #
-# 1.0 是 45°: 가로 이동 속도가 낙하 속도와 같다. 이전 값 0.55 는 수직에서
-# 29° 밖에 안 기울어서, 대각선이 아니라 "떨어지면서 좌우로 흔들리는" 것으로
-# 읽혔다. 흔들림(particle_flutter_amplitude_range, ±10~25px)이 한 주기에
-# 움직이는 거리가 그 완만한 드리프트와 비슷했던 게 원인이다 — 눈에는 흔들림이
-# 먼저 들어오고 드리프트는 그 안에 묻힌다. 1.0 이면 초당 35px 를 왼쪽으로
-# 가므로 흔들림 폭을 확실히 넘어선다.
+# 이 값은 보이는 각도가 아니다. 화면 전체가 이미 왼쪽으로 흐르고 있어서,
+# 플레이어가 "이 물체 자신의 움직임"으로 읽는 것은 배경 대비 상대 운동뿐이다.
+#
+# 배경 스크롤(GATE_SPEED 130 기준): 원경 0.15 -> 19.5px/s, 근경 0.40 ->
+# 52px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
+#
+#   비율   실제 vx   체감 각도(원경 대비 / 근경 대비)
+#   1.0     35.0        24° / -26°
+#   1.5     52.5        43° /   1°
+#   2.5     87.5        63° /  45°
+#   3.5    122.5        71° /  64°
+#
+# 1.0(진짜 45°)에서 근경 대비 -26°, 즉 꽃잎이 근경 구름보다 느려서 오히려
+# 오른쪽 아래로 기울어 보인다. 이게 각도를 0.55 -> 1.0 으로 올려도 여전히
+# 수직으로 떨어져 보였던 이유다. 2.5 면 근경 대비 45°, 원경 대비 63° 로
+# 어느 쪽을 기준으로 봐도 확실히 왼쪽 아래다.
+#
+# 배경 속도를 바꾸면(bg_speed_ratio / bg_near_speed_ratio) 이 값도 다시
+# 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록 남긴 것이다.
 #
 # 이 값은 모드가 아니라 모션의 각도다. 지금 이 모션을 쓰는 건 DREAM 뿐이지만
 # (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
 # 것이 맞다.
-const PARTICLE_DRIFT_X_RATIO := 1.0
+const PARTICLE_DRIFT_X_RATIO := 2.5
 # DRIFT_DIAGONAL gets its own, much lazier flutter than FALL does, and this
 # is what actually makes the diagonal read.
 #
