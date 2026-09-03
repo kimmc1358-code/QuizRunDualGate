@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b81n8mdo18my5"
-path="res://.godot/imported/background_single_blur.png-4463a9202011c0fe8d1e49fcb90df9f5.ctex"
+uid="uid://v45mq4v5yqgr"
+path="res://.godot/imported/background_far.png-1d3ad8f4807576c436ccb36c6616c411.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/dream_world/background_single_blur.png"
-dest_files=["res://.godot/imported/background_single_blur.png-4463a9202011c0fe8d1e49fcb90df9f5.ctex"]
+source_file="res://assets/backgrounds/dream_world/background_far.png"
+dest_files=["res://.godot/imported/background_far.png-1d3ad8f4807576c436ccb36c6616c411.ctex"]
 
 [params]
 

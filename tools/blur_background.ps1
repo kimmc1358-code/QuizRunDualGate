@@ -10,15 +10,20 @@
     added or replaced, so its backdrop recedes behind the gate and
     character like the rest.
 
-    $ModeBackgrounds below names every file the game actually loads, one row
-    per file, because a mode is no longer always one image: SKY, JUNGLE and
-    OCEAN are far/near parallax pairs, and only DREAM is still single. Each
-    row carries its own CutOut flag; far rows carry their own sigma, near
-    rows all share $NearSigma.
+    $ModeBackgrounds below names every file the game actually loads, two rows
+    per mode: all four are far/near parallax pairs now. Each row carries its
+    own CutOut flag; far rows carry their own sigma, near rows all share
+    $NearSigma.
 
     Far and near are tuned to opposite ends. A far layer is measured onto a
     common softness; a near layer is barely touched, so it keeps whatever
     crispness its painting arrived with. See $NearSigma for why.
+
+    That holds for three of the four. DREAM's near layer is a pale cloud
+    bank whose raw sharpness (0.78) is already below every far layer in the
+    project, so no sigma can make its pair order the way the others do —
+    see its row. Blur is not the depth cue there; occlusion and the speed
+    difference are.
 
     CutOut is the difference between a full-bleed painting and a near layer
     with transparency. An opaque background can be blurred on RGB alone —
@@ -35,14 +40,14 @@
     the same as source space once SKY's far layer arrived at 1472x704 while
     everything else is 2208x1056.
 
-    The scale is anchored on art nobody chose by eye. DREAM's sigma was
-    recovered by re-blurring its source across a range of values and finding
-    which one reproduced the committed *_blur.png, with a residual around
-    1/255 — down at PNG quantisation noise; the single backgrounds SKY,
-    JUNGLE and OCEAN shipped with before their parallax pairs were recovered
-    the same way, and they are what the pairs were measured against. Those
-    singles are gone from the tree now (git has them), so the numbers quoted
-    in the table comments are the record of where they sat.
+    The scale is anchored on art nobody chose by eye. Every mode shipped
+    with a single background before it got a pair, and each of those sigmas
+    was recovered by re-blurring the source across a range of values and
+    finding which one reproduced the committed *_blur.png, with a residual
+    around 1/255 — down at PNG quantisation noise. Those recovered numbers
+    are what the pairs were then measured against. The single files are all
+    gone from the tree now (git has them), so the figures quoted in the
+    table comments are the only record of where they sat.
 
     The metric is a proxy, not a verdict. It averages over the whole image,
     so a painting that is mostly flat with a few hard-outlined structures
@@ -340,18 +345,24 @@ $ModeBackgrounds = @{
         @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
     dream = @(
-        # 시그마 1.1로, 원경 중에서는 제일 약하게 건다. 이 그림은 처음부터
-        # 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다. 그러고도 1.63으로
-        # 앉는 건 원본이 그만큼 부드럽다는 뜻이다.
+        # 시그마 1.1은 이 모드가 단일 배경이던 시절 쓰던 값이고, 원경이 된
+        # 뒤에도 그대로다. 이 그림은 처음부터 부드러운 파스텔이라 세게 걸면
+        # 꽃 모양만 뭉개진다 — 1.8까지 올려 봤지만 화면에서 달라지는 게 없고
+        # 꽃만 잃는다.
         #
-        # 근경이 없는 유일한 모드이기도 하다. 나머지 셋은 전부 원경/근경 쌍이라,
-        # 이 값은 위에서 쌍을 맞출 때 쓴 기준점 중 하나다.
+        # 이 쌍만은 흐림이 깊이를 말해 주지 않는다. 근경이 원본 그대로도
+        # 0.78인데, 이는 프로젝트의 어떤 *원경*보다 부드럽다(스카이 1.70,
+        # 정글 2.53, 오션 1.72). 같은 파스텔 구름을 같은 톤으로 그린 두 장이라
+        # 고유 부드러움이 같아서, 원경을 2.0까지 밀어도 겨우 동점이다.
         #
-        # 이 줄은 예전에 background_single(v1)을 3.5로 가리키고 있었다. 게임이
-        # 읽는 건 v2 쪽이라, 자체 테스트는 아무도 쓰지 않는 파일만 초록으로
-        # 통과시키고 있었고 v2의 값은 검증된 적이 없었다. 커밋된 v2 블러본에서
-        # 되찾은 실제 값이 1.1이다(RMSE 1.06/255, PNG 양자화 잡음 수준).
-        @{ File = 'background_single_v2'; Sigma = 1.1; CutOut = $false }
+        # 그래서 깊이는 다른 두 단서가 맡는다: 근경이 화면 아래에서 원경을
+        # 가리는 것(occlusion), 그리고 2.67배 속도차. 선명도 순서가 뒤집혀
+        # 보이는 것은 처리가 잘못된 게 아니라 소재가 그런 것이다.
+        @{ File = 'background_far';  Sigma = 1.1; CutOut = $false }
+        # 1472x704 — 네 모드의 근경 중 유일하게 2208x1056 이 아니라 화면을
+        # 채우며 1.21배 확대된다(스카이는 원경이 그랬다). Sharpness 가 리샘플
+        # 뒤에 재는 이유가 이것이다.
+        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
     )
 }
 

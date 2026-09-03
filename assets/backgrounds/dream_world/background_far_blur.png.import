@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dprtrwog71dwe"
-path="res://.godot/imported/background_single_v2_blur.png-d213a617759363305a878d74e60dfaa6.ctex"
+uid="uid://urj76uykyimc"
+path="res://.godot/imported/background_far_blur.png-b01ac15b562840e0381f150534b8cce6.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/backgrounds/dream_world/background_single_v2_blur.png"
-dest_files=["res://.godot/imported/background_single_v2_blur.png-d213a617759363305a878d74e60dfaa6.ctex"]
+source_file="res://assets/backgrounds/dream_world/background_far_blur.png"
+dest_files=["res://.godot/imported/background_far_blur.png-b01ac15b562840e0381f150534b8cce6.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""
