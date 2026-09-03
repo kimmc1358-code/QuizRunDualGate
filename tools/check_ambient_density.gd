@@ -5,13 +5,24 @@ extends SceneTree
 # many of its fixed-size population are actually ON SCREEN, with the boost
 # held and released.
 #
-# The bug this exists to catch: the pool is a fixed count, so if every
-# recycled particle re-enters through the ceiling while a leftward wind
-# sweeps them off the side, the field drains and the screen goes bare. That
-# is invisible to a parse check and easy to miss in a short playtest, but it
-# falls straight out of a simulation.
+# What it catches: a fixed-size pool going thin enough that the screen reads
+# as bare — the kind of thing that is invisible to a parse check and easy to
+# miss in a short playtest, but falls straight out of a simulation.
+#
+# What it does NOT catch, though this header used to imply otherwise. The bug
+# it was written for was every recycled particle re-entering through the
+# ceiling while a leftward wind swept them off the side, leaving all of them
+# crowded into the top-left corner. Counting on-screen particles cannot see
+# that: a particle swept off the left is recycled straight back to a random x
+# along the ceiling, so it is on screen again immediately and the count never
+# moves. Disabling the right-edge spawn branch — that exact bug — leaves
+# these numbers completely unchanged, which was verified rather than assumed.
+# What collapses is the DISTRIBUTION, and catching it needs a spread or
+# coverage measure this check does not have.
 #
 #   Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/check_ambient_density.gd
+#
+# Add `-- --seed N` to run a different seed than the committed one.
 
 const DT := 1.0 / 60.0
 # A leaf takes ~24s to cross at rest, so a short window samples the initial
@@ -19,6 +30,14 @@ const DT := 1.0 / 60.0
 # has been recycled at least once before sampling starts.
 const WARMUP := 40.0    # seconds to reach steady state before sampling
 const SAMPLE := 40.0    # seconds sampled
+# Spawn positions, sizes and drifts are all randf, so an unseeded run gave a
+# different answer every time — DREAM's minimum wandered across the pass/fail
+# line once its diagonal was steepened, and the check began failing about one
+# run in five for no reason anyone could reproduce. A fixed seed is what makes
+# a failure mean something. The floor below was then chosen against a sweep of
+# 12 seeds rather than against this one, so it is not tuned to whatever this
+# particular seed happens to produce.
+const RNG_SEED := 20260903
 
 var main: Node
 var frames := 0
@@ -38,10 +57,18 @@ func _process(_delta: float) -> bool:
 
 
 func _check() -> void:
+	# Seeded before anything spawns. `-- --seed N` overrides, for sweeping.
+	var seed_value: int = RNG_SEED
+	var args := OS.get_cmdline_user_args()
+	for i in range(args.size() - 1):
+		if args[i] == "--seed":
+			seed_value = int(args[i + 1])
+	seed(seed_value)
 	var view_size := Vector2(
 		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
 		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
-	print("viewport %.0f x %.0f   pool size %d\n" % [view_size.x, view_size.y, main.particle_count])
+	# The seed is printed so a failure report says which one produced it.
+	print("viewport %.0f x %.0f   pool size %d   seed %d\n" % [view_size.x, view_size.y, main.particle_count, seed_value])
 	print("%-8s %-10s %-14s %-14s %s" % ["mode", "boost", "avg on-screen", "min on-screen", "verdict"])
 
 	var problems := 0
@@ -52,10 +79,14 @@ func _check() -> void:
 			continue
 		for held in [false, true]:
 			var result := _simulate(mode, held, view_size)
-			# Under a fixed pool a healthy field keeps most of its particles
-			# on screen. Half the pool is a generous floor; the bug this
-			# guards against drained it to nearly nothing.
-			var floor_ok: float = float(main.particle_count) * 0.5
+			# A tolerance on momentary thinness — see the header for what that
+			# does and does not cover. Half the pool used to be the floor and
+			# it sat inside normal variation: swept over 12 seeds and all six
+			# live cases, a healthy field's momentary minimum lands anywhere
+			# from 3 to 8 of 8, because one unlucky instant with five particles
+			# in transit is ordinary. A quarter clears that measured spread,
+			# and all 12 of those seeds pass against it.
+			var floor_ok: float = float(main.particle_count) * 0.25
 			var ok: bool = result["min"] >= floor_ok
 			if not ok:
 				problems += 1
