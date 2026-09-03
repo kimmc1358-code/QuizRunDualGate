@@ -886,6 +886,24 @@ const MODE_PARTICLE_MOTION := [
 # (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
 # 것이 맞다.
 const PARTICLE_DRIFT_X_RATIO := 1.0
+# DRIFT_DIAGONAL gets its own, much lazier flutter than FALL does, and this
+# is what actually makes the diagonal read.
+#
+# The sway is a sine on x, so its peak sideways speed is 2*PI*freq*amp. On
+# the shared FALL values (up to 0.9 Hz at 25px) that is ~141px/s — four
+# times the 35px/s the drift itself moves. The net travel was a clean 45
+# degrees all along, but every instant of it was dominated by the wobble, so
+# the eye tracked a petal falling straight down and shaking rather than one
+# crossing the screen. Plotting eight paths over 8s showed it: a 45 degree
+# envelope made of segments that are individually near-vertical.
+#
+# So the rule is that the flutter stays subordinate to the drift: at the top
+# of these ranges 2*PI*0.3*16 = 30px/s, just under the 35px/s drift, and at
+# the bottom 7.5px/s. One sway cycle now spans 117-234px of fall instead of
+# 39-88px — a long, lazy waver along the diagonal instead of a tight zigzag
+# that hides it.
+const PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE := Vector2(8.0, 16.0)
+const PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE := Vector2(0.15, 0.3)
 # Radians. Sprites are drawn upright on the sheet; a feather or leaf pinned
 # to one angle for its whole fall looks stamped on, so each gets a random
 # start angle and a slow tumble.
@@ -2772,6 +2790,11 @@ func _make_ambient_particle(view_size: Vector2, stagger_start: bool) -> Dictiona
 	if rising:
 		d.wobble_amp = randf_range(particle_sway_amplitude_range.x, particle_sway_amplitude_range.y)
 		d.wobble_freq = randf_range(particle_sway_freq_range.x, particle_sway_freq_range.y)
+	elif motion == AmbientMotion.DRIFT_DIAGONAL:
+		# Deliberately much lazier than FALL's — see the const block for why
+		# a lively flutter here hides the diagonal completely.
+		d.wobble_amp = randf_range(PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE.x, PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE.y)
+		d.wobble_freq = randf_range(PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE.x, PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE.y)
 	else:
 		d.wobble_amp = randf_range(particle_flutter_amplitude_range.x, particle_flutter_amplitude_range.y)
 		d.wobble_freq = randf_range(particle_flutter_freq_range.x, particle_flutter_freq_range.y)
