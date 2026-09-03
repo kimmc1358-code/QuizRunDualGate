@@ -10,11 +10,18 @@ extends SceneTree
 #   2. 죽거나 일시정지한다   -> 버튼이 숨는다. 숨겨진 Button 은 button_up 을
 #                             쏘지 않으므로 _process 가 직접 푼다
 #   3. 다시 시작한다        -> _reset_game
-# 2번이 신호가 아니라 손으로 푸는 길이라, 여기가 조용히 어긋나기 쉽다.
+# 2번이 신호가 아니라 손으로 푸는 길이라, 여기가 조용히 어긋나기 쉽다. 그
+# 안에서도 죽는 길과 멈추는 길은 다르게 굴어야 해서 따로 본다 — 일시정지는
+# _update_fx 가 멈추므로 겉모습이 그대로 얼어 있는 것이 맞고, 게임 오버는
+# 멈추지 않으므로 스스로 사그라들어야 한다.
 #
 # 알파도 같이 본다. 누를 때 트윈으로 진해지는데, 2번에서 알파만 되돌리고
 # 트윈을 안 죽이면 살아남은 트윈이 다음 프레임에 도로 눌린 값으로 칠한다 —
 # 실제로 그렇게 새 버튼이 눌린 채로 돌아온 적이 있다.
+#
+# 캐릭터 글로우(BOOST_GLOW_*)도 여기서 본다. boost_visual_blend 를 타므로
+# 따로 정리할 것이 없어야 맞는데, "없어야 맞다"가 바로 조용히 어긋나는
+# 조건이다. 세 길 모두에서 후광이 실제로 0 으로 내려가는지 확인한다.
 #
 # 실제 Main.tscn 을 띄워 게임 자기 함수를 부른다(다른 체커와 같은 규칙).
 
@@ -61,16 +68,34 @@ func _run() -> void:
 	_check("still playing past the clip length", sfx.playing, true)
 	sfx.stop()
 
+	print("\n0. glow art and per-mode colours")
+	_check("glow texture loaded", main.get("character_glow_texture") != null, true)
+	var glow_colors: Array = main.get("MODE_BOOST_GLOW_COLOR")
+	_check("one colour per mode", glow_colors.size(), 4)
+	# 네 색이 서로 달라야 한다. 배열을 복사해 붙이다 한 줄이 중복되면 두 모드가
+	# 같은 후광을 쓰게 되는데, 화면에서는 그 두 모드를 나란히 볼 일이 없어
+	# 눈으로는 거의 잡히지 않는다.
+	for i in range(glow_colors.size()):
+		for j in range(i + 1, glow_colors.size()):
+			if glow_colors[i] == glow_colors[j]:
+				_check("mode %d and %d have different glow colours" % [i, j], false, true)
+	_check("dark before any press", main.call("_boost_glow_alpha_and_scale").x, 0.0)
+
 	print("\n1. button_up")
 	await _arm(main)
 	main.call("_on_boost_pressed")
 	await process_frame
 	_check("press -> playing", sfx.playing, true)
 	_check("press -> held", main.get("boost_button_held"), true)
+	_check("press -> glow lit", main.call("_boost_glow_alpha_and_scale").x > 0.0, true)
 	main.call("_on_boost_released")
 	await process_frame
 	_check("release -> stopped", sfx.playing, false)
 	_check("release -> not held", main.get("boost_button_held"), false)
+	# 알파와 달리 후광은 트윈이 아니라 blend 를 타고 사그라든다. 그래서 놓은
+	# 직후가 아니라 BOOST_VISUAL_BLEND_OUT 이 지난 뒤에 본다.
+	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
+	_check("release -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	print("\n2. hidden mid-press (death / pause)")
 	await _arm(main)
@@ -83,6 +108,27 @@ func _run() -> void:
 	_check("hidden -> stopped", sfx.playing, false)
 	_check("hidden -> not held", main.get("boost_button_held"), false)
 	_check("hidden -> alpha back to idle", is_equal_approx(button.modulate.a, idle_alpha), true)
+	# 여기서 후광이 아직 켜져 있는 것이 맞다. _update_fx 는 `if not paused` 안에
+	# 있어서 멈춘 화면에서는 blend 도 멈춘다 — 세상이 정지한 채 후광만 사그라
+	# 들면 그게 더 이상하다. 확인할 것은 홀드가 풀렸다는 것(위에서 봤다)과,
+	# 다시 풀렸을 때 남은 것 없이 빠진다는 것이다.
+	main.set("paused", false)
+	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
+	_check("unpaused -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
+
+	print("\n2b. died mid-press")
+	await _arm(main)
+	main.call("_on_boost_pressed")
+	await process_frame
+	_check("press -> glow lit", main.call("_boost_glow_alpha_and_scale").x > 0.0, true)
+	# 죽는 길은 일시정지와 다르다. 멈추지 않으므로 _update_fx 가 계속 돌고,
+	# 후광은 스스로 사그라들어야 한다. Main 의 _update_fx 가 _update_playing
+	# 바깥에 있는 이유가 이것이다.
+	main.set("state", 4)  # State.GAMEOVER
+	main.call("_apply_screen_visibility")
+	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
+	_check("game over -> not held", main.get("boost_button_held"), false)
+	_check("game over -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	print("\n3. _reset_game")
 	await _arm(main)
@@ -92,12 +138,22 @@ func _run() -> void:
 	main.call("_reset_game")
 	await process_frame
 	_check("reset -> stopped", sfx.playing, false)
+	await _settle(main.get("BOOST_VISUAL_BLEND_OUT"))
+	_check("reset -> glow dark", main.call("_boost_glow_alpha_and_scale").x, 0.0)
 
 	if fails == 0:
-		print("\nPASS — the hold releases cleanly on all three paths")
+		print("\nPASS — the hold and its glow release cleanly on every path")
 	else:
 		print("\nFAIL (%d)" % fails)
 	quit(1 if fails > 0 else 0)
+
+
+func _settle(span: float) -> void:
+	# 실제 시간으로 기다린다. 프레임 수로 세면 안 된다 — blend 는 move_toward
+	# 로 delta 를 쌓아 내려가고, 헤드리스는 프레임이 훨씬 빨라 같은 프레임 수가
+	# 훨씬 짧은 시간이 된다. 처음에 16프레임을 돌렸다가 blend 가 0.01 남아
+	# FAIL 이 났다.
+	await create_timer(span * 1.5 + 0.1).timeout
 
 
 func _arm(main: Node2D) -> void:
