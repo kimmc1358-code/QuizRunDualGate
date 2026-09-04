@@ -68,9 +68,34 @@ enum Mode { SKY, JUNGLE, OCEAN, DREAM }
 # art is still being drawn. Every MODE_* array below therefore carries SKY's
 # entry in the DREAM slot: the mode boots, plays and is selectable today,
 # wearing the bird's costume, and each row gets swapped for real dream art as
-# it lands. Its quiz is the flag quiz, shared with SKY — see _spawn_gate,
-# where anything that is not JUNGLE or OCEAN falls through to it.
-# Search MODE_ to find every row that still needs replacing.
+# it lands. Search MODE_ to find every row that still needs replacing.
+#
+# Its QUIZ, though, is its own: DREAM is the MIX mode and rolls all three.
+
+# 어느 퀴즈를 내는가는 게이트의 성질이지 모드의 성질이 아니다.
+#
+# 세 단일 모드에서는 둘이 같은 말이었고, 그리는 쪽도 current_mode 를 보고
+# "이건 국기니까 그림, 이건 수학이니까 글자" 를 정했다. MIX 는 게이트마다
+# 다른 것을 물으므로 그 등식이 깨진다 — 이미 지나간 게이트를 그릴 때조차
+# 그 게이트가 무엇을 물었는지 알아야 하고, current_mode 는 그걸 모른다.
+# 그래서 종류는 게이트 딕셔너리에 실려 다닌다(gate.quiz_kind).
+enum QuizKind { FLAG, MATH, STROOP }
+
+# Mode 와 index-align. DREAM 자리의 값은 쓰이지 않는다 — 하나로 정해지지
+# 않는 것이 MIX 의 정의이고, _next_quiz_kind 가 거기서 갈래를 친다. 배열
+# 정렬을 깨지 않으려고 자리만 채워 둔 것으로, MODE_PARTICLE_COUNT[SKY] 의
+# 0 과 같은 규칙이다.
+const MODE_QUIZ_KIND := [QuizKind.FLAG, QuizKind.MATH, QuizKind.STROOP, QuizKind.FLAG]
+
+# MIX 가 뽑을 순서를 담는 주머니. 셋을 섞어 넣고 하나씩 꺼내며, 비면 다시
+# 섞어 채운다.
+#
+# randi() % 3 이 아닌 이유: 그러면 같은 퀴즈가 네 번 이어질 확률이 게이트마다
+# 1.2% 라, 한 판에 한 번쯤은 일어난다. 그 구간에서 MIX 는 섞이는 모드가
+# 아니라 고장난 모드로 보인다. 주머니는 세 게이트마다 셋이 정확히 한 번씩
+# 나오게 하면서, 주머니가 바뀌는 자리에서만 같은 것이 두 번 이어지도록
+# 둔다 — 두 번은 반갑고(머리를 한 번 덜 바꾼다) 세 번은 나올 수 없다.
+var mix_quiz_bag: Array[int] = []
 
 # ---- OCEAN mode: Stroop colour quiz (see the OCEAN_* const block and
 # _make_color_problem / _draw_ocean_quiz_box further down) ----
@@ -3539,17 +3564,22 @@ func _draw_horizontal_slice(texture: Texture2D, rect: Rect2, cap: float, ci: Can
 			Rect2(cap, 0.0, tex_w - cap * 2.0, tex_h))
 
 
-func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
-	# JUNGLE draws its answer as plain number text instead of a flag texture
-	# — everything else about the box (panel, position, card fill) is shared.
-	# OCEAN takes the same text path for its colour NAME, and deliberately
-	# draws it in the shared dark ink on the shared cream card, with no trace
-	# of the colour it names: an option painted RED would let the player
-	# match the question by colour and never read a word, which is exactly
-	# the shortcut this quiz exists to close off. The name is the only way in.
-	var is_math: bool = current_mode == Mode.JUNGLE
-	var is_color_name: bool = current_mode == Mode.OCEAN
-	var is_text: bool = is_math or is_color_name
+func _draw_gate_answer_box(code: String, quiz_kind: int, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
+	# A math gate draws its answer as plain number text instead of a flag
+	# texture — everything else about the box (panel, position, card fill) is
+	# shared. A Stroop gate takes the same text path for its colour NAME, and
+	# deliberately draws it in the shared dark ink on the shared cream card,
+	# with no trace of the colour it names: an option painted RED would let
+	# the player match the question by colour and never read a word, which is
+	# exactly the shortcut this quiz exists to close off. The name is the
+	# only way in.
+	#
+	# 모드가 아니라 게이트에게 묻는다. MIX 에서는 화면에 떠 있는 두 게이트가
+	# 서로 다른 종류일 수 있고, 그때 current_mode 를 보면 둘 다 같은 방식으로
+	# 그려진다 — 국기 게이트에 숫자를 그리거나, 수학 게이트에서 국기 텍스처를
+	# 찾다가 못 찾고 통째로 안 그린다.
+	var is_color_name: bool = quiz_kind == QuizKind.STROOP
+	var is_text: bool = quiz_kind != QuizKind.FLAG
 	var texture: Texture2D = null
 	if not is_text:
 		texture = flag_textures.get(code)
@@ -3849,6 +3879,22 @@ func _update_playing(delta: float) -> void:
 		_spawn_gate(view_size)
 
 
+# 이 게이트가 낼 퀴즈. 단일 모드는 늘 같은 답, MIX 는 주머니에서 하나.
+#
+# 난이도는 여기서 갈리지 않는다는 점이 중요하다. 세 생성기(_pick_flag_target /
+# _make_math_problem / _make_color_problem)가 전부 phase_index 를 받고, 그
+# phase_index 는 gates_passed 하나로만 정해지므로(_get_phase_index) MIX 도
+# 통과한 게이트 수에 따라 단일 모드와 똑같은 곡선을 탄다. 섞이는 것은 무엇을
+# 묻느냐이지 얼마나 어렵냐가 아니다.
+func _next_quiz_kind() -> int:
+	if current_mode != Mode.DREAM:
+		return MODE_QUIZ_KIND[current_mode]
+	if mix_quiz_bag.is_empty():
+		mix_quiz_bag = [QuizKind.FLAG, QuizKind.MATH, QuizKind.STROOP]
+		mix_quiz_bag.shuffle()
+	return mix_quiz_bag.pop_back()
+
+
 func _spawn_gate(view_size: Vector2) -> void:
 	var phase_index := _get_phase_index(gates_passed)
 
@@ -3861,12 +3907,21 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var target_code: String
 	var target_name: String
 	var other_code: String
-	# OCEAN only — the indices the question box needs to repaint this item
-	# (see _draw_ocean_quiz_box). Left at -1 for the other two modes, which
+	# Stroop only — the indices the question box needs to repaint this item
+	# (see _draw_ocean_quiz_box). Left at -1 for the other two kinds, which
 	# never read them.
 	var ocean_word_index: int = -1
 	var ocean_answer_index: int = -1
-	if current_mode == Mode.JUNGLE:
+	# 모드가 아니라 이 게이트가 무엇을 묻는지로 갈린다. 단일 모드에서는 늘
+	# 같은 답이 나오고, MIX 에서만 게이트마다 달라진다.
+	var quiz_kind: int = _next_quiz_kind()
+	# last_quiz_key 는 종류를 가리지 않는 한 칸이다. 이어지는 두 게이트가
+	# 다른 퀴즈면 키가 겹칠 일이 없어 재시도가 그냥 안 걸리고, 같은 퀴즈가
+	# 이어질 때만(주머니 경계) 원래대로 작동한다 — "연달아 같은 문제"를
+	# 막는 것이 목적이었으므로 그게 맞는 동작이다. 종류별로 따로 기억하면
+	# 국기-수학-국기 사이에서까지 재시도가 걸리는데, 그 둘은 사이에 다른
+	# 퀴즈가 끼어 있어 연달아 보이지 않는다.
+	if quiz_kind == QuizKind.MATH:
 		# Re-rolled if it repeats the previous gate's expression — see
 		# last_quiz_key. The decoy comes from the problem shape itself now,
 		# not from a generic offset (see the _make_*_problem block).
@@ -3887,7 +3942,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 		# depend on Inspector-tunable ranges, so this is the backstop.
 		if other_code == target_code:
 			other_code = str(problem.answer + 1)
-	elif current_mode == Mode.OCEAN:
+	elif quiz_kind == QuizKind.STROOP:
 		# Difficulty comes from how close the word's own colour and the
 		# answer colour sit on the hue circle — see OCEAN_PHASE_HUE_BAND.
 		# Re-rolled if the WORD repeats the previous gate's word: the same
@@ -4028,10 +4083,12 @@ func _spawn_gate(view_size: Vector2) -> void:
 		"top_zone_bottom": top_zone.y,
 		"bottom_zone_top": bottom_zone.x,
 		"bottom_zone_bottom": bottom_zone.y,
+		# 그리는 쪽이 나중에 이 게이트가 무엇을 물었는지 알아야 한다.
+		"quiz_kind": quiz_kind,
 	}
-	# OCEAN carries its Stroop item on the gate itself — the question box
-	# repaints the word from these every frame the gate is the pending one.
-	if current_mode == Mode.OCEAN:
+	# Stroop 게이트는 자기 문제를 스스로 들고 다닌다 — 질문 상자가 이 게이트가
+	# 대기 중인 동안 매 프레임 여기서 단어를 다시 칠한다.
+	if quiz_kind == QuizKind.STROOP:
 		gate["ocean_word_index"] = ocean_word_index
 		gate["ocean_answer_index"] = ocean_answer_index
 	gates.append(gate)
@@ -5966,6 +6023,9 @@ func _reset_game() -> void:
 	gates_passed = 0
 	gates.clear()
 	last_quiz_key = ""  # repeat guard is per-run — see last_quiz_key
+	# 주머니도 판마다 비운다. 남겨 두면 다음 판의 첫 세 게이트가 지난 판의
+	# 남은 조각으로 시작해, MIX 의 첫인상이 판마다 달라진다.
+	mix_quiz_bag.clear()
 	revive_offered = false
 	run_revived = false
 	leaderboard_score = 0
@@ -6701,9 +6761,12 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if ci == null:
 		ci = self
-	# OCEAN's question is a painted colour, not a string, so it takes over
-	# the whole box rather than feeding text into the path below.
-	if current_mode == Mode.OCEAN:
+	# A Stroop question is a painted colour, not a string, so it takes over
+	# the whole box rather than feeding text into the path below. Asked of
+	# the pending GATE, not of the mode — in MIX the box has to repaint
+	# itself in a different form from one gate to the next.
+	var pending: Dictionary = _get_upcoming_gate()
+	if not pending.is_empty() and pending.quiz_kind == QuizKind.STROOP:
 		_draw_ocean_quiz_box(view_size, ci)
 		return
 	var upcoming_target := _get_upcoming_target()
@@ -6748,9 +6811,10 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 # First gate whose question hasn't been answered yet — the one the box is
 # currently asking about. Sibling of _get_upcoming_target, which returns a
 # bare string and so can't carry a colour.
-func _get_upcoming_ocean_gate() -> Dictionary:
+# 아직 판정되지 않은 첫 게이트 — 지금 질문 상자에 떠 있어야 할 문제.
+func _get_upcoming_gate() -> Dictionary:
 	for g in gates:
-		if not g.resolved and g.has("ocean_answer_index"):
+		if not g.resolved:
 			return g
 	return {}
 
@@ -6771,8 +6835,8 @@ func _draw_ocean_text(ci: CanvasItem, text: String, left_x: float, center_y: flo
 
 
 func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
-	var g: Dictionary = _get_upcoming_ocean_gate()
-	if g.is_empty():
+	var g: Dictionary = _get_upcoming_gate()
+	if g.is_empty() or not g.has("ocean_answer_index"):
 		return
 	var rect := _quiz_box_rect(view_size)
 	if quiz_box_texture != null:
@@ -6930,13 +6994,13 @@ func _draw() -> void:
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
-	# Answer boxes (flag icon, or a number for JUNGLE's math quiz) drawn last
+	# Answer boxes (flag icon, or text for a math/Stroop gate) drawn last
 	# (topmost) of everything gate-related, after both ring halves and the
 	# bird, so they can never end up hidden behind the ring art — see
 	# _draw_gate_answer_box.
 	for g in gates:
-		_draw_gate_answer_box(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
-		_draw_gate_answer_box(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
+		_draw_gate_answer_box(g.top_code, g.quiz_kind, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
+		_draw_gate_answer_box(g.bottom_code, g.quiz_kind, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	# ---- Layer 3: HUD bar + quiz box ----
 	# Drawn by the HudCanvas child instead of here, so it can use its own
@@ -6999,10 +7063,8 @@ func _pop_scale(t: float) -> float:
 
 
 func _get_upcoming_target() -> String:
-	for g in gates:
-		if not g.resolved:
-			return g.target_name
-	return ""
+	var g: Dictionary = _get_upcoming_gate()
+	return "" if g.is_empty() else str(g.target_name)
 
 
 # `ci` lets the HUD render this onto its own canvas (see HudCanvas.gd);

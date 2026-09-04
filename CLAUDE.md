@@ -12,6 +12,14 @@ scene. Tap anywhere to flap; fly through the gate whose answer matches the
 quiz prompt. Four visual concepts share the mechanic — `SKY`, `JUNGLE`,
 `OCEAN`, `DREAM` — picked on the mode-select screen.
 
+Three quizzes exist: flag (SKY), math (JUNGLE), Stroop colour (OCEAN).
+`DREAM` is the MIX mode and rolls all three, one per gate. Which quiz a gate
+asks is therefore a property of the **gate**, carried in `gate.quiz_kind`,
+not of `current_mode` — two gates on screen at once can be different kinds,
+and the draw code has to know which is which long after the roll. Anything
+that reaches for `current_mode` to decide how to render a question or an
+answer is a bug waiting for MIX to expose it.
+
 The whole game is "Hard mode". There is no difficulty selector; the phase
 system (`_get_phase_index`) scales difficulty by gates passed.
 
@@ -58,6 +66,7 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
