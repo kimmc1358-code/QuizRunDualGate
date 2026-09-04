@@ -55,8 +55,15 @@ func _check() -> void:
 	# each glyph's own box fills in and the gaps between boxes stay empty. So
 	# the threshold has to sit between those, not merely above zero; 0.25 was
 	# the first guess and it passed the broken build.
+	# The REAL strings, built by the game's own formatter, not the bare words.
+	# The bare words have no space in them, and a space is a glyph with no
+	# bitmap — its texture index comes back -1. Skipping that glyph without
+	# advancing the pen closed the gap up, and the popup rendered
+	# "TURBO!+600" on screen while this check, testing "TURBO!", stayed green.
 	var font: Font = main.get("combo_font")
-	for spec in [["TURBO!", main.get("BOOST_POP_FONT_SIZE_BEST")], ["BOOST!", main.get("BOOST_POP_FONT_SIZE_MID")]]:
+	for spec in [
+			[main.call("_boost_pop_text", 600, true), main.get("BOOST_POP_FONT_SIZE_BEST")],
+			[main.call("_boost_pop_text", 300, false), main.get("BOOST_POP_FONT_SIZE_MID")]]:
 		var text: String = spec[0]
 		var size: int = spec[1]
 		var tex: Texture2D = main.call("_text_as_texture", font, size, text)
@@ -76,12 +83,29 @@ func _check() -> void:
 		# or the outline passes and the fill drift apart.
 		var expect_w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 		var drift: float = absf(img.get_width() - expect_w)
-		var ok: bool = clear_frac > 0.50 and drift <= 6.0
+		# Where the ink actually ENDS, which is the only thing that catches a
+		# dropped advance. The width comes from a separate measuring pass that
+		# sums every glyph, so it stays correct even when the drawing pass
+		# skips one — the space bug left the width at 241 and simply shifted
+		# everything after the space 10px left, which both of the checks above
+		# happily passed.
+		var last_ink: int = -1
+		for x in range(img.get_width() - 1, -1, -1):
+			var inked := false
+			for y in range(img.get_height()):
+				if img.get_pixel(x, y).a > 0.02:
+					inked = true
+					break
+			if inked:
+				last_ink = x
+				break
+		var tail: int = img.get_width() - 1 - last_ink
+		var ok: bool = clear_frac > 0.50 and drift <= 6.0 and tail <= 5
 		if not ok:
 			problems_pre += 1
-		print("  %-7s @%d  tex %dx%d  clear %.0f%%  width drift %.0fpx vs Font.get_string_size  %s" % [
-			text, size, img.get_width(), img.get_height(), clear_frac * 100.0, drift,
-			"ok" if ok else "FAIL (correct is ~66% clear; a mis-read channel gives ~39%)"])
+		print("  %-11s @%d  tex %dx%d  clear %.0f%%  width drift %.0fpx  ink ends %dpx from the right  %s" % [
+			text, size, img.get_width(), img.get_height(), clear_frac * 100.0, drift, tail,
+			"ok" if ok else "FAIL (66%% clear / <=6px drift / <=5px tail expected)"])
 	print("")
 	print("%-6s %-14s %-7s %-20s %-20s %-6s %s" % [
 		"combo", "boost text", "char y", "boost rect x/y", "combo rect x/y", "fit", "verdict"])

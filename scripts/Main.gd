@@ -1531,11 +1531,17 @@ const BOOST_POP_GLOW_ALPHA_MID := 0.10
 # than as a paler shade of the same paint; the same trick the gate ring's
 # flash uses.
 @export_range(1.0, 2.0, 0.01) var boost_pop_gradient_top: float = 1.30
-# The foot. 0.52 was the first value and read as dirty rather than shaded —
-# at that depth TURBO's orange lands near brown, which is a different colour
-# rather than the same one in shadow. 0.78 keeps the hue recognisable the
-# whole way down while still falling clearly away from the lit crown.
-@export_range(0.2, 1.0, 0.01) var boost_pop_gradient_bottom: float = 0.78
+# The foot, and the one value here that took real captures to settle rather
+# than a composite. 0.52 read as dirty: at that depth TURBO's orange lands
+# near brown, which is a different colour rather than the same one in
+# shadow. 0.78 was still heavy on the actual sky background — a still made
+# on a dark card had flattered it. 0.96 goes the other way and the ramp
+# stops being visible at all.
+#
+# 0.88, chosen off six in-game screenshots at 0.78/0.88/0.96 across both
+# tiers. Bear in mind these are read over a bright backdrop at speed, which
+# is why the usable window is this narrow and this high.
+@export_range(0.2, 1.0, 0.01) var boost_pop_gradient_bottom: float = 0.88
 @export_group("")  # closes "Boost Popup Gradient"
 # How many bands the ramp is cut into. 14 over a 40px cap height is under
 # 3px a band, which is below where the eye starts resolving the steps; going
@@ -4576,9 +4582,18 @@ func _text_as_texture(font: Font, font_size: int, text: String) -> Texture2D:
 	for i in text.length():
 		var gi: int = ts.font_get_glyph_index(rid, font_size, text.unicode_at(i), 0)
 		var tex_idx: int = ts.font_get_glyph_texture_idx(rid, size_key, gi)
+		# A glyph with no bitmap — a space, most obviously — reports texture
+		# index -1. It still has an advance, and skipping the whole iteration
+		# is what ate it: the popup rendered "TURBO!+600" with the space
+		# closed up, which only showed once the real string was captured
+		# rather than the bare word this was first tested on.
+		if tex_idx < 0:
+			pen += ts.font_get_glyph_advance(rid, font_size, gi).x
+			continue
 		if not atlas_cache.has(tex_idx):
 			var src: Image = ts.font_get_texture_image(rid, size_key, tex_idx)
 			if src == null:
+				pen += ts.font_get_glyph_advance(rid, font_size, gi).x
 				continue
 			var rgba := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
 			var has_alpha: bool = src.detect_alpha() != Image.ALPHA_NONE
