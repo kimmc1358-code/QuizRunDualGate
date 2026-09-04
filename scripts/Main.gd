@@ -1519,6 +1519,23 @@ const BOOST_POP_COLOR_BEST := BOOST_BAR_ZONE_BEST_COLOR
 const BOOST_POP_GLOW_PASSES_MID := 6
 const BOOST_POP_GLOW_RADIUS_MID := 3.0
 const BOOST_POP_GLOW_ALPHA_MID := 0.10
+# Vertical gradient on the fill: lit from above, so the top of the letter is
+# brighter than its own colour and the bottom falls away. Multipliers on
+# boost_pop_color rather than a second pair of colours, so the per-tier
+# colour stays the one place the hue is decided — change that and the
+# gradient follows.
+#
+# The top is allowed past 1.0 on purpose. These are drawn over gameplay at
+# full alpha, so overexposing the crown is what makes it read as lit rather
+# than as a paler shade of the same paint; the same trick the gate ring's
+# flash uses.
+const BOOST_POP_GRADIENT_TOP := 1.30
+const BOOST_POP_GRADIENT_BOTTOM := 0.52
+# How many bands the ramp is cut into. 14 over a 40px cap height is under
+# 3px a band, which is below where the eye starts resolving the steps; going
+# much higher just adds draw calls to a popup that already redraws itself
+# for glow and outline.
+const BOOST_POP_GRADIENT_STRIPS := 14
 const BOOST_POP_GLOW_PASSES_BEST := 10
 const BOOST_POP_GLOW_RADIUS_BEST := 8.0
 const BOOST_POP_GLOW_ALPHA_BEST := 0.34
@@ -4499,6 +4516,102 @@ func _spawn_boost_pop(points: int, remaining: float, view_size: Vector2) -> void
 		fx_burst_textures, FX_SPARK_SPEED_RANGE, FX_SPARK_LIFETIME_RANGE, BOOST_POP_BURST_RADIUS)
 
 
+# ---- Text as a texture, for the gradient fill (see _draw_boost_pop) ----
+#
+# draw_string paints one flat colour and there is no way to vary it down the
+# glyph: _draw() has no clip rect (only RenderingServer.canvas_item_set_clip,
+# which applies to the whole item) and this project has no shader pass. So
+# the string is assembled into a texture ONCE per (text, size), and the
+# gradient is then just that texture drawn as horizontal strips, each with
+# its own modulate.
+#
+# Built from the font's own glyph atlas rather than a SubViewport: a viewport
+# needs a frame to render, and this popup has to appear on the frame the gate
+# is passed. Assembling from the atlas is synchronous.
+#
+# Only valid because the font is not MSDF (multichannel_signed_distance_field
+# is false in Fredoka.ttf.import). An MSDF atlas is a distance field, not
+# coverage, and blitting it like this would produce garbage.
+var _text_texture_cache: Dictionary = {}   # "text|size" -> ImageTexture
+
+
+func _text_as_texture(font: Font, font_size: int, text: String) -> Texture2D:
+	var key: String = "%s|%d" % [text, font_size]
+	if _text_texture_cache.has(key):
+		return _text_texture_cache[key]
+	var rids: Array = font.get_rids()
+	if rids.is_empty() or text.is_empty():
+		return null
+	var rid: RID = rids[0]
+	var ts := TextServerManager.get_primary_interface()
+	var size_key := Vector2i(font_size, 0)
+	var ascent: float = font.get_ascent(font_size)
+	var height: int = int(ceil(ascent + font.get_descent(font_size)))
+	# One pass to measure, so the image is exactly as wide as the glyphs run.
+	var advance: float = 0.0
+	for i in text.length():
+		var gi: int = ts.font_get_glyph_index(rid, font_size, text.unicode_at(i), 0)
+		advance += ts.font_get_glyph_advance(rid, font_size, gi).x
+	var width: int = int(ceil(advance)) + 2   # a column either side for glyphs that overhang their advance
+	if width <= 0 or height <= 0:
+		return null
+
+	var dst := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	dst.fill(Color(1.0, 1.0, 1.0, 0.0))
+	# The atlas carries coverage, not colour, and WHICH channel holds it
+	# depends on the format the TextServer chose — LA8 puts it in alpha and
+	# leaves luminance at 1.0 everywhere, L8 puts it in the single channel.
+	# Reading the wrong one is not subtly wrong: taking .r off an LA8 atlas
+	# returns 1.0 for every pixel and the "text" comes out a solid block.
+	# Converted once per atlas to white pixels carrying coverage as alpha,
+	# which is what the modulate then tints.
+	var atlas_cache: Dictionary = {}
+	var pen: float = 1.0
+	for i in text.length():
+		var gi: int = ts.font_get_glyph_index(rid, font_size, text.unicode_at(i), 0)
+		var tex_idx: int = ts.font_get_glyph_texture_idx(rid, size_key, gi)
+		if not atlas_cache.has(tex_idx):
+			var src: Image = ts.font_get_texture_image(rid, size_key, tex_idx)
+			if src == null:
+				continue
+			var rgba := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+			var has_alpha: bool = src.detect_alpha() != Image.ALPHA_NONE
+			for y in range(src.get_height()):
+				for x in range(src.get_width()):
+					var px: Color = src.get_pixel(x, y)
+					var cov: float = px.a if has_alpha else px.r
+					rgba.set_pixel(x, y, Color(1.0, 1.0, 1.0, cov))
+			atlas_cache[tex_idx] = rgba
+		var uv: Rect2 = ts.font_get_glyph_uv_rect(rid, size_key, gi)
+		var off: Vector2 = ts.font_get_glyph_offset(rid, size_key, gi)
+		if uv.size.x > 0.0 and uv.size.y > 0.0:
+			# blend_rect, not blit_rect: neighbouring glyph boxes can overlap
+			# and a blit would stamp one's transparent margin over the other.
+			dst.blend_rect(atlas_cache[tex_idx], Rect2i(uv.position, uv.size),
+					Vector2i(int(round(pen + off.x)), int(round(ascent + off.y))))
+		pen += ts.font_get_glyph_advance(rid, font_size, gi).x
+
+	var tex := ImageTexture.create_from_image(dst)
+	_text_texture_cache[key] = tex
+	return tex
+
+
+func _draw_text_vgradient(tex: Texture2D, top_left: Vector2, top_col: Color, bottom_col: Color) -> void:
+	# One strip per band, each drawn from its own slice of the texture with
+	# the colour sampled at that height. BOOST_POP_GRADIENT_STRIPS is what
+	# decides whether it reads as a ramp or as bands.
+	var size: Vector2 = tex.get_size()
+	var strip_h: float = size.y / float(BOOST_POP_GRADIENT_STRIPS)
+	for i in range(BOOST_POP_GRADIENT_STRIPS):
+		var y0: float = i * strip_h
+		# Sampled at the strip's middle, so the ramp is centred on the band
+		# rather than starting a half-strip late.
+		var t: float = (i + 0.5) / float(BOOST_POP_GRADIENT_STRIPS)
+		var src := Rect2(0.0, y0, size.x, strip_h)
+		var dst := Rect2(top_left + Vector2(0.0, y0), Vector2(size.x, strip_h))
+		draw_texture_rect_region(tex, dst, src, top_col.lerp(bottom_col, t))
+
+
 func _draw_boost_pop(view_size: Vector2) -> void:
 	if boost_pop_elapsed < 0.0 or boost_pop_text.is_empty():
 		return
@@ -4518,23 +4631,41 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 	# layout["pos"] is the text block's top-left; draw_string wants a baseline.
 	var draw_pos: Vector2 = layout["pos"] + Vector2(0.0, font.get_ascent(font_size))
 
-	# Both tiers glow; only how hard differs. The string redrawn on a ring at
+	# Both tiers glow; only how hard differs. The text redrawn on a ring at
 	# low alpha, which reads as a glow without needing a shader or a second
 	# canvas.
 	var passes: int = BOOST_POP_GLOW_PASSES_BEST if boost_pop_is_best else BOOST_POP_GLOW_PASSES_MID
 	var radius: float = BOOST_POP_GLOW_RADIUS_BEST if boost_pop_is_best else BOOST_POP_GLOW_RADIUS_MID
 	var glow := Color(boost_pop_color,
 		(BOOST_POP_GLOW_ALPHA_BEST if boost_pop_is_best else BOOST_POP_GLOW_ALPHA_MID) * alpha)
+	var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
+
+	# Glow, outline and fill all come off ONE assembled texture rather than
+	# the glow and outline using draw_string and only the fill using the
+	# texture. The two paths agree on glyph positions to about a pixel, and a
+	# pixel of drift between an outline and the letter it outlines is exactly
+	# the kind of thing that looks like a rendering bug. Sharing the texture
+	# makes them agree by construction.
+	var text_tex: Texture2D = _text_as_texture(font, font_size, boost_pop_text)
+	if text_tex == null:
+		# The assembly needs the font's glyph atlas; if anything about that
+		# fails, a flat popup is far better than none.
+		for i in range(passes):
+			var a: float = TAU * float(i) / float(passes)
+			draw_string(font, draw_pos + Vector2(cos(a), sin(a)) * radius, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, glow)
+		draw_string(font, draw_pos, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(boost_pop_color, alpha))
+		return
+
+	# draw_string takes a baseline; the texture's origin is its top-left.
+	var tex_pos: Vector2 = draw_pos - Vector2(0.0, font.get_ascent(font_size))
 	for i in range(passes):
 		var angle: float = TAU * float(i) / float(passes)
-		var offset := Vector2(cos(angle), sin(angle)) * radius
-		draw_string(font, draw_pos + offset, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, glow)
-
-	var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
+		draw_texture_rect(text_tex, Rect2(tex_pos + Vector2(cos(angle), sin(angle)) * radius, text_tex.get_size()), false, glow)
 	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-		draw_string(font, draw_pos + offset, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_col)
-	draw_string(font, draw_pos, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
-		Color(boost_pop_color, alpha))
+		draw_texture_rect(text_tex, Rect2(tex_pos + offset, text_tex.get_size()), false, outline_col)
+	_draw_text_vgradient(text_tex, tex_pos,
+		Color(boost_pop_color * BOOST_POP_GRADIENT_TOP, alpha),
+		Color(boost_pop_color * BOOST_POP_GRADIENT_BOTTOM, alpha))
 
 
 func _boost_bar_rect(view_size: Vector2) -> Rect2:
