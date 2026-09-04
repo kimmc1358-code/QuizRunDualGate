@@ -62,6 +62,7 @@ on failure.
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
+| `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
 | `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), and the press-burst slices to all 5 frames in every mode with a wider-than-tall cell, fires with its head buried inside the character and its tail on screen, stays stuck to it in both axes instead of drifting off with the world, loops its sustain frames for as long as the button is down without touching the ember frame, and ends once released | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, the `BOOST_BURST_*` block, or the burst art change |
 
 Most of them instantiate the real `Main.tscn` and call its own functions
@@ -140,6 +141,11 @@ has no blur shader in its custom-draw setup, so:
 - Background softness is baked by `tools/blur_background.ps1`.
 - Ambient particle blur is baked by `slice_ambient_sheet.ps1 -Sigma`.
 - The boost burst's soft edge is baked by `build_boost_burst_strips.ps1 -Sigma`.
+- The boost speed-line strip is squashed to its drawn proportions by
+  `tools/bake_speed_line.ps1`. No blur — that art arrives soft already (zero
+  fully opaque pixels). What it does is premultiply before the resize,
+  without which the black sitting in its transparent pixels averages into
+  every streak.
 
 When blurring or downscaling a cut-out, **premultiply alpha first**. Blurring
 colour and alpha separately drags the transparent pixels' colour inward as a

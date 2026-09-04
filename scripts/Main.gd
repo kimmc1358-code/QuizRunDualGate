@@ -433,6 +433,83 @@ const BOOST_VISUAL_BLEND_OUT := 0.20   # ...and to drop back out of it
 const BOOST_BG_SPEED_SHARE := 1.0
 const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at full blend
 
+# --- Boost speed lines: thin streaks sweeping right-to-left in a band at
+# the top and bottom of the play area, only while the button is held. Whole
+# feature = these consts + speed_line_texture/boost_speedlines +
+# _init_boost_speedlines/_update_boost_speedlines/_draw_boost_speedlines +
+# their call sites + assets/fx/speed_lines/. Delete those to remove it.
+#
+# Not to be confused with fx_speed_lines, which is the gate-pass flourish:
+# code-drawn rects that live 0.13s around the character. This is a
+# persistent field of painted streaks at the screen edges, and the two never
+# interact.
+#
+# The whole design problem is that it must add speed without adding
+# anything the player has to look past, so three separate things keep it out
+# of the way rather than one:
+#
+#   1. It draws immediately after the background, BEHIND every gate, the
+#      character and all gameplay FX. Nothing it does can obscure a gate,
+#      because a gate is painted over it.
+#   2. It is confined to two bands hugging the top and bottom of the gate
+#      zone, so the middle — where the lanes are read and the character
+#      flies — stays empty.
+#   3. Alpha tops out low and is multiplied by boost_visual_blend, so it
+#      fades in and out with the rest of the boost look and is simply not
+#      there the rest of the time.
+#
+# Speed is the point, so it is set against what else is moving rather than
+# picked: gates run at GATE_SPEED x BOOST_BUTTON_MULTIPLIER = 260px/s while
+# held, and the near background layer at 0.50 of GATE_SPEED = 130. These go
+# 900-1500, roughly 3.5-6x the gates. Anything near the gates' own rate
+# reads as more scenery instead of as speed, and the spread across the range
+# is what stops the band moving like one sheet.
+const BOOST_SPEEDLINE_TEXTURE_PATH := "res://assets/fx/speed_lines/speed_line_strip.png"
+const BOOST_SPEEDLINE_COUNT := 12          # split evenly between the two bands
+const BOOST_SPEEDLINE_SPEED_RANGE := Vector2(900.0, 1500.0)   # px/s, leftward
+const BOOST_SPEEDLINE_LENGTH_RANGE := Vector2(180.0, 360.0)
+const BOOST_SPEEDLINE_THICKNESS_RANGE := Vector2(12.0, 26.0)
+# Height of each band, measured in from the gate zone's own top and bottom
+# edges. 64 of the zone's ~666px leaves the middle 80% clear.
+const BOOST_SPEEDLINE_BAND_HEIGHT := 64.0
+# Colour and peak alpha per mode, because one white line does not read the
+# same on four backdrops. Measured mean luma of each far layer inside the
+# two bands, worst (brightest) of the two: JUNGLE 0.37, OCEAN 0.53,
+# SKY 0.68, DREAM 0.86. A white streak shifts luma by alpha x (1 - that), so
+# the same alpha lands anywhere from a 16% change to a 4% one — which is the
+# difference between reading as speed and not being there.
+#
+# So each row is solved backwards from one target instead: about a 15% luma
+# shift, which is enough to catch the eye in the corner of the frame without
+# becoming a thing to look at.
+#
+# DREAM is the row that cannot be solved with white at all. Its backdrop is
+# 0.86, so even a fully opaque white line only moves it 14%, and the pastel
+# is exactly the palette a pale streak disappears into. It gets a dark
+# violet instead and gains its contrast downward — same trick, opposite
+# direction. That is a real look difference between modes, so it is worth a
+# play before deciding it is right.
+const MODE_BOOST_SPEEDLINE_COLOR := [
+	Color(1.0, 1.0, 1.0, 0.47),      # SKY — white on a 0.68 sky
+	Color(1.0, 1.0, 1.0, 0.24),      # JUNGLE — the darkest backdrop needs the least
+	Color(1.0, 1.0, 1.0, 0.32),      # OCEAN
+	Color(0.42, 0.33, 0.55, 0.32),   # DREAM — dark violet, contrast downward
+]
+# Per-streak variation on top of the mode's peak, so the band is not a set
+# of identical lines.
+const BOOST_SPEEDLINE_ALPHA_SCALE_RANGE := Vector2(0.45, 1.0)
+
+@export_group("Boost Speed Lines")
+# One dial over all four modes, because the per-mode alphas above are
+# balanced against each other and should move together. The balance was
+# derived from measured backdrop luma; this is the "is the whole thing loud
+# enough" knob, and it is an @export because a still frame cannot answer
+# that — 900-1500px/s in the corner of the eye reads far stronger in motion
+# than it looks in a screenshot, and only playing it settles which way this
+# should go.
+@export_range(0.0, 2.5, 0.05) var boost_speedline_intensity: float = 1.0
+@export_group("")  # closes "Boost Speed Lines"
+
 # --- Boost burst: an exhaust plume fired out of the character's back, lit on
 # the press and burning for as long as the button is down. Whole feature =
 # these consts + boost_burst_frames/boost_burst_elapsed + _draw_boost_burst +
@@ -2266,6 +2343,15 @@ var sparkle_texture_sets: Array = []  # ALL four colours, index-aligned to SPARK
 var fx_burst_textures: Array[Texture2D] = []  # flat, pre-weighted pool for the two spark layers: each colour repeated per FX_BURST_COLOR_WEIGHTS_PER_MODE, so a uniform pick yields the mode's mix
 var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, texture}
 var fx_speed_lines: Array = []       # each: {y_offset, length, elapsed, color}
+
+# Boost speed lines (see the BOOST_SPEEDLINE_* consts). A fixed pool,
+# recycled in place off the right edge — no allocation per frame, same as
+# the ambient particle field. Kept moving even when not boosting, which
+# costs one multiply-add each and means the band is already scattered when
+# the button goes down instead of every streak entering from the edge at
+# once.
+var speed_line_texture: Texture2D
+var boost_speedlines: Array = []     # each: {x, y, length, thickness, speed, alpha}
 var trail_texture_sets: Array = []   # one Array[Texture2D] of sparkle shapes per colour in TRAIL_COLORS_PER_MODE — grouped, not flattened, so DREAM can step colour by colour
 var trail_particles: Array = []      # each: {pos, drift_y, size, rotation, spin, lifetime, elapsed, texture} — see the TRAIL_* consts
 var trail_spawn_timer: float = 0.0
@@ -2414,10 +2500,15 @@ func _boot_load() -> void:
 		bg_sparkle_textures.append(load(path))
 	if ResourceLoader.exists(CASTLE_TEXTURE_PATH):
 		castle_texture = load(CASTLE_TEXTURE_PATH)
+	# Shared by every mode — the streaks are plain white and are tinted by
+	# nothing, so there is no per-mode variant to load in _apply_mode.
+	if ResourceLoader.exists(BOOST_SPEEDLINE_TEXTURE_PATH):
+		speed_line_texture = load(BOOST_SPEEDLINE_TEXTURE_PATH)
 	for path in CLOUD_MID_TEXTURE_PATHS:
 		cloud_mid_textures.append(load(path))
 	var view_size := get_viewport_rect().size
 	_init_mountains(view_size)
+	_init_boost_speedlines(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
@@ -3499,6 +3590,11 @@ func _process(delta: float) -> void:
 		_update_bg_sparkles(delta, view_size)
 		_update_castle(delta, view_size)
 		_update_cloud_mid(delta, view_size)
+	# Runs on every screen and in both branches above — the pool is 12
+	# entries and only drawn while boosting, so keeping it moving costs
+	# nothing and means the band is already scattered when the button goes
+	# down rather than filling in from the right edge.
+	_update_boost_speedlines(delta, view_size)
 	pause_button.visible = state == State.PLAYING or state == State.COUNTDOWN
 	# Re-derived every frame rather than only on state changes: the revive
 	# popup opens without one (see _update_mute_button_visibility). LOGO and
@@ -4984,6 +5080,72 @@ func _draw_speed_lines() -> void:
 		draw_rect(rect, Color(c.r, c.g, c.b, c.a * alpha))
 
 
+# ---- Boost speed lines (see the BOOST_SPEEDLINE_* consts) ----
+
+func _boost_speedline_bands(view_size: Vector2) -> Array:
+	# [top_band_start_y, bottom_band_start_y]. Anchored to the gate zone, not
+	# the raw screen: above the zone is the HUD and the quiz box, and a
+	# streak up there would be running behind panels the player is reading.
+	var zone_top: float = _gate_zone_top(view_size)
+	return [zone_top, view_size.y - BOOST_SPEEDLINE_BAND_HEIGHT]
+
+
+func _make_boost_speedline(view_size: Vector2, index: int, scatter: bool) -> Dictionary:
+	var bands: Array = _boost_speedline_bands(view_size)
+	# Alternating rather than random, so neither band can come up empty —
+	# with only six a side, a coin flip leaves visible gaps often enough to
+	# notice.
+	var band_y: float = bands[index % 2]
+	var thickness: float = randf_range(BOOST_SPEEDLINE_THICKNESS_RANGE.x, BOOST_SPEEDLINE_THICKNESS_RANGE.y)
+	var length: float = randf_range(BOOST_SPEEDLINE_LENGTH_RANGE.x, BOOST_SPEEDLINE_LENGTH_RANGE.y)
+	return {
+		# Scattered across the width on the initial fill, entering from off
+		# the right edge on every recycle after that.
+		"x": randf_range(0.0, view_size.x) if scatter else view_size.x + length * randf_range(0.0, 0.6),
+		"y": band_y + randf_range(0.0, BOOST_SPEEDLINE_BAND_HEIGHT - thickness) + thickness * 0.5,
+		"length": length,
+		"thickness": thickness,
+		"speed": randf_range(BOOST_SPEEDLINE_SPEED_RANGE.x, BOOST_SPEEDLINE_SPEED_RANGE.y),
+		"alpha_scale": randf_range(BOOST_SPEEDLINE_ALPHA_SCALE_RANGE.x, BOOST_SPEEDLINE_ALPHA_SCALE_RANGE.y),
+	}
+
+
+func _init_boost_speedlines(view_size: Vector2) -> void:
+	boost_speedlines.clear()
+	for i in range(BOOST_SPEEDLINE_COUNT):
+		boost_speedlines.append(_make_boost_speedline(view_size, i, true))
+
+
+func _update_boost_speedlines(delta: float, view_size: Vector2) -> void:
+	if boost_speedlines.is_empty():
+		return
+	for i in range(boost_speedlines.size()):
+		var l: Dictionary = boost_speedlines[i]
+		l.x -= l.speed * delta
+		# x is the streak's RIGHT end — _draw_boost_speedlines lays the rect
+		# out from x - length to x — so the right end is the trailing one
+		# while it travels left, and the whole streak is gone exactly when
+		# that passes 0. Recycling on x + length instead would hold a dead
+		# streak in the pool for another full length of travel.
+		if l.x < 0.0:
+			var fresh: Dictionary = _make_boost_speedline(view_size, i, false)
+			for key in fresh:
+				l[key] = fresh[key]
+
+
+func _draw_boost_speedlines() -> void:
+	if speed_line_texture == null or boost_visual_blend <= 0.0:
+		return
+	var tint: Color = MODE_BOOST_SPEEDLINE_COLOR[current_mode]
+	for l in boost_speedlines:
+		var a: float = tint.a * l.alpha_scale * boost_visual_blend * boost_speedline_intensity
+		if a <= 0.002:
+			continue
+		draw_texture_rect(speed_line_texture,
+				Rect2(Vector2(l.x - l.length, l.y - l.thickness * 0.5), Vector2(l.length, l.thickness)),
+				false, Color(tint.r, tint.g, tint.b, a))
+
+
 func _draw_impact_flashes() -> void:
 	if fx_impact_flashes.is_empty():
 		return
@@ -6403,6 +6565,10 @@ func _draw() -> void:
 	if bg_texture != null:
 		_draw_sky_background(view_size)     # single scrolling background image — see _draw_sky_background
 		_draw_ambient_particles()           # small twinkle/leaf/bubble particles, still behind the gate zone
+		# Behind every gate and the character by construction — see the
+		# BOOST_SPEEDLINE_* block. Inside the bg_texture branch only because
+		# the fallback branch below is legacy art no mode still uses.
+		_draw_boost_speedlines()
 	else:
 		_draw_sky_gradient(view_size)          # Layer 0
 		_draw_mountains()                      # Layer 1
