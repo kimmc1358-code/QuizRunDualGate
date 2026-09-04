@@ -58,6 +58,7 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
@@ -92,6 +93,26 @@ Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
 being given far more room than the game has.
 
+### Screenshots of the running game
+
+Headless renders nothing — the dummy driver hands back a blank image — but
+dropping `--headless` does not, so a script can drive the real game and save
+what is actually on screen:
+
+```bash
+"$GODOT" --path . --script res://tools/capture_score_display.gd -- --out <dir>
+```
+
+`root.get_texture().get_image().save_png()` after `await
+RenderingServer.frame_post_draw` is the whole trick; without that await you
+save the previous frame. `capture_score_display.gd` is the worked example —
+it sets a score, redraws, and shoots, once per digit count.
+
+Use this for anything where the question is "does it look right", and reach
+for it before mocking a composite up separately. A hand-built preview of the
+BOOST popup looked fine for two rounds while the real game was drawing
+`TURBO!+600` with the space swallowed; one real capture found it.
+
 ## Architecture
 
 `scripts/Main.gd` is ~6000 lines and deliberately monolithic: gameplay is
@@ -120,6 +141,19 @@ Other scripts: `PopupBase.gd` is the shared popup chrome (pause / revive /
 game over / settings / about all extend it). `HudCanvas.gd` is a 34-line
 node that exists **only** to give the HUD a different texture filter from
 the world — the drawing logic still lives in `Main.gd` (`draw_hud_into`).
+`ScoreFormat.gd` is a `class_name` with one static function, and exists
+because the same score is drawn by `Main.gd` and by `ModeSelectScreen.gd`
+with no node relationship between them; a private copy in each is exactly
+how the two drift apart.
+
+A score is shown in two registers, and the register is a property of the
+**slot**, not of the number. Narrow slots — the HUD's SCORE and BEST, the
+mode-select card plates — hold five characters, and go through
+`ScoreFormat.compact` (`1250`, `123K`, `1.2M`, and never zero-padded). The
+game-over popup has room, so it shows the whole number with thousands
+separators via `PopupBase._group` instead. Abbreviating is what you do when
+the space runs out, not a house style — do not spread it to slots that can
+fit the real number.
 
 ## Asset pipeline
 

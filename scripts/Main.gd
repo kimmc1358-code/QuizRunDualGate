@@ -7076,17 +7076,31 @@ func _draw_spaced_digits(text: String, anchor: Vector2, font_size: int, extra_sp
 # 뜬다 — DIGIT_BASELINE_FROM_CENTER_FRAC 이 그래서 있다.
 func _digit_positions(text: String, anchor: Vector2, font_size: int, extra_spacing: float,
 		align_right: bool, font: Font) -> PackedVector2Array:
+	# 숫자는 가장 넓은 자릿수에 맞춘 고정 칸에 하나씩 넣는다. 점수가 오르며
+	# 1 이 7 로 바뀔 때 그 앞뒤가 흔들리지 않게 하는 것이 이 함수의 존재
+	# 이유이고, 비례폭 글꼴에 draw_string 한 번으로는 얻을 수 없다.
+	#
+	# 다만 숫자 아닌 글자는 제 폭을 쓴다. ScoreFormat.compact 가 "1.2M" 같은
+	# 것을 돌려주기 시작하면서 필요해졌다 — 마침표를 숫자 칸에 넣으면 양옆이
+	# 반 칸씩 비어 "1 . 2 M" 처럼 벌어지고, K/M 은 숫자보다 넓어 반대로
+	# 이웃을 파고든다. 자릿수 정렬은 자릿수에만 필요하다.
 	var cell := 0.0
 	for d in range(10):
 		cell = maxf(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	var total_width: float = cell * text.length() + extra_spacing * maxi(0, text.length() - 1)
+	var glyph := PackedFloat32Array()
+	var cells := PackedFloat32Array()
+	var total_width: float = extra_spacing * maxi(0, text.length() - 1)
+	for i in range(text.length()):
+		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		glyph.append(w)
+		cells.append(cell if text[i].is_valid_int() else w)
+		total_width += cells[i]
 	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
 	var y: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	var out := PackedVector2Array()
 	for i in range(text.length()):
-		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		out.append(Vector2(cursor_x + (cell - w) * 0.5, y))
-		cursor_x += cell + extra_spacing
+		out.append(Vector2(cursor_x + (cells[i] - glyph[i]) * 0.5, y))
+		cursor_x += cells[i] + extra_spacing
 	return out
 
 
@@ -7112,7 +7126,7 @@ func _score_digit_layout(view_size: Vector2) -> Dictionary:
 	var rect := _score_box_rect(view_size)
 	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
 	var font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
-	var text := "%05d" % score
+	var text: String = ScoreFormat.compact(score)
 	var anchor := Vector2(
 		rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC),
 		rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC)
@@ -7152,7 +7166,7 @@ func _make_gradient_canvas(node_name: String, method: String, top: Color, bottom
 func _best_digit_layout(rect: Rect2) -> Dictionary:
 	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
 	var font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
-	var text := "%05d" % _best_for(current_mode)
+	var text: String = ScoreFormat.compact(_best_for(current_mode))
 	var anchor := Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC,
 		rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC)
 	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC

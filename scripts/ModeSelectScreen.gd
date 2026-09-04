@@ -76,9 +76,10 @@ const CARD_NAME_PLATE_COLOR := Color(0.16, 0.17, 0.20, 0.55)
 const CARD_NAME_PLATE_RADIUS := 6
 const CARD_NAME_PLATE_PAD_FRAC := 0.32   # of the plate's height, at each end
 
-# Best score sits in its own rounded white plate, with the number padded to a
-# fixed five digits so the plate never resizes as a score grows.
-const CARD_BEST_DIGITS := 5
+# 최고 점수는 둥근 흰 판 위에 얹힌다. 판 너비는 카드 너비 비율(CARD_BEST_PLATE_WIDTH_FRAC)
+# 로만 정해지므로 숫자가 길어져도 판은 그대로다 — 숫자를 다섯 자리로 채워
+# 넣던 시절이 있었지만, 판을 붙잡고 있던 것은 그 자리 채우기가 아니라
+# 이 비율이었다. 표기는 ScoreFormat.compact 를 따른다.
 const CARD_BEST_PLATE_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const CARD_BEST_PLATE_RADIUS := 6
 const CARD_BEST_PLATE_WIDTH_FRAC := 0.86   # of the card's inner width
@@ -692,7 +693,8 @@ func _build() -> void:
 			best_label.add_theme_font_override("font", _font_bold)
 		_card_best.append(best_label)
 
-		var score_label := _add_card_text(row, "0".repeat(CARD_BEST_DIGITS), CARD_SCORE_COLOR)
+		# set_best_scores 가 곧바로 덮어쓴다. 기록이 아직 없는 카드의 값이기도 하다.
+		var score_label := _add_card_text(row, "0", CARD_SCORE_COLOR)
 		score_label.add_theme_color_override("font_outline_color", CARD_SCORE_OUTLINE)
 		if _font_heavy != null:
 			# Its own face rather than _font_heavy directly: the extra
@@ -1507,13 +1509,14 @@ func _follow_with_glow(tween: Tween, button: Control) -> void:
 ## Fills each card's BEST plate. The array is indexed by mode, and the
 ## cards are built in CARD_MODES order, so index i belongs to CARD_MODES[i].
 ##
-## Digits are zero-padded to CARD_BEST_DIGITS so the plates all stay the
-## same width — a record that grows a digit must not reflow the card.
+## 숫자는 ScoreFormat.compact 로 줄여 쓴다. 판 자체는 카드 너비 비율로
+## 잡히므로(plate_w) 글자 길이와 무관하게 고정이고, 왕관+"BEST"+숫자 줄만
+## 그 안에서 가운데로 다시 모인다.
 func set_best_scores(values: PackedInt32Array) -> void:
 	for i in range(_card_score.size()):
 		var mode: int = CARD_MODES[i]
 		var value: int = values[mode] if mode < values.size() else 0
-		_card_score[i].text = "%0*d" % [CARD_BEST_DIGITS, value]
+		_card_score[i].text = ScoreFormat.compact(value)
 
 
 func _on_card_pressed(index: int) -> void:
