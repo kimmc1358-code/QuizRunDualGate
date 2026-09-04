@@ -1616,6 +1616,21 @@ const FX_SOUND_BOOST_PATH := "res://assets/audio/boost.wav"
 # 파일 이름이 boost.wav 가 아닌 이유: 루프 쪽이 이미 그 이름을 쓰고 있고,
 # 덮어쓰면 홀드음이 조용히 0.68초짜리로 바뀐다.
 const FX_SOUND_BOOST_START_PATH := "res://assets/audio/boost_start.wav"
+# 원샷이 홀드음 옆에서 약하게 들려서 올린다. 감이 아니라 재서 정한 값이다 —
+# 두 파일의 피크는 사실상 같은데(-5.0 대 -5.1 dBFS) RMS 는 원샷이 5.2 dB
+# 낮다. 짧은 트랜지언트라 평균 에너지가 낮은 것이고, 귀는 피크가 아니라
+# 평균으로 크기를 판단하니 지속음 옆에서 묻힌다.
+#
+# 그 5.2 dB 를 다 메우지는 않는다. 원샷의 피크가 -5.1 이라 헤드룸이 5.1 dB
+# 뿐이고, +5 를 주면 이 클립 혼자 0 dBFS 를 친다. 홀드음도 -5 로 같이 울리는
+# 중이라 합이 넘칠 수 있다. +4 면 체감 크기는 거의 맞추면서 피크에 1 dB 를
+# 남긴다.
+#
+# 이보다 더 필요하면 이쪽을 올리는 것보다 홀드음을 낮추는 쪽이 맞다 — 위로는
+# 천장이 없지만 아래로는 여유가 있다.
+@export_group("Boost Audio")
+@export_range(-12.0, 12.0, 0.5) var boost_start_volume_db: float = 4.0
+@export_group("")  # closes "Boost Audio"
 
 
 # ---- Phase curve, shared by all three modes ----
@@ -2587,6 +2602,7 @@ func _boot_load() -> void:
 		# 루프를 걸지 않는다 — 원샷이다. 위 두 줄과 달리 여기에
 		# _enable_stream_loop 가 없는 것이 의도다.
 		fx_sound_boost_start.stream = load(FX_SOUND_BOOST_START_PATH)
+		fx_sound_boost_start.volume_db = boost_start_volume_db
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)

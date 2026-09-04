@@ -78,6 +78,15 @@ func _run() -> void:
 		_check("one-shot is NOT looped", start_sfx.stream.loop_mode, AudioStreamWAV.LOOP_DISABLED)
 	# 그리고 홀드보다 짧아야 악센트다. 같은 길이면 두 소리가 통째로 겹친다.
 	_check("one-shot is shorter than the loop", start_sfx.stream.get_length() < sfx.stream.get_length(), true)
+	# 볼륨이 실제로 플레이어까지 갔는가. @export 를 추가해 놓고 _boot_load 에서
+	# 적용하는 줄을 빠뜨리면, 인스펙터에서는 값이 보이는데 소리는 그대로다 —
+	# 눈으로는 절대 안 잡히는 종류의 어긋남이다.
+	_check("one-shot volume applied", is_equal_approx(start_sfx.volume_db, main.get("boost_start_volume_db")), true)
+	# 그리고 그 값이 클리핑으로 넘어가면 안 된다. 이 클립의 피크가 -5.1 dBFS
+	# 라 헤드룸이 5.1 dB 뿐이고, 홀드음(-5.0)과 겹쳐 울리므로 합은 그보다 먼저
+	# 찬다. 더 크게 하고 싶으면 홀드음을 낮추는 쪽이다.
+	if start_sfx.volume_db > 5.0:
+		_check("one-shot volume stays under the clip's 5.1 dB headroom", start_sfx.volume_db, 5.0)
 
 	print("\n0. burst art, every mode")
 	# 다섯 칸이 다 살아 있어야 한다. _slice_spritesheet 는 빈 칸을 버리므로,
