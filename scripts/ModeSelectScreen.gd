@@ -51,8 +51,6 @@ const CARD_CHARACTER_FPS := 8.0
 const CARD_CHARACTER_SCALE := [0.92, 1.0, 1.0, 1.20]
 # Measured off each sheet the same way Main.gd's MODE_DRAW_OFFSET_FLY is,
 # and scaled to whatever size the card draws the sprite at.
-const CARD_CHARACTER_OFFSET := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0), Vector2.ZERO]
-const CARD_CHARACTER_REFERENCE := 100.0  # the offsets above are in this space
 
 # Space inside a card, as fractions of its height: a name across the top, the
 # character in the middle, the best score along the bottom.

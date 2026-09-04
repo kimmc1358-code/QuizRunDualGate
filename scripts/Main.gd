@@ -263,7 +263,6 @@ const SMOOTH_WORLD_FILTER := true
 # them into the actual bounds gate spawning/clamping/drawing use.
 # ============================================================
 const HUD_BAR_HEIGHT := 100.0        # fallback-only: the plain bar drawn when the score box art is missing
-const HUD_SIDE_MARGIN := 12.0
 const HUD_BAR_COLOR := Color(1.0, 1.0, 1.0, 0.3)
 const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallback draw only)
 # Top HUD: one row of pause | score box | mute, with the quiz box directly
