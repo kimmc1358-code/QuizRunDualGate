@@ -66,11 +66,23 @@
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools/blur_background.ps1 -Sharpness
+
+.EXAMPLE
+    powershell -ExecutionPolicy Bypass -File tools/blur_background.ps1 -Mode ocean -Probe -ProbeSigmas "1.0,1.5,2.0,2.5"
 #>
 param(
     [string]$Mode,
     [switch]$SelfTest,
     [switch]$Sharpness,
+    # Report what a range of sigmas WOULD measure for -Mode, writing nothing.
+    # The committed sigmas were picked this way; this is how to pick the next
+    # one without a round of guess-blur-look-revert.
+    [switch]$Probe,
+    # Comma-separated, NOT a real array: this script is always run through
+    # `powershell -File`, which hands every argument over as a string and
+    # binds only the first element of a [double[]]. Passing "0.5,0.9,1.4"
+    # and splitting here is what makes -File work.
+    [string]$ProbeSigmas = "0.5,1.0,1.5,2.0,2.5,3.0,4.0",
     [double]$Sigma = 0    # 0 = use the per-file value in $ModeBackgrounds below
 )
 
@@ -282,10 +294,48 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 #
 # 0.5 is the lightest value that does anything: the kernel is built out to
 # ceil(3*sigma), so at 0.3 it collapses to a near-delta and every near layer
-# measures its raw sharpness back, unchanged. Half the far layers' sigma,
-# and enough to take the alpha edge off a cut-out so its silhouette does not
-# sit on the far layer as a hard line.
+# measures its raw sharpness back, unchanged. Enough to take the alpha edge
+# off a cut-out so its silhouette does not sit on the far layer as a hard
+# line.
+#
+# It is the FLOOR now, not the shared value it used to be. Holding every
+# near layer at 0.5 kept each painting's own crispness, and that turned out
+# to mean keeping wildly different amounts of it — 2.33 for SKY against
+# 10.73 for OCEAN, because the OCEAN art is intrinsically five times
+# busier. The foreground did start pulling the eye off the gates, which the
+# JUNGLE and OCEAN rows below had both been flagged as the ones to watch.
+#
+# Where the numbers landed, and how each was arrived at:
+#
+#   SKY    1.47 / 1.70 = 0.86   sigma 0.9   by eye
+#   JUNGLE 3.67 / 2.53 = 1.45   sigma 1.0   measured
+#   OCEAN  4.53 / 1.72 = 2.64   sigma 1.5   by eye
+#   DREAM  0.46 / 1.03 = 0.45   sigma 1.1   by eye
+#
+# Only JUNGLE's is what the metric alone would pick. The first pass matched
+# all three ratios onto ~1.45, and looking at it on a screen said otherwise:
+# SKY and DREAM still read too busy in front, OCEAN had gone too soft. Take
+# that as the standing correction to the metric rather than an exception to
+# it — it averages over a whole painting, and how much a foreground pulls
+# the eye depends on where its detail sits, not on the mean.
+#
+# It does cost SKY the ordering. Its near layer is now softer than its own
+# far layer, joining DREAM, so two of the four pairs no longer get their
+# depth from blur. That is the same inversion this project once shipped and
+# reverted wholesale; the difference is that it is now two deliberate rows
+# rather than the whole scheme, with occlusion and the 2.5x speed split
+# still carrying the depth. -SelfTest lists them as notes and still warns
+# for any mode not named in $DepthInversionExpected.
+#
+# Use -Probe to re-derive any of it; that is where the numbers came from.
 $NearSigma = 0.5
+
+# Modes whose near layer is knowingly softer than its far layer, and why.
+# Anything NOT listed here that inverts is a mistake and -SelfTest says so.
+$DepthInversionExpected = @{
+    sky   = 'judged by eye; its far layer paints hard-edged stone arches that the mean does not weight the way the eye does'
+    dream = 'near art is softer raw (0.78) than any far layer in the project, so no sigma can order this pair'
+}
 
 $ModeBackgrounds = @{
     sky = @(
@@ -304,8 +354,17 @@ $ModeBackgrounds = @{
         @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
         # Clouds, and only over the bottom half of the screen (0% coverage
         # above y=512 of 854, ~65% below). Softest raw near layer of the
-        # three (2.52), so NEAR_SIGMA barely moves it: 2.32.
-        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
+        # three (2.52), and at the old floor of 0.5 it only came down to
+        # 2.32.
+        #
+        # 0.9 takes it to 1.47, and that is BELOW this mode's far layer at
+        # 1.70 — the pair is deliberately inverted here, see
+        # $DepthInversionExpected. The metric wanted 0.5 and the screen
+        # disagreed: the far layer's sharpness sits in hard-edged stone
+        # arches that a whole-image mean under-weights, so 1.70 reads
+        # sharper than it measures and the clouds in front of it needed to
+        # come down further than the number allowed.
+        @{ File = 'background_near'; Sigma = 0.9; CutOut = $true }
     )
     jungle = @(
         # Two layers, so neither can be as strong as a lone background would
@@ -317,10 +376,14 @@ $ModeBackgrounds = @{
         @{ File = 'background_far';  Sigma = 1.2; CutOut = $false }
         # Busiest near layer of the three (raw 6.76), and the one that sits
         # most heavily over the play area — it covers 28% of the midriff and
-        # 79% of the bottom strip. NEAR_SIGMA leaves it at 5.85. Watch this
-        # one first if the foreground ever starts pulling the eye off the
-        # gates.
-        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
+        # 79% of the bottom strip. This is the row that said to watch it
+        # first if the foreground started pulling the eye off the gates, and
+        # it did.
+        #
+        # 1.0 takes it from 5.85 to 3.67, a 1.45 ratio against its own far
+        # layer. That is as far as it goes: at 1.5 it measures 2.49, under
+        # the 2.53 of the far layer behind it, and the pair inverts.
+        @{ File = 'background_near'; Sigma = 1.0; CutOut = $true }
     )
     ocean = @(
         # The painting arrives gentle — an underwater scene carries its own
@@ -339,10 +402,23 @@ $ModeBackgrounds = @{
         @{ File = 'background_far';  Sigma = 1.0; CutOut = $false }
         # Sharpest art in the project: coral and pillar detail put it at
         # 12.48 raw, nearly twice JUNGLE's near layer and five times SKY's.
-        # NEAR_SIGMA leaves it at 10.73, far and away the crispest thing on
-        # screen behind the gates — which is the point, but it is also the
-        # layer most likely to want a second look in play.
-        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
+        # At the old shared 0.5 it measured 10.73 — far and away the crispest
+        # thing on screen behind the gates, and the row that was called out
+        # as most likely to want a second look in play. It wanted one.
+        #
+        # 1.5, three times any other near layer's sigma, and that is the
+        # point rather than a mistake: sigma is not comparable between
+        # paintings, only the sharpness it lands on is. This one starts so
+        # far ahead that it takes that much just to reach 4.53.
+        #
+        # Walked back from 2.5. That landed it at 2.52, a 1.46 ratio matching
+        # JUNGLE's — the tidiest number of the four and too soft to look at.
+        # This art is the project's most detailed, and flattening it to the
+        # same reading as everything else threw away what the scene is. 4.53
+        # is still 2.4x softer than the 10.73 that started this, and it keeps
+        # the widest near/far gap of any pair (2.64), which is the right way
+        # round for the mode with the busiest foreground.
+        @{ File = 'background_near'; Sigma = 1.5; CutOut = $true }
     )
     dream = @(
         # 시그마 1.1은 이 모드가 단일 배경이던 시절 쓰던 값이고, 원경이 된
@@ -362,7 +438,12 @@ $ModeBackgrounds = @{
         # 1472x704 — 네 모드의 근경 중 유일하게 2208x1056 이 아니라 화면을
         # 채우며 1.21배 확대된다(스카이는 원경이 그랬다). Sharpness 가 리샘플
         # 뒤에 재는 이유가 이것이다.
-        @{ File = 'background_near'; Sigma = $NearSigma; CutOut = $true }
+        #
+        # 0.5 에서 1.1 로. 0.72 -> 0.46 이고, 이 그림에서 얻어낼 수 있는
+        # 거의 전부다 — 원본이 이미 부드러워서 곡선이 여기서 눕는다(0.9 에
+        # 0.50, 1.4 에 0.43, 1.8 에 0.40). 더 올리면 꽃 모양만 잃고 부드러움은
+        # 안 는다. 이미 뒤집힌 쌍이라 순서를 더 망가뜨릴 것도 없다.
+        @{ File = 'background_near'; Sigma = 1.1; CutOut = $true }
     )
 }
 
@@ -403,14 +484,53 @@ if ($Sharpness) {
     return
 }
 
+if ($Probe) {
+    if (-not $Mode) { throw "-Probe needs -Mode <name> to say which pair to sweep." }
+    Write-Host "Probing $Mode. Sharpness each sigma WOULD produce, measured at $ViewHeight px. Nothing is written."
+    $tmp = [System.IO.Path]::GetTempPath()
+    $candidates = @($ProbeSigmas -split ',' | ForEach-Object { [double]$_.Trim() })
+    foreach ($row in (Get-Rows $Mode)) {
+        $p = Get-Paths $Mode $row
+        if (-not [System.IO.File]::Exists($p.In)) { continue }
+        $kind = if ($row.CutOut) { 'near' } else { 'far ' }
+        Write-Host ("  {0} {1,-22} committed sigma {2}" -f $kind, $row.File, $row.Sigma)
+        foreach ($s in $candidates) {
+            $probePath = [System.IO.Path]::Combine($tmp, ('bgprobe_{0}_{1}.png' -f $Mode, $row.File))
+            [BgBlur]::Run($p.In, $probePath, $s, $row.CutOut)
+            Write-Host ("      sigma {0,4} -> sharpness {1,7:N3}" -f $s, ([BgBlur]::Sharpness($probePath, $ViewHeight)))
+            [System.IO.File]::Delete($probePath)
+        }
+    }
+    return
+}
+
 if ($SelfTest) {
     # The far/near relationship is the whole look, and nothing else would
-    # notice it inverting — the art would just quietly go flat again. Cheap
-    # to assert here, where both numbers live.
+    # notice it inverting — the art would just quietly go flat again.
+    #
+    # Asserted on measured SHARPNESS, not on the sigmas. Comparing sigmas
+    # was the old check and it is wrong now that the near rows carry their
+    # own: OCEAN needs 2.5 against its far layer's 1.0 purely because that
+    # painting starts five times busier, and the pair it produces is
+    # correctly ordered. Only what the files measure at is comparable.
+    #
+    # Modes in $DepthInversionExpected are reported, not warned about; see
+    # that table for each one's reason.
     foreach ($m in $ModeOrder) {
+        $lvl = @{}
         foreach ($row in (Get-Rows $m)) {
-            if (-not $row.CutOut -and $row.Sigma -le $NearSigma) {
-                Write-Host ("  WARN  {0}'s far layer ({1}) is blurred no harder than NearSigma ({2}) — the near layer is supposed to be the sharp one" -f $m, $row.Sigma, $NearSigma)
+            $p = Get-Paths $m $row
+            if (-not [System.IO.File]::Exists($p.Out)) { continue }
+            $lvl[$(if ($row.CutOut) { 'near' } else { 'far' })] = [BgBlur]::Sharpness($p.Out, $ViewHeight)
+        }
+        if ($lvl.ContainsKey('near') -and $lvl.ContainsKey('far')) {
+            $ratio = $lvl['near'] / $lvl['far']
+            if ($DepthInversionExpected.ContainsKey($m)) {
+                Write-Host ("  note  {0}: near {1:N2} / far {2:N2} = {3:N2} — inversion expected: {4}" -f $m, $lvl['near'], $lvl['far'], $ratio, $DepthInversionExpected[$m])
+            } elseif ($ratio -le 1.0) {
+                Write-Host ("  WARN  {0}: near {1:N2} is no sharper than far {2:N2} — the pair has inverted and the parallax will read flat" -f $m, $lvl['near'], $lvl['far'])
+            } else {
+                Write-Host ("  ok    {0}: near {1:N2} / far {2:N2} = {3:N2}" -f $m, $lvl['near'], $lvl['far'], $ratio)
             }
         }
     }
@@ -423,12 +543,12 @@ if ($SelfTest) {
                 Write-Host ("  {0,-7} {1,-22} skipped (needs both the source and its _blur)" -f $m, $row.File)
                 continue
             }
-            $probe = [System.IO.Path]::Combine($tmp, ('bgblur_{0}_{1}.png' -f $m, $row.File))
+            $probePath = [System.IO.Path]::Combine($tmp, ('bgblur_{0}_{1}.png' -f $m, $row.File))
             $s = Get-Sigma $row
-            [BgBlur]::Run($p.In, $probe, $s, $row.CutOut)
-            $rmse = [BgBlur]::Rmse($probe, $p.Out)
+            [BgBlur]::Run($p.In, $probePath, $s, $row.CutOut)
+            $rmse = [BgBlur]::Rmse($probePath, $p.Out)
             Write-Host ("  {0,-7} {1,-22} sigma {2,4} -> RMSE vs committed: {3:N3} / 255" -f $m, $row.File, $s, $rmse)
-            [System.IO.File]::Delete($probe)
+            [System.IO.File]::Delete($probePath)
         }
     }
     return

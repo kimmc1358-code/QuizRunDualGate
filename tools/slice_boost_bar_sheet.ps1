@@ -226,7 +226,13 @@ for ($r = 0; $r -lt $rows.Count; $r++) {
         if ($null -eq $t) { continue }
         $name = "$($RowNames[$r][$c]).png"
         $outH = [int][Math]::Round($t[3] * $scale)
-        $outW = [int][Math]::Round($t[2] * $scale)
+        # Derived from $outH the way CropResize does it, NOT from $scale
+        # directly. Scaling both axes independently rounds the height first
+        # and then disagrees with the width the resample actually produces —
+        # this line used to claim 76x10 for a file written at 73x10, which
+        # reads exactly like the tool and the committed art have drifted
+        # apart when nothing is wrong.
+        $outW = [int][Math]::Round($t[2] * $outH / $t[3])
         # The cap _draw_horizontal_slice should use is the rounded end's
         # radius, which on a capsule is half its height.
         Write-Host ("    {0,-16} {1}x{2}  ->  {3}x{4}   cap = {5}px (h/2)" -f $name, $t[2], $t[3], $outW, $outH, [int][Math]::Round($outH / 2.0))

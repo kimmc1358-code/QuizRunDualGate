@@ -357,10 +357,16 @@ const BOOST_BAR_FILL_PATHS := [
 # Insetting the fill by that on every side is what seats it in the well
 # instead of covering the rim, at whatever height the bar is drawn.
 const BOOST_BAR_FILL_INSET_FRAC := 0.176
-# Kept for the judged-tier flash and the BOOST popup, which both need a
-# colour rather than a texture. Named for the TIER they mean, not for where
+# Kept for the judged-tier flash and the BOOST/TURBO popup, which both need
+# a colour rather than a texture. Named for the TIER they mean, not for where
 # they sit, so flipping a threshold cannot leave a colour saying the wrong
 # thing. Sampled from the fill art above.
+#
+# These ARE the tier palette — the popup builds its colours from them further
+# down, so the bar and the popup cannot drift into telling the same three
+# tiers in two different sets of colours. Changing one here means recolouring
+# the fill art to match; git has a slicer pass that did exactly that for a
+# cyan/orange-red scheme, reverted because yellow/orange read better.
 const BOOST_BAR_ZONE_NONE_COLOR := Color(0.66, 0.68, 0.72)
 const BOOST_BAR_ZONE_MID_COLOR := Color(0.98, 0.84, 0.27)
 const BOOST_BAR_ZONE_BEST_COLOR := Color(1.0, 0.60, 0.13)
@@ -427,57 +433,137 @@ const BOOST_VISUAL_BLEND_OUT := 0.20   # ...and to drop back out of it
 const BOOST_BG_SPEED_SHARE := 1.0
 const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at full blend
 
-# --- Boost burst: a one-shot flash-and-ring thrown off the character at the
-# moment the button goes down. Whole feature = these consts + boost_burst_frames
-# /boost_burst_elapsed + _draw_boost_burst + its call sites in
-# _on_boost_pressed/_update_fx/_reset_game/_apply_mode/_draw() + the art in
-# assets/fx/boost_burst/. Delete those to remove it.
+# --- Boost burst: an exhaust plume fired out of the character's back, lit on
+# the press and burning for as long as the button is down. Whole feature =
+# these consts + boost_burst_frames/boost_burst_elapsed + _draw_boost_burst +
+# its call sites in _on_boost_pressed/_update_fx/_reset_game/_apply_mode/
+# _draw() + the art in assets/fx/boost_burst/. Delete those to remove it.
 #
-# The counterpart to the glow: the glow says "boosting" for as long as the
-# button is down, this says "just started" and is gone. So it is driven by
-# its own one-shot timer rather than boost_visual_blend — a blend has no
-# moment in it, and the press is the whole point.
+# It has a shape the hold flag alone does not: ignition, sustain, cutoff. So
+# it keeps its own clock rather than reading boost_visual_blend — a blend is
+# a single number easing between two values, with no way to say "play the
+# opening once, then hold this middle part". See _update_fx for how the
+# three parts are cut out of one 5-frame run.
 #
-# 6 frames on one row, 256px cells, one sheet per mode. Sliced at runtime by
-# _slice_spritesheet like the character sheets rather than cut by a tool into
-# separate files: it is an animation strip, which is the same thing those
-# are, and the cell grid is regular.
+# 5 frames on one row, 300x256 cells, one strip per mode. Sliced at runtime
+# by _slice_spritesheet like the character sheets rather than cut by a tool
+# into separate files: it is an animation strip, which is the same thing
+# those are, and the cell grid is regular. The strips themselves ARE built by
+# a tool (tools/build_boost_burst_strips.ps1) because this art arrived as
+# loose frames — that script also bakes the soft edge, since there is no
+# runtime blur here.
+#
+# The art replaced a symmetric ring, and it is directional: the flame's head
+# points right and its tail streams left, registered so the head holds still
+# while the tail lengthens. That is what dictates the two geometry rules
+# below and the draw order — see _draw_boost_burst.
+#
+# It stays STUCK TO THE CHARACTER for its whole run — there is no world
+# position and no drift. The ring before it did the opposite, staying where
+# it went off and sliding left with the world plus a recoil, so the
+# character flew out of its own blast; that suited a blast, but this is a
+# thruster, and a thruster that detaches from the thing it is thrusting
+# reads as debris. So the head is recomputed from the character every frame
+# (_boost_burst_head) instead of being stored at the press.
 const BOOST_BURST_DIR := "res://assets/fx/boost_burst/"
 const BOOST_BURST_FILE_PER_MODE := ["boost_effect_sky.png", "boost_effect_jungle.png", "boost_effect_ocean.png", "boost_effect_dream.png"]
-const BOOST_BURST_SHEET_GRID := Vector2i(6, 1)
-# Fraction of the animation after which it eases to nothing. The last frames
-# are already sparse, so this only has to carry the very end; starting it
-# earlier dims the ring while it is still the thing being looked at.
-const BOOST_BURST_FADE_START := 0.55
+const BOOST_BURST_SHEET_GRID := Vector2i(5, 1)
+# Fraction of the animation after which it eases to nothing. Late, because
+# this art dissipates on its own — its last frame is already just scattered
+# embers, and that frame is 20% of a 5-frame run. Fading from any earlier
+# thins frame 4, which is still a full plume and still the thing being
+# looked at. (Was 0.55 for the 6-frame ring, whose tail was longer.)
+const BOOST_BURST_FADE_START := 0.8
 
+# Drawn WIDTH, as a multiple of PLAYER_VISUAL_SIZE.x, and deliberately NOT
+# of the character's own per-mode scale — that is what kept the same effect
+# a different size in each mode. Height follows from the cell's own aspect
+# (see _draw_boost_burst); a square rect would squash a 300x256 plume. The
+# art already grows and thins across its own frames, so nothing here
+# animates scale.
+#
+# Per-mode, though three of the four share a value. This was one shared
+# number on the reasoning that "how big the boost reads" should not depend
+# on the character — DREAM is the exception that broke it, for a reason in
+# the art rather than in taste: its v2 strip is cut on a 400x256 cell where
+# the others are 300x256, so at equal WIDTH its plume is drawn a quarter
+# shorter vertically. 0.92 buys that height back.
+#
+# How much the player sees also varies, since the plume runs from its head
+# backward and whatever sits under the body is hidden:
+#
+#   SKY 64px   JUNGLE 60px   OCEAN 68px   DREAM 77px (7px of it off screen)
+#
+# It has come down from 1.35 through 1.08, 0.95 and 0.88 to here. Those
+# figures move whenever MODE_BOOST_BURST_HEAD_OFFSET does, so recompute from
+# that rather than trusting a number in an older comment.
+const MODE_BOOST_BURST_SIZE_SCALE := [0.82, 0.82, 0.82, 0.92]
+# Where the plume's HEAD sits at the moment it fires, as a multiple of
+# PLAYER_VISUAL_SIZE.x measured forward from the character's centre.
+#
+# The head is what needs placing, not the centre: the tail grows backward
+# out of a head the art holds still, so anchoring the centre would slide the
+# whole thing forward as the plume lengthens.
+#
+# Two limits bound it, and which one binds depends on the character:
+#
+#   Forward, the head has to stay under the body, or the flame stops
+#   reading as coming from behind and becomes something the character is
+#   holding in its beak. Each mode's own width sets this, so the stop is
+#   different for each: PLAYER_X - 50*MODE_VISUAL_SIZE_SCALE, which is -0.46
+#   for SKY's narrow bird but -0.60 for DREAM's wide unicorn.
+#
+#   Backward, PLAYER_X is only 130, so there are just 130px of screen left
+#   of the character's centre for the plume's whole 82px.
+#
+# Per-mode because the characters are not the same shape — one shared value
+# put the flame through JUNGLE's wing and left OCEAN's too far forward. Same
+# parallel-array-by-Mode convention as MODE_DRAW_OFFSET_FLY.
+#
+#   SKY    -0.28  head at 102, 18px under the bird. Unchanged, it was right.
+#   JUNGLE -0.28  same; the dragon only needed moving down, not back.
+#   OCEAN  -0.36  head at 94, 14px under the shark.
+#   DREAM  -0.45  head at 85, and the tail hangs 7px off the left edge of
+#                 the screen — deliberate, the tail is the cheapest part to
+#                 lose. This one is placed against the unicorn's OWN rainbow
+#                 tail rather than its body box: that tail's opaque pixels
+#                 start at game x 74.7 and its first fifth runs to 96.3, so
+#                 85 drops the plume's star into the middle of it. -0.55 put
+#                 the star at 75, clear of the tail entirely, which read as
+#                 a separate object flying alongside.
+const MODE_BOOST_BURST_HEAD_OFFSET := [-0.28, -0.28, -0.36, -0.45]
+# How far BELOW the character's drawn centre the plume comes out, as a
+# multiple of PLAYER_VISUAL_SIZE.y. Centring it on the body put the flame
+# out of the middle of the character's back; it belongs at the tail.
+#
+# Measured where measuring works — same approach as MODE_DRAW_OFFSET_FLY.
+# For each mode's fly sheet, the vertical centroid of the opaque pixels in
+# the back quarter of the body, through (y - 128) * (100/256) *
+# MODE_VISUAL_SIZE_SCALE:
+#
+#   SKY bird 16.4px   OCEAN shark 8.7px   DREAM unicorn 13.1px
+#   JUNGLE dragon -3.4px — the measurement FAILS here, and narrowing the
+#   slice does not rescue it (0.8px at the back 10%, 6.5px at the back 5%).
+#   The dragon's whole rear silhouette is WING, which sits high, so any
+#   automatic read describes the wing and never finds the tail below it.
+#
+#   SKY    0.12  in the middle of its 12.9-16.4px readings.
+#   JUNGLE 0.20  set by eye off a capture, not measured, for the reason
+#                above — 0.12 put the flame straight through the wing.
+#   OCEAN  0.09  raised from 0.12 by eye, and it landed on the back-quarter
+#                reading (8.7px) — the shark's tail fin is high and narrow,
+#                so the wider slices describe it better than the tight ones.
+#   DREAM  0.12  readings 13.1-20.6px; left alone with the rest of DREAM's
+#                tuning until the new v2 art is judged.
+const MODE_BOOST_BURST_HEAD_DROP := [0.12, 0.20, 0.09, 0.12]
 @export_group("Boost Burst")
-# Of PLAYER_VISUAL_SIZE, and deliberately NOT of the character's own
-# per-mode scale — that is what kept the same effect a different size in
-# each mode. The art's ring already grows and thins across its own frames,
-# so nothing here animates scale.
-#
-# Halved from the 2.1 this shipped at, which drew the ring at 210px on a
-# 480px-wide screen — nearly half the width, and read as an explosion the
-# character happened to be inside rather than something it threw off. At
-# 1.05 the ring lands close to the character's own 100px.
-@export_range(0.4, 3.0, 0.05) var boost_burst_size_scale: float = 1.05
-# Whole animation, seconds. 6 frames in 0.28s is ~21fps, which is the fastest
-# this art can run and still be read as a ring rather than a single blink.
+# Whole animation, seconds. The one boost-burst value still shared by every
+# mode and still worth a slider — the geometry above went per-mode and into
+# consts, but timing is timing. 5 frames in 0.28s is ~18fps: slow enough
+# that each frame registers, fast enough that the plume is gone before the
+# next press. The frames are not evenly weighted (1 is a stub, 3 is the
+# peak), so stretching this reads as a stutter rather than a slower burn.
 @export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
-# Extra backward speed the moment it goes off, px/s, easing to 0 across the
-# animation.
-#
-# Riding the world alone only made the burst hold still in the scene, which
-# is correct but reads as the character drifting out of it rather than being
-# kicked forward. This is what turns that into a shove: it starts well
-# faster than the world and settles back to its rate, the way a thrown thing
-# does, instead of holding a constant extra speed that would just look like
-# a second scroll layer.
-#
-# Decaying linearly means the extra distance is only half of speed x
-# duration — at 320 over 0.28s that is 45px on top of the world's own 73,
-# opening the gap to about 118px against a 100px character.
-@export_range(0.0, 800.0, 10.0) var boost_burst_recoil_speed: float = 320.0
 @export_group("")  # closes "Boost Burst"
 
 const BOOST_BUTTON_SIZE := 92.0        # diameter, px
@@ -864,13 +950,18 @@ const MODE_BG_NEAR_TEXTURE_PATH := [
 ]
 
 @export_group("Sky Background")
-@export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.15  # fraction of GATE_SPEED
-# The near layer's own rate, for modes that have one. 2.7x the far layer is
-# what sells the depth; the old cloud parallax used the same spread (0.20
-# far / 0.40 near) and 0.40 was the fastest anything in the background ever
-# moved. Going past that starts to read as the backdrop racing the gates
-# rather than sitting behind them — the gates themselves travel at 1.0.
-@export_range(0.0, 2.0, 0.01) var bg_near_speed_ratio: float = 0.40
+@export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.20  # fraction of GATE_SPEED
+# The near layer's own rate, for modes that have one. 2.5x the far layer is
+# what sells the depth — keep the spread if these are retuned, since it is
+# the RATIO between them the eye reads as distance, not either number.
+#
+# 0.50 is past what the old cloud parallax ever used (0.20/0.40), and 0.40
+# was flagged then as the ceiling before the backdrop starts to read as
+# racing the gates rather than sitting behind them — the gates travel at
+# 1.0. Raised anyway, on request, for a stronger sense of speed. If the
+# background ever starts pulling the eye off the gate, this pair is the
+# first thing to walk back.
+@export_range(0.0, 2.0, 0.01) var bg_near_speed_ratio: float = 0.50
 # Dims the background art so its own strong color/detail doesn't compete
 # with the gate/flag/character sitting on top of it — 1.0 = full original
 # brightness, lower recedes it further into the background.
@@ -932,27 +1023,32 @@ const MODE_PARTICLE_MOTION := [
 # 이 값은 보이는 각도가 아니다. 화면 전체가 이미 왼쪽으로 흐르고 있어서,
 # 플레이어가 "이 물체 자신의 움직임"으로 읽는 것은 배경 대비 상대 운동뿐이다.
 #
-# 배경 스크롤(GATE_SPEED 130 기준): 원경 0.15 -> 19.5px/s, 근경 0.40 ->
-# 52px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
+# 배경 스크롤(GATE_SPEED 130 기준): 원경 0.20 -> 26px/s, 근경 0.50 ->
+# 65px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
+#
+# 체감 각도 = atan((vx - 레이어속도) / 낙하속도), 낙하속도 35px/s.
 #
 #   비율   실제 vx   체감 각도(원경 대비 / 근경 대비)
-#   1.0     35.0        24° / -26°
-#   1.5     52.5        43° /   1°
-#   2.5     87.5        63° /  45°
-#   3.5    122.5        71° /  64°
+#   1.0     35.0        14° / -41°
+#   1.5     52.5        37° / -20°
+#   2.5     87.5        60° /  33°
+#   2.85    99.8        65° /  45°
+#   3.5    122.5        70° /  59°
 #
-# 1.0(진짜 45°)에서 근경 대비 -26°, 즉 꽃잎이 근경 구름보다 느려서 오히려
-# 오른쪽 아래로 기울어 보인다. 이게 각도를 0.55 -> 1.0 으로 올려도 여전히
-# 수직으로 떨어져 보였던 이유다. 2.5 면 근경 대비 45°, 원경 대비 63° 로
-# 어느 쪽을 기준으로 봐도 확실히 왼쪽 아래다.
+# 1.0(진짜 45°)에서 근경 대비 음수, 즉 꽃잎이 근경보다 느려서 오히려 오른쪽
+# 아래로 기울어 보인다. 이게 각도를 0.55 -> 1.0 으로 올려도 여전히 수직으로
+# 떨어져 보였던 이유다. 2.85 면 근경 대비 45°, 원경 대비 65° 로 어느 쪽을
+# 기준으로 봐도 확실히 왼쪽 아래다.
 #
 # 배경 속도를 바꾸면(bg_speed_ratio / bg_near_speed_ratio) 이 값도 다시
-# 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록 남긴 것이다.
+# 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록 남긴 것이다 — 배경이
+# 0.15/0.40 이던 시절에는 같은 45°가 2.5 였고, 배경만 올리고 이 값을 그대로
+# 두면 근경 대비 33° 로 눕는다.
 #
 # 이 값은 모드가 아니라 모션의 각도다. 지금 이 모션을 쓰는 건 DREAM 뿐이지만
 # (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
 # 것이 맞다.
-const PARTICLE_DRIFT_X_RATIO := 2.5
+const PARTICLE_DRIFT_X_RATIO := 2.85
 # DRIFT_DIAGONAL gets its own, much lazier flutter than FALL does, and this
 # is what actually makes the diagonal read.
 #
@@ -1326,12 +1422,27 @@ const BOOST_POP_DURATION := 0.45               # spec calls for 0.4-0.5s
 const BOOST_POP_FONT_SIZE_BEST := 40
 const BOOST_POP_FONT_SIZE_MID := 27
 const BOOST_POP_RISE := 24.0                   # px, out and back over the popup's life
-# Best tier only: the string redrawn on a ring at low alpha, which reads as
-# a glow without needing a shader or a second canvas.
-const BOOST_POP_GLOW_PASSES := 6
-const BOOST_POP_GLOW_RADIUS := 5.0
-const BOOST_POP_GLOW_ALPHA := 0.2
-const BOOST_POP_BURST_COUNT_BEST := Vector2i(14, 18)
+# Text colours: the bar's own zone colours, so the gauge you watch fill and
+# the word you get for filling it say the same thing. Aliases rather than
+# literals — the palette lives at BOOST_BAR_ZONE_*_COLOR and this is a
+# second name for it, not a second copy.
+const BOOST_POP_COLOR_MID := BOOST_BAR_ZONE_MID_COLOR
+const BOOST_POP_COLOR_BEST := BOOST_BAR_ZONE_BEST_COLOR
+# The string redrawn on a ring at low alpha, which reads as a glow without
+# needing a shader or a second canvas. Both tiers glow now — the mid tier
+# just barely, enough to lift cyan off a bright sky without competing with
+# the tier above it.
+#
+# Cost is passes x characters draw calls per frame, so the best tier's 10
+# passes over "TURBO! +600" is 110. That is fine for one popup living 0.45s
+# and would not be if this ever drew more than one at a time.
+const BOOST_POP_GLOW_PASSES_MID := 6
+const BOOST_POP_GLOW_RADIUS_MID := 3.0
+const BOOST_POP_GLOW_ALPHA_MID := 0.10
+const BOOST_POP_GLOW_PASSES_BEST := 10
+const BOOST_POP_GLOW_RADIUS_BEST := 8.0
+const BOOST_POP_GLOW_ALPHA_BEST := 0.34
+const BOOST_POP_BURST_COUNT_BEST := Vector2i(20, 26)
 const BOOST_POP_BURST_COUNT_MID := Vector2i(5, 7)
 const BOOST_POP_BURST_SIZE_RANGE := Vector2(15.0, 28.0)
 const BOOST_POP_BURST_RADIUS := 36.0           # tight ring around the text, not _spawn_spark_burst's gate-sized default
@@ -1999,10 +2110,6 @@ var boost_visual_blend: float = 0.0
 # -1-means-idle convention the other one-shot FX timers here use.
 var boost_burst_frames: Array[Texture2D] = []
 var boost_burst_elapsed: float = -1.0
-# Where it went off, in world space. Once spawned it rides the world left
-# like the trail does instead of staying stuck to the character, so the
-# character visibly flies out of its own burst.
-var boost_burst_pos: Vector2 = Vector2.ZERO
 # Boost bonus bar (see the BOOST_BAR_* consts). elapsed counts real seconds
 # since the current gate spawned and is deliberately NOT scaled by boost —
 # that is the entire mechanic.
@@ -4201,7 +4308,9 @@ func _combo_display_rect(view_size: Vector2) -> Rect2:
 func _boost_pop_layout(view_size: Vector2, text: String, is_best: bool, anchor: Vector2, font_scale: float) -> Dictionary:
 	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 	var nominal: int = BOOST_POP_FONT_SIZE_BEST if is_best else BOOST_POP_FONT_SIZE_MID
-	var glow: float = BOOST_POP_GLOW_RADIUS if is_best else 0.0
+	# Both tiers glow, so both reserve room for it — at 0.0 the mid tier's
+	# ring would be the thing that gets clipped at a screen edge.
+	var glow: float = BOOST_POP_GLOW_RADIUS_BEST if is_best else BOOST_POP_GLOW_RADIUS_MID
 	var edge_pad: float = BOOST_POP_SCREEN_MARGIN + glow
 	# Left-anchored beside the character, so its room is whatever lies
 	# between the anchor and the right edge — shrink to fit that.
@@ -4232,13 +4341,21 @@ func _boost_pop_layout(view_size: Vector2, text: String, is_best: bool, anchor: 
 	}
 
 
+# The two tiers' wording. Its own function because tools/check_popup_overlap.gd
+# has to size the real strings, and it used to carry its own copy of this
+# format — a copy that would have gone on measuring "BOOST!!" after the
+# rename and quietly checked a string the game no longer draws.
+func _boost_pop_text(points: int, is_best: bool) -> String:
+	return ("TURBO! +%d" if is_best else "BOOST! +%d") % points
+
+
 func _spawn_boost_pop(points: int, remaining: float, view_size: Vector2) -> void:
 	boost_pop_is_best = remaining >= boost_bonus_best_threshold
 	# The tier decides the wording, the size, the colour and how much
 	# confetti — all from the one bool, so the two tiers can never drift into
 	# saying different things.
-	boost_pop_text = ("BOOST!! +%d" if boost_pop_is_best else "BOOST! +%d") % points
-	boost_pop_color = BOOST_BAR_ZONE_BEST_COLOR if boost_pop_is_best else BOOST_BAR_ZONE_MID_COLOR
+	boost_pop_text = _boost_pop_text(points, boost_pop_is_best)
+	boost_pop_color = BOOST_POP_COLOR_BEST if boost_pop_is_best else BOOST_POP_COLOR_MID
 	boost_pop_font_size = BOOST_POP_FONT_SIZE_BEST if boost_pop_is_best else BOOST_POP_FONT_SIZE_MID
 	boost_pop_elapsed = 0.0
 	# Captured now, held for the popup's whole life — see the BOOST_POP_*
@@ -4268,18 +4385,23 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 	# layout["pos"] is the text block's top-left; draw_string wants a baseline.
 	var draw_pos: Vector2 = layout["pos"] + Vector2(0.0, font.get_ascent(font_size))
 
-	if boost_pop_is_best:
-		var glow := Color(boost_pop_color.r, boost_pop_color.g, boost_pop_color.b, BOOST_POP_GLOW_ALPHA * alpha)
-		for i in range(BOOST_POP_GLOW_PASSES):
-			var angle: float = TAU * float(i) / float(BOOST_POP_GLOW_PASSES)
-			var offset := Vector2(cos(angle), sin(angle)) * BOOST_POP_GLOW_RADIUS
-			draw_string(font, draw_pos + offset, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, glow)
+	# Both tiers glow; only how hard differs. The string redrawn on a ring at
+	# low alpha, which reads as a glow without needing a shader or a second
+	# canvas.
+	var passes: int = BOOST_POP_GLOW_PASSES_BEST if boost_pop_is_best else BOOST_POP_GLOW_PASSES_MID
+	var radius: float = BOOST_POP_GLOW_RADIUS_BEST if boost_pop_is_best else BOOST_POP_GLOW_RADIUS_MID
+	var glow := Color(boost_pop_color,
+		(BOOST_POP_GLOW_ALPHA_BEST if boost_pop_is_best else BOOST_POP_GLOW_ALPHA_MID) * alpha)
+	for i in range(passes):
+		var angle: float = TAU * float(i) / float(passes)
+		var offset := Vector2(cos(angle), sin(angle)) * radius
+		draw_string(font, draw_pos + offset, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, glow)
 
 	var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
 	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		draw_string(font, draw_pos + offset, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, outline_col)
 	draw_string(font, draw_pos, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
-		Color(boost_pop_color.r, boost_pop_color.g, boost_pop_color.b, alpha))
+		Color(boost_pop_color, alpha))
 
 
 func _boost_bar_rect(view_size: Vector2) -> Rect2:
@@ -4512,6 +4634,34 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 
 
 
+# Where the plume's head sits right now. Derived from the character every
+# frame rather than stored at the press, which is the whole of what keeps
+# the plume attached — see the BOOST_BURST_* block.
+#
+# It matches the character's DRAWN centre, happy-bounce included, not the
+# bare player_y: the bounce is draw-time-only, and a plume that ignored it
+# would visibly unstick from the body for the length of every gate-pass
+# celebration.
+# Normalised time the held loop wraps back to: one frame in, so the ignition
+# stub is played once on the press and never again. Derived from the loaded
+# frame count rather than written as a fraction, so a re-cut strip with a
+# different number of frames still skips exactly one.
+func _boost_burst_sustain_start() -> float:
+	if boost_burst_frames.size() < 3:
+		# Nothing to loop between — no ignition frame to skip and no embers
+		# to hold back. Wrap the whole run rather than dividing by a size
+		# that would put the start past the end.
+		return 0.0
+	return 1.0 / float(boost_burst_frames.size())
+
+
+func _boost_burst_head() -> Vector2:
+	return Vector2(
+			PLAYER_X + PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_HEAD_OFFSET[current_mode],
+			player_y + _happy_pop_bounce_offset()
+					+ PLAYER_VISUAL_SIZE.y * MODE_BOOST_BURST_HEAD_DROP[current_mode])
+
+
 func _draw_boost_burst() -> void:
 	if boost_burst_elapsed < 0.0 or boost_burst_frames.is_empty():
 		return
@@ -4521,19 +4671,26 @@ func _draw_boost_burst() -> void:
 	var frame: Texture2D = boost_burst_frames[int(t * boost_burst_frames.size())]
 	if frame == null:
 		return
-	# Held at full until BOOST_BURST_FADE_START, then eased out, so the flash
-	# and the ring stay solid and only the dying end of it thins.
+	# Held at full until BOOST_BURST_FADE_START, then eased out, so the plume
+	# stays solid and only the dying end of it thins.
 	var alpha: float = 1.0
 	if t > BOOST_BURST_FADE_START:
 		alpha = 1.0 - (t - BOOST_BURST_FADE_START) / maxf(1.0 - BOOST_BURST_FADE_START, 0.001)
-	# NOT scaled by active_visual_size_scale. The character sizes differ per
-	# mode (0.92 to 1.20) and letting the burst follow made the same effect a
-	# different size in each one; it is the boost's own art, not part of the
-	# body.
-	var size: Vector2 = PLAYER_VISUAL_SIZE * boost_burst_size_scale
-	# boost_burst_pos, not the character's: the burst was left behind at the
-	# spot it went off and the character flies out of it. See _update_fx.
-	draw_texture_rect(frame, Rect2(boost_burst_pos - size * 0.5, size), false,
+	# Width is NOT scaled by active_visual_size_scale. The character sizes
+	# differ per mode (0.92 to 1.20) and letting the burst follow made the
+	# same effect a different size in each one; it is the boost's own art,
+	# not part of the body.
+	#
+	# Height comes off the frame rather than a const so a re-cut strip cannot
+	# silently start being squashed: the cells are 300x256 today, and a
+	# square rect would lose a seventh of the plume's length.
+	var frame_size: Vector2 = frame.get_size()
+	var width: float = PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_SIZE_SCALE[current_mode]
+	var size := Vector2(width, width * frame_size.y / maxf(frame_size.x, 1.0))
+	# The anchor is the HEAD, not the centre — see MODE_BOOST_BURST_HEAD_OFFSET for
+	# why — so the rect hangs left of it and centres vertically on it.
+	var head: Vector2 = _boost_burst_head()
+	draw_texture_rect(frame, Rect2(head - Vector2(size.x, size.y * 0.5), size), false,
 			Color(1.0, 1.0, 1.0, clampf(alpha, 0.0, 1.0)))
 
 
@@ -4619,15 +4776,31 @@ func _update_fx(delta: float) -> void:
 	var blend_span: float = BOOST_VISUAL_BLEND_IN if boost_button_held else BOOST_VISUAL_BLEND_OUT
 	boost_visual_blend = move_toward(boost_visual_blend, blend_target, delta / maxf(blend_span, 0.001))
 	if boost_burst_elapsed >= 0.0:
+		# Only the clock. The plume is pinned to the character and its
+		# position is derived at draw time (_boost_burst_head), so there is
+		# nothing here to move.
 		boost_burst_elapsed += delta
-		# Rides the world at the rate the trail does — that alone only holds
-		# it still in the scene — plus a recoil that starts fast and eases
-		# out, which is what actually reads as the character being shoved
-		# forward out of it. See boost_burst_recoil_speed.
-		var recoil_t: float = clampf(boost_burst_elapsed / maxf(boost_burst_duration, 0.001), 0.0, 1.0)
-		var recoil: float = boost_burst_recoil_speed * (1.0 - recoil_t)
-		boost_burst_pos.x -= (GATE_SPEED * _gate_speed_multiplier() + recoil) * delta
-		if boost_burst_elapsed >= boost_burst_duration:
+		var sustain_end: float = boost_burst_duration * BOOST_BURST_FADE_START
+		if boost_button_held and boost_burst_elapsed >= sustain_end:
+			# Held: wrap back into the SUSTAIN rather than to 0. The run's
+			# two ends are not loopable — frame 1 is an ignition stub and the
+			# last frame is scattered embers with no flame in it at all, so
+			# looping the whole thing would blink the plume out completely
+			# five times a second and strobe. Looping the middle burns
+			# continuously, which is what a held thruster should do, and
+			# matches the hold sound, which loops too (_enable_stream_loop).
+			#
+			# The overshoot is carried across the wrap instead of being
+			# dropped, so the cycle keeps real time rather than losing a
+			# sliver of a frame every lap.
+			var sustain_start: float = boost_burst_duration * _boost_burst_sustain_start()
+			var span: float = maxf(sustain_end - sustain_start, 0.001)
+			boost_burst_elapsed = sustain_start + fmod(boost_burst_elapsed - sustain_end, span)
+		elif boost_burst_elapsed >= boost_burst_duration:
+			# Released. The clock was left inside the sustain, so it runs on
+			# through the embers and the BOOST_BURST_FADE_START ease before
+			# stopping — the cutoff plays itself out instead of the flame
+			# vanishing on the frame the finger lifts.
 			boost_burst_elapsed = -1.0
 
 	if combo > 0:
@@ -5509,7 +5682,6 @@ func _on_boost_pressed() -> void:
 	# button should re-pop each time, not be swallowed by the tail of the
 	# previous one.
 	boost_burst_elapsed = 0.0
-	boost_burst_pos = Vector2(PLAYER_X, player_y)
 
 
 func _on_boost_released() -> void:
@@ -6273,6 +6445,13 @@ func _draw() -> void:
 	_draw_speed_lines()  # behind the bird
 
 	if state != State.READY and state != State.MODE_SELECT:
+		# UNDER the character, and over the trail. The old art was a
+		# symmetric ring with a hole in the middle, so it could sit on top
+		# and let the body read through it; this is a solid plume, and on
+		# top it covers the character's back half and reads as something
+		# stuck to the front of it. Underneath, with its head buried in the
+		# body (MODE_BOOST_BURST_HEAD_OFFSET), it reads as exhaust.
+		_draw_boost_burst()
 		# Stretch (see _bird_stretch_scale) and the happy pop/bounce (see
 		# _happy_pop_scale/_happy_pop_bounce_offset) are both draw-time-only —
 		# player_y/PLAYER_X/PLAYER_SIZE and collision never change. They
@@ -6303,9 +6482,6 @@ func _draw() -> void:
 			draw_set_transform(pos, 0.0, bird_scale)
 			draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		# Over the character: this is thrown OFF the body, and the art is a
-		# ring with an empty middle, so the character reads through it.
-		_draw_boost_burst()
 		if DEBUG_SHOW_HITBOX:
 			# The REAL collision rect — PLAYER_SIZE at (PLAYER_X, player_y),
 			# untouched by bird_scale/draw_offset/happy-bounce above, since

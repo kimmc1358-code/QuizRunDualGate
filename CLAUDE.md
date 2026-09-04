@@ -62,7 +62,7 @@ on failure.
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
-| `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), and the press-burst slices to all 6 frames in every mode, rides the world instead of sticking to the character, and ends on its own while the button is still down | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, or the `BOOST_BURST_*` block change |
+| `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), and the press-burst slices to all 5 frames in every mode with a wider-than-tall cell, fires with its head buried inside the character and its tail on screen, stays stuck to it in both axes instead of drifting off with the world, loops its sustain frames for as long as the button is down without touching the ember frame, and ends once released | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, the `BOOST_BURST_*` block, or the burst art change |
 
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
@@ -125,11 +125,21 @@ which takes a cell grid, drops fully transparent cells and rebuilds each
 cell's mipmaps. A regular grid needs no detection, so there is nothing for a
 tool to measure and nothing to commit twice.
 
+The boost burst runs the pipeline **backwards**: that art arrived as loose
+per-frame PNGs, so `tools/build_boost_burst_strips.ps1` assembles them into
+the strips instead of cutting one up. The sources live in
+`assets/fx/boost_burst/frames/` behind a `.gdignore`, so Godot never imports
+twenty PNGs the game does not open. Frames are copied at their **full canvas
+size**, never trimmed — the frames are registered against each other (the
+flame's head holds still while its tail grows backward out of it), and
+trimming each to its own bounds makes the head jitter.
+
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:
 
 - Background softness is baked by `tools/blur_background.ps1`.
 - Ambient particle blur is baked by `slice_ambient_sheet.ps1 -Sigma`.
+- The boost burst's soft edge is baked by `build_boost_burst_strips.ps1 -Sigma`.
 
 When blurring or downscaling a cut-out, **premultiply alpha first**. Blurring
 colour and alpha separately drags the transparent pixels' colour inward as a
@@ -142,13 +152,23 @@ then divides alpha back out.
 field the way a camera does it, and it is deliberate — the pairs first
 shipped the other way round, with the near layer as the softest thing on
 screen, and it flattened the parallax, because softness is the main cue
-telling the eye which layer is further away. Every near layer shares
-`$NearSigma` (0.5) so each painting keeps its own crispness; only the far
-layers are matched onto a common softness. 0.5 is also the floor — the
-kernel runs to `ceil(3*sigma)`, so at 0.3 it collapses to a near-delta and
-does nothing at all.
+telling the eye which layer is further away. Sigma is not comparable between
+two paintings, only the sharpness it lands on: OCEAN's near layer takes 1.5
+against its far layer's 1.0 purely because that art starts five times
+busier. `$NearSigma` (0.5) is now only the floor — the kernel runs to
+`ceil(3*sigma)`, so at 0.3 it collapses to a near-delta and does nothing at
+all.
 
-Far-layer strength is **measured, not eyeballed**. `blur_background.ps1
+Matching every near/far **ratio** onto one number is what the metric alone
+would do, and it was tried and rejected by looking at a screen. Only
+JUNGLE (1.45) kept it; SKY and DREAM needed more blur than the metric
+allowed and OCEAN much less (2.64). Two pairs — SKY and DREAM — are
+therefore knowingly inverted, with the near layer softer than the far, and
+get their depth from occlusion and the 2.5x speed split instead. They are
+listed in `$DepthInversionExpected` with a reason each; `-SelfTest` prints
+those as notes and still warns for any other mode that inverts.
+
+Blur strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
 blur, **measured after resampling to the 854px height the game draws it at**
 — not on the source pixels. That distinction is load-bearing: SKY's far
@@ -156,8 +176,13 @@ layer is 1472x704 and gets magnified 1.21x, while every other layer is
 1056 tall and minified to 0.81x, so the same sigma spreads 1.5x further on
 one than the other. `-SelfTest` re-derives every file from its source and
 diffs it against what is committed — anything but a residual around 1/255
-means the sigma table and the PNGs have drifted apart. The table is the only
-record of how each file was made, so keep it in step.
+means the sigma table and the PNGs have drifted apart. It also prints each
+mode's near/far ratio and warns on any pair that has inverted. The table is
+the only record of how each file was made, so keep it in step.
+
+To pick a *new* sigma, use `-Probe -Mode <name>`: it reports the sharpness a
+range of candidates would produce and writes nothing, so a value is chosen
+from the measurement rather than by blurring, looking, and reverting.
 
 The metric is a proxy, not a verdict: it averages over the whole image, so a
 painting that is mostly flat with a few hard-outlined structures scores

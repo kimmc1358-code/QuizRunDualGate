@@ -60,7 +60,9 @@ func _check() -> void:
 				var points: int = int(round(base * (1.0 + mult))) - base
 				if points <= 0:
 					continue
-				var text: String = ("BOOST!! +%d" if is_best else "BOOST! +%d") % points
+				# 게임 자기 함수를 부른다 — 여기에 포맷을 복사해 두면 이름이 바뀌어도
+				# 조용히 옛 문자열을 재게 된다(실제로 BOOST!! -> TURBO! 때 그럴 뻔했다).
+				var text: String = main.call("_boost_pop_text", points, is_best)
 				# Peak of the pop: widest font AND highest rise, the one frame
 				# most likely to collide.
 				var offset: Vector2 = main.BOOST_POP_CHARACTER_OFFSET
