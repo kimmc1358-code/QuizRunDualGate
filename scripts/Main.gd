@@ -1606,6 +1606,16 @@ const FX_SOUND_SPLASH_START_PATH := "res://assets/audio/splash_start.wav"
 # 죽거나 일시정지해서 버튼이 숨는 경우가 있는데, 숨겨진 Button 은 button_up 을
 # 쏘지 않으므로 그쪽은 _process 에서 boost_button_held 와 함께 꺼 준다.
 const FX_SOUND_BOOST_PATH := "res://assets/audio/boost.wav"
+# 누르는 순간 한 번만 울리는 악센트. 위의 루프와 함께 나되 수명이 전혀 달라서
+# 플레이어를 따로 쓴다 — 한 플레이어는 한 스트림만 물고, 루프가 이미 물고
+# 있으니 같은 것으로는 겹쳐 낼 수 없다.
+#
+# 0.68초짜리 원샷이라 루프를 걸지 않는다. _enable_stream_loop 를 여기에도
+# 복사해 붙이면 점화음이 영원히 웅웅거린다 — check_boost_hold 가 그걸 본다.
+#
+# 파일 이름이 boost.wav 가 아닌 이유: 루프 쪽이 이미 그 이름을 쓰고 있고,
+# 덮어쓰면 홀드음이 조용히 0.68초짜리로 바뀐다.
+const FX_SOUND_BOOST_START_PATH := "res://assets/audio/boost_start.wav"
 
 
 # ---- Phase curve, shared by all three modes ----
@@ -2382,6 +2392,7 @@ var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
 var fx_sound_splash_start: AudioStreamPlayer
 var fx_sound_boost: AudioStreamPlayer
+var fx_sound_boost_start: AudioStreamPlayer
 var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be killed
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
@@ -2569,6 +2580,13 @@ func _boot_load() -> void:
 		# 홀드는 클립(2.25초)보다 길어질 수 있으므로 이 소리만 이어 붙인다.
 		# BGM 과 같은 헬퍼를 쓴다 — .import 의 loop_mode 에 기대지 않는다.
 		_enable_stream_loop(fx_sound_boost.stream)
+	fx_sound_boost_start = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_start)
+	fx_sound_boost_start.bus = BUS_SFX
+	if ResourceLoader.exists(FX_SOUND_BOOST_START_PATH):
+		# 루프를 걸지 않는다 — 원샷이다. 위 두 줄과 달리 여기에
+		# _enable_stream_loop 가 없는 것이 의도다.
+		fx_sound_boost_start.stream = load(FX_SOUND_BOOST_START_PATH)
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
@@ -5859,6 +5877,10 @@ func _on_boost_pressed() -> void:
 	_tween_boost_alpha(BOOST_BUTTON_PRESSED_ALPHA)
 	if fx_sound_boost.stream != null:
 		fx_sound_boost.play()
+	# 악센트는 루프와 나란히, 그리고 매번 처음부터. 연타하면 다시 울리는 게
+	# 맞다 — 앞선 재생의 꼬리에 삼켜지면 두 번째 누름이 무음이 된다.
+	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
+		fx_sound_boost_start.play()
 	# Restarted from 0 rather than only started when idle: hammering the
 	# button should re-pop each time, not be swallowed by the tail of the
 	# previous one.

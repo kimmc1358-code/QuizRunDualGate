@@ -68,6 +68,17 @@ func _run() -> void:
 	_check("still playing past the clip length", sfx.playing, true)
 	sfx.stop()
 
+	# 누르는 순간의 악센트는 별도 플레이어이고, 이쪽은 반대로 절대 루프면
+	# 안 된다. 위의 _enable_stream_loop 를 복사해 붙이기 딱 좋은 자리라
+	# 명시적으로 본다 — 걸리면 점화음이 홀드 내내 겹쳐 울린다.
+	var start_sfx: AudioStreamPlayer = main.get("fx_sound_boost_start")
+	_check("one-shot is a separate player", start_sfx != sfx, true)
+	_check("one-shot stream loaded", start_sfx.stream != null, true)
+	if start_sfx.stream is AudioStreamWAV:
+		_check("one-shot is NOT looped", start_sfx.stream.loop_mode, AudioStreamWAV.LOOP_DISABLED)
+	# 그리고 홀드보다 짧아야 악센트다. 같은 길이면 두 소리가 통째로 겹친다.
+	_check("one-shot is shorter than the loop", start_sfx.stream.get_length() < sfx.stream.get_length(), true)
+
 	print("\n0. burst art, every mode")
 	# 다섯 칸이 다 살아 있어야 한다. _slice_spritesheet 는 빈 칸을 버리므로,
 	# 스트립을 잘못 이어 붙였거나 한 칸이 비면 조용히 네 장짜리 애니메이션이
@@ -124,6 +135,7 @@ func _run() -> void:
 	_check("press -> playing", sfx.playing, true)
 	_check("press -> held", main.get("boost_button_held"), true)
 	_check("press -> burst playing", main.get("boost_burst_elapsed") >= 0.0, true)
+	_check("press -> one-shot fired", start_sfx.playing, true)
 	for i in 12:
 		await process_frame
 	# 그리고 캐릭터에 붙어 있어야 한다. 이전 링은 터진 자리에 남아 월드를 타고
