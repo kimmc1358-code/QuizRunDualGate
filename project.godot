@@ -29,6 +29,10 @@ window/handheld/orientation="portrait"
 
 [rendering]
 
+; Android 내보내기가 요구한다. 이 프로젝트의 텍스처는 473개 전부 무손실
+; (compress/mode=0)이라 실제로 ETC2/ASTC 로 재인코딩되는 그림은 없다 —
+; VRAM 압축을 쓰는 파일이 생기면 그때부터 이 설정이 실제로 일한다.
+textures/vram_compression/import_etc2_astc=true
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 renderer/rendering_method="mobile"

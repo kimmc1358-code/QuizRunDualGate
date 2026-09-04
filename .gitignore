@@ -40,3 +40,6 @@ desktop.ini
 # Uncompressed music masters — the game ships the OGG encoded from these.
 # See assets/audio/_masters/README.md.
 /assets/audio/_masters/
+
+# Exported builds
+/build/
