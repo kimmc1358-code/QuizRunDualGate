@@ -67,17 +67,28 @@ func _run() -> void:
 		return
 	print("  pool %d" % pool.size())
 
-	# 모드별로 색과 최대 알파가 다르다 — 흰 선이 네 배경에서 같게 읽히지
-	# 않아서다. 배열이 Mode 로 색인되므로 길이가 어긋나면 모드 전환에서
-	# 인덱스가 터진다.
-	var tints: Array = main.get("MODE_BOOST_SPEEDLINE_COLOR")
-	if tints.size() != 4:
-		_fail("MODE_BOOST_SPEEDLINE_COLOR has %d rows, needs one per mode" % tints.size())
-	else:
-		for m in range(4):
-			if tints[m].a <= 0.0:
-				_fail("mode %d speed lines would be fully transparent" % m)
-		print("  per-mode peak alpha %.2f / %.2f / %.2f / %.2f" % [tints[0].a, tints[1].a, tints[2].a, tints[3].a])
+	# 색은 모드별 @export 넷이고, 하나의 흰 스트립을 modulate 로 물들인다.
+	# 게임 자기 함수를 불러서 실제로 어떤 색이 나오는지 본다 — 여기서 표를
+	# 복사하면 match 가 어긋나도 통과한다.
+	#
+	# 넷이 서로 달라야 한다. match 의 한 갈래가 빠지면 그 모드가 조용히
+	# 기본값(SKY)으로 떨어지는데, 화면에서 두 모드를 나란히 볼 일이 없어
+	# 눈으로는 거의 안 잡힌다.
+	var names := ["SKY", "JUNGLE", "OCEAN", "DREAM"]
+	var seen := []
+	for m in range(4):
+		main.call("_apply_mode", m)
+		main.set("current_mode", m)
+		var col: Color = main.call("_boost_speedline_color")
+		if col.a <= 0.0:
+			_fail("%s speed lines would be fully transparent" % names[m])
+		for prev in seen:
+			if prev[1].is_equal_approx(col):
+				_fail("%s and %s resolve to the same colour — is a match arm missing?" % [prev[0], names[m]])
+		seen.append([names[m], col])
+		print("  %-7s #%s  alpha %.2f" % [names[m], col.to_html(false), col.a])
+	main.call("_apply_mode", 0)
+	main.set("current_mode", 0)
 
 	# ---- 1. 안 누르면 아무것도 없다 ----
 	main.set("boost_visual_blend", 0.0)

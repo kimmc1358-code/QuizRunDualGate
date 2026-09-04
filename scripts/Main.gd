@@ -472,41 +472,44 @@ const BOOST_SPEEDLINE_THICKNESS_RANGE := Vector2(12.0, 26.0)
 # Height of each band, measured in from the gate zone's own top and bottom
 # edges. 64 of the zone's ~666px leaves the middle 80% clear.
 const BOOST_SPEEDLINE_BAND_HEIGHT := 64.0
-# Colour and peak alpha per mode, because one white line does not read the
-# same on four backdrops. Measured mean luma of each far layer inside the
-# two bands, worst (brightest) of the two: JUNGLE 0.37, OCEAN 0.53,
-# SKY 0.68, DREAM 0.86. A white streak shifts luma by alpha x (1 - that), so
-# the same alpha lands anywhere from a 16% change to a 4% one — which is the
-# difference between reading as speed and not being there.
-#
-# So each row is solved backwards from one target instead: about a 15% luma
-# shift, which is enough to catch the eye in the corner of the frame without
-# becoming a thing to look at.
-#
-# DREAM is the row that cannot be solved with white at all. Its backdrop is
-# 0.86, so even a fully opaque white line only moves it 14%, and the pastel
-# is exactly the palette a pale streak disappears into. It gets a dark
-# violet instead and gains its contrast downward — same trick, opposite
-# direction. That is a real look difference between modes, so it is worth a
-# play before deciding it is right.
-const MODE_BOOST_SPEEDLINE_COLOR := [
-	Color(1.0, 1.0, 1.0, 0.47),      # SKY — white on a 0.68 sky
-	Color(1.0, 1.0, 1.0, 0.24),      # JUNGLE — the darkest backdrop needs the least
-	Color(1.0, 1.0, 1.0, 0.32),      # OCEAN
-	Color(0.42, 0.33, 0.55, 0.32),   # DREAM — dark violet, contrast downward
-]
 # Per-streak variation on top of the mode's peak, so the band is not a set
 # of identical lines.
 const BOOST_SPEEDLINE_ALPHA_SCALE_RANGE := Vector2(0.45, 1.0)
 
 @export_group("Boost Speed Lines")
-# One dial over all four modes, because the per-mode alphas above are
-# balanced against each other and should move together. The balance was
-# derived from measured backdrop luma; this is the "is the whole thing loud
-# enough" knob, and it is an @export because a still frame cannot answer
-# that — 900-1500px/s in the corner of the eye reads far stronger in motion
-# than it looks in a screenshot, and only playing it settles which way this
-# should go.
+# One white strip, tinted per mode at draw time — there is no coloured
+# variant of the art and there should not be, because a modulate is free and
+# four PNGs of the same streaks would have to be re-cut together forever.
+#
+# Exported rather than const so the palette is tunable in the Inspector
+# without a code edit; the alpha channel of each swatch is that mode's peak
+# strength, so one colour picker covers both hue and how loud it is.
+#
+# The RGB values are the requested theme colours. The alphas are not
+# arbitrary: a line only reads by differing in luma from what it crosses,
+# and the measured mean luma inside the two bands is JUNGLE 0.37,
+# OCEAN 0.53, SKY 0.68, DREAM 0.86. Solving each backwards for a common
+# ~15% luma shift gives the numbers below —
+#
+#   mode     line luma   band luma   alpha for 15%
+#   SKY        0.80        0.68        1.24  -> capped at 1.0 (12.1%)
+#   JUNGLE     0.81        0.37        0.34
+#   OCEAN      0.76        0.53        0.65
+#   DREAM      0.78        0.86        1.96  -> capped at 1.0 (7.7%)
+#
+# — so SKY and especially DREAM cannot reach it with these hues at all,
+# because a pale line on a pale backdrop has nowhere to go. They are pinned
+# at 1.0 and will read fainter than the other two. Darkening those two
+# swatches is what would fix it, and is an art-direction call rather than a
+# tuning one. boost_speedline_intensity below scales all four together.
+@export var boost_speedline_color_sky: Color = Color("a8d8f0", 1.0)
+@export var boost_speedline_color_jungle: Color = Color("c4e86b", 0.34)
+@export var boost_speedline_color_ocean: Color = Color("7fe0d8", 0.65)
+@export var boost_speedline_color_dream: Color = Color("d8b8f0", 1.0)
+# The "is the whole thing loud enough" knob, over all four at once. An
+# @export because a still frame cannot answer it — 900-1500px/s in the
+# corner of the eye reads far stronger in motion than it looks in a
+# screenshot, and only playing it settles which way this should go.
 @export_range(0.0, 2.5, 0.05) var boost_speedline_intensity: float = 1.0
 @export_group("")  # closes "Boost Speed Lines"
 
@@ -5133,10 +5136,26 @@ func _update_boost_speedlines(delta: float, view_size: Vector2) -> void:
 				l[key] = fresh[key]
 
 
+func _boost_speedline_color() -> Color:
+	# Four separate @exports rather than an exported Array[Color]: an array
+	# shows in the Inspector as numbered rows, and "element 2" is a worse
+	# label than "ocean" for something picked by eye. The match is the only
+	# place the two representations meet.
+	match current_mode:
+		Mode.JUNGLE:
+			return boost_speedline_color_jungle
+		Mode.OCEAN:
+			return boost_speedline_color_ocean
+		Mode.DREAM:
+			return boost_speedline_color_dream
+		_:
+			return boost_speedline_color_sky
+
+
 func _draw_boost_speedlines() -> void:
 	if speed_line_texture == null or boost_visual_blend <= 0.0:
 		return
-	var tint: Color = MODE_BOOST_SPEEDLINE_COLOR[current_mode]
+	var tint: Color = _boost_speedline_color()
 	for l in boost_speedlines:
 		var a: float = tint.a * l.alpha_scale * boost_visual_blend * boost_speedline_intensity
 		if a <= 0.002:
