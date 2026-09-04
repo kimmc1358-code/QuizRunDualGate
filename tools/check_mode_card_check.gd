@@ -138,6 +138,61 @@ func _run() -> void:
 	if want <= 1.0:
 		_fail("CARD_SELECTED_SCALE is %.2f — the selected card would not grow at all" % want)
 
+	# ---- 히든 모드의 잠금과 안내가 짝이 맞는가 ----
+	#
+	# 출시 때 hidden_mode_open 을 false 로 되돌리는데, 그때 설명문을 같이
+	# 되돌리는 것을 잊으면 잠긴 카드가 "세 퀴즈가 번갈아 나온다"고 광고한다.
+	# 반대로 지금 열어 두고 설명문만 잠금용으로 두면, 이미 열린 모드를 못 연
+	# 것처럼 안내한다. 어느 쪽도 화면만 봐서는 틀렸다고 알 수 없다 — 두 문장
+	# 다 그럴듯하게 읽히기 때문이다.
+	#
+	# 잠금 자체는 여기서 못 잰다. OS.is_debug_build() 가 이 스크립트에서는
+	# 언제나 true 라, hidden_mode_open 이 false 여도 게이트가 통과된다.
+	# 실제 잠김은 릴리스로 내보내 눌러 봐야 한다.
+	print("")
+	var modes: Array = screen.get("CARD_MODES")
+	var hidden: int = screen.get("MODE_HIDDEN")
+	var hidden_card: int = modes.find(hidden)
+	if hidden_card < 0:
+		_fail("no card maps to MODE_HIDDEN")
+	else:
+		var was: bool = screen.get("hidden_mode_open")
+		var locked_text: String = screen.get("CARD_EXPLAIN")[hidden_card]
+		var open_text: String = screen.get("CARD_EXPLAIN_HIDDEN_OPEN")
+		if locked_text == open_text:
+			_fail("the locked and open blurbs are the same string — one of the two states is unlabelled")
+		for open in [true, false]:
+			screen.set("hidden_mode_open", open)
+			screen.call("_select", hidden_card, false)
+			await process_frame
+			var shown: String = screen.get("_explain_label").text
+			var want_text: String = open_text if open else locked_text
+			if shown != want_text:
+				_fail("hidden_mode_open = %s shows \"%s\", want \"%s\"" % [open, shown, want_text])
+			print("  hidden_mode_open %-5s -> \"%s\"" % [open, shown])
+		screen.set("hidden_mode_open", was)
+		# 그리고 나갈 수 있는 문구가 전부 설명 바 안에 들어가야 한다. 글자
+		# 크기는 _fit_explain_size 가 _explain_candidates() 를 훑어 한 번에
+		# 정하므로, 거기서 빠진 문구는 크기 계산에 반영되지 않고 출시 때
+		# 뒤집는 순간 잘린다.
+		#
+		# 그 목록을 여기서 다시 부르면 안 된다 — 처음에 그렇게 썼더니,
+		# _explain_candidates() 에서 문구를 빼는 순간 피팅과 검사가 같이 눈을
+		# 감아 통과했다. 검사할 문구는 상수에서 직접 모은다.
+		var must_fit: Array = screen.get("CARD_EXPLAIN").duplicate()
+		must_fit.append(open_text)
+		var label: Label = screen.get("_explain_label")
+		var font: Font = label.get_theme_font("font")
+		var fs: int = label.get_theme_font_size("font_size")
+		var room: float = label.size.x
+		for text in must_fit:
+			var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, fs).x
+			if w > room + 0.5:
+				_fail("\"%s\" is %.0fpx at size %d but the bar holds %.0f — is it missing from _explain_candidates()?" % [
+					text, w, fs, room])
+		print("  all %d blurbs fit the bar at size %d (room %.0fpx)" % [must_fit.size(), fs, room])
+		screen.call("_select", 0, false)
+
 	print("")
 	if fails == 0:
 		print("check_mode_card_check: OK")

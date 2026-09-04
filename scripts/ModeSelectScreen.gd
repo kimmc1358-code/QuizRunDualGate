@@ -111,12 +111,30 @@ const FONT_WEIGHT_HEAVY := 700
 
 # One line each, sized so the longest of them fits — every mode then reads at
 # the same size, which a per-string fit would not give.
+#
+# 네 번째 줄은 MIX 가 잠겨 있을 때의 안내다. 열려 있으면
+# CARD_EXPLAIN_HIDDEN_OPEN 이 대신 나간다 — hidden_mode_open 을 볼 것.
 const CARD_EXPLAIN := [
 	"Find the flag that matches the country!",
 	"Solve the math problem and find the answer!",
 	"Choose the COLOR, not the word!",
 	"Clear all 3 modes to unlock a hidden mode!",
 ]
+const CARD_EXPLAIN_HIDDEN_OPEN := "All three quizzes, one after another!"
+
+## 히든 모드(MIX)를 지금 열어 둘지.
+##
+## 출시 때 false 로 되돌린다. 그러면 _on_start_pressed 의 조건에
+## OS.is_debug_build() 만 남아 예전 그대로가 된다 — 개발 중에는 열리고
+## 배포본에서는 잠긴다. 지금 true 인 것은 지인 테스트 배포에서 MIX 를 실제로
+## 돌려 보기 위해서다.
+##
+## 카드 설명문도 이 값을 따라간다. 둘을 따로 두면 반드시 어긋난다: 잠긴 채로
+## "세 퀴즈가 번갈아 나온다"고 적으면 눌러도 안 되는 카드를 광고하는 꼴이고,
+## 열린 채로 "3개 모드를 깨면 열린다"고 적으면 이미 열린 것을 못 연 것처럼
+## 안내한다. tools/check_mode_card_check.gd 가 두 상태 모두에서 짝이 맞는지
+## 본다.
+@export var hidden_mode_open: bool = true
 # The explain bar's ends are round, and their radius is a large fraction of
 # its height. Nine-slice cannot shorten a shape like that: it draws corners
 # at native size, so the caps would either overlap or, stretched, turn into
@@ -1305,6 +1323,24 @@ func _fit_card_name_size(max_width: float, max_height: float) -> int:
 
 # The largest size at which *every* description still fits on one line, so
 # they all render at the same size instead of each shrinking to its own fit.
+# 이 카드에 지금 나갈 설명문. 히든 모드는 잠금 상태에 따라 두 가지다.
+func _explain_text(index: int) -> String:
+	if index < 0 or index >= CARD_EXPLAIN.size():
+		return ""
+	if CARD_MODES[index] == MODE_HIDDEN and hidden_mode_open:
+		return CARD_EXPLAIN_HIDDEN_OPEN
+	return CARD_EXPLAIN[index]
+
+
+# 나갈 수 있는 모든 문구. 지금 안 쓰는 쪽까지 재야 한다 — hidden_mode_open 을
+# 뒤집으면 그 문구가 곧바로 이 자리에 들어오는데, 그때 글자 크기를 다시 잡을
+# 계기가 없어서 출시 빌드에서만 문장이 잘린다.
+func _explain_candidates() -> Array:
+	var out: Array = CARD_EXPLAIN.duplicate()
+	out.append(CARD_EXPLAIN_HIDDEN_OPEN)
+	return out
+
+
 func _fit_explain_size(max_width: float) -> int:
 	var font: Font = _explain_label.get_theme_font("font")
 	if font == null:
@@ -1312,7 +1348,7 @@ func _fit_explain_size(max_width: float) -> int:
 	var size: int = EXPLAIN_TEXT_MAX_SIZE
 	while size > EXPLAIN_TEXT_MIN_SIZE:
 		var widest := 0.0
-		for text in CARD_EXPLAIN:
+		for text in _explain_candidates():
 			widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x)
 		if widest <= max_width:
 			break
@@ -1626,7 +1662,7 @@ func _on_card_pressed(index: int) -> void:
 func _select(index: int, animate: bool = true) -> void:
 	selected_index = index
 	if _explain_label != null and index < CARD_EXPLAIN.size():
-		_explain_label.text = CARD_EXPLAIN[index]
+		_explain_label.text = _explain_text(index)
 	for i in range(_cards.size()):
 		var card: TextureButton = _cards[i]
 		var want: Vector2 = _rest_scale(card)
@@ -1656,10 +1692,14 @@ func _on_start_pressed() -> void:
 	# Started before the mode is handed over: emitting swaps the screen and
 	# crossfades the music, and the cue should be underway before that.
 	_play(_sfx_start)
-	# The fourth slot is the mode still being built. It is reachable while
-	# developing — running from the editor or a debug export — and refused in
-	# a release build, where it is meant to read as locked.
-	if mode == MODE_HIDDEN and not OS.is_debug_build():
+	# The fourth slot is the hidden mode. It is always reachable while
+	# developing — from the editor or a debug export — and refused in a
+	# release build, where it is meant to read as locked.
+	#
+	# hidden_mode_open 이 그 잠금을 지금만 풀어 둔다. 지인 테스트 배포는
+	# 릴리스 빌드라 이것이 없으면 MIX 카드가 눌리기만 하고 아무 일도 일어나지
+	# 않는다 — 미구현이 아니라 고장으로 읽힌다.
+	if mode == MODE_HIDDEN and not hidden_mode_open and not OS.is_debug_build():
 		print("[미구현] 히든 모드")
 		return
 	start_pressed.emit(mode)
