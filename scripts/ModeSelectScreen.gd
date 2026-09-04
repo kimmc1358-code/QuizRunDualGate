@@ -140,32 +140,41 @@ const EXPLAIN_TEXT_MAX_SIZE := 20
 const EXPLAIN_TEXT_MIN_SIZE := 9
 const EXPLAIN_TEXT_COLOR := Color(0.12, 0.18, 0.30, 1.0)
 
-# The selected card is picked out with a rounded outline tracing the card's
-# own edge. Measured off the sheet: the card's white border is 13px and its
-# corner radius about 70px, on art drawn at roughly 0.275 — so a little over
-# 3.5px and 19px on screen. The outline is drawn slightly thicker than the
-# border it sits on, with a drop shadow and an inner highlight for relief.
-const SELECT_BORDER_SCALE := 1.85       # multiple of the card's own border thickness
-# A halo outside the ring, drawn as a few rounded outlines stepping outward
-# and fading as they go. They are spaced far closer than they are wide, so
-# they overlap into a continuous gradient instead of reading as separate
-# outlines — which is what a handful of widely spaced rings looked like.
-# Godot's box shadow only offsets in one direction,
-# so it cannot wrap a shape evenly; concentric rings can.
-const SELECT_GLOW_COLOR := Color(1.0, 0.84, 0.22, 0.17)
-const SELECT_GLOW_RINGS := 10
-const SELECT_GLOW_SPREAD := 1.5         # how far out the halo reaches, in border widths
-const SELECT_CARD_BORDER_NATIVE := 13.0
+# 선택된 카드는 테두리가 아니라 "들려 있음"으로 표시한다: 살짝 커지고,
+# 그림자가 깊어지고, 왼쪽 위 구석에 초록 체크가 붙는다.
+#
+# 예전에는 카드 가장자리를 따라 도는 노란 링과 그 바깥의 후광이었다. 링은
+# 카드 아트가 이미 가지고 있는 흰 테두리 바로 위에 앉는데, 네 카드의 아트가
+# 셀 안에서 조금씩 다른 자리에 있어서(_card_art_bounds) 어느 카드를 고르냐에
+# 따라 테두리가 두꺼워 보이거나 어긋나 보였다.
+const CARD_SELECTED_SCALE := 1.05
+const CARD_SELECT_ANIM := 0.12          # seconds, 크기가 옮겨 가는 시간
+
+# 그림자는 카드 뒤에 따로 그린다(_card_shadow_overlay). TextureButton 에는
+# 그림자가 없고, 카드 아트에 구워 넣으면 선택에 따라 깊어질 수가 없다.
+# 고른 카드에만 그린다 — 안 고른 카드까지 바뀌는 것은 요청이 아니었고,
+# 하나만 떠 있는 편이 "이게 골라졌다"를 더 분명히 말한다.
 const SELECT_CORNER_NATIVE := 70.0
 const SELECT_SHEET_WIDTH_NATIVE := 706.0
-const SELECT_SHADOW_SIZE := 7
-const SELECT_SHADOW_OFFSET := Vector2(0, 3)
-const SELECT_SHADOW_COLOR := Color(0.35, 0.22, 0.0, 0.55)
-const SELECT_HIGHLIGHT_COLOR := Color(1.0, 0.97, 0.72, 0.9)
-# The card art fades out along its bottom edge, so the opaque bounds the ring
-# is placed on stop just short of where the card looks like it ends. Nudged
-# down to close that gap.
+const SELECT_SHADOW_SIZE := 14
+const SELECT_SHADOW_OFFSET := Vector2(0, 7)
+const SELECT_SHADOW_COLOR := Color(0.16, 0.10, 0.02, 0.62)
+# The card art fades out along its bottom edge, so the opaque bounds the
+# shadow is placed on stop just short of where the card looks like it ends.
+# Nudged down to close that gap.
 const SELECT_BOTTOM_EXTEND_FRAC := 0.022   # of the card's height
+
+# 고른 카드의 왼쪽 위 구석에 붙는 초록 체크. tools/slice_popup_icons_2.ps1 이
+# icon_popup_2.png 에서 잘라 낸다.
+#
+# 그 구석이 비어 있는 것은 우연이 아니라 배치의 결과다: 이름판은 가운데
+# 정렬이라 양옆에 여백이 남고(_layout_card 의 name_plate_w), 캐릭터는 이름
+# 줄 아래에서 시작한다. 그래도 카드마다 이름 길이와 캐릭터 배율(유니콘 1.20)이
+# 달라 여백이 같지 않으므로, 네 카드 전부에서 글자와 캐릭터를 안 가리는지는
+# tools/check_mode_card_check.gd 가 실제 사각형으로 확인한다.
+const CARD_CHECK_FILE := "res://assets/ui_assets/popup/icon_check.png"
+const CARD_CHECK_SIZE_FRAC := 0.19      # of the card art's width
+const CARD_CHECK_MARGIN_FRAC := 0.015   # of the card art's width, in from the corner
 
 # START gets the same halo treatment as the selected card. Its plate is a
 # rounded rectangle of radius 120 in a 1024-wide source, measured the same
@@ -294,12 +303,6 @@ const MAX_GAP_FRAC := 0.055       # cap, so a tall screen spreads rather than sp
 # was touching the bar.
 const EXPLAIN_TOP_EXTRA_FRAC := 0.020   # of screen height
 
-# Selection has to be readable even though the cards carry no state of their
-# own: a bright rounded outline is drawn over the chosen one.
-const SELECT_COLOR := Color(1.0, 0.86, 0.20, 1.0)
-const SELECT_WIDTH := 4.0
-const SELECT_INSET := 3.0
-const SELECT_CORNER_RADIUS := 18.0
 
 var selected_index: int = 0
 
@@ -317,6 +320,10 @@ var _setting: TextureButton
 var _leaderboard: TextureButton
 var _start: TextureButton
 var _select_overlay: Control
+var _card_shadow_overlay: Control       # 카드 뒤 — 고른 카드의 그림자
+var _check_texture: Texture2D
+# 카드마다 scale 트윈 하나 — _tween_scale 이 소유자다.
+var _card_scale_tweens: Array[Tween] = []
 var _sfx_select: AudioStreamPlayer
 var _sfx_start: AudioStreamPlayer
 var _sfx_cream: AudioStreamPlayer
@@ -366,8 +373,9 @@ func _ready() -> void:
 	_sfx_cream = _make_sfx(SFX_CREAM_FILE)
 	_build()
 	# Straight to _select, not _on_card_pressed: this is the opening state,
-	# not a tap, and should not make a sound.
-	_select(0)
+	# not a tap, and should not make a sound — and for the same reason it
+	# snaps to the selected size instead of growing into it.
+	_select(0, false)
 	resized.connect(_layout)
 
 
@@ -608,6 +616,13 @@ func _build() -> void:
 	_title = _make_image(_load_art(TITLE_FILE))
 	add_child(_title)
 
+	# 카드보다 먼저 붙는다 — 그림자는 카드 뒤에 있어야 한다. 체크를 그리는
+	# _select_overlay 는 반대로 카드 뒤에 붙으면 안 되므로 카드 다음에 붙는다.
+	_card_shadow_overlay = Control.new()
+	_card_shadow_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_card_shadow_overlay.draw.connect(_draw_card_shadow)
+	add_child(_card_shadow_overlay)
+
 	var card_textures := _slice_cards(2, 2)
 	_card_characters.clear()
 	_card_art.clear()
@@ -620,6 +635,10 @@ func _build() -> void:
 	_card_crown.clear()
 	_card_score.clear()
 	_crown_texture = _load_trimmed(CARD_BEST_CROWN_FILE)
+	# 이미 원형으로 잘려 나온 파일이라 _load_trimmed 로 또 다듬지 않는다 —
+	# 잘라 둔 투명 여백까지 걷어내면 원의 안티에일리어싱된 테두리가 텍스처
+	# 가장자리에 붙어 한쪽이 납작해 보인다(slice_popup_icons_2.ps1 의 Margin).
+	_check_texture = _load_art(CARD_CHECK_FILE)
 	for i in range(CARD_MODES.size()):
 		var slot: int = CARD_SHEET_SLOT[i]
 		var card := TextureButton.new()
@@ -703,7 +722,7 @@ func _build() -> void:
 			score_label.add_theme_font_override("font", _tracked(_font_heavy, CARD_SCORE_TRACKING))
 		_card_score.append(score_label)
 
-	# Drawn after the cards so the outline lands on top of the chosen one.
+	# Drawn after the cards so the check lands on top of the chosen one.
 	_select_overlay = Control.new()
 	_select_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_select_overlay.draw.connect(_draw_selection)
@@ -1067,6 +1086,9 @@ func _layout() -> void:
 	_select_overlay.position = Vector2.ZERO
 	_select_overlay.size = view
 	_select_overlay.queue_redraw()
+	_card_shadow_overlay.position = Vector2.ZERO
+	_card_shadow_overlay.size = view
+	_card_shadow_overlay.queue_redraw()
 	y += cards_h + gap + explain_clearance
 
 	_place(_explain, explain_w, explain_h, y)
@@ -1417,80 +1439,141 @@ func _draw_remove_ads_rule() -> void:
 		REMOVE_ADS_COLOR, REMOVE_ADS_UNDERLINE_WIDTH)
 
 
-func _draw_selection() -> void:
+# 고른 카드가 화면에서 실제로 차지하는 사각형. 카드들이 셀 안에서 조금씩 다른
+# 자리에 있으므로(_card_art_bounds) 버튼 사각형이 아니라 아트의 불투명 경계를
+# 쓴다 — 버튼으로 잡으면 그림자가 어느 카드에서는 떠 보이고 어느 카드에서는
+# 파고든다. scale 이 걸려 있으면 그만큼 가운데에서 키운다.
+func _selected_card_rect() -> Rect2:
 	if selected_index < 0 or selected_index >= _cards.size():
-		return
+		return Rect2()
 	var card: TextureButton = _cards[selected_index]
-	# The cards do not all sit at the same offset inside their cell, so the
-	# outline is placed on the card's measured opaque bounds rather than on
-	# the button rect — otherwise it would float off one card and cut into
-	# another.
 	var bounds: Rect2 = _card_art_bounds[selected_index] if selected_index < _card_art_bounds.size() else Rect2(0, 0, 1, 1)
 	var rect := Rect2(
 		card.position + Vector2(bounds.position.x * card.size.x, bounds.position.y * card.size.y),
 		Vector2(bounds.size.x * card.size.x, bounds.size.y * card.size.y))
 	rect.size.y += card.size.y * SELECT_BOTTOM_EXTEND_FRAC
+	# pivot_offset 이 카드 한가운데라 scale 은 그 점을 중심으로 커진다.
+	var pivot: Vector2 = card.position + card.pivot_offset
+	rect.position = pivot + (rect.position - pivot) * card.scale.x
+	rect.size *= card.scale.x
+	return rect
 
-	# Card geometry measured on the sheet, converted to this card's scale.
-	var art_scale: float = card.size.x / SELECT_SHEET_WIDTH_NATIVE
-	var border: float = maxf(2.0, SELECT_CARD_BORDER_NATIVE * art_scale * SELECT_BORDER_SCALE)
-	var radius: int = int(round(SELECT_CORNER_NATIVE * art_scale))
 
-	# Halo first, so the solid ring lands on top of it. Each pass sits a
-	# little further out and a little fainter, which reads as a glow.
-	for i in range(SELECT_GLOW_RINGS):
-		var t: float = float(i + 1) / float(SELECT_GLOW_RINGS)
-		var grow: float = border * SELECT_GLOW_SPREAD * t
-		var glow := StyleBoxFlat.new()
-		glow.draw_center = false
-		glow.set_corner_radius_all(radius + int(round(grow)))
-		glow.set_border_width_all(maxi(1, int(round(border))))
-		glow.border_color = Color(
-			SELECT_GLOW_COLOR.r, SELECT_GLOW_COLOR.g, SELECT_GLOW_COLOR.b,
-			SELECT_GLOW_COLOR.a * (1.0 - t * 0.75))
-		glow.anti_aliasing = true
-		_select_overlay.draw_style_box(glow, rect.grow(grow))
+func _card_corner_radius() -> int:
+	if selected_index < 0 or selected_index >= _cards.size():
+		return 0
+	var card: TextureButton = _cards[selected_index]
+	var art_scale: float = card.size.x * card.scale.x / SELECT_SHEET_WIDTH_NATIVE
+	return int(round(SELECT_CORNER_NATIVE * art_scale))
 
-	# Outer ring: the gold border plus a soft drop shadow, which is what
-	# lifts the chosen card off the page.
-	var outer := StyleBoxFlat.new()
-	outer.draw_center = false
-	outer.set_corner_radius_all(radius)
-	outer.set_border_width_all(int(round(border)))
-	outer.border_color = SELECT_COLOR
-	outer.shadow_color = SELECT_SHADOW_COLOR
-	outer.shadow_size = SELECT_SHADOW_SIZE
-	outer.shadow_offset = SELECT_SHADOW_OFFSET
-	outer.anti_aliasing = true
-	_select_overlay.draw_style_box(outer, rect)
 
-	# A thin brighter line just inside it reads as the lit top face of a
-	# bevel, so the ring looks rounded rather than painted flat.
-	var inner := StyleBoxFlat.new()
-	inner.draw_center = false
-	inner.set_corner_radius_all(maxi(1, radius - int(border)))
-	inner.set_border_width_all(1)
-	inner.border_color = SELECT_HIGHLIGHT_COLOR
-	inner.anti_aliasing = true
-	_select_overlay.draw_style_box(inner, rect.grow(-border))
+# 카드 뒤. 고른 카드 하나에만 그림자를 깐다.
+func _draw_card_shadow() -> void:
+	var rect: Rect2 = _selected_card_rect()
+	if rect.size.x <= 0.0:
+		return
+	# 배경은 투명하고 그림자만 남는다 — StyleBoxFlat 은 그림자를 상자 모양
+	# 바깥으로 따로 칠하므로, 속을 비워도 그림자는 그려진다. 카드가 이 위에
+	# 통째로 덮이니 속을 칠할 이유도 없다.
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	box.set_corner_radius_all(_card_corner_radius())
+	box.shadow_color = SELECT_SHADOW_COLOR
+	box.shadow_size = SELECT_SHADOW_SIZE
+	box.shadow_offset = SELECT_SHADOW_OFFSET
+	box.anti_aliasing = true
+	_card_shadow_overlay.draw_style_box(box, rect)
+
+
+# 카드 위. 왼쪽 위 구석의 초록 체크.
+func _draw_selection() -> void:
+	if _check_texture == null:
+		return
+	var rect: Rect2 = _selected_card_rect()
+	if rect.size.x <= 0.0:
+		return
+	_select_overlay.draw_texture_rect(_check_texture, _check_rect(selected_index, rect), false)
+
+
+# 자식은 부모의 scale 로 그려지지만 size 는 로컬 그대로다. 그린 자리를 보려면
+# 전역 변환을 통과시켜야 한다 — global_position 과 size 를 그냥 붙이면 카드가
+# 105% 일 때 판이 실제보다 작게 잡힌다.
+func _drawn_rect(node: Control) -> Rect2:
+	return node.get_global_transform() * Rect2(Vector2.ZERO, node.size)
+
+
+# 체크가 놓일 자리. 체커가 같은 답을 봐야 하므로 함수로 빼 둔다 — 여기에
+# 계산을 복사해 두면 배치가 바뀌어도 체커는 옛 자리를 검사하며 통과한다.
+func _check_rect(index: int, card_rect: Rect2) -> Rect2:
+	var margin: float = card_rect.size.x * CARD_CHECK_MARGIN_FRAC
+	var side: float = card_rect.size.x * CARD_CHECK_SIZE_FRAC
+	if index < 0 or index >= _card_name_plate.size():
+		return Rect2(card_rect.position + Vector2(margin, margin), Vector2(side, side))
+	# 이름판은 가운데 정렬이라 그 왼쪽 위에 빈 구석이 남고, 체크는 그 구석
+	# '안'에 들어가야 한다. 구석의 크기는 고정이 아니다 — 판은 네 이름 중
+	# 가장 긴 것에 맞춰 한 번에 정해지므로, 이름이 하나라도 길어지면 판이
+	# 넓어지고 구석이 줄어든다. 그래서 CARD_CHECK_SIZE_FRAC 은 상한일 뿐이고
+	# 실제 크기는 구석에서 나온다.
+	#
+	# 비율만 믿었을 때는 38px 짜리가 32px 짜리 구석에 들어가 네 카드 모두
+	# 이름을 물었다. 480x854 에서 이 구석은 약 32x39 라, 여기 들어갈 수 있는
+	# 가장 큰 체크가 26px 다 — 카드 폭의 13%. 더 키우려면 이름판을 좁히거나
+	# 체크를 카드 밖으로 걸치게 해야 하고, 둘 다 이 요청의 범위 밖이다.
+	var plate: Rect2 = _drawn_rect(_card_name_plate[index])
+	var box := Rect2(
+		card_rect.position + Vector2(margin, margin),
+		Vector2(plate.position.x - margin - (card_rect.position.x + margin),
+			plate.end.y - (card_rect.position.y + margin)))
+	side = minf(side, minf(maxf(0.0, box.size.x), maxf(0.0, box.size.y)))
+	# 남는 구석 한가운데. 어느 쪽으로도 치우치지 않으니 이름이 길어져 구석이
+	# 줄어도 겹치는 쪽이 생기지 않는다.
+	return Rect2(box.position + (box.size - Vector2(side, side)) * 0.5, Vector2(side, side))
 
 
 # ---------------------------------------------------------------- behaviour
 
-func _animate_press(button: Control) -> void:
+# 버튼이 눌리지 않았을 때 있어야 할 크기. 고른 카드만 크다.
+#
+# 누름 애니메이션이 Vector2.ONE 으로 돌아가면 안 되는 이유가 이것이다 —
+# 고른 카드를 한 번 더 누르면 105% 가 100% 로 풀려 버리고, 다시 커질 계기가
+# 없다. 두 크기는 곱해서 쓴다.
+func _rest_scale(button: Control) -> Vector2:
+	var i: int = _cards.find(button)
+	if i < 0:
+		return Vector2.ONE
+	return Vector2.ONE * (CARD_SELECTED_SCALE if i == selected_index else 1.0)
+
+
+# 한 버튼의 scale 을 움직이는 트윈은 언제나 하나뿐이다.
+#
+# 누름, 놓음, 선택 이동이 전부 같은 속성을 건드리는데, 카드를 탭하면 셋이 거의
+# 동시에 일어난다: button_up 이 옛 크기로 되돌리는 트윈을 걸고, 바로 뒤에 오는
+# pressed 가 새 크기로 가는 트윈을 건다. 이전 것을 죽이지 않으면 두 트윈이 같은
+# 값을 서로 다른 목표로 밀며 카드가 떤다.
+func _tween_scale(button: Control, want: Vector2, seconds: float, trans: int) -> void:
+	var idx: int = _cards.find(button)
+	if idx >= 0:
+		while _card_scale_tweens.size() <= idx:
+			_card_scale_tweens.append(null)
+		var old: Tween = _card_scale_tweens[idx]
+		if old != null and old.is_valid():
+			old.kill()
 	var tween := create_tween()
-	tween.tween_property(button, "scale", Vector2.ONE * PRESS_SCALE, PRESS_ANIM_DURATION) \
-		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
-	_follow_with_glow(tween, button)
+	tween.tween_property(button, "scale", want, seconds) \
+		.set_trans(trans).set_ease(Tween.EASE_OUT)
+	if idx >= 0:
+		_card_scale_tweens[idx] = tween
+	_follow_with_glow(tween, button, seconds)
+
+
+func _animate_press(button: Control) -> void:
+	_tween_scale(button, _rest_scale(button) * PRESS_SCALE, PRESS_ANIM_DURATION, Tween.TRANS_SINE)
 
 
 func _animate_release(button: Control) -> void:
 	# TRANS_BACK overshoots slightly on the way home, which is what makes the
 	# button feel like it springs rather than merely returning.
-	var tween := create_tween()
-	tween.tween_property(button, "scale", Vector2.ONE, PRESS_ANIM_DURATION) \
-		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	_follow_with_glow(tween, button)
+	_tween_scale(button, _rest_scale(button), PRESS_ANIM_DURATION, Tween.TRANS_BACK)
 
 
 # START's halo is a sibling node, so nothing repaints it when the button's
@@ -1498,12 +1581,18 @@ func _animate_release(button: Control) -> void:
 # Drive a redraw alongside the scale tween so the two move together. The
 # overshoot at the end of a release is included, which is the point: the
 # halo springs with the button rather than snapping after it.
-func _follow_with_glow(tween: Tween, button: Control) -> void:
+func _follow_with_glow(tween: Tween, button: Control, seconds: float = PRESS_ANIM_DURATION) -> void:
+	# 카드의 그림자와 체크도 같은 문제를 가진다. 둘은 형제 노드에 그려지므로
+	# 카드가 커지는 동안 아무도 다시 그려 주지 않아, 트윈이 끝날 때까지 옛
+	# 크기의 그림자가 새 크기의 카드 밑에 어긋난 채 남는다.
+	if _cards.has(button):
+		tween.parallel().tween_method(
+			func(_t: float) -> void: _redraw_selection(), 0.0, 1.0, seconds)
+		return
 	if button != _start or _start_glow == null:
 		return
 	tween.parallel().tween_method(
-		func(_t: float) -> void: _start_glow.queue_redraw(),
-		0.0, 1.0, PRESS_ANIM_DURATION)
+		func(_t: float) -> void: _start_glow.queue_redraw(), 0.0, 1.0, seconds)
 
 
 ## Fills each card's BEST plate. The array is indexed by mode, and the
@@ -1526,12 +1615,30 @@ func _on_card_pressed(index: int) -> void:
 	_select(index)
 
 
-func _select(index: int) -> void:
+func _select(index: int, animate: bool = true) -> void:
 	selected_index = index
 	if _explain_label != null and index < CARD_EXPLAIN.size():
 		_explain_label.text = CARD_EXPLAIN[index]
+	for i in range(_cards.size()):
+		var card: TextureButton = _cards[i]
+		var want: Vector2 = _rest_scale(card)
+		if card.scale.is_equal_approx(want):
+			continue
+		if animate:
+			_tween_scale(card, want, CARD_SELECT_ANIM, Tween.TRANS_SINE)
+		else:
+			# 첫 화면. 여는 상태는 이미 그 크기여야지, 커지는 게 보이면
+			# 사용자가 고르지도 않은 것을 고른 것처럼 연출된다.
+			card.scale = want
+	_redraw_selection()
+
+
+# 그림자와 체크는 카드 크기를 따라가므로 늘 함께 다시 그린다.
+func _redraw_selection() -> void:
 	if _select_overlay != null:
 		_select_overlay.queue_redraw()
+	if _card_shadow_overlay != null:
+		_card_shadow_overlay.queue_redraw()
 
 
 func _on_start_pressed() -> void:

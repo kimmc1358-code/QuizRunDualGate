@@ -66,6 +66,7 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
@@ -178,6 +179,16 @@ powershell -ExecutionPolicy Bypass -File tools/slice_ambient_sheet.ps1 -Measure
 Every slicer takes `-Measure` to report the detected layout without writing.
 Use it first; the detection is alpha-band based, so a stray near-transparent
 pixel can invent a row and shift the whole name mapping.
+
+That detection assumes the sheet actually has alpha, and not every one does.
+`icon_popup_2.png` renders as a checkerboard in an image viewer but is fully
+opaque — the checker is the viewer's, drawn over a white background — so the
+usual alpha bands find one icon spanning the sheet.
+`slice_popup_icons_2.ps1` separates its icons by **saturation** instead and
+generates the round cut-out from a fitted circle, because keying out
+"everything near-white" would have eaten the white check mark inside the
+green circle. Check what a sheet's alpha really is before assuming a slicer
+can band it.
 
 The exception is an **animation strip** — the character sheets and the boost
 burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
