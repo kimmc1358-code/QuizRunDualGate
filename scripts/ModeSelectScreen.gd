@@ -156,9 +156,12 @@ const CARD_SELECT_ANIM := 0.12          # seconds, 크기가 옮겨 가는 시�
 # 하나만 떠 있는 편이 "이게 골라졌다"를 더 분명히 말한다.
 const SELECT_CORNER_NATIVE := 70.0
 const SELECT_SHEET_WIDTH_NATIVE := 706.0
-const SELECT_SHADOW_SIZE := 14
-const SELECT_SHADOW_OFFSET := Vector2(0, 7)
-const SELECT_SHADOW_COLOR := Color(0.16, 0.10, 0.02, 0.62)
+# 처음에 14 / (0,7) / 0.62 로 잡았다가 화면에서 보고 낮췄다. 카드가 105% 로
+# 커지는 것과 체크가 이미 "골랐다"를 말하고 있어서, 그 위에 짙은 그림자까지
+# 얹으니 카드가 들린 게 아니라 화면에서 떨어져 나온 것처럼 보였다.
+const SELECT_SHADOW_SIZE := 9
+const SELECT_SHADOW_OFFSET := Vector2(0, 4)
+const SELECT_SHADOW_COLOR := Color(0.16, 0.10, 0.02, 0.34)
 # The card art fades out along its bottom edge, so the opaque bounds the
 # shadow is placed on stop just short of where the card looks like it ends.
 # Nudged down to close that gap.
@@ -723,8 +726,13 @@ func _build() -> void:
 		_card_score.append(score_label)
 
 	# Drawn after the cards so the check lands on top of the chosen one.
+	#
+	# 필터를 반드시 걸어야 한다. 프로젝트 기본값이 Nearest 라(project.godot 의
+	# default_texture_filter=0) 그냥 두면 128px 로 구운 체크를 26px 로 점
+	# 샘플링해서, 동그란 테두리가 계단처럼 씹힌다.
 	_select_overlay = Control.new()
 	_select_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_use_smooth_filter(_select_overlay)
 	_select_overlay.draw.connect(_draw_selection)
 	add_child(_select_overlay)
 

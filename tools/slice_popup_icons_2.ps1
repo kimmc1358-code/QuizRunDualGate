@@ -61,6 +61,13 @@ $IconSize = 128
 # circle is clipped by the texture edge and reads as a flat spot.
 $Margin = 3
 
+# How far the alpha ramps from opaque to clear at the rim, as a fraction of
+# the circle's radius. Measured in SOURCE pixels, which is the whole point:
+# a fixed 1.5px looked soft on the 732px circle and came out at a quarter of
+# a pixel once baked to 128, i.e. a hard edge. 0.02 of the radius is ~7
+# source px, which lands near 1.2px in the output.
+$RimSoftFrac = 0.02
+
 $repo = Split-Path -Parent $PSScriptRoot
 $dir = [System.IO.Path]::Combine($repo, 'assets', 'ui_assets', 'popup')
 $src = [System.IO.Path]::Combine($dir, 'icon_popup_2.png')
@@ -156,6 +163,7 @@ foreach ($p in $pieces) {
     $cx = $p.X + $p.W / 2.0
     $cy = $p.Y + $p.H / 2.0
     $radius = $side / 2.0
+    $rimSoft = [Math]::Max(1.0, $radius * $RimSoftFrac)
     $big = New-Object System.Drawing.Bitmap($side, $side, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
     for ($oy = 0; $oy -lt $side; $oy++) {
         $sy = $cy - $radius + $oy + 0.5
@@ -164,9 +172,9 @@ foreach ($p in $pieces) {
             $dx = $sx - $cx
             $dy = $sy - $cy
             $d = [Math]::Sqrt($dx * $dx + $dy * $dy)
-            # 1.5px of soft rim, so the circle does not come out with a
-            # staircase edge that the downscale would then preserve.
-            $a = ($radius - $d) / 1.5
+            # Soft rim, so the circle does not come out with a staircase edge
+            # that the downscale would then preserve.
+            $a = ($radius - $d) / $rimSoft
             if ($a -gt 1.0) { $a = 1.0 }
             if ($a -lt 0.0) { $a = 0.0 }
             $ix = [int]$sx
