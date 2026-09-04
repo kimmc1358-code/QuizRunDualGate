@@ -10,13 +10,25 @@ extends Node2D
 @export_range(-500.0, -20.0, 1.0) var flap_velocity: float = -300.0
 @export_range(50.0, 1500.0, 10.0) var gravity: float = 1000.0
 @export_range(50.0, 1200.0, 10.0) var max_fall_speed: float = 300.0
-@export_range(80.0, 800.0, 10.0) var base_gate_spacing: float = 600.0
+@export_range(80.0, 1600.0, 10.0) var base_gate_spacing: float = 900.0
 
 # Caps how far apart (as a fraction of full screen height) two consecutive
 # gate targets can be — stops extreme "top then straight to bottom" rolls,
 # on top of whatever the raw physics reachability already allows.
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_early: float = 0.5   # Phase 1-2
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_late: float = 0.65   # Phase 3-4
+
+## 배치가 "플레이어가 여기까지 올 수 있나"를 따질 때 가정하는 탭 간격(초).
+## 탭은 속도를 더하는 게 아니라 flap_velocity 로 덮어쓰므로, 간격 t 로 계속
+## 두드릴 때 유지되는 상승률은 |flap_velocity| - gravity*t/2 다 — 빨리 두드릴
+## 수록 빨라지고, 정점에서 치면(t = |flap|/gravity = 0.30) 가장 느리다:
+##   0.30 -> 150px/s  정점에서 톡톡, 가장 자연스러운 리듬
+##   0.25 -> 175px/s  기본값
+##   0.20 -> 200px/s
+##   0.15 -> 225px/s  거의 연타
+## 느긋하게 치는 사람도 통과할 수 있어야 하므로 느린 쪽에 가깝게 잡는다.
+## 낮출수록 게이트가 위아래로 과감하게 놓이고, 그만큼 빨리 두드려야 한다.
+@export_range(0.05, 0.5, 0.01) var reach_tap_interval: float = 0.25
 
 ## 가속 보너스 판정. 게이트 통과 순간 보너스 바에 남아 있는 비율로 배율을 정하고,
 ## 그 배율이 그대로 통과 점수에 곱해진다:
@@ -181,7 +193,17 @@ const HAPPY_POP_SCALE_PEAK := 1.12
 const HAPPY_POP_BOUNCE_HEIGHT := 8.0  # px, screen-space upward draw offset at the envelope's peak
 
 const GATE_WIDTH := 130.0
-const GATE_SPEED := 130.0  # halved for testing — was 260.0
+## 월드 스크롤 속도. 배경/파티클/스피드라인이 전부 이 값의 배수로 움직이므로
+## 이것 하나가 게임 전체의 체감 속도다. 130 은 "절반으로 줄여 테스트" 하던
+## 값이었고, 부스트를 안 쓰면 느리다는 지적을 받아 200 으로 올렸다.
+##
+## base_gate_spacing 과 짝이다: 게이트 하나에서 다음까지 걸리는 시간이
+## spacing / GATE_SPEED 이고, _spawn_gate 의 도달 가능 거리가 전부 거기서
+## 나온다. 속도만 올리고 간격을 그대로 두면 그 시간이 줄어 배치가 좁아지므로,
+## 둘은 비율을 유지한 채 같이 움직여야 한다 (130/600 -> 200/900, 4.62초 ->
+## 4.50초). 바꾸면 tools/check_boost_bar_range.gd 를 다시 돌릴 것 — 보너스
+## 채점축이 이 비율 위에 서 있다. PARTICLE_DRIFT_X_RATIO 도 마찬가지다.
+@export_range(60.0, 500.0, 5.0) var GATE_SPEED: float = 200.0
 # The center wall doubles as the fixed 30-40px buffer between the top and
 # bottom gates (see _gate_wall_center_y) — its own thickness IS that buffer,
 # so widening it here is the whole fix; nothing else needs to change.
@@ -459,9 +481,9 @@ const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at
 #      there the rest of the time.
 #
 # Speed is the point, so it is set against what else is moving rather than
-# picked: gates run at GATE_SPEED x BOOST_BUTTON_MULTIPLIER = 260px/s while
-# held, and the near background layer at 0.50 of GATE_SPEED = 130. These go
-# 900-1500, roughly 3.5-6x the gates. Anything near the gates' own rate
+# picked: gates run at GATE_SPEED x BOOST_BUTTON_MULTIPLIER = 400px/s while
+# held, and the near background layer at 0.50 of GATE_SPEED = 100. These go
+# 900-1500, roughly 2.3-3.8x the gates. Anything near the gates' own rate
 # reads as more scenery instead of as speed, and the spread across the range
 # is what stops the band moving like one sheet.
 const BOOST_SPEEDLINE_TEXTURE_PATH := "res://assets/fx/speed_lines/speed_line_strip.png"
@@ -1103,32 +1125,37 @@ const MODE_PARTICLE_MOTION := [
 # 이 값은 보이는 각도가 아니다. 화면 전체가 이미 왼쪽으로 흐르고 있어서,
 # 플레이어가 "이 물체 자신의 움직임"으로 읽는 것은 배경 대비 상대 운동뿐이다.
 #
-# 배경 스크롤(GATE_SPEED 130 기준): 원경 0.20 -> 26px/s, 근경 0.50 ->
-# 65px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
+# 배경 스크롤(GATE_SPEED 200 기준): 원경 0.20 -> 40px/s, 근경 0.50 ->
+# 100px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
 #
 # 체감 각도 = atan((vx - 레이어속도) / 낙하속도), 낙하속도 35px/s.
 #
 #   비율   실제 vx   체감 각도(원경 대비 / 근경 대비)
-#   1.0     35.0        14° / -41°
-#   1.5     52.5        37° / -20°
-#   2.5     87.5        60° /  33°
-#   2.85    99.8        65° /  45°
-#   3.5    122.5        70° /  59°
+#   1.0     35.0        -8° / -62°
+#   2.0     70.0        41° / -41°
+#   2.85    99.8        60° /   0°
+#   3.5    122.5        67° /  33°
+#   3.86   135.1        70° /  45°
+#   4.5    157.5        73° /  59°
 #
 # 1.0(진짜 45°)에서 근경 대비 음수, 즉 꽃잎이 근경보다 느려서 오히려 오른쪽
 # 아래로 기울어 보인다. 이게 각도를 0.55 -> 1.0 으로 올려도 여전히 수직으로
-# 떨어져 보였던 이유다. 2.85 면 근경 대비 45°, 원경 대비 65° 로 어느 쪽을
+# 떨어져 보였던 이유다. 3.86 이면 근경 대비 45°, 원경 대비 70° 로 어느 쪽을
 # 기준으로 봐도 확실히 왼쪽 아래다.
 #
-# 배경 속도를 바꾸면(bg_speed_ratio / bg_near_speed_ratio) 이 값도 다시
-# 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록 남긴 것이다 — 배경이
-# 0.15/0.40 이던 시절에는 같은 45°가 2.5 였고, 배경만 올리고 이 값을 그대로
-# 두면 근경 대비 33° 로 눕는다.
+# 표 한가운데의 2.85 가 GATE_SPEED 130 시절의 값이다. 그때는 근경 대비 45°
+# 였는데 배경만 빨라지자 정확히 0°, 즉 완전한 수직이 되었다 — 이 값이 배경
+# 속도에 얼마나 매달려 있는지를 그대로 보여주므로 표에 남겨 둔다.
+#
+# 배경 속도를 바꾸면(GATE_SPEED, bg_speed_ratio, bg_near_speed_ratio 중 어느
+# 하나라도) 이 값도 다시 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록
+# 남긴 것이다 — 배경이 0.15/0.40 이던 시절에는 같은 45°가 2.5 였고, 배경만
+# 올리고 이 값을 그대로 두면 근경 대비 33° 로 눕는다.
 #
 # 이 값은 모드가 아니라 모션의 각도다. 지금 이 모션을 쓰는 건 DREAM 뿐이지만
 # (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
 # 것이 맞다.
-const PARTICLE_DRIFT_X_RATIO := 2.85
+const PARTICLE_DRIFT_X_RATIO := 3.86
 # DRIFT_DIAGONAL gets its own, much lazier flutter than FALL does, and this
 # is what actually makes the diagonal read.
 #
@@ -1393,7 +1420,8 @@ const TRAIL_BOOST_STREAK_PER_MODE := [true, true, true, true]  # SKY, JUNGLE, OC
 # is worth recording as a dead end. PLAYER_X is 130 on a 480-wide screen and
 # the spawn point sits 30px behind that, so a streak has 100px of room
 # before it is culled at the left edge — there is nowhere for a longer trail
-# to go. Measured: riding the boosted world alone (260px/s) keeps a particle
+# to go. Measured (at the GATE_SPEED 130 of the time, so boosted 260px/s):
+# riding the boosted world alone keeps a particle
 # on screen 0.38s, and adding 200px/s of its own cut that to 0.26s, which
 # left FEWER alive at once and a shorter line, not a longer one. The world
 # scroll is already carrying them away from the character; what was missing
@@ -3931,8 +3959,20 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# base_gate_spacing controls how far ahead of the judgement line a new
 	# gate spawns, which is exactly how long the player has to get from the
 	# last target into this one.
-	var available_time: float = base_gate_spacing / GATE_SPEED
-	var up_reach: float = available_time * absf(flap_velocity) * REACH_SAFETY_FACTOR
+	#
+	# 부스트를 계속 누르고 있는 최악을 가정한다. 게이트는 한참 앞에서 생성되고
+	# 플레이어는 그 뒤 아무 때나 부스트를 누를 수 있으므로, 안 누른 속도로
+	# 배치를 정하면 누르는 순간 그 배치가 도달 불가능해진다. 여기서
+	# BOOST_BUTTON_MULTIPLIER 를 빼먹고 있었고, 480x854 에서 실측하면 부스트
+	# 중 상승 가능 거리 294px 대 배치 상한 427px — 아무리 두드려도 못 닿는
+	# 윗레인 갈아타기가 실제로 나올 수 있었다.
+	var available_time: float = base_gate_spacing / (GATE_SPEED * BOOST_BUTTON_MULTIPLIER)
+	# flap_velocity 는 탭 한 번이 속도를 덮어쓰는 값, 즉 순간 속도지 유지되는
+	# 상승률이 아니다. 여기에 그대로 쓰는 것은 간격 0 의 무한 연타를 가정하는
+	# 것과 같았다 — 실제 유지 상승률은 reach_tap_interval 의 표를 볼 것.
+	# 내려가는 쪽은 max_fall_speed 가 정말로 유지되는 속도라 그대로 맞다.
+	var climb_rate: float = maxf(0.0, absf(flap_velocity) - gravity * reach_tap_interval * 0.5)
+	var up_reach: float = available_time * climb_rate * REACH_SAFETY_FACTOR
 	var down_reach: float = available_time * max_fall_speed * REACH_SAFETY_FACTOR
 
 	# On top of raw physics reachability, cap consecutive-target movement to

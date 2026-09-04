@@ -15,12 +15,14 @@
 
 | 항목 (인스펙터 표시명) | 값 | 코드 위치 |
 |---|---|---|
-| Flap Velocity (탭 1회 상승 임펄스) | `-300` px/s | [Main.gd:12](scripts/Main.gd:12) |
-| Gravity (중력가속도) | `1000` px/s² | [Main.gd:13](scripts/Main.gd:13) |
-| Max Fall Speed (최대 낙하속도) | `300` px/s | [Main.gd:14](scripts/Main.gd:14) |
-| Base Gate Spacing (게이트 스폰 거리) | `600` px | [Main.gd:15](scripts/Main.gd:15) |
-| Max Move Ratio Early (Phase 1~2 게이트 간 이동거리 상한) | `0.5` (화면 높이 비율) | [Main.gd:20](scripts/Main.gd:20) |
-| Max Move Ratio Late (Phase 3~4 게이트 간 이동거리 상한) | `0.65` (화면 높이 비율) | [Main.gd:21](scripts/Main.gd:21) |
+| Flap Velocity (탭 1회 상승 임펄스) | `-300` px/s | [Main.gd:10](scripts/Main.gd:10) |
+| Gravity (중력가속도) | `1000` px/s² | [Main.gd:11](scripts/Main.gd:11) |
+| Max Fall Speed (최대 낙하속도) | `300` px/s | [Main.gd:12](scripts/Main.gd:12) |
+| Base Gate Spacing (게이트 스폰 거리) | `900` px | [Main.gd:13](scripts/Main.gd:13) |
+| Gate Speed (월드 스크롤 속도) | `200` px/s | [Main.gd:206](scripts/Main.gd:206) |
+| Max Move Ratio Early (Phase 1~2 게이트 간 이동거리 상한) | `0.5` (화면 높이 비율) | [Main.gd:18](scripts/Main.gd:18) |
+| Max Move Ratio Late (Phase 3~4 게이트 간 이동거리 상한) | `0.65` (화면 높이 비율) | [Main.gd:19](scripts/Main.gd:19) |
+| Reach Tap Interval (배치가 가정하는 탭 간격) | `0.25` 초 | [Main.gd:31](scripts/Main.gd:31) |
 
 이 값들은 스크립트의 `@export` 기본값으로도 반영되어 있어서, 씬을 새로
 플레이해도 동일하게 시작합니다. 인스펙터에서 슬라이더를 움직이면 그

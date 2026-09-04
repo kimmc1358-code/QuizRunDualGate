@@ -57,6 +57,7 @@ on failure.
 
 | Script | Guards | Re-run when |
 |---|---|---|
+| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
@@ -71,6 +72,21 @@ it that way — if a checker needs a calculation, extract it from the draw
 code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` and
 `check_sparkle_pools.gd` still re-derive; a copy of a table is exactly what
 passes while the game itself loads nothing.
+
+`check_gate_reach.gd` is the deliberate exception, and the reason is worth
+keeping straight: it checks a claim about **physics**, not about drawing.
+Calling `_spawn_gate`'s own reach formula would make it assert that the
+formula equals itself. So it integrates the real `gravity`/`flap_velocity`/
+`max_fall_speed` at 1/60s and compares that against where gates actually get
+placed. Both bugs it was written for — `available_time` ignoring
+`BOOST_BUTTON_MULTIPLIER`, and `up_reach` using the flap impulse as if it
+were a sustained climb rate — were live in the shipped code for months and
+show up on screen only as "a gate you sometimes just can't make", which no
+player can tell apart from their own bad play.
+
+It also fails when the margin gets too *large*: if placement never uses more
+than a quarter of the available climb, then something else is binding and
+the check is guarding nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -251,3 +267,17 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
   between the HUD and the gate's flag panel. Changing it affects both.
 - `_load_trimmed()` builds an `ImageTexture` at runtime and calls
   `generate_mipmaps()` itself, so its inputs ignore the `.import` setting.
+- **`GATE_SPEED` and `base_gate_spacing` move together, or difficulty moves
+  with them.** Everything the player has to react to is priced in
+  `base_gate_spacing / GATE_SPEED` — the seconds between one hole and the
+  next. Raising the speed alone shortens that and quietly tightens gate
+  placement; raising both in proportion buys the *sensation* of speed for
+  free, because the whole world scrolls faster while the rhythm and the
+  reachable range stay exactly where they were (130/600 and 200/900 are the
+  same 4.5-second gate).
+- Anything set against the world's scroll rate is set against `GATE_SPEED`
+  **in the same breath**, and stops being true when it changes. The one that
+  bites is `PARTICLE_DRIFT_X_RATIO`: DREAM's petals are only perceived as
+  diagonal relative to the background sliding under them, so speeding the
+  background from 130 to 200 turned a 45-degree drift into exactly 0 — dead
+  vertical — with the ratio untouched. Its comment carries the table.
