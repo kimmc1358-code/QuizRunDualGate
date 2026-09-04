@@ -1819,7 +1819,14 @@ const OCEAN_PHASE_HUE_BAND := [
 
 # Question box wording. A question about the COLOUR, never about the word,
 # which is the one thing the player has to keep straight.
-const OCEAN_PROMPT_INK := "Q. What COLOR is this word?"
+#
+# No "Q." in front. The box is already unmistakably the question — it is the
+# only text panel on screen and it never holds anything else — so the prefix
+# was two characters of nothing, and it cost real size: the prompt and the
+# stimulus shrink together to fit one row (see the loop in
+# _draw_ocean_quiz_box), so every character in the prompt takes width away
+# from the word the player actually has to read.
+const OCEAN_PROMPT_INK := "What COLOR is this word?"
 
 # Question box layout. The prompt is static and read once; the stimulus is
 # what gets re-read every single gate, so the prompt is deliberately the
@@ -1831,7 +1838,20 @@ const OCEAN_PROMPT_MIN_FONT := 9
 # The word is painted straight onto the cream quiz-box art, where a yellow or
 # white word would otherwise vanish. Every word gets the same dark outline —
 # uniformly, so the outline is never itself a hint.
-const OCEAN_INK_OUTLINE_PX := 2.0
+#
+# A FRACTION of the font size, not a pixel count. It was 2.0px flat, and
+# _draw_ocean_text stamps the word in all eight directions, so that is 2px of
+# ink pushed into every counter — the holes in R, O, e — from both sides at
+# once. The word shrinks to fit the row (down to
+# OCEAN_STIMULUS_MIN_FONT_FRAC), and at the small end 2px is a tenth of the
+# cap height, which is where PURPLE and ORANGE close up into blobs. Tying it
+# to the size keeps the weight constant instead of growing as the text
+# shrinks.
+@export_range(0.0, 0.12, 0.005) var ocean_ink_outline_ratio: float = 0.045
+# Floor, so the outline never disappears entirely at the smallest sizes —
+# below about a pixel it stops separating the word from the cream box, which
+# is the whole reason it is there.
+const OCEAN_INK_OUTLINE_MIN_PX := 1.0
 const OCEAN_INK_OUTLINE_COLOR := Color(0.09, 0.12, 0.18, 0.95)
 
 # Gate options. The names are up to six letters on a card built for a flag,
@@ -6760,7 +6780,8 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	# The answer is the INK. Outlined because a YELLOW or WHITE word would
 	# otherwise wash out against the cream box art; the same outline goes on
 	# every colour so it never becomes a hint.
-	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, OCEAN_INK_OUTLINE_PX)
+	var outline_px: float = maxf(OCEAN_INK_OUTLINE_MIN_PX, word_size * ocean_ink_outline_ratio)
+	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, outline_px)
 
 
 func _draw() -> void:
