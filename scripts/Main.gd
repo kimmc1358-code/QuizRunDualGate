@@ -1519,6 +1519,7 @@ const BOOST_POP_COLOR_BEST := BOOST_BAR_ZONE_BEST_COLOR
 const BOOST_POP_GLOW_PASSES_MID := 6
 const BOOST_POP_GLOW_RADIUS_MID := 3.0
 const BOOST_POP_GLOW_ALPHA_MID := 0.10
+@export_group("Boost Popup Gradient")
 # Vertical gradient on the fill: lit from above, so the top of the letter is
 # brighter than its own colour and the bottom falls away. Multipliers on
 # boost_pop_color rather than a second pair of colours, so the per-tier
@@ -1529,8 +1530,13 @@ const BOOST_POP_GLOW_ALPHA_MID := 0.10
 # full alpha, so overexposing the crown is what makes it read as lit rather
 # than as a paler shade of the same paint; the same trick the gate ring's
 # flash uses.
-const BOOST_POP_GRADIENT_TOP := 1.30
-const BOOST_POP_GRADIENT_BOTTOM := 0.52
+@export_range(1.0, 2.0, 0.01) var boost_pop_gradient_top: float = 1.30
+# The foot. 0.52 was the first value and read as dirty rather than shaded —
+# at that depth TURBO's orange lands near brown, which is a different colour
+# rather than the same one in shadow. 0.78 keeps the hue recognisable the
+# whole way down while still falling clearly away from the lit crown.
+@export_range(0.2, 1.0, 0.01) var boost_pop_gradient_bottom: float = 0.78
+@export_group("")  # closes "Boost Popup Gradient"
 # How many bands the ramp is cut into. 14 over a 40px cap height is under
 # 3px a band, which is below where the eye starts resolving the steps; going
 # much higher just adds draw calls to a popup that already redraws itself
@@ -4664,8 +4670,8 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
 		draw_texture_rect(text_tex, Rect2(tex_pos + offset, text_tex.get_size()), false, outline_col)
 	_draw_text_vgradient(text_tex, tex_pos,
-		Color(boost_pop_color * BOOST_POP_GRADIENT_TOP, alpha),
-		Color(boost_pop_color * BOOST_POP_GRADIENT_BOTTOM, alpha))
+		Color(boost_pop_color * boost_pop_gradient_top, alpha),
+		Color(boost_pop_color * boost_pop_gradient_bottom, alpha))
 
 
 func _boost_bar_rect(view_size: Vector2) -> Rect2:
