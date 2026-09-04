@@ -21,7 +21,11 @@ window/size/viewport_width=480
 window/size/viewport_height=854
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
-window/handheld/orientation="portrait"
+; Godot 4 는 이 값을 정수 enum 으로 받는다
+; (0=Landscape, 1=Portrait, ...). Godot 3 시절의 "portrait" 문자열이
+; 남아 있으면 타입이 맞지 않아 조용히 무시되고 0=가로로 떨어진다 —
+; 데스크톱에서는 창 크기가 세로라 티가 안 나고, 안드로이드에서만 드러난다.
+window/handheld/orientation=1
 
 [physics]
 
