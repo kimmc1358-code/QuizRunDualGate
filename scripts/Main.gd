@@ -837,7 +837,6 @@ const COLOR_WALL := Color(0.059, 0.008, 0.31, 0.0)
 const COLOR_TEXT := Color(0.95, 0.95, 0.95)
 const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps HUD text legible over the light sky
 const COLOR_TEXT_DARK := Color(0.09, 0.12, 0.18, 1.0)  # for text drawn over the near-opaque white quiz box, where the light COLOR_TEXT would wash out
-const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
 # Answer flag icon sits inside the gate's decorative frame, above its zone
 # — positioned GATE_FLAG_GAP_ABOVE_ZONE clear of the zone's top edge (see
@@ -6935,10 +6934,14 @@ func _draw() -> void:
 		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
 		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
+	# 판정 구역에는 이제 아무것도 안 칠한다. 예전에는 두 레인을 옅은 파랑
+	# (COLOR_ZONE, 알파 0.55)으로 덮었는데, 그건 게이트가 그림 없이 사각형이던
+	# 시절 "여기로 지나가라"를 보여 주던 것이다. 지금은 링 아트의 안쪽 구멍이
+	# 곧 판정 구역이고(_gate_ring_inner_zone_height 가 그 구멍을 재서 만든다),
+	# 그림이 이미 말하고 있는 것을 파란 판이 한 번 더 덮어 네 모드의 게이트가
+	# 전부 푸르스름하게 보였다.
 	for g in gates:
 		var wall_rect := Rect2(Vector2(g.x, wall_top), Vector2(GATE_WIDTH, WALL_THICKNESS))
-		draw_rect(Rect2(Vector2(g.x, g.top_zone_top), Vector2(GATE_WIDTH, g.top_zone_bottom - g.top_zone_top)), COLOR_ZONE)
-		draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
 		draw_rect(wall_rect, COLOR_WALL)
 
 	_draw_bird_trail()   # behind the bird, and behind the speed lines
