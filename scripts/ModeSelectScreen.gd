@@ -57,7 +57,7 @@ const CARD_NAME_HEIGHT_FRAC := 0.17
 const CARD_BEST_HEIGHT_FRAC := 0.15
 const CARD_ART_HEIGHT_FRAC := 0.58
 const CARD_TEXT_INSET_FRAC := 0.06     # of card height, kept clear of the border
-const CARD_NAMES := ["FLAG MODE", "MATH MODE", "STROOP MODE", "MIX MODE"]
+const CARD_NAMES := ["FLAG MODE", "MATH MODE", "COLOR MODE", "MIX MODE"]
 # Sized so the longest name fits its card, then used for all of them, so the
 # titles do not step up and down from card to card.
 const CARD_NAME_WIDTH_FRAC := 0.90     # of the card's inner width
@@ -67,7 +67,7 @@ const CARD_NAME_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const CARD_NAME_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
 const CARD_NAME_OUTLINE_FRAC := 0.18   # of the font size
 # The title sits on its own rounded plate. Its width is taken from the
-# longest name — STROOP MODE — and then used on every card, so the plates
+# longest name — COLOR MODE — and then used on every card, so the plates
 # line up as a set rather than each hugging its own text.
 const CARD_NAME_PLATE_COLOR := Color(0.16, 0.17, 0.20, 0.55)
 const CARD_NAME_PLATE_RADIUS := 6
@@ -89,6 +89,12 @@ const CARD_BEST_PLATE_WIDTH_FRAC := 0.86   # of the card's inner width
 const CARD_BEST_COLOR := Color(0.99, 0.80, 0.22, 1.0)
 const CARD_BEST_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
 const CARD_BEST_OUTLINE_FRAC := 0.16   # 글자 크기 대비 — 옆 숫자와 같은 굵기
+# "BEST" 만 숫자보다 한 뼘 크게 잡는다. 같은 크기로 두면 옆 숫자에 묻힌다 —
+# 숫자는 속칠과 같은 색 테두리로 굵기를 더 얻고 있어서(CARD_SCORE_OUTLINE_FRAC),
+# font_size 가 같아도 눈에는 BEST 쪽이 작아 보인다. 판 안에 왕관·BEST·숫자가
+# 한 줄로 들어가야 하므로 마음대로 키울 수는 없다 — check_mode_card_check 가
+# 가장 긴 점수로 그 줄을 재 본다.
+const CARD_BEST_LABEL_SCALE := 1.14
 # The plate holds three things in a row — crown, the word BEST, the number —
 # centred as a group. The number is styled like the card titles rather than
 # like the word beside it, so the score is what the eye lands on.
@@ -1416,9 +1422,10 @@ func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: flo
 		(art_w_total - plate_w) * 0.5, art_h_total - inset - best_h)
 	_card_best_plate[index].size = Vector2(plate_w, best_h)
 	var score_size: int = int(round(best_h * 0.62))
-	_card_best[index].add_theme_font_size_override("font_size", score_size)
+	var best_size: int = int(round(score_size * CARD_BEST_LABEL_SCALE))
+	_card_best[index].add_theme_font_size_override("font_size", best_size)
 	_card_best[index].add_theme_constant_override(
-		"outline_size", int(round(score_size * CARD_BEST_OUTLINE_FRAC)))
+		"outline_size", int(round(best_size * CARD_BEST_OUTLINE_FRAC)))
 	_card_score[index].add_theme_font_size_override("font_size", score_size)
 	_card_score[index].add_theme_constant_override(
 		"outline_size", int(round(score_size * CARD_SCORE_OUTLINE_FRAC)))
@@ -1816,9 +1823,17 @@ func _check_rect(index: int, card_rect: Rect2) -> Rect2:
 		Vector2(plate.position.x - margin - (card_rect.position.x + margin),
 			plate.end.y - (card_rect.position.y + margin)))
 	side = minf(side, minf(maxf(0.0, box.size.x), maxf(0.0, box.size.y)))
-	# 남는 구석 한가운데. 어느 쪽으로도 치우치지 않으니 이름이 길어져 구석이
-	# 줄어도 겹치는 쪽이 생기지 않는다.
-	return Rect2(box.position + (box.size - Vector2(side, side)) * 0.5, Vector2(side, side))
+	# 구석에 붙인다. 세로는 남는 만큼 가운데로 — 대개 판 높이가 그대로
+	# 한도라 움직일 자리도 없다 — 지만 가로는 왼쪽에 딱 붙인다.
+	#
+	# 한때 가로도 가운데였는데, 그러면 구석이 넓어질수록 체크가 오른쪽
+	# 아래 캐릭터 쪽으로 걸어 나간다. 판 너비는 네 이름 중 가장 긴 것이
+	# 정하므로 이름 하나만 짧아져도 넷 다 그렇게 되고, 실제로 STROOP MODE
+	# 를 COLOR MODE 로 줄였을 때 16:9 에서 유니콘의 뿔을 물었다. 왼쪽에
+	# 붙여 두면 구석이 넓어지든 좁아지든 갈 데가 없다.
+	return Rect2(
+		Vector2(box.position.x, box.position.y + (box.size.y - side) * 0.5),
+		Vector2(side, side))
 
 
 # 덮개를 지금 씌울 카드, 안 씌울 상황이면 빈 사각형.

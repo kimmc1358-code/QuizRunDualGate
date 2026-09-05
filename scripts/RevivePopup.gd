@@ -196,7 +196,7 @@ func set_leaderboard_score(value: int, logged_in: bool) -> void:
 func _note_body_text() -> String:
 	if not _logged_in:
 		return ""
-	return NOTE_BODY_FORMAT % _group(_leaderboard_score)
+	return tr(NOTE_BODY_FORMAT) % _group(_leaderboard_score)
 
 
 ## 모드마다 다른 sad 표정을 Main이 넣어 준다.

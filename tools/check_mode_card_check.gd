@@ -4,10 +4,11 @@ extends SceneTree
 #
 #   Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/check_mode_card_check.gd
 #
-# 눈으로는 못 지키는 조건이다. 네 카드의 이름 길이가 다르고("FLAG MODE" 대
-# "STROOP MODE") 캐릭터 배율도 다르므로(CARD_CHARACTER_SCALE 의 유니콘 1.20),
-# 한 카드에서 넉넉해 보이는 여백이 다른 카드에서는 없다. 게다가 카드를 하나씩
-# 골라 봐야 보이는 상태라, 스크린샷 한 장으로는 넷 중 하나만 확인된다.
+# 눈으로는 못 지키는 조건이다. 네 카드의 캐릭터 배율이 다르고
+# (CARD_CHARACTER_SCALE 의 유니콘 1.20) 이름판 너비는 네 이름 중 가장 긴
+# 것이 정하는데 그 이름이 번역되므로, 언어를 바꾸면 넷 다 판 너비가 바뀐다.
+# 게다가 카드를 하나씩 골라 봐야 보이는 상태라, 스크린샷 한 장으로는 넷 중
+# 하나만, 그것도 한 언어에서만 확인된다.
 #
 # 그림이 아니라 사각형으로 잰다:
 #   - 이름판(_card_name_plate)은 가운데 정렬이라 그 왼쪽에 구석이 남는다.
@@ -91,10 +92,20 @@ func _run() -> void:
 	# 늘리는데, 늘어난 몫은 전부 캐릭터에게 가므로 캐릭터만 커지고 체크는
 	# 그대로다. 16:9 는 늘어날 자리가 없어 아무 일도 안 일어나는 비율이라,
 	# 거기서만 재면 정작 캐릭터가 가장 큰 화면을 한 번도 안 보게 된다.
+	#
+	# 언어도 함께 훑는다. 이름판 너비는 네 이름 중 가장 긴 것이 정하고 그
+	# 이름은 번역되므로, 판 너비도 체크가 들어갈 구석도 언어마다 다르다 —
+	# 한 언어만 재면 다른 언어에서만 겹치는 것을 못 본다. 실제로 한국어
+	# 이름은 넷 다 다섯 자라 영어보다 판이 40px 좁다.
 	var heights: Array[float] = []
 	var plate_sizes: Array[Vector2] = []
 	var plate_widths: Array[Vector2] = []
-	for h in [base.y, base.x * 20.0 / 9.0]:
+	var was_locale: String = TranslationServer.get_locale()
+	for combo in [["en", base.y], ["en", base.x * 20.0 / 9.0],
+			["ko", base.y], ["ko", base.x * 20.0 / 9.0]]:
+		TranslationServer.set_locale(str(combo[0]))
+		screen.call("rebuild")
+		var h: float = float(combo[1])
 		var view := Vector2(base.x, h)
 		screen.size = view
 		screen.call("_layout")
@@ -112,8 +123,8 @@ func _run() -> void:
 			screen.get("_card_name_plate")[0].size.x,
 			screen.get("_card_best_plate")[0].size.x))
 		print("")
-		print("check_mode_card_check: viewport %.0fx%.0f, %d cards, card %.0fx%.0f" % [
-			view.x, view.y, cards.size(), cards[0].size.x, card_h])
+		print("check_mode_card_check: %s, viewport %.0fx%.0f, %d cards, card %.0fx%.0f" % [
+			str(combo[0]), view.x, view.y, cards.size(), cards[0].size.x, card_h])
 		print("  %-6s %-22s %-22s %-22s %s" % ["card", "check rect", "name plate", "character ink", "verdict"])
 
 		for i in range(cards.size()):
@@ -158,17 +169,91 @@ func _run() -> void:
 		print("")
 		print("  card height %.1f (16:9) -> %.1f (20:9), contents held at the 16:9 size" % [
 			heights[0], heights[1]])
-	if plate_sizes.size() == 2:
-		var dh: Vector2 = plate_sizes[1] - plate_sizes[0]
-		var dw: Vector2 = plate_widths[1] - plate_widths[0]
+	TranslationServer.set_locale(was_locale)
+	screen.call("rebuild")
+	# 비율 둘씩 짝지어 언어별로 본다 — 판이 카드 높이를 타고 있는지가 질문이고,
+	# 언어가 바뀌면 판 너비는 바뀌어도 되는 값이다.
+	print("")
+	for pair in [[0, 1, "en"], [2, 3, "ko"]]:
+		var a: int = int(pair[0])
+		var b: int = int(pair[1])
+		if plate_sizes.size() <= b:
+			continue
+		var dh: Vector2 = plate_sizes[b] - plate_sizes[a]
+		var dw: Vector2 = plate_widths[b] - plate_widths[a]
 		if absf(dh.x) > 0.5 or absf(dw.x) > 0.5:
-			_fail("the name plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
-				plate_widths[0].x, plate_sizes[0].x, plate_widths[1].x, plate_sizes[1].x])
+			_fail("%s: the name plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
+				str(pair[2]), plate_widths[a].x, plate_sizes[a].x, plate_widths[b].x, plate_sizes[b].x])
 		if absf(dh.y) > 0.5 or absf(dw.y) > 0.5:
-			_fail("the BEST plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
-				plate_widths[0].y, plate_sizes[0].y, plate_widths[1].y, plate_sizes[1].y])
-		print("  name plate %.1fx%.1f, BEST plate %.1fx%.1f — unchanged by the growth" % [
-			plate_widths[0].x, plate_sizes[0].x, plate_widths[0].y, plate_sizes[0].y])
+			_fail("%s: the BEST plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
+				str(pair[2]), plate_widths[a].y, plate_sizes[a].y, plate_widths[b].y, plate_sizes[b].y])
+		print("  %s: name plate %.1fx%.1f, BEST plate %.1fx%.1f — unchanged by the growth" % [
+			str(pair[2]), plate_widths[a].x, plate_sizes[a].x, plate_widths[a].y, plate_sizes[a].y])
+
+	# ---- 점수판 한 줄 ----
+	#
+	# 왕관 + "BEST" + 숫자가 한 줄로 판 안에 들어가야 한다. 판 너비는 카드
+	# 너비 비율로만 정해져 숫자가 길어져도 넓어지지 않으므로, 셋 중 무엇을
+	# 키워도 넘칠 수 있다 — "BEST" 를 숫자보다 크게 잡은 뒤로는 특히.
+	# 넘쳐도 오류는 안 난다: HBox 가 조용히 왕관을 눌러 버리거나 글자가 판
+	# 밖으로 걸쳐 나갈 뿐이라, 스크린샷 한 장으로도 알아채기 어렵다.
+	#
+	# 그리고 네 카드가 서로 같아야 한다. 카드마다 이름 길이도 캐릭터 배율도
+	# 다르지만 점수판은 넷이 나란히 읽히는 자리다 — 하나만 글자가 크면 그
+	# 모드가 특별한 것처럼 보인다.
+	#
+	# 가장 긴 표기로 재야 의미가 있다. ScoreFormat.compact 는 다섯 자를 넘지
+	# 않지만 어느 다섯 자가 가장 넓은지는 글꼴이 정하므로, 자릿수가 다른
+	# 후보를 훑어 가장 넓은 것을 쓴다.
+	print("")
+	var worst_scores := [0, 88888, 888888, 8888888, 888888888, 2147483647]
+	for h in [base.y, base.x * 20.0 / 9.0]:
+		screen.size = Vector2(base.x, h)
+		screen.call("_layout")
+		await process_frame
+		var best_fs: Array[int] = []
+		var score_fs: Array[int] = []
+		var plate_wh: Array[Vector2] = []
+		var widest := 0.0
+		var widest_text := ""
+		var widest_card := 0
+		for value in worst_scores:
+			var row_values := PackedInt32Array()
+			for m in range(4):
+				row_values.append(int(value))
+			screen.call("set_best_scores", row_values)
+			await process_frame
+			for i in range(cards.size()):
+				var row: Control = screen.get("_card_best_row")[i]
+				var need: float = row.get_combined_minimum_size().x
+				if need > widest:
+					widest = need
+					widest_text = screen.get("_card_score")[i].text
+					widest_card = i
+		for i in range(cards.size()):
+			best_fs.append(screen.get("_card_best")[i].get_theme_font_size("font_size"))
+			score_fs.append(screen.get("_card_score")[i].get_theme_font_size("font_size"))
+			plate_wh.append(screen.get("_card_best_plate")[i].size)
+		var plate_w: float = plate_wh[0].x
+		print("  %.0fx%.0f: BEST plate %.1fx%.1f, \"BEST\" %dpx, score %dpx, widest row %.1f (\"%s\")" % [
+			base.x, h, plate_wh[0].x, plate_wh[0].y, best_fs[0], score_fs[0], widest, widest_text])
+		if widest > plate_w:
+			_fail("the BEST row needs %.1fpx for \"%s\" on card %d but its plate is %.1f — crown, BEST or the number is too big" % [
+				widest, widest_text, widest_card, plate_w])
+		for i in range(1, cards.size()):
+			if best_fs[i] != best_fs[0]:
+				_fail("card %d draws \"BEST\" at %dpx but card 0 draws it at %d" % [i, best_fs[i], best_fs[0]])
+			if score_fs[i] != score_fs[0]:
+				_fail("card %d draws its score at %dpx but card 0 draws it at %d" % [i, score_fs[i], score_fs[0]])
+			if not plate_wh[i].is_equal_approx(plate_wh[0]):
+				_fail("card %d's BEST plate is %.1fx%.1f but card 0's is %.1fx%.1f" % [
+					i, plate_wh[i].x, plate_wh[i].y, plate_wh[0].x, plate_wh[0].y])
+		if best_fs[0] <= score_fs[0]:
+			_fail("\"BEST\" is %dpx against the score's %d — CARD_BEST_LABEL_SCALE is doing nothing" % [
+				best_fs[0], score_fs[0]])
+	# 뒤 검사들이 실제 기록을 보지 않도록 되돌린다.
+	screen.call("set_best_scores", PackedInt32Array([0, 0, 0, 0]))
+	await process_frame
 
 	var view := Vector2(base.x, base.x * 20.0 / 9.0)
 	var modes: Array = screen.get("CARD_MODES")

@@ -83,6 +83,14 @@ func _run() -> void:
 		main.call("_open_settings")
 		await _shot("settings_%s" % lang[0])
 		main.get("settings_popup").visible = false
+		# 부활 팝업의 아랫줄은 로그인한 사람에게만 나온다 — 안 켜고 찍으면
+		# 정작 번역이 빠져 있던 그 줄이 화면에 없다.
+		var revive: Control = main.get("revive_panel")
+		revive.call("ensure_built")
+		revive.call("set_leaderboard_score", 12600, true)
+		revive.visible = true
+		await _shot("revive_%s" % lang[0])
+		revive.visible = false
 
 	main.call("set_language_korean", false)
 	for i in range(4):

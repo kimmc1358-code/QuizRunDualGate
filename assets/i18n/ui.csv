@@ -1,8 +1,8 @@
 keys,en,ko
 FLAG MODE,FLAG MODE,국기 모드
 MATH MODE,MATH MODE,연산 모드
-STROOP MODE,STROOP MODE,스트룹 모드
-MIX MODE,MIX MODE,혼합 모드
+COLOR MODE,COLOR MODE,색깔 모드
+MIX MODE,MIX MODE,믹스 모드
 Find the flag that matches the country!,Find the flag that matches the country!,나라 이름에 맞는 국기를 찾으세요!
 Solve the math problem and find the answer!,Solve the math problem and find the answer!,계산을 풀고 정답을 찾으세요!
 "Choose the COLOR, not the word!","Choose the COLOR, not the word!",글자가 아니라 '색'을 고르세요!
@@ -76,3 +76,4 @@ MUSIC,MUSIC,음악
 Version %s,Version %s,버전 %s
 Remove Ads,Remove Ads,광고 제거하기
 LANGUAGE,LANGUAGE,언어
+Your Leaderboard score stays at %s.,Your Leaderboard score stays at %s.,순위표 점수는 %s점에서 멈춥니다.
