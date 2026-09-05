@@ -177,6 +177,7 @@ on failure.
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
+| `check_gameover_bgm.gd` | the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
 | `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
@@ -407,6 +408,17 @@ twenty PNGs the game does not open. Frames are copied at their **full canvas
 size**, never trimmed — the frames are registered against each other (the
 flame's head holds still while its tail grows backward out of it), and
 trimming each to its own bounds makes the head jitter.
+
+Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
+unconverted wav still plays and dropping the ogg beside it switches over).
+Tracks arrive as wav and are converted once, at the 160k the existing tracks
+use — `gameover_bgm.wav` was 15.3MB and is 1.3MB as ogg:
+
+```bash
+ffmpeg -i gameover_bgm.wav -c:a libvorbis -b:a 160k -ar 48000 assets/audio/gameover_bgm.ogg
+```
+
+The wavs are not committed; they are the raw export and nothing reads them.
 
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:

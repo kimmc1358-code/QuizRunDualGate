@@ -1682,6 +1682,13 @@ const MODE_BGM_NAME := [
 # that overlap possible.
 const BGM_CROSSFADE_TIME := 0.4
 const BGM_SILENT_DB := -40.0
+# 부활 제안과 게임오버 화면의 곡. 판이 끝나면 음악을 통째로 끊었었는데, 두
+# 팝업 모두 한참 들여다보는 화면이라 그 사이가 무음이었다.
+#
+# 둘이 같은 곡이고, 그래야 한다. 제안을 거절하면 부활 팝업이 곧바로 게임오버
+# 팝업으로 바뀌는데 곡이 다르면 거기서 한 번 끊긴다 — _play_bgm 은 같은
+# 경로면 아무 일도 안 하므로, 이름만 같으면 저절로 이어진다.
+const BGM_GAMEOVER_NAME := "gameover_bgm"
 # Countdown beat sounds — one played the instant the READY image appears,
 # the other the instant it swaps to START (see _start_countdown and
 # _update_countdown).
@@ -1730,6 +1737,12 @@ const FX_SOUND_BOOST_START_PATH := "res://assets/audio/boost_start.wav"
 #
 # 이보다 더 필요하면 이쪽을 올리는 것보다 홀드음을 낮추는 쪽이 맞다 — 위로는
 # 천장이 없지만 아래로는 여유가 있다.
+# 판이 도는 동안의 곡보다 낮게 깐다. 읽을 것이 있는 화면이고 게임오버 효과음이
+# 그 위에 울리므로, 같은 크기면 둘이 서로를 밟는다. 0 이 기본 크기이고 음수가
+# 작아지는 쪽이다(데시벨).
+@export_group("Music")
+@export_range(-30.0, 0.0, 0.5) var gameover_bgm_db: float = -9.0
+@export_group("")  # closes "Music"
 @export_group("Boost Audio")
 @export_range(-12.0, 12.0, 0.5) var boost_start_volume_db: float = 4.0
 @export_group("")  # closes "Boost Audio"
@@ -5948,7 +5961,7 @@ func _offer_revive() -> void:
 	combo = 0
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
-	_stop_bgm()
+	_play_gameover_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
 	revive_panel.set_character(sad_face_texture, PLAYER_VISUAL_SIZE.y * active_visual_size_scale)
@@ -6011,7 +6024,7 @@ func _finish_run() -> void:
 	else:
 		final_score_label.text = "SCORE: %d" % score
 		gameover_panel.visible = true
-	_stop_bgm()
+	_play_gameover_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
 
@@ -6898,7 +6911,10 @@ func _bgm_path_for_state() -> String:
 	return _resolve_audio(BGM_MENU_NAME)
 
 
-func _play_bgm(path: String) -> void:
+# target_db 는 다 페이드인했을 때의 크기다. 기본은 0(원래 크기) 이고 게임오버
+# 곡만 낮춰 깐다 — 버스 볼륨을 건드리면 설정의 음악 슬라이더와 싸우게 되므로
+# 플레이어 쪽에서 낮춘다.
+func _play_bgm(path: String, target_db: float = 0.0) -> void:
 	if path == "" or path == bgm_current_path:
 		return  # nothing to switch to, or already on this track
 	var incoming: int = 1 - bgm_active
@@ -6915,9 +6931,23 @@ func _play_bgm(path: String) -> void:
 		bgm_fade_tween.kill()
 	bgm_fade_tween = create_tween()
 	bgm_fade_tween.set_parallel(true)
-	bgm_fade_tween.tween_property(target, "volume_db", 0.0, BGM_CROSSFADE_TIME)
+	bgm_fade_tween.tween_property(target, "volume_db", target_db, BGM_CROSSFADE_TIME)
 	bgm_fade_tween.tween_property(outgoing, "volume_db", BGM_SILENT_DB, BGM_CROSSFADE_TIME)
 	bgm_fade_tween.chain().tween_callback(outgoing.stop)
+
+
+# 부활 제안과 게임오버가 같은 곡을 같은 크기로 깐다. 두 곳에서 같은 두 값을
+# 적으면 한쪽만 고치는 날이 온다.
+#
+# 파일이 없으면 _resolve_audio 가 빈 문자열을 주고 _play_bgm 은 아무 일도 안
+# 한다 — 그러면 판이 끝나도 게임 곡이 계속 흐르게 되므로, 그때는 예전처럼
+# 끊는다.
+func _play_gameover_bgm() -> void:
+	var path: String = _resolve_audio(BGM_GAMEOVER_NAME)
+	if path == "":
+		_stop_bgm()
+		return
+	_play_bgm(path, gameover_bgm_db)
 
 
 func _stop_bgm() -> void:
