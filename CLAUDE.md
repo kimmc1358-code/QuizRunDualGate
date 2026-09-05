@@ -64,11 +64,18 @@ over popups. **Words that live in painted art stay English** — START, READY,
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
 them. So does `LOGIN WITH`, which is glued to the Google mark.
 
-The **quiz content is not translated** either. Country names and the Stroop
-colour words are English, and for Stroop that is a design fact rather than an
-omission: the illusion depends on reading the word, so a Korean player gets a
-much weaker version of that mode. Worth revisiting if Korean becomes a
-primary market.
+**The Stroop colour words are translated; country names are not.** That split
+is deliberate. A flag quiz in English is a vocabulary question and still
+works. Stroop does not: the interference comes from reading being
+involuntary, so an English `RED` in front of a Korean player is closer to a
+shape than a word, the conflict never fires, and the mode collapses into
+"what colour is this text" with no trap in it. Those eleven words are the
+mode.
+
+Only the **drawn** colour name goes through `tr()` — `OCEAN_COLOR_NAMES`
+stays English everywhere else, because it also keys the problem generator,
+the repeat guard and the answer matching. Translating at the source would tie
+that logic to the locale for no gain.
 
 No Korean font is bundled. Fredoka has no Hangul, and the glyphs come from
 the platform's fallback — which works but is a plain gothic against Fredoka's

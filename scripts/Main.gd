@@ -3774,7 +3774,7 @@ func _draw_gate_answer_box(code: String, quiz_kind: int, gate_x: float, zone_top
 			font_size = _ocean_gate_font_size(icon_size, max_font_size)
 		else:
 			font_size = _fit_font_size(code, icon_size.x * 0.8, max_font_size, 16, combo_font)
-		_draw_centered_text(code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
+		_draw_centered_text(tr(code) if is_color_name else code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
 	else:
 		draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
 
@@ -3786,13 +3786,14 @@ func _draw_gate_answer_box(code: String, quiz_kind: int, gate_x: float, zone_top
 func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 	if ocean_gate_font_size > 0:
 		return ocean_gate_font_size
-	var widest: String = OCEAN_COLOR_NAMES[0]
+	var widest: String = tr(OCEAN_COLOR_NAMES[0])
 	var widest_width: float = 0.0
 	for name in OCEAN_COLOR_NAMES:
-		var w: float = combo_font.get_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, -1, max_font_size).x
+		var shown: String = tr(name)
+		var w: float = combo_font.get_string_size(shown, HORIZONTAL_ALIGNMENT_CENTER, -1, max_font_size).x
 		if w > widest_width:
 			widest_width = w
-			widest = name
+			widest = shown
 	ocean_gate_font_size = _fit_font_size(widest, icon_size.x * OCEAN_GATE_FIT_WIDTH_FRAC, max_font_size, OCEAN_GATE_MIN_FONT, combo_font)
 	return ocean_gate_font_size
 
@@ -7224,7 +7225,10 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	var area_width: float = area_right - area_left
 	var center_y: float = rect.position.y + rect.size.y * QUIZ_TEXT_CENTER_Y_FRAC
 
-	var word: String = OCEAN_COLOR_NAMES[g.ocean_word_index]
+	# 보여 주는 글자만 번역한다. OCEAN_COLOR_NAMES 는 문제를 만들고 정답을
+	# 맞춰 보는 데 쓰이는 이름표라 영어 그대로 둔다 — 그려지는 자리에서만
+	# 옮겨야 로직이 언어에 안 묶인다.
+	var word: String = tr(OCEAN_COLOR_NAMES[g.ocean_word_index])
 	var ink_color: Color = OCEAN_COLOR_RGB[g.ocean_answer_index]
 	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 
@@ -7240,14 +7244,14 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	var word_width: float = 0.0
 	while true:
 		prompt_size = maxi(OCEAN_PROMPT_MIN_FONT, int(round(word_size * OCEAN_PROMPT_SIZE_RATIO)))
-		prompt_width = font.get_string_size(OCEAN_PROMPT_INK, HORIZONTAL_ALIGNMENT_LEFT, -1, prompt_size).x
+		prompt_width = font.get_string_size(tr(OCEAN_PROMPT_INK), HORIZONTAL_ALIGNMENT_LEFT, -1, prompt_size).x
 		word_width = font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, word_size).x
 		if prompt_width + gap + word_width <= area_width or word_size <= min_word_size:
 			break
 		word_size -= 1
 
 	var cursor_x: float = (area_left + area_right) * 0.5 - (prompt_width + gap + word_width) * 0.5
-	_draw_ocean_text(ci, OCEAN_PROMPT_INK, cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
+	_draw_ocean_text(ci, tr(OCEAN_PROMPT_INK), cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
 	cursor_x += prompt_width + gap
 
 	# The answer is the INK. Outlined because a YELLOW or WHITE word would
