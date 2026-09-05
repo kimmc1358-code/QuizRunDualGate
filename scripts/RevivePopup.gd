@@ -27,6 +27,19 @@ const SAD_BOB_AMPLITUDE := 5.0    # 위아래로 흔들리는 폭(px)
 const PROMPT_TEXT := "Continue your run?"
 const PROMPT_SIZE_FRAC := 0.075   # 판 너비 대비
 
+# 여기까지 번 점수. 이어서 할지 말지를 정하는 화면인데 정작 무엇을 잃는지가
+# 안 적혀 있었다 — 게임오버 팝업에는 있고 이쪽에는 없어서, 두 화면을 잇달아
+# 보는 흐름에서 숫자가 한 번 사라졌다 다시 나타난다.
+#
+# 크기와 간격은 게임오버 팝업과 같은 값이다(SCORE_LABEL_FRAC / SCORE_VALUE_FRAC
+# / SCORE_GAP_FRAC). 같은 것을 같은 모양으로 보여야 같은 숫자로 읽힌다.
+# 로그인 여부와 무관하게 늘 나온다 — 순위표에 올라가느냐와 지금 몇 점이냐는
+# 다른 이야기다.
+const SCORE_LABEL := "SCORE"
+const SCORE_LABEL_FRAC := 0.062   # 판 너비 대비
+const SCORE_VALUE_FRAC := 0.105   # 숫자는 훨씬 크게
+const SCORE_GAP_FRAC := 0.45      # 라벨 크기 대비 라벨-숫자 간격
+
 # 광고 버튼과 안내 상자는 다른 내용보다 좌우로 넓게 쓴다. 문구가 스무 자가
 # 넘어서, 판 안쪽 여백에 맞추면 글자가 너무 작아진다.
 const WIDE_FRAC := 0.86           # 판 너비 대비
@@ -72,6 +85,10 @@ const DECLINE_UNDERLINE_PX := 2.0
 var _oops: TextureRect
 var _sad: TextureRect
 var _prompt: Label
+var _score_row: Control
+var _score := 0
+var _score_label_font := 0
+var _score_value_font := 0
 var _ad_button: Button
 var _note: Control
 var _decline: Button
@@ -129,6 +146,11 @@ func _build_content() -> void:
 
 	_prompt = _make_label(tr(PROMPT_TEXT), _font_bold)
 	add_child(_prompt)
+
+	_score_row = Control.new()
+	_score_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_score_row.draw.connect(_draw_score_row)
+	add_child(_score_row)
 
 	_ad_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(AD_BUTTON_TEXT), _load_popup_icon(POPUP_ICON_AD), true)
 	_ad_button.pressed.connect(func(): watch_ad_pressed.emit())
@@ -236,6 +258,9 @@ func _layout_content(inner: Rect2) -> void:
 	# 게임 화면과 같은 크기로. 판 비율에 맞춰 늘리지 않는다.
 	var sad_h: float = _sad_draw_size
 	var prompt_h: float = pw * PROMPT_SIZE_FRAC * 1.4
+	_score_label_font = int(round(pw * SCORE_LABEL_FRAC))
+	_score_value_font = int(round(pw * SCORE_VALUE_FRAC))
+	var score_h: float = _score_value_font * 1.3
 	var button_h: float = ph * AD_BUTTON_HEIGHT_FRAC
 	# 광고 버튼과 안내 상자만 쓰는 넓은 폭.
 	var wide_w: float = pw * WIDE_FRAC
@@ -243,8 +268,9 @@ func _layout_content(inner: Rect2) -> void:
 	var note_h: float = _measure_note(wide_w)
 	var decline_h: float = pw * DECLINE_SIZE_FRAC * 1.6
 
-	var used: float = sad_h + prompt_h + button_h + note_h + decline_h
-	var gap: float = maxf(4.0, (bottom - top - used) / 4.0)
+	var used: float = sad_h + prompt_h + score_h + button_h + note_h + decline_h
+	# 나눌 간격 다섯: 캐릭터-문구 / 문구-점수 / 점수-버튼 / 버튼-안내 / 안내-거절.
+	var gap: float = maxf(4.0, (bottom - top - used) / 5.0)
 
 	var y := top
 	# OOPS가 위를 덮으므로 캐릭터는 그 아래로 충분히 내려 둔다.
@@ -260,6 +286,11 @@ func _layout_content(inner: Rect2) -> void:
 	_prompt.size = Vector2(inner_w, prompt_h)
 	_prompt.add_theme_font_size_override("font_size", int(round(pw * PROMPT_SIZE_FRAC)))
 	y += prompt_h + gap
+
+	_score_row.position = Vector2(inner_x, y)
+	_score_row.size = Vector2(inner_w, score_h)
+	_score_row.queue_redraw()
+	y += score_h + gap
 
 	# 문구가 스무 자가 넘지만 _place가 아이콘까지 묶어 폭에 맞게 줄여 준다.
 	_place(_ad_button, wide_x, y, wide_w, button_h, AD_ICON_SCALE, AD_LABEL_FIT,
@@ -366,3 +397,31 @@ func _draw_underline() -> void:
 	# 글자 아래로 살짝 띄운다 — 디센더에 닿으면 지저분해 보인다.
 	var y: float = h * 0.5 + font_size * 0.46
 	underline.draw_rect(Rect2(Vector2(0.0, y), Vector2(w, DECLINE_UNDERLINE_PX)), INK)
+
+
+# 게임오버 팝업의 점수 줄과 같은 모양 — 작은 라벨 옆에 큰 숫자, 둘을 묶어
+# 가운데. 거기서는 이 아래에 "기록까지 얼마 남았다" 한 줄이 더 붙지만,
+# 여기서는 아직 판이 안 끝났으므로 붙이지 않는다.
+func _draw_score_row() -> void:
+	var label: String = tr(SCORE_LABEL)
+	var label_w: float = _font_bold.get_string_size(
+		label, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font).x
+	var value: String = _group(_score)
+	var value_w: float = _font_heavy.get_string_size(
+		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font).x
+	var gap: float = _score_label_font * SCORE_GAP_FRAC
+	var x: float = (_score_row.size.x - (label_w + gap + value_w)) * 0.5
+	# 숫자 기준으로 베이스라인을 잡는다 — 크기가 다른 둘을 아래로 맞춰야
+	# 한 줄로 읽힌다.
+	var baseline: float = _score_row.size.y * 0.5 + _score_value_font * 0.35
+	_score_row.draw_string(_font_bold, Vector2(x, baseline),
+		label, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font, INK)
+	_score_row.draw_string(_font_heavy, Vector2(x + label_w + gap, baseline),
+		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font, INK)
+
+
+## 지금까지 번 점수. 팝업을 띄우기 전에 Main 이 넣어 준다.
+func set_score(value: int) -> void:
+	_score = value
+	if _score_row != null:
+		_score_row.queue_redraw()

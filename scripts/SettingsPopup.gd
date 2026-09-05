@@ -119,6 +119,11 @@ const BOOST_OPTION_TEXTS := ["LEFT", "RIGHT"]
 const LANGUAGE_ROW_LABEL := "LANGUAGE"
 const LANGUAGE_OPTION_TEXTS := ["ENG", "KOR"]
 const BOOST_ROW_HEIGHT_FRAC := 0.105    # 판 너비 대비
+# 줄 사이 최소 간격, 그리고 담을 것이 판보다 길 때 줄을 줄일 수 있는 한도.
+# 0.80 은 안전장치일 뿐이다 — 여기까지 줄여도 안 들어가면 줄이는 것으로는
+# 안 되는 것이고, 그때는 판이나 담을 것을 다시 봐야 한다.
+const GAP_MIN := 6.0
+const SQUEEZE_FLOOR := 0.80
 
 var _title: TextureRect
 var _sliders: Control
@@ -319,7 +324,30 @@ func _layout_content(inner: Rect2) -> void:
 	# 줄만큼 모자라고, 넘친 만큼이 맨 아래 버전 표시부터 밖으로 나간다.
 	# 고르게 나눌 간격 일곱: 슬라이더 사이 / 슬라이더-가속 / 가속-언어 /
 	# 언어-점선 / 점선-계정 / 계정-점선 / 점선-첫 약관.
-	var gap: float = maxf(6.0, (bottom - top - used) / 7.0)
+	#
+	# 안 들어가면 줄을 통째로 같은 비율로 줄인다. 판 높이는 화면 비율 대비인데
+	# 줄 높이는 판 '너비' 대비고 너비는 어느 화면에서나 480 에 고정이라, 짧은
+	# 화면에서는 담을 것이 판보다 길어진다 — 16:9 에서 13.5px 넘쳤다. 간격만
+	# 줄여서는 못 막는다: 바닥(GAP_MIN)에 걸리는 순간 남은 몫이 그대로 맨 아래
+	# 버전 표시부터 판 밖으로 나간다. 글자 크기는 판 너비에서 따로 나오므로
+	# 여기서 건드리지 않는다 — 줄 사이가 촘촘해질 뿐 글자는 그대로다.
+	var room: float = bottom - top
+	var min_gaps: float = GAP_MIN * 7.0
+	if used + min_gaps > room:
+		var k: float = maxf(SQUEEZE_FLOOR, (room - min_gaps) / used)
+		slider_h *= k
+		boost_row_h *= k
+		divider_h *= k
+		account_h *= k
+		remove_h *= k
+		link_h *= k
+		version_h *= k
+		link_gap *= k
+		version_gap *= k
+		remove_gap *= k
+		# used 의 모든 항이 방금 같은 비율로 줄었다.
+		used *= k
+	var gap: float = maxf(GAP_MIN, (room - used) / 7.0)
 
 	var y := top
 	_sliders.position = Vector2(inner_x, y)

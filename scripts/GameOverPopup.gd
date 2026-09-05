@@ -129,6 +129,13 @@ const BEST_PLATE_HEIGHT_FRAC := 0.105  # 판 높이 대비 — 안내 상자들�
 # 상자들과 구분이 안 되고, 한 줄짜리 정보에 비해 너무 크다.
 const BEST_PLATE_PAD := 30.0           # 내용 양옆 여백
 const BEST_PLATE_LABEL := "BEST"
+# 이 한 낱말만 노랑에 네이비 테두리다. 옆의 숫자와 같은 네이비로 두면 왕관과
+# 글자와 숫자가 한 덩어리 파란 줄로 뭉쳐 읽히는데, 정작 눈이 가야 하는 것은
+# 숫자다. HUD 와 모드 카드의 BEST 도 같은 노랑을 쓰고 있어 셋이 같은 것을
+# 가리킨다는 신호도 된다 — 그쪽 테두리는 검정이지만, 크림색 판 위에서는
+# 검정이 너무 무거워 판의 네이비를 쓴다.
+const BEST_PLATE_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)
+const BEST_PLATE_LABEL_OUTLINE_FRAC := 0.16   # 글자 크기 대비
 const BEST_PLATE_TEXT_FRAC := 0.075    # 판 너비 대비 — 라벨과 숫자 모두
 const BEST_PLATE_ICON_FRAC := 1.28     # 글자 크기 대비 왕관 높이
 const BEST_PLATE_ICON_GAP_FRAC := 0.40
@@ -603,8 +610,7 @@ func _draw_best_plate() -> void:
 	# 바탕(_best_plate)은 9-slice 노드라 여기서는 내용만 그린다.
 	var fs := _best_plate_font
 	var value := _group(_best)
-	var label_w: float = _font_bold.get_string_size(
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var label_w: float = _best_label_width(fs)
 	var icon_h: float = fs * BEST_PLATE_ICON_FRAC
 	var icon_w := 0.0
 	var icon_gap := 0.0
@@ -621,17 +627,34 @@ func _draw_best_plate() -> void:
 		x += icon_w + icon_gap
 	# draw_string은 베이스라인 기준이라 대문자 높이의 절반만큼 내린다.
 	var baseline: float = centre_y + fs * 0.35
-	_top_row.draw_string(_font_bold, Vector2(x, baseline),
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+	var ring: int = _best_label_ring(fs)
+	# 테두리는 글자 양옆으로 번지므로 label_w 가 그 몫까지 품고 있다. 글자
+	# 자체는 그 안쪽에서 시작해야 왼쪽으로 치우치지 않는다 — 커서 x 는 건드리지
+	# 않는다. 숫자 자리가 그것을 기준으로 잡히기 때문이다.
+	var label_x: float = x + ring
+	_top_row.draw_string_outline(_font_bold, Vector2(label_x, baseline),
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, INK)
+	_top_row.draw_string(_font_bold, Vector2(label_x, baseline),
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
 	_top_row.draw_string(_font_heavy, Vector2(x + label_w + text_gap, baseline),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+
+
+# 테두리 두께. 재는 쪽과 그리는 쪽이 같은 값을 써야 한다.
+func _best_label_ring(fs: int) -> int:
+	return maxi(1, int(round(fs * BEST_PLATE_LABEL_OUTLINE_FRAC)))
+
+
+# "BEST" 가 차지하는 폭 — 테두리가 글자 양옆으로 번지는 몫까지.
+func _best_label_width(fs: int) -> float:
+	return _font_bold.get_string_size(
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + _best_label_ring(fs) * 2.0
 
 
 # 왕관 + BEST + 숫자를 합친 폭. 배지 크기를 정할 때와 그릴 때가 같은
 # 값을 써야 내용이 가운데에 정확히 선다.
 func _best_plate_group_width(fs: int) -> float:
-	var w: float = _font_bold.get_string_size(
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var w: float = _best_label_width(fs)
 	w += fs * 0.42
 	w += _font_heavy.get_string_size(
 		_group(_best), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
