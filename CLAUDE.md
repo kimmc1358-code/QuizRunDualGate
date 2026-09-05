@@ -372,6 +372,32 @@ record; changing it later means recreating all four. It was
 runtime — flags, particles, tap sparkles — so nothing links them from a
 scene, and the scene-following export modes drop them silently.
 
+### Version numbers
+
+**`application/config/version` in `project.godot` is the only place the
+version string is written.** The settings popup reads it at runtime, and the
+APK's `versionName` inherits it because the preset's `version/name` is
+deliberately left empty. Bumping the release therefore means editing one
+tracked line.
+
+It used to be two places — a `"Version 1.0.0"` literal in `SettingsPopup.gd`
+alongside whatever the exporter defaulted to. They agreed by coincidence, and
+nothing would have made them disagree loudly: ship 1.0.3 and the settings
+screen keeps saying 1.0.0, with no error, no visual glitch, and a tester
+reporting an already-fixed bug against the wrong number.
+
+`version/code` is the exception and cannot be derived from anything. It is an
+integer, it lives only in the (gitignored) preset, and **Google rejects an
+upload whose code is not higher than the last one** — so it goes up by one
+per upload, independently of the version string. It is at 1 and has never
+been uploaded.
+
+To confirm the inheritance after a build:
+
+```bash
+aapt dump badging build/QuizRunDualGate.apk | head -1
+```
+
 ## Ad policy
 
 The agreed strategy, and what of it exists in code. **No ads SDK is in the

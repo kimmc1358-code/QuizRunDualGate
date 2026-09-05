@@ -97,8 +97,8 @@ const LINK_CHEVRON_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 # _link_enabled 참고.
 const LINK_DISABLED_DIM := 0.38
 
-# 판 맨 아래 가운데의 버전 표시.
-const VERSION_TEXT := "Version 1.0.0"
+# 판 맨 아래 가운데의 버전 표시. 문자열은 project.godot 에서 읽는다 —
+# _read_version_text 참고.
 const VERSION_SIZE_FRAC := 0.044       # 판 너비 대비
 const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 
@@ -133,6 +133,8 @@ var _account_text: String = LOGGED_OUT_TEXT
 var _logged_in := false
 var _cancel: Button
 var _version: Control
+# 그릴 때마다 설정을 뒤질 이유가 없다 — 프로젝트 설정은 실행 중에 안 바뀐다.
+var _version_text: String = ""
 
 
 func panel_size_frac() -> Vector2:
@@ -222,6 +224,7 @@ func _build_content() -> void:
 		_links.append(link)
 
 	# 판 맨 아래 가운데 버전.
+	_version_text = _read_version_text()
 	_version = Control.new()
 	_version.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_version.draw.connect(_draw_version)
@@ -445,13 +448,29 @@ func _draw_account() -> void:
 		_account_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, ACCOUNT_TEXT_COLOR)
 
 
+# 버전은 project.godot 의 application/config/version 한 곳에서만 나온다. APK 의
+# versionName 도 (익스포트 프리셋의 version/name 을 비워 두면) 같은 설정을
+# 물려받으므로, 버전을 올릴 때 고칠 곳이 하나다.
+#
+# 예전에는 이 줄이 "Version 1.0.0" 리터럴이었다. 그렇게 두면 버전을 올려도 이
+# 줄만 옛 번호를 계속 말하는데, 빌드도 통과하고 화면도 멀쩡해 보인다 — 이미
+# 고친 버그를 옛 번호와 함께 제보받고 나서야 알게 되는 종류다.
+func _read_version_text() -> String:
+	var v: String = str(ProjectSettings.get_setting("application/config/version", "")).strip_edges()
+	if v.is_empty():
+		# 그럴듯한 거짓말을 그리느니 비어 있는 것을 보인다.
+		push_warning("application/config/version is empty — the settings popup has no version to show.")
+		return "Version ?"
+	return "Version " + v
+
+
 # 판 맨 아래 가운데의 버전 표시.
 func _draw_version() -> void:
 	var font_size: int = int(round(_panel_rect.size.x * VERSION_SIZE_FRAC))
-	var w: float = _font_bold.get_string_size(VERSION_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var w: float = _font_bold.get_string_size(_version_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	_version.draw_string(_font_bold,
 		Vector2((_version.size.x - w) * 0.5, _version.size.y * 0.5 + font_size * 0.36),
-		VERSION_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, VERSION_COLOR)
+		_version_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, VERSION_COLOR)
 
 
 # 약관 한 줄: 왼쪽에 밑줄 친 글자, 오른쪽 끝에 ">".
