@@ -752,11 +752,14 @@ func _build() -> void:
 	# locked.png 가 아직 없으면 예전 자물쇠 아이콘으로 버틴다. 조용히 넘어가지
 	# 않는 것이 중요하다 — 대신 나온 그림도 자물쇠라 화면만 봐서는 파일이
 	# 빠졌는지 알 수 없다.
+	# _load_trimmed 로 읽는다. 자물쇠 아트는 1240px 캔버스에 그림이 가운데만
+	# 차지하고 있어서, 캔버스째 40px 로 줄이면 요청한 크기보다 한참 작게 보인다.
+	# 잘라 내고 미리 구운 뒤 ink_frac 로 되돌리는 것이 왕관과 같은 길이다.
 	if ResourceLoader.exists(CARD_LOCK_FILE):
-		_lock_texture = _load_art(CARD_LOCK_FILE)
+		_lock_texture = _load_trimmed(CARD_LOCK_FILE)
 	else:
 		push_warning("%s 가 없어 %s 로 대신 그린다" % [CARD_LOCK_FILE, CARD_LOCK_FALLBACK_FILE])
-		_lock_texture = _load_art(CARD_LOCK_FALLBACK_FILE)
+		_lock_texture = _load_trimmed(CARD_LOCK_FALLBACK_FILE)
 	for i in range(CARD_MODES.size()):
 		var slot: int = CARD_SHEET_SLOT[i]
 		var card := TextureButton.new()
@@ -1842,11 +1845,17 @@ func _lock_layout(index: int, card_rect: Rect2) -> Dictionary:
 	# 크기는 전부 이 자리(room) 기준이다. 카드 높이 기준으로 잡으면 카드가
 	# 길어질 때 자리보다 덩어리가 더 빨리 커진다 — 이름판과 점수판은 카드가
 	# 늘어나도 그대로이므로(_layout_card_contents) 자리는 카드만큼 안 늘어난다.
-	var icon_h: float = room * CARD_LOCK_ICON_HEIGHT_FRAC
-	var icon_w: float = icon_h
+	# CARD_LOCK_ICON_HEIGHT_FRAC 은 "눈에 보이는 자물쇠" 기준이다. _load_trimmed
+	# 가 가장자리 흐림용으로 두른 투명 여백만큼 상자를 키워 그려야 요청한 크기가
+	# 실제로 나온다 — 왕관과 같은 방식(ink_frac).
+	var ink := Vector2.ONE
+	var ratio := 1.0
 	if _lock_texture != null and _lock_texture.get_height() > 0:
-		icon_w = icon_h * (float(_lock_texture.get_width()) / float(_lock_texture.get_height()))
-	var max_w: float = w * CARD_LOCK_ICON_MAX_WIDTH_FRAC
+		ink = _lock_texture.get_meta("ink_frac", Vector2.ONE)
+		ratio = float(_lock_texture.get_width()) / float(_lock_texture.get_height())
+	var icon_h: float = room * CARD_LOCK_ICON_HEIGHT_FRAC / maxf(ink.y, 0.01)
+	var icon_w: float = icon_h * ratio
+	var max_w: float = w * CARD_LOCK_ICON_MAX_WIDTH_FRAC / maxf(ink.x, 0.01)
 	if icon_w > max_w:
 		icon_h *= max_w / icon_w
 		icon_w = max_w
