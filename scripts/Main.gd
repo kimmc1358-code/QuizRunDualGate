@@ -2473,6 +2473,17 @@ var tutorial_active: bool = false
 ## 그대로 커밋될 수 있는데, 그러면 모두에게 영영 잠긴 채로 나간다 —
 ## tools/check_hidden_unlock.gd 가 켜진 채로 커밋된 것을 잡는다.
 @export var debug_force_hidden_locked: bool = false
+## 튜토리얼을 다시 보기 위한 스위치. 켜면 이미 본 뒤에도 게임에 들어갈 때마다
+## 다시 돈다.
+##
+## 켜져 있는 동안은 "봤다"를 저장하지 않는다 — 확인하려고 켠 것이 이 기기의
+## 진짜 상태를 바꿔서는 안 되고, 껐을 때 원래대로 돌아와야 한다.
+##
+## debug_force_hidden_locked 와 같은 함정이 있다: @export 라 인스펙터에서 켜면
+## Main.tscn 에 저장되고, 그대로 커밋되면 모두가 매 판 튜토리얼을 본다 —
+## 게임은 멀쩡히 돌아가므로 눈치채기 어렵다. tools/check_tutorial.gd 가 켜진
+## 채로 커밋된 것을 잡는다.
+@export var debug_replay_tutorial: bool = false
 var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
@@ -6054,7 +6065,7 @@ func _on_mode_selected(mode: int) -> void:
 	_reset_game()
 	# 게임 화면에 처음 들어온 것이면 튜토리얼을 먼저 돌린다. 다 보고 나면
 	# _on_tutorial_finished 가 이어서 카운트다운을 건다.
-	if not tutorial_seen and tutorial_overlay != null:
+	if (not tutorial_seen or _tutorial_forced()) and tutorial_overlay != null:
 		_begin_tutorial()
 		return
 	_start_countdown()
@@ -6068,6 +6079,11 @@ func _on_mode_selected(mode: int) -> void:
 # State.COUNTDOWN 에 세워 둔다. 이 상태는 세계를 그리면서 물리는 안 돌리는
 # 유일한 상태라 그대로 쓸 수 있고, 시계만 tutorial_active 로 멈춘다
 # (_process). READY/START 글자도 같은 값으로 잠시 접어 둔다.
+# 다시 보기 스위치가 지금 듣고 있는가. 릴리스 빌드에서는 언제나 false 다.
+func _tutorial_forced() -> bool:
+	return debug_replay_tutorial and OS.is_debug_build()
+
+
 func _begin_tutorial() -> void:
 	tutorial_active = true
 	_set_state(State.COUNTDOWN)
@@ -6116,9 +6132,10 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 func _on_tutorial_finished() -> void:
 	tutorial_active = false
 	# 다 본 순간 저장한다. 판이 끝날 때 쓰면 첫 판 도중에 앱이 죽었을 때
-	# 다음 실행에서 또 돈다.
-	tutorial_seen = true
-	_save_tutorial_seen()
+	# 다음 실행에서 또 돈다. 다시 보기로 켜서 돈 것은 저장하지 않는다.
+	if not _tutorial_forced():
+		tutorial_seen = true
+		_save_tutorial_seen()
 	# 튜토리얼용으로 띄워 둔 게이트는 그대로 두고 시작한다 — 지우면 첫 게이트가
 	# 한 칸 늦게 오고, 그 한 칸이 다른 판과 다른 시작이 된다.
 	_start_countdown()

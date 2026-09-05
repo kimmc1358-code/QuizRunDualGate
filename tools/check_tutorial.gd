@@ -71,6 +71,10 @@ func _run() -> void:
 		quit(1)
 		return
 	_backup_save()
+	# 다시 보기 스위치는 @export 라, 인스펙터에서 켜면 Main.tscn 에 저장되고
+	# 그대로 커밋되면 모두가 매 판 튜토리얼을 본다.
+	if m.get("debug_replay_tutorial"):
+		_fail("debug_replay_tutorial 이 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
 	print("check_tutorial:")
 	print("")
 
@@ -196,6 +200,43 @@ func _run() -> void:
 		_fail("모드를 바꾸니 튜토리얼이 다시 돌았다 — 설치 후 1회여야 한다")
 	if not m.get("run_active"):
 		_fail("두 번째 진입에서 판이 시작되지 않았다")
+
+	# ---- 5. 다시 보기 스위치 ----
+	#
+	# 켜면 다시 돌고, 그렇게 돈 것은 저장에 안 남아야 한다 — 확인하려고 켠 것이
+	# 이 기기의 진짜 상태를 바꾸면 껐을 때 원래대로 안 돌아온다.
+	print("")
+	# 이미 본 상태에서 재면 "또 저장해도 값이 그대로"라 저장 여부를 구분할 수
+	# 없다. 안 본 상태로 되돌려 놓고 켠다 — 강제로 돌린 판이 '봤다'로 저장되면
+	# 스위치를 끈 뒤의 진짜 첫 판이 튜토리얼 없이 시작된다.
+	m.set("tutorial_seen", false)
+	m.call("_save_tutorial_seen")
+	m.set("debug_replay_tutorial", true)
+	m.call("_reset_game")
+	m.call("_set_state", 0)
+	m.call("_on_mode_selected", 0)
+	await process_frame
+	print("  다시 보기 ON -> 튜토리얼 %s" % ("보임" if overlay.visible else "안 보임"))
+	if not overlay.visible:
+		_fail("다시 보기를 켰는데 튜토리얼이 안 돌았다")
+	for i in range(steps_final.size()):
+		_advance(overlay)
+	await process_frame
+	print("  다 넘긴 뒤 tutorial_seen %s (강제로 돈 판이라 false 여야 함)" % m.get("tutorial_seen"))
+	if m.get("tutorial_seen"):
+		_fail("다시 보기로 돌린 판이 '봤다'로 저장됐다 — 스위치를 끄면 진짜 첫 판이 안내 없이 시작된다")
+
+	# 끄면 다시 평소대로.
+	m.set("debug_replay_tutorial", false)
+	m.set("tutorial_seen", true)
+	m.call("_save_tutorial_seen")
+	m.call("_reset_game")
+	m.call("_set_state", 0)
+	m.call("_on_mode_selected", 0)
+	await process_frame
+	print("  다시 보기 OFF -> 튜토리얼 %s" % ("보임" if overlay.visible else "안 보임"))
+	if overlay.visible:
+		_fail("다시 보기를 껐는데도 튜토리얼이 돌았다")
 
 	# 껐다 켜도 안 돈다.
 	m.call("_reset_game")
