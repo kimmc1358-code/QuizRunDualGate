@@ -212,6 +212,18 @@ const CARD_CHECK_FILE := "res://assets/ui_assets/popup/icon_check.png"
 const CARD_CHECK_SIZE_FRAC := 0.19      # of the card art's width
 const CARD_CHECK_MARGIN_FRAC := 0.015   # of the card art's width, in from the corner
 
+# 잠긴 히든 모드 카드의 자물쇠. 체크와 같은 시트에서 나온 같은 크기의 동그란
+# 아이콘이라 크기·여백 상수를 공유한다.
+#
+# 오른쪽 위 구석에 붙는다. 체크의 반대쪽인데, 이유는 대칭이 예뻐서가 아니라
+# 잠긴 카드도 고를 수 있기 때문이다 — 고르면 왼쪽 위에 체크가 붙으므로 같은
+# 구석에 두면 둘이 겹친다. 이름판이 가운데 정렬이라 양쪽 구석의 크기는 같고,
+# 따라서 자물쇠는 체크와 같은 크기로 들어간다.
+#
+# 잠금은 설명 바의 문구로도 알 수 있지만, 그건 카드를 눌러 봐야 읽힌다.
+# 누르기 전에 보이는 표시가 하나는 있어야 한다.
+const CARD_LOCK_FILE := "res://assets/ui_assets/popup/icon_lock.png"
+
 # START gets the same halo treatment as the selected card. Its plate is a
 # rounded rectangle of radius 120 in a 1024-wide source, measured the same
 # way the card's was.
@@ -391,6 +403,7 @@ var _start: TextureButton
 var _select_overlay: Control
 var _card_shadow_overlay: Control       # 카드 뒤 — 고른 카드의 그림자
 var _check_texture: Texture2D
+var _lock_texture: Texture2D
 # 카드마다 scale 트윈 하나 — _tween_scale 이 소유자다.
 var _card_scale_tweens: Array[Tween] = []
 var _sfx_select: AudioStreamPlayer
@@ -711,6 +724,7 @@ func _build() -> void:
 	# 잘라 둔 투명 여백까지 걷어내면 원의 안티에일리어싱된 테두리가 텍스처
 	# 가장자리에 붙어 한쪽이 납작해 보인다(slice_popup_icons_2.ps1 의 Margin).
 	_check_texture = _load_art(CARD_CHECK_FILE)
+	_lock_texture = _load_art(CARD_LOCK_FILE)
 	for i in range(CARD_MODES.size()):
 		var slot: int = CARD_SHEET_SLOT[i]
 		var card := TextureButton.new()
@@ -1617,10 +1631,16 @@ func _draw_remove_ads_rule() -> void:
 # 쓴다 — 버튼으로 잡으면 그림자가 어느 카드에서는 떠 보이고 어느 카드에서는
 # 파고든다. scale 이 걸려 있으면 그만큼 가운데에서 키운다.
 func _selected_card_rect() -> Rect2:
-	if selected_index < 0 or selected_index >= _cards.size():
+	return _card_rect(selected_index)
+
+
+# 한 카드가 실제로 그려지는 사각형. 고른 카드만이 아니라 아무 카드나 — 잠금
+# 표시는 고르지 않은 카드에도 붙어야 해서 일반화했다.
+func _card_rect(index: int) -> Rect2:
+	if index < 0 or index >= _cards.size():
 		return Rect2()
-	var card: TextureButton = _cards[selected_index]
-	var bounds: Rect2 = _card_art_bounds[selected_index] if selected_index < _card_art_bounds.size() else Rect2(0, 0, 1, 1)
+	var card: TextureButton = _cards[index]
+	var bounds: Rect2 = _card_art_bounds[index] if index < _card_art_bounds.size() else Rect2(0, 0, 1, 1)
 	var rect := Rect2(
 		card.position + Vector2(bounds.position.x * card.size.x, bounds.position.y * card.size.y),
 		Vector2(bounds.size.x * card.size.x, bounds.size.y * card.size.y))
@@ -1660,12 +1680,14 @@ func _draw_card_shadow() -> void:
 
 # 카드 위. 왼쪽 위 구석의 초록 체크.
 func _draw_selection() -> void:
-	if _check_texture == null:
-		return
-	var rect: Rect2 = _selected_card_rect()
-	if rect.size.x <= 0.0:
-		return
-	_select_overlay.draw_texture_rect(_check_texture, _check_rect(selected_index, rect), false)
+	if _check_texture != null:
+		var rect: Rect2 = _selected_card_rect()
+		if rect.size.x > 0.0:
+			_select_overlay.draw_texture_rect(
+				_check_texture, _check_rect(selected_index, rect), false)
+	var lock: Rect2 = _lock_draw_rect()
+	if _lock_texture != null and lock.size.x > 0.0:
+		_select_overlay.draw_texture_rect(_lock_texture, lock, false)
 
 
 # 자식은 부모의 scale 로 그려지지만 size 는 로컬 그대로다. 그린 자리를 보려면
@@ -1700,6 +1722,45 @@ func _check_rect(index: int, card_rect: Rect2) -> Rect2:
 	side = minf(side, minf(maxf(0.0, box.size.x), maxf(0.0, box.size.y)))
 	# 남는 구석 한가운데. 어느 쪽으로도 치우치지 않으니 이름이 길어져 구석이
 	# 줄어도 겹치는 쪽이 생기지 않는다.
+	return Rect2(box.position + (box.size - Vector2(side, side)) * 0.5, Vector2(side, side))
+
+
+# 자물쇠를 지금 그릴 자리, 안 그릴 상황이면 빈 사각형.
+#
+# "그릴지 말지"까지 여기서 답한다. _draw_selection 은 이 값이 비었는지만 보므로
+# 판단이 한 군데에만 있고, 체커가 그 판단을 그대로 부를 수 있다 — 그리는 쪽에
+# if 를 두면 체커는 그 if 를 못 보고, 해금된 뒤에도 자물쇠가 남는 회귀를
+# 사각형 검사만으로는 잡을 수 없다. 고른 카드인지는 상관없다: 잠긴 것은
+# 고르든 말든 잠긴 것이고, 누르기 전에 보여야 뜻이 있다.
+func _lock_draw_rect() -> Rect2:
+	if hidden_mode_open:
+		return Rect2()
+	var index: int = CARD_MODES.find(MODE_HIDDEN)
+	if index < 0:
+		return Rect2()
+	var card_rect: Rect2 = _card_rect(index)
+	if card_rect.size.x <= 0.0:
+		return Rect2()
+	return _lock_rect(index, card_rect)
+
+
+# 자물쇠가 놓일 자리 — 체크를 좌우로 뒤집은 것. 이름판 오른쪽에 남는 구석을
+# 쓰며, 크기 결정도 같은 이유로 구석에서 나온다(_check_rect 의 설명 참고).
+# 체커가 같은 답을 봐야 하므로 여기도 함수다.
+func _lock_rect(index: int, card_rect: Rect2) -> Rect2:
+	var margin: float = card_rect.size.x * CARD_CHECK_MARGIN_FRAC
+	var side: float = card_rect.size.x * CARD_CHECK_SIZE_FRAC
+	if index < 0 or index >= _card_name_plate.size():
+		return Rect2(
+			Vector2(card_rect.end.x - margin - side, card_rect.position.y + margin),
+			Vector2(side, side))
+	var plate: Rect2 = _drawn_rect(_card_name_plate[index])
+	var left: float = plate.end.x + margin
+	var box := Rect2(
+		Vector2(left, card_rect.position.y + margin),
+		Vector2(card_rect.end.x - margin - left,
+			plate.end.y - (card_rect.position.y + margin)))
+	side = minf(side, minf(maxf(0.0, box.size.x), maxf(0.0, box.size.y)))
 	return Rect2(box.position + (box.size - Vector2(side, side)) * 0.5, Vector2(side, side))
 
 

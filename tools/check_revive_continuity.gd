@@ -22,7 +22,17 @@ extends SceneTree
 
 const RUN_GATES := 35   # phase_gate_counts 기본값 [10,20,30] 에서 phase 2 에 드는 수
 
+# 이 검사는 진짜 판을 굴리므로 진짜 저장 파일에 쓴다. 최고 기록도, 히든 모드
+# 해금 진행도도, 광고 카운터도 전부 여기 있다.
+#
+# 값 몇 개를 골라 되돌리는 것으로는 부족하다 — 그렇게 했다가 이 PC 의 SKY
+# 최고 기록이 검사용 12600 으로 덮여 있는 것을 나중에 발견했다. 파일을 통째로
+# 백업했다 되돌린다.
+const SAVE_PATH := "user://savegame.cfg"
+
 var fails := 0
+var _save_backup: String = ""
+var _had_save := false
 
 
 func _init() -> void:
@@ -33,6 +43,26 @@ func _init() -> void:
 func _fail(msg: String) -> void:
 	fails += 1
 	print("  FAIL: " + msg)
+
+
+func _backup_save() -> void:
+	_had_save = FileAccess.file_exists(SAVE_PATH)
+	if _had_save:
+		_save_backup = FileAccess.get_file_as_string(SAVE_PATH)
+
+
+func _restore_save() -> void:
+	if not _had_save:
+		# 원래 없던 파일이면 지운다. 검사가 새 설치를 "이미 플레이한 기기"로
+		# 바꿔 놓아서는 안 된다.
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		push_warning("could not restore %s — this machine's save is left as the check left it" % SAVE_PATH)
+		return
+	f.store_string(_save_backup)
+	f.close()
 
 
 # 게이트 하나를 실제 판정 함수로 통과시킨다. correct=false 면 틀린 차선에
@@ -75,6 +105,7 @@ func _run() -> void:
 	while m.get("boot_pending"):
 		await process_frame
 
+	_backup_save()
 	print("check_revive_continuity: phase_gate_counts = %s" % str(m.get("phase_gate_counts")))
 	print("")
 
@@ -173,10 +204,11 @@ func _run() -> void:
 		_fail("개인 최고 기록이 %d 다 — 끝까지 간 점수 %d 여야 한다" % [got_best, final_score])
 	if got_lb != frozen:
 		_fail("순위표 기록이 %d 다 — 첫 죽음 시점 %d 여야 한다" % [got_lb, frozen])
-	# 남의 저장을 건드리지 않는다.
 	m.get("best_scores")[m.get("current_mode")] = was_best
 	m.get("leaderboard_bests")[m.get("current_mode")] = was_lb
-	m.call("_save_best_score", m.get("current_mode"))
+	# 이 판이 만진 것은 최고 기록만이 아니다 — 해금 진행도와 광고 카운터도
+	# 같은 파일에 있고 판을 굴리는 동안 계속 쓰였다. 파일째로 되돌린다.
+	_restore_save()
 
 	print("")
 	if fails == 0:

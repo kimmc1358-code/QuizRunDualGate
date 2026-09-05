@@ -170,6 +170,79 @@ func _run() -> void:
 			plate_widths[0].x, plate_sizes[0].x, plate_widths[0].y, plate_sizes[0].y])
 
 	var view := Vector2(base.x, base.x * 20.0 / 9.0)
+	var modes: Array = screen.get("CARD_MODES")
+	var hidden: int = screen.get("MODE_HIDDEN")
+	var hidden_card: int = modes.find(hidden)
+	var required: int = screen.get("hidden_modes_required")
+	var gates: int = screen.get("hidden_gates_needed")
+	if hidden_card < 0:
+		_fail("no card maps to MODE_HIDDEN")
+
+	# ---- 잠긴 히든 카드의 자물쇠 ----
+	#
+	# 체크와 같은 조건을 지켜야 하고(글자·캐릭터·카드 경계) 조건이 하나 더 있다:
+	# 잠긴 카드도 고를 수 있으므로 체크와 자물쇠가 한 카드에 같이 뜬다. 둘이
+	# 겹치면 아무것도 안 읽힌다.
+	#
+	# 그리고 잠겼을 때만 떠야 한다. 늘 떠 있으면 해금해도 잠긴 것처럼 보이고,
+	# 그건 스크린샷으로는 "자물쇠가 있다"로 똑같이 보인다.
+	print("")
+	var lock_tex: Texture2D = screen.get("_lock_texture")
+	if lock_tex == null:
+		_fail("lock icon did not load — is %s missing?" % screen.get("CARD_LOCK_FILE"))
+	if hidden_card >= 0 and lock_tex != null:
+		screen.size = view
+		screen.call("_layout")
+		# 고르지 않은 상태에서도, 고른 상태에서도 본다.
+		for pick in [0, hidden_card]:
+			screen.call("set_hidden_progress", 0, required, gates)
+			screen.call("_select", pick, false)
+			await process_frame
+			var lock_card: Rect2 = screen.call("_card_rect", hidden_card)
+			var lock: Rect2 = screen.call("_lock_rect", hidden_card, lock_card)
+			var plate2: Rect2 = screen.call("_drawn_rect", names[hidden_card])
+			var ink2: Rect2 = _opaque_screen_rect(arts[hidden_card])
+			var best_plate: Rect2 = screen.call("_drawn_rect", screen.get("_card_best_plate")[hidden_card])
+			var probs := []
+			if lock.intersects(plate2):
+				probs.append("covers the name plate")
+			if lock.intersects(ink2):
+				probs.append("covers the character")
+			if lock.intersects(best_plate):
+				probs.append("covers the BEST plate")
+			if not lock_card.encloses(lock):
+				probs.append("hangs outside the card")
+			if lock.size.x < lock_card.size.x * 0.10:
+				probs.append("is under 10%% of the card wide — too small to read")
+			if pick == hidden_card:
+				var check2: Rect2 = screen.call("_check_rect", hidden_card, screen.call("_selected_card_rect"))
+				if lock.intersects(check2):
+					probs.append("overlaps the selection check on the same card")
+			if not probs.is_empty():
+				_fail("the lock (card %s) %s" % [
+					"selected" if pick == hidden_card else "unselected", ", ".join(probs)])
+			print("  lock %-10s %.0f,%.0f %.0fx%.0f  %s" % [
+				"selected" if pick == hidden_card else "unselected",
+				lock.position.x, lock.position.y, lock.size.x, lock.size.y,
+				"ok" if probs.is_empty() else "FAIL"])
+		# 해금하면 사라져야 한다. _draw_selection 은 _lock_draw_rect() 가 빈
+		# 사각형인지만 보고 그리므로, 그 함수의 답이 곧 화면에 나오는 답이다.
+		for cleared2 in range(required + 1):
+			screen.call("set_hidden_progress", cleared2, required, gates)
+			screen.call("_select", 0, false)
+			await process_frame
+			var drawn: Rect2 = screen.call("_lock_draw_rect")
+			var shows: bool = drawn.size.x > 0.0
+			var want_shown: bool = cleared2 < required
+			if shows != want_shown:
+				_fail("%d/%d 에서 자물쇠가 %s — 기대 %s" % [
+					cleared2, required,
+					"보인다" if shows else "안 보인다",
+					"보임" if want_shown else "안 보임"])
+			else:
+				print("  %d/%d -> 자물쇠 %s" % [
+					cleared2, required, "보임" if shows else "없음 (해금)"])
+		screen.call("set_hidden_progress", 0, required, gates)
 
 	# ---- 카드의 "BEST" 가 게임 화면의 BEST 와 같은 얼굴인가 ----
 	#
@@ -231,15 +304,8 @@ func _run() -> void:
 	# 언제나 true 라, hidden_mode_open 이 false 여도 게이트가 통과된다.
 	# 실제 잠김은 릴리스로 내보내 눌러 봐야 한다.
 	print("")
-	var modes: Array = screen.get("CARD_MODES")
-	var hidden: int = screen.get("MODE_HIDDEN")
-	var hidden_card: int = modes.find(hidden)
-	if hidden_card < 0:
-		_fail("no card maps to MODE_HIDDEN")
-	else:
+	if hidden_card >= 0:
 		var open_text: String = screen.get("CARD_EXPLAIN_HIDDEN_OPEN")
-		var required: int = screen.get("hidden_modes_required")
-		var gates: int = screen.get("hidden_gates_needed")
 		# 진행도를 실제로 넘겨 가며 본다. hidden_mode_open 을 직접 뒤집으면
 		# 잠금만 바뀌고 진행도는 그대로라, 화면이 두 값을 함께 쓰는지 —
 		# set_hidden_progress 가 둘을 같은 자리에서 정하는지 — 를 못 본다.

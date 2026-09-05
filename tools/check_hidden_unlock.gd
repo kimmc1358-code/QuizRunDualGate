@@ -20,8 +20,16 @@ extends SceneTree
 #      빠져나간 판의 게이트도 남는다 — 경로에 따라 사라지면 조건을 채우고도
 #      안 열린다.
 
+# 진짜 판을 굴리므로 진짜 저장 파일에 쓴다 — 해금 진행도만이 아니라 최고
+# 기록과 광고 카운터까지. 값 몇 개만 되돌리면 나머지가 남는다(같은 실수로 이
+# PC 의 SKY 기록이 검사값으로 덮였다), 그래서 파일째로 백업했다 되돌린다.
+# tools/check_revive_continuity.gd 도 같은 방식이다.
+const SAVE_PATH := "user://savegame.cfg"
+
 var fails := 0
 var saved_gates := PackedInt32Array()
+var _save_backup: String = ""
+var _had_save := false
 
 
 func _init() -> void:
@@ -32,6 +40,24 @@ func _init() -> void:
 func _fail(msg: String) -> void:
 	fails += 1
 	print("  FAIL: " + msg)
+
+
+func _backup_save() -> void:
+	_had_save = FileAccess.file_exists(SAVE_PATH)
+	if _had_save:
+		_save_backup = FileAccess.get_file_as_string(SAVE_PATH)
+
+
+func _restore_save() -> void:
+	if not _had_save:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
+		return
+	var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if f == null:
+		push_warning("could not restore %s — this machine's save is left as the check left it" % SAVE_PATH)
+		return
+	f.store_string(_save_backup)
+	f.close()
 
 
 # 게이트 하나를 실제로 통과시킨다. 정답 차선의 판정 구역 한가운데에 캐릭터를
@@ -82,6 +108,7 @@ func _run() -> void:
 	for mode in range(m.get("mode_gates_cleared").size()):
 		if mode != hidden:
 			single.append(mode)
+	_backup_save()
 	print("check_hidden_unlock: 모드 %d개에서 각 %d게이트, 히든은 모드 %d" % [
 		required, need, hidden])
 	print("")
@@ -178,10 +205,10 @@ func _run() -> void:
 		_fail("일시정지 HOME 으로 나가니 그 판의 게이트 %d개가 사라졌다 (남은 값 %d)" % [need, kept])
 	fresh2.queue_free()
 
-	# 사용자의 진행도를 되돌려 놓는다.
+	# 사용자의 저장을 통째로 되돌린다 — 이 검사가 굴린 판들이 해금 진행도 외에
+	# 최고 기록과 광고 카운터까지 건드렸다.
 	m.set("mode_gates_cleared", saved_gates)
-	for mode in range(saved_gates.size()):
-		m.call("_save_best_score", mode)
+	_restore_save()
 
 	print("")
 	if fails == 0:

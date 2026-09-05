@@ -13,17 +13,21 @@ quiz prompt. Four visual concepts share the mechanic — `SKY`, `JUNGLE`,
 `OCEAN`, `DREAM` — picked on the mode-select screen.
 
 Three quizzes exist: flag (SKY), math (JUNGLE), Stroop colour (OCEAN).
-`DREAM` is the MIX mode and rolls all three, one per gate. It is **hidden
-until earned**: `HIDDEN_UNLOCK_GATES` (10) gates passed in each of the other
-three, counted cumulatively across runs and persisted per mode. Cumulative
-rather than per-run because the whole game is hard mode — the gate is meant
-to ask "have you met all three quizzes", not "are you good". A debug build
-ignores the lock, so the real refusal only shows in a release export. Which quiz a gate
+`DREAM` is the MIX mode and rolls all three, one per gate. Which quiz a gate
 asks is therefore a property of the **gate**, carried in `gate.quiz_kind`,
 not of `current_mode` — two gates on screen at once can be different kinds,
 and the draw code has to know which is which long after the roll. Anything
 that reaches for `current_mode` to decide how to render a question or an
 answer is a bug waiting for MIX to expose it.
+
+MIX is also **hidden until earned**: `HIDDEN_UNLOCK_GATES` (10) gates passed
+in each of the other three, counted cumulatively across runs and persisted
+per mode. Cumulative rather than per-run because the whole game is hard mode
+— the condition is meant to ask "have you met all three quizzes", not "are
+you good". A locked card wears a padlock in its top-right corner, opposite
+the selection check, because a locked card can still be selected. A debug
+build ignores the lock entirely, so the actual refusal only shows in a
+release export.
 
 The whole game is "Hard mode". There is no difficulty selector; the phase
 system (`_get_phase_index`) scales difficulty by gates passed.
@@ -74,7 +78,7 @@ on failure.
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
-| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's padlock clears the same things the check does, clears the check itself, and disappears the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_LOCK_FILE`/`_lock_rect`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
@@ -86,6 +90,16 @@ on failure.
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 | `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
 | `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), the press one-shot is a separate, shorter, NON-looping stream that fires on every press, and the press-burst slices to all 5 frames in every mode with a wider-than-tall cell, fires with its head buried inside the character and its tail on screen, stays stuck to it in both axes instead of drifting off with the world, loops its sustain frames for as long as the button is down without touching the ember frame, and ends once released | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, the `BOOST_BURST_*` block, or the burst art change |
+
+**A checker that plays real gates writes to the real save file.** `user://
+savegame.cfg` holds the best scores, the hidden-mode progress and the ad
+counters, and driving `_resolve_gate` or `_finish_run` updates all three on
+the machine running the check. `check_hidden_unlock.gd` and
+`check_revive_continuity.gd` therefore back the whole file up and write it
+back at the end. Restoring a few chosen values is not enough — that was
+tried, and a throwaway probe left this machine's SKY record sitting at the
+checker's 12600 and its hidden mode unlocked without anyone having earned
+it. Any new checker that runs gates copies that backup/restore pair.
 
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
