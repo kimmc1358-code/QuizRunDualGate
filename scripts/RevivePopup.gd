@@ -127,10 +127,10 @@ func _build_content() -> void:
 	_sad.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(_sad)
 
-	_prompt = _make_label(PROMPT_TEXT, _font_bold)
+	_prompt = _make_label(tr(PROMPT_TEXT), _font_bold)
 	add_child(_prompt)
 
-	_ad_button = _make_button(GOLD_FILE, GOLD_CORNER, AD_BUTTON_TEXT, _load_popup_icon(POPUP_ICON_AD), true)
+	_ad_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(AD_BUTTON_TEXT), _load_popup_icon(POPUP_ICON_AD), true)
 	_ad_button.pressed.connect(func(): watch_ad_pressed.emit())
 	add_child(_ad_button)
 
@@ -145,7 +145,7 @@ func _build_content() -> void:
 	_decline.flat = true
 	_decline.focus_mode = Control.FOCUS_NONE
 	_decline.pressed.connect(func(): decline_pressed.emit())
-	var caption := _make_label(DECLINE_TEXT, _font_bold)
+	var caption := _make_label(tr(DECLINE_TEXT), _font_bold)
 	caption.name = "Caption"
 	_decline.add_child(caption)
 	var underline := Control.new()
@@ -272,7 +272,7 @@ func _layout_content(inner: Rect2) -> void:
 	y += note_h + gap
 
 	var dec_font: int = int(round(pw * DECLINE_SIZE_FRAC))
-	var dec_w: float = _font_bold.get_string_size(DECLINE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, dec_font).x
+	var dec_w: float = _font_bold.get_string_size(tr(DECLINE_TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, dec_font).x
 	_decline.position = Vector2(inner_x + (inner_w - dec_w) * 0.5, bottom - decline_h)
 	_decline.size = Vector2(dec_w, decline_h)
 	var caption: Label = _decline.get_node("Caption")
@@ -309,7 +309,7 @@ func _measure_note(width: float) -> float:
 			icon_w = fs * NOTE_ICON_SCALE * aspect
 			gap = fs * NOTE_ICON_GAP_FRAC
 		var strong_w: float = _font_bold.get_string_size(
-			NOTE_STRONG_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			tr(NOTE_STRONG_TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		if fs <= NOTE_FONT_MIN or icon_w + gap + strong_w <= avail:
 			break
 		fs -= 1
@@ -348,7 +348,7 @@ func _draw_note() -> void:
 	# draw_string은 베이스라인 기준이라, 대문자 높이의 절반만큼 내려야
 	# 글자 가운데가 아이콘 가운데와 맞는다.
 	_note.draw_string(_font_bold, Vector2(_note_text_x, line_mid + _note_strong_fs * 0.35),
-		NOTE_STRONG_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, _note_strong_fs, INK)
+		tr(NOTE_STRONG_TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, _note_strong_fs, INK)
 	var body := _note_body_text()
 	if body == "":
 		return

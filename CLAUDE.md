@@ -48,6 +48,36 @@ that locks MIX for everyone with the game still running perfectly.
 The whole game is "Hard mode". There is no difficulty selector; the phase
 system (`_get_phase_index`) scales difficulty by gates passed.
 
+## Language
+
+`assets/i18n/ui.csv` holds every translated string, `en` and `ko`, and Godot
+builds the `.translation` files from it on import. Strings go through `tr()`
+with **the English text as the key**, so a string with no row still renders
+as itself and adding English copy needs no CSV edit. The locale follows the
+device, so a Korean phone gets Korean with no setting to find — and a Korean
+dev machine shows Korean in the editor, which is worth knowing before you
+think something is broken.
+
+Only part of the game is translated, deliberately: the mode names and their
+blurbs, the leaderboard label, the tutorial, and the pause / revive / game
+over popups. **Words that live in painted art stay English** — START, READY,
+OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
+them. So does `LOGIN WITH`, which is glued to the Google mark.
+
+The **quiz content is not translated** either. Country names and the Stroop
+colour words are English, and for Stroop that is a design fact rather than an
+omission: the illusion depends on reading the word, so a Korean player gets a
+much weaker version of that mode. Worth revisiting if Korean becomes a
+primary market.
+
+No Korean font is bundled. Fredoka has no Hangul, and the glyphs come from
+the platform's fallback — which works but is a plain gothic against Fredoka's
+rounded Latin, and looks like whatever the device happens to have. Dropping a
+rounded OFL Korean face (Jua, say) in `assets/fonts/` and setting it as
+Fredoka's `fallbacks` would fix both. Anything that measures text — the
+explain bar, card names, tutorial captions — refits per locale already, so
+changing the font moves those numbers and the fit checks are what to re-run.
+
 ## Verifying changes
 
 There is no test suite, and the game cannot be played from the terminal.

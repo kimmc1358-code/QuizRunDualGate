@@ -1,0 +1,52 @@
+keys,en,ko
+FLAG MODE,FLAG MODE,국기 모드
+MATH MODE,MATH MODE,연산 모드
+STROOP MODE,STROOP MODE,스트룹 모드
+MIX MODE,MIX MODE,혼합 모드
+Find the flag that matches the country!,Find the flag that matches the country!,나라 이름에 맞는 국기를 찾으세요!
+Solve the math problem and find the answer!,Solve the math problem and find the answer!,계산을 풀고 정답을 찾으세요!
+"Choose the COLOR, not the word!","Choose the COLOR, not the word!",글자가 아니라 '색'을 고르세요!
+"All three quizzes, one after another!","All three quizzes, one after another!",세 가지 퀴즈가 번갈아 나옵니다!
+Pass %d gates in every mode to unlock!  %d/%d,Pass %d gates in every mode to unlock!  %d/%d,모든 모드에서 %d게이트씩 통과하면 열립니다!  %d/%d
+LEADERBOARD,LEADERBOARD,리더보드
+"TAP anywhere to fly up.
+Stop tapping and you fall.","TAP anywhere to fly up.
+Stop tapping and you fall.","화면을 탭하면 위로 올라가고
+탭을 멈추면 아래로 떨어집니다."
+"Read the question up here,
+then fly through the gate
+with the right answer.","Read the question up here,
+then fly through the gate
+with the right answer.","위쪽에 나오는 문제를 보고
+정답에 해당하는 게이트로
+통과하세요."
+"Hold BOOST to fly faster.
+The fuller this bar is when you
+pass a gate, the more you score.
+Swap its side in Settings or Pause.","Hold BOOST to fly faster.
+The fuller this bar is when you
+pass a gate, the more you score.
+Swap its side in Settings or Pause.","BOOST를 누르면 빨라집니다.
+게이트를 지날 때 이 바가 많이
+남아 있을수록 점수가 커집니다.
+버튼 위치는 설정·일시정지에서 바꿉니다."
+TAP TO CONTINUE,TAP TO CONTINUE,탭하면 다음
+TAP TO START,TAP TO START,탭하면 시작
+PAUSED,PAUSED,일시정지
+RESUME,RESUME,이어하기
+RESTART,RESTART,다시 시작
+HOME,HOME,홈으로
+LEFT,LEFT,왼쪽
+RIGHT,RIGHT,오른쪽
+Continue your run?,Continue your run?,이어서 하시겠어요?
+WATCH AD TO CONTINUE,WATCH AD TO CONTINUE,광고 보고 이어하기
+Personal best is always saved,Personal best is always saved,개인 최고 기록은 그대로 저장됩니다
+"No thanks, end run","No thanks, end run","괜찮아요, 그만할래요"
+NEW BEST!,NEW BEST!,신기록!
+MAX COMBO,MAX COMBO,최대 콤보
+SCORE,SCORE,점수
+PLAY AGAIN,PLAY AGAIN,다시 하기
+SHARE,SHARE,공유
+Login to join the Leaderboard!,Login to join the Leaderboard!,로그인하면 순위표에 오릅니다!
+Saved to Leaderboard,Saved to Leaderboard,순위표에 기록했습니다
+Your best is on the Leaderboard,Your best is on the Leaderboard,최고 기록이 순위표에 있습니다

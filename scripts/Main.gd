@@ -6109,13 +6109,13 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 	return [
 		{
 			"holes": [{"rect": char_rect, "round": maxf(char_size.x, char_size.y)}],
-			"text": "TAP anywhere to fly up.\nStop tapping and you fall.",
+			"text": tr("TAP anywhere to fly up.\nStop tapping and you fall."),
 			# 캐릭터 바로 아래 빈 자리. 캐릭터 위에 겹치면 정작 밝힌 것을 가린다.
 			"tap": Vector2(view_size.x * 0.5, char_rect.end.y + char_size.y * 0.55),
 		},
 		{
 			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
-			"text": "Read the question up here,\nthen fly through the gate\nwith the right answer.",
+			"text": tr("Read the question up here,\nthen fly through the gate\nwith the right answer."),
 		},
 		{
 			# 둘을 같이 밝힌다. 화면 반대쪽 끝에 떨어져 있어서 따로 보여 주면
@@ -6127,7 +6127,7 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 			# 마지막 줄은 자리 바꾸기 안내다. 왼손잡이에게는 이 버튼이 처음부터
 			# 반대쪽에 있어야 하는데, 설정을 뒤져 볼 생각을 하려면 그런 것이
 			# 있다는 걸 먼저 알아야 한다 — 버튼을 가리키고 있는 지금이 그 자리다.
-			"text": "Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.\nSwap its side in Settings or Pause.",
+			"text": tr("Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.\nSwap its side in Settings or Pause."),
 		},
 	]
 

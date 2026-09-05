@@ -383,6 +383,6 @@ func _draw_tap(at: Vector2) -> void:
 func _draw_hint() -> void:
 	var font: Font = _font_heavy if _font_heavy != null else ThemeDB.fallback_font
 	var s: int = maxi(8, int(round(size.x * HINT_SIZE_FRAC)))
-	var text: String = HINT_LAST_TEXT if _index == _steps.size() - 1 else HINT_TEXT
+	var text: String = tr(HINT_LAST_TEXT) if _index == _steps.size() - 1 else tr(HINT_TEXT)
 	draw_string(font, Vector2(0.0, size.y - size.y * HINT_BOTTOM_FRAC), text,
 		HORIZONTAL_ALIGNMENT_CENTER, size.x, s, HINT_COLOR)

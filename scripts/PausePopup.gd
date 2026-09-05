@@ -48,14 +48,14 @@ var _music_icon: Texture2D
 
 
 func _build_content() -> void:
-	_title = _make_label(TITLE_TEXT, _font_heavy)
+	_title = _make_label(tr(TITLE_TEXT), _font_heavy)
 	add_child(_title)
 
-	_resume = _make_button(GOLD_FILE, GOLD_CORNER, "RESUME", _load_popup_icon(POPUP_ICON_PLAY), true)
+	_resume = _make_button(GOLD_FILE, GOLD_CORNER, tr("RESUME"), _load_popup_icon(POPUP_ICON_PLAY), true)
 	_resume.pressed.connect(func(): resume_pressed.emit())
 	add_child(_resume)
 
-	_restart = _make_button(CREAM_FILE, CREAM_CORNER, "RESTART", _load_icon(ICON_RESTART), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
+	_restart = _make_button(CREAM_FILE, CREAM_CORNER, tr("RESTART"), _load_icon(ICON_RESTART), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
 	_restart.pressed.connect(func(): restart_pressed.emit())
 	add_child(_restart)
 
@@ -79,7 +79,7 @@ func _build_content() -> void:
 	_boost_row.draw.connect(_draw_boost_row)
 	add_child(_boost_row)
 	# 값은 "왼쪽인가"인데 토글은 "두 번째 칸인가"를 다루므로, 오른쪽이 두 번째다.
-	_boost_toggle = _make_side_toggle(BOOST_OPTION_TEXTS, not _boost_on_left,
+	_boost_toggle = _make_side_toggle([tr(BOOST_OPTION_TEXTS[0]), tr(BOOST_OPTION_TEXTS[1])], not _boost_on_left,
 		func(on_second: bool) -> void:
 			_boost_on_left = not on_second
 			boost_side_changed.emit(_boost_on_left))
@@ -90,7 +90,7 @@ func _build_content() -> void:
 	_divider.draw.connect(_draw_divider)
 	add_child(_divider)
 
-	_home = _make_button(CREAM_FILE, CREAM_CORNER, "HOME", _load_icon(ICON_HOME), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
+	_home = _make_button(CREAM_FILE, CREAM_CORNER, tr("HOME"), _load_icon(ICON_HOME), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
 	_home.pressed.connect(func(): home_pressed.emit())
 	add_child(_home)
 

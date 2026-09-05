@@ -793,7 +793,7 @@ func _build() -> void:
 		card.add_child(name_plate)
 		_card_name_plate.append(name_plate)
 
-		var name_label := _add_card_text(name_plate, CARD_NAMES[i], CARD_NAME_COLOR)
+		var name_label := _add_card_text(name_plate, tr(CARD_NAMES[i]), CARD_NAME_COLOR)
 		name_label.add_theme_color_override("font_outline_color", CARD_NAME_OUTLINE)
 		if _font_heavy != null:
 			name_label.add_theme_font_override("font", _font_heavy)
@@ -895,7 +895,7 @@ func _build() -> void:
 	_leaderboard.add_child(_trophy)
 
 	_leaderboard_label = Label.new()
-	_leaderboard_label.text = LEADERBOARD_LABEL
+	_leaderboard_label.text = tr(LEADERBOARD_LABEL)
 	_leaderboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_leaderboard_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_leaderboard_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1300,7 +1300,7 @@ func _layout() -> void:
 			_leaderboard_label.size = Vector2(maxf(1.0, text_right - text_left), plate_size.y)
 			var wanted: int = int(round(plate_size.y * LEADERBOARD_LABEL_HEIGHT_FRAC))
 			var size: int = _fit_text_size(
-				_leaderboard_label, LEADERBOARD_LABEL, _leaderboard_label.size.x, wanted)
+				_leaderboard_label, tr(LEADERBOARD_LABEL), _leaderboard_label.size.x, wanted)
 			_leaderboard_label.add_theme_font_size_override("font_size", size)
 			_leaderboard_label.add_theme_constant_override(
 				"outline_size", maxi(1, int(round(size * START_LABEL_OUTLINE_SIZE_FRAC))))
@@ -1377,7 +1377,7 @@ func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: flo
 	var name_font: Font = _card_name[index].get_theme_font("font")
 	if name_font != null:
 		for text in CARD_NAMES:
-			widest = maxf(widest, name_font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, name_size).x)
+			widest = maxf(widest, name_font.get_string_size(tr(text), HORIZONTAL_ALIGNMENT_CENTER, -1, name_size).x)
 	var plate_pad: float = name_h * CARD_NAME_PLATE_PAD_FRAC
 	var name_plate_w: float = minf(inner_w, widest + outline_size * 2.0 + plate_pad * 2.0)
 	_card_name_plate[index].position = origin + Vector2((art_w_total - name_plate_w) * 0.5, inset)
@@ -1464,7 +1464,7 @@ func _fit_card_name_size(max_width: float, max_height: float) -> int:
 		var widest := 0.0
 		var tallest := 0.0
 		for text in CARD_NAMES:
-			var measured: Vector2 = font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size)
+			var measured: Vector2 = font.get_string_size(tr(text), HORIZONTAL_ALIGNMENT_CENTER, -1, size)
 			widest = maxf(widest, measured.x)
 			tallest = maxf(tallest, measured.y)
 		# The outline grows the glyphs on every side, so it counts toward the
@@ -1483,14 +1483,14 @@ func _explain_text(index: int) -> String:
 	if index < 0 or index >= CARD_EXPLAIN.size():
 		return ""
 	if CARD_MODES[index] != MODE_HIDDEN:
-		return CARD_EXPLAIN[index]
+		return tr(CARD_EXPLAIN[index])
 	if hidden_mode_open:
-		return CARD_EXPLAIN_HIDDEN_OPEN
+		return tr(CARD_EXPLAIN_HIDDEN_OPEN)
 	return _hidden_locked_text(hidden_modes_cleared)
 
 
 func _hidden_locked_text(cleared: int) -> String:
-	return CARD_EXPLAIN_HIDDEN_LOCKED % [
+	return tr(CARD_EXPLAIN_HIDDEN_LOCKED) % [
 		hidden_gates_needed, cleared, hidden_modes_required]
 
 

@@ -16,6 +16,10 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
+[internationalization]
+
+locale/translations=PackedStringArray("res://assets/i18n/ui.en.translation", "res://assets/i18n/ui.ko.translation")
+
 [display]
 
 window/size/viewport_width=480

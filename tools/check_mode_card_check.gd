@@ -379,7 +379,10 @@ func _run() -> void:
 	# 실제 잠김은 릴리스로 내보내 눌러 봐야 한다.
 	print("")
 	if hidden_card >= 0:
-		var open_text: String = screen.get("CARD_EXPLAIN_HIDDEN_OPEN")
+		# 화면은 번역된 문구를 그린다. 원문 상수와 비교하면 한국어 기기에서만
+		# 실패한다 — 로케일은 OS 에서 자동으로 잡히므로 개발 기기에 따라 결과가
+		# 갈린다.
+		var open_text: String = TranslationServer.translate(screen.get("CARD_EXPLAIN_HIDDEN_OPEN"))
 		# 진행도를 실제로 넘겨 가며 본다. hidden_mode_open 을 직접 뒤집으면
 		# 잠금만 바뀌고 진행도는 그대로라, 화면이 두 값을 함께 쓰는지 —
 		# set_hidden_progress 가 둘을 같은 자리에서 정하는지 — 를 못 본다.
@@ -414,7 +417,7 @@ func _run() -> void:
 		var must_fit: Array = []
 		for text in screen.get("CARD_EXPLAIN"):
 			if str(text) != "":
-				must_fit.append(text)
+				must_fit.append(TranslationServer.translate(text))
 		must_fit.append(open_text)
 		for cleared in range(required + 1):
 			must_fit.append(screen.call("_hidden_locked_text", cleared))
