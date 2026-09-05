@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bcnceskqc7jsi"
-path="res://.godot/imported/modeselect_main.png-df1f4075ff5a5b151ac2bf51b8dfb236.ctex"
+uid="uid://d1db7u5804ube"
+path="res://.godot/imported/modeselect_main.png-86399efb39d203636d51c2a842e1ea7c.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui_assets/main/modeselect_main.png"
-dest_files=["res://.godot/imported/modeselect_main.png-df1f4075ff5a5b151ac2bf51b8dfb236.ctex"]
+source_file="res://assets/references/modeselect_main.png"
+dest_files=["res://.godot/imported/modeselect_main.png-86399efb39d203636d51c2a842e1ea7c.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=true
+mipmaps/generate=false
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

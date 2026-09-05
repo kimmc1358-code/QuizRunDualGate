@@ -30,7 +30,7 @@ was tried first and said only "this card has a marking on it", leaving the
 reason readable only by tapping through to the explain bar. The panel's three
 pieces are sized from the gap between the name plate and the BEST plate, not
 from the card, because those two plates do not grow when the card does. The
-veil stops just inside the card art's white border and leaves it alone, so a
+veil stops just inside the card's white border and leaves it alone, so a
 locked card wears the same white frame as the other three. Covering the
 border with the veil leaves white reading as a bright ring (254 through the
 veil is still 117 against an interior of 70) and painting over it adds a
@@ -94,7 +94,7 @@ on failure.
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
-| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's panel keeps its icon, LOCKED and hint strip inside the card and clear of both plates at either ratio, stacked in that order and readable, with the hint text inside its own strip and the selection check clear of all three; the veil stops exactly at the inner edge of the card art's white border, equally on all four sides, with the border width measured off the art rather than trusting the constant; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's panel keeps its icon, LOCKED and hint strip inside the card and clear of both plates at either ratio, stacked in that order and readable, with the hint text inside its own strip and the selection check clear of all three; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
@@ -259,6 +259,24 @@ nearest-neighbour step before the final resample**: these are pixel art, and
 a straight 1.7x bicubic turns every hard pixel edge into a gradient. Pass
 `-Character dragon|shark|unicorn` to rebuild from a different mode's sprite,
 and `-OutRoot <dir>` to write candidates somewhere other than the repo.
+
+**The four mode cards are drawn, not cut.** `_draw_card_face` paints each one:
+a rounded rectangle with a vertical gradient and a white border, all three
+sized from `SELECT_CORNER_NATIVE` / `CARD_BORDER_NATIVE` against the card's
+drawn width. They came from `modeselect_main.png` until the geometry started
+to matter — the four hand-painted cards had slightly different corner radii
+and border widths, and `CARD_HEIGHT_SCALE` stretched a bitmap vertically,
+which turns a circular corner into an ellipse and left the lock veil's
+rounded corners unable to line up with the card's at any radius. The source
+sheet is kept in `assets/references/` (excluded from the export) and the
+gradient colours in `CARD_FILL_TOP`/`BOTTOM` were sampled from it, so the
+cards look the same and only the precision changed.
+
+Godot has no rounded-rect-with-gradient draw call, so the face goes down in
+two passes: one-pixel horizontal strips whose x-extent follows the corner
+arc, then a `StyleBoxFlat` border on top. The strips have no anti-aliasing
+and the StyleBox does, so the strips are tucked `CARD_FILL_TUCK_PX` under the
+border and their stair-stepped edge never shows.
 
 The exception is an **animation strip** — the character sheets and the boost
 burst. Those stay whole and are cut at load time by `_slice_spritesheet`,

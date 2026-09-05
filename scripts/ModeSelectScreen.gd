@@ -27,7 +27,6 @@ const CARD_MODES := [MODE_SKY, MODE_JUNGLE, MODE_OCEAN, MODE_HIDDEN]
 # Which quadrant of the sheet each slot draws. The sheet reads blue, green,
 # cyan, pink; the left column is flipped so the mint card sits on top, which
 # is why this is a mapping rather than a straight 0,1,2,3.
-const CARD_SHEET_SLOT := [2, 1, 0, 3]
 
 # Characters shown on the cards, in slot order. The fourth is the hidden
 # mode and has no art yet — an empty path leaves that card blank.
@@ -177,9 +176,9 @@ const EXPLAIN_TEXT_COLOR := Color(0.12, 0.18, 0.30, 1.0)
 # 그림자가 깊어지고, 왼쪽 위 구석에 초록 체크가 붙는다.
 #
 # 예전에는 카드 가장자리를 따라 도는 노란 링과 그 바깥의 후광이었다. 링은
-# 카드 아트가 이미 가지고 있는 흰 테두리 바로 위에 앉는데, 네 카드의 아트가
-# 셀 안에서 조금씩 다른 자리에 있어서(_card_art_bounds) 어느 카드를 고르냐에
-# 따라 테두리가 두꺼워 보이거나 어긋나 보였다.
+# 카드의 흰 테두리 바로 위에 앉는데, 그때는 네 장을 시트에서 잘라 쓰느라
+# 카드마다 칸 안 위치가 조금씩 달라서, 어느 카드를 고르냐에 따라 테두리가
+# 두꺼워 보이거나 어긋나 보였다.
 const CARD_SELECTED_SCALE := 1.05
 const CARD_SELECT_ANIM := 0.12          # seconds, 크기가 옮겨 가는 시간
 
@@ -189,16 +188,13 @@ const CARD_SELECT_ANIM := 0.12          # seconds, 크기가 옮겨 가는 시�
 # 하나만 떠 있는 편이 "이게 골라졌다"를 더 분명히 말한다.
 const SELECT_CORNER_NATIVE := 70.0
 const SELECT_SHEET_WIDTH_NATIVE := 706.0
+const SELECT_SHEET_HEIGHT_NATIVE := 557.0
 # 처음에 14 / (0,7) / 0.62 로 잡았다가 화면에서 보고 낮췄다. 카드가 105% 로
 # 커지는 것과 체크가 이미 "골랐다"를 말하고 있어서, 그 위에 짙은 그림자까지
 # 얹으니 카드가 들린 게 아니라 화면에서 떨어져 나온 것처럼 보였다.
 const SELECT_SHADOW_SIZE := 9
 const SELECT_SHADOW_OFFSET := Vector2(0, 4)
 const SELECT_SHADOW_COLOR := Color(0.16, 0.10, 0.02, 0.34)
-# The card art fades out along its bottom edge, so the opaque bounds the
-# shadow is placed on stop just short of where the card looks like it ends.
-# Nudged down to close that gap.
-const SELECT_BOTTOM_EXTEND_FRAC := 0.022   # of the card's height
 
 # 고른 카드의 왼쪽 위 구석에 붙는 초록 체크. tools/slice_popup_icons_2.ps1 이
 # icon_popup_2.png 에서 잘라 낸다.
@@ -285,7 +281,45 @@ const CARD_BOB_LOOPS := 3.0
 const ART_DIR := "res://assets/ui_assets/main/"
 const BACKGROUND_FILE := "background_main.png"
 const TITLE_FILE := "title_main_v2.png"
-const CARD_SHEET_FILE := "modeselect_main.png"
+# ---- 카드 판때기 ----
+#
+# 아트가 아니라 직접 그린다. 예전에는 modeselect_main.png 한 장을 네 칸으로
+# 잘라 썼는데, 그림에서 온 판이라 세 가지가 따라왔다:
+#
+#   - 네 칸의 모서리 곡률과 흰 테두리 두께가 조금씩 달랐다. 손으로 그린
+#     그림이니 당연한 것이고, 붙여 놓으면 눈에 띈다.
+#   - 카드를 세로로 늘리면서(CARD_HEIGHT_SCALE) 원형 모서리가 타원이 됐다.
+#     비트맵을 늘리는 이상 피할 수 없다.
+#   - 그래서 잠금 덮개의 둥근 모서리가 카드와 안 맞았다. 덮개는 정원으로
+#     그려지는데 카드는 눌린 타원이라, 어느 값을 넣어도 어긋난다.
+#
+# 그려서 만들면 셋 다 없어진다. 아래 색은 원래 아트에서 뽑은 값이라 보이는
+# 것은 거의 그대로고, 달라지는 것은 정확도뿐이다.
+#
+# 세로 그라데이션. 카드마다 위/아래 한 쌍.
+# 원래 아트에서 뽑았다. 카드 높이의 10~92% 를 가로로 평균 내어 다섯 군데를
+# 재고, 거기서 위끝과 아래끝으로 외삽한 값이다 — 가장자리에서 바로 집으면
+# 흰 테두리 안쪽 하이라이트를 뜨게 되고, 실제로 처음에 그렇게 재서 네 장이 다
+# 물 빠진 색으로 나왔다.
+const CARD_FILL_TOP := [
+	Color(0.491, 0.935, 0.918),   # SKY    민트
+	Color(0.728, 0.953, 0.355),   # JUNGLE 연두
+	Color(0.590, 0.810, 0.987),   # OCEAN  하늘
+	Color(0.991, 0.624, 0.833),   # DREAM  분홍
+]
+const CARD_FILL_BOTTOM := [
+	Color(0.249, 0.878, 0.839),
+	Color(0.483, 0.840, 0.273),
+	Color(0.314, 0.712, 0.991),
+	Color(0.991, 0.455, 0.714),
+]
+const CARD_BORDER_COLOR := Color(1.0, 1.0, 1.0, 1.0)
+# 흰 테두리 두께. 모서리 반지름과 같은 기준(706px 폭)이라 SELECT_* 상수와
+# 같은 식으로 배율을 잡는다. 둘 다 원래 아트에서 잰 값이다.
+const CARD_BORDER_NATIVE := 14.0
+# 그라데이션 띠는 테두리보다 이만큼 안쪽까지만 채운다. 띠는 안티에일리어싱이
+# 없어 가장자리가 계단인데, 테두리의 불투명한 부분 밑으로 밀어 넣으면 안 보인다.
+const CARD_FILL_TUCK_PX := 1.0
 const EXPLAIN_FILE := "explain_box.png"
 const LEADERBOARD_FILE := "leaderboard_v2.png"
 const START_FILE := "start_main.png"
@@ -332,26 +366,6 @@ const START_LABEL_OUTLINE_SIZE_FRAC := 0.16  # of the font size
 # in, then a springy return that slightly overshoots.
 const PRESS_SCALE := 0.94
 const PRESS_ANIM_DURATION := 0.08
-
-# The card sheet was exported without an alpha channel, so its four cards sit
-# on flat black, and the white border meets that black through a single
-# anti-aliased pixel — measured at around brightness 80 where the border
-# itself is 250+.
-#
-# Simply thresholding leaves that pixel fully opaque and dark, which is the
-# black rim it produced around every card. It is really a premultiplied
-# blend: a pixel covering the backdrop by k reads as border * k, so the
-# coverage is its brightness and the true colour is that brightness divided
-# back out.
-#
-# Applying that everywhere would make the card bodies translucent, since a
-# pastel fill is not full brightness either. So it is applied only to pixels
-# that actually touch the backdrop — the rim — and everything else stays
-# opaque with its colour untouched. A histogram of the sheet backs the
-# thresholds up: 0-31 is the backdrop, 192-255 the art, and barely a
-# thousand pixels lie between.
-const KEY_FLOOR := 10      # at or below: backdrop
-const KEY_SOLID := 192     # at or above: art, left alone
 
 # Widths as a fraction of the screen; each piece's height follows from its
 # own aspect ratio.
@@ -456,7 +470,7 @@ var _card_name: Array[Label] = []
 var _card_best: Array[Label] = []
 var _card_anim_elapsed: float = 0.0
 var _card_art_rest_y: Array[float] = []      # where the layout put each sprite, before the bob
-var _card_art_bounds: Array[Rect2] = []      # each card cell's opaque box, normalised
+var _card_face: Array[Control] = []          # 카드 판때기 — _draw_card_face 가 그린다
 var _explain_label: Label
 var _card_best_plate: Array[Panel] = []
 var _card_name_plate: Array[Panel] = []
@@ -601,33 +615,54 @@ func _load_art(file_name: String) -> Texture2D:
 # black backdrop. Done here rather than as four pre-cut files so the sheet
 # stays the only asset to manage — the same reasoning as _slice_spritesheet
 # in Main.gd.
-func _slice_cards(cols: int, rows: int) -> Array[Texture2D]:
-	var out: Array[Texture2D] = []
-	var texture := _load_art(CARD_SHEET_FILE)
-	if texture == null:
-		return out
-	var sheet: Image = texture.get_image()
-	if sheet == null:
-		return out
-	sheet.convert(Image.FORMAT_RGBA8)
-	var cell_w: int = sheet.get_width() / cols
-	var cell_h: int = sheet.get_height() / rows
-	_card_art_bounds.clear()
-	for row in range(rows):
-		for col in range(cols):
-			var cell: Image = sheet.get_region(Rect2i(col * cell_w, row * cell_h, cell_w, cell_h))
-			var keyed: Image = _key_black(cell)
-			# Recorded while the alpha is to hand: the cards do not all sit at
-			# the same place in their cell, and the selection outline needs to
-			# follow each one's actual edge.
-			_card_art_bounds.append(_opaque_bounds(keyed))
-			out.append(ImageTexture.create_from_image(keyed))
-	# Reordered to match the slots, so index i is the card shown at slot i.
-	var ordered: Array[Rect2] = []
-	for slot in CARD_SHEET_SLOT:
-		ordered.append(_card_art_bounds[slot] if slot < _card_art_bounds.size() else Rect2(0, 0, 1, 1))
-	_card_art_bounds = ordered
-	return out
+# 카드 한 장. 세로 그라데이션을 채운 둥근 사각형에 흰 테두리.
+#
+# 그라데이션과 둥근 모서리를 한 번에 주는 그리기 함수가 없어서 두 겹으로 나눈다:
+# 가로 한 줄씩 색을 바꿔 가며 채워 모양을 만들고, 그 위에 StyleBoxFlat 으로
+# 테두리만 얹는다. 줄 채우기에는 안티에일리어싱이 없지만 StyleBoxFlat 에는
+# 있으므로, 줄을 테두리 밑으로 CARD_FILL_TUCK_PX 만큼 밀어 넣으면 계단진
+# 가장자리가 전부 불투명한 테두리에 덮인다.
+func _draw_card_face(index: int) -> void:
+	if index < 0 or index >= _card_face.size():
+		return
+	var face: Control = _card_face[index]
+	var w: float = face.size.x
+	var h: float = face.size.y
+	if w <= 0.0 or h <= 0.0:
+		return
+	var scale: float = w / SELECT_SHEET_WIDTH_NATIVE
+	var radius: float = SELECT_CORNER_NATIVE * scale
+	var border: float = CARD_BORDER_NATIVE * scale
+	var top: Color = CARD_FILL_TOP[index] if index < CARD_FILL_TOP.size() else Color.WHITE
+	var bottom: Color = CARD_FILL_BOTTOM[index] if index < CARD_FILL_BOTTOM.size() else top
+
+	# 줄 채우기. 모서리 구간에서는 원의 식으로 좌우를 파고든다.
+	var tuck: float = CARD_FILL_TUCK_PX
+	var r: float = maxf(0.0, radius - tuck)
+	var y: float = tuck
+	while y < h - tuck:
+		var dy: float = 0.0
+		if y < tuck + r:
+			dy = (tuck + r) - (y + 0.5)
+		elif y > h - tuck - r:
+			dy = (y + 0.5) - (h - tuck - r)
+		var cut: float = 0.0
+		if dy > 0.0:
+			cut = r - sqrt(maxf(0.0, r * r - dy * dy))
+		var x0: float = tuck + cut
+		var row_w: float = w - (tuck + cut) * 2.0
+		if row_w > 0.0:
+			face.draw_rect(Rect2(x0, y, row_w, 1.0),
+				top.lerp(bottom, clampf(y / maxf(1.0, h - 1.0), 0.0, 1.0)), true)
+		y += 1.0
+
+	var box := StyleBoxFlat.new()
+	box.bg_color = Color(0.0, 0.0, 0.0, 0.0)
+	box.set_corner_radius_all(int(round(radius)))
+	box.set_border_width_all(maxi(1, int(round(border))))
+	box.border_color = CARD_BORDER_COLOR
+	box.anti_aliasing = true
+	face.draw_style_box(box, Rect2(Vector2.ZERO, face.size))
 
 
 # The opaque box of an image, as fractions of its size.
@@ -651,69 +686,7 @@ func _opaque_bounds(image: Image) -> Rect2:
 	return Rect2(float(x0) / w, float(y0) / h, float(x1 - x0 + 1) / w, float(y1 - y0 + 1) / h)
 
 
-# True when any of the four neighbours is backdrop, which is what marks a
-# pixel as sitting on the card's anti-aliased rim rather than inside it.
-func _touches_backdrop(data: PackedByteArray, w: int, h: int, x: int, y: int) -> bool:
-	for offset in [Vector2i(-1, 0), Vector2i(1, 0), Vector2i(0, -1), Vector2i(0, 1)]:
-		var nx: int = x + offset.x
-		var ny: int = y + offset.y
-		if nx < 0 or ny < 0 or nx >= w or ny >= h:
-			continue
-		var n: int = (ny * w + nx) * 4
-		if maxi(data[n], maxi(data[n + 1], data[n + 2])) <= KEY_FLOOR:
-			return true
-	return false
 
-
-func _key_black(image: Image) -> Image:
-	# Works on the raw buffer rather than get_pixel/set_pixel: a card is about
-	# 400k pixels, and four of them through per-pixel calls is a visible stall
-	# on the way into the menu.
-	# The sheet is imported with mipmaps, and a region cut from it carries
-	# them too — get_data() would then hand back every level concatenated,
-	# which does not match the width x height x 4 that create_from_data below
-	# expects. Drop them and rebuild from the keyed result instead, so the
-	# levels are generated from the transparency rather than around it.
-	image.clear_mipmaps()
-	var w: int = image.get_width()
-	var h: int = image.get_height()
-	var data: PackedByteArray = image.get_data()
-
-	# Pass 1 decides alpha and notes which pixels need their colour divided
-	# back out. It cannot do the division inline: the rim test reads its
-	# neighbours' colours, and rewriting them as it goes would feed the test
-	# values it had already changed.
-	var rim: PackedInt32Array = PackedInt32Array()
-	for y in range(h):
-		for x in range(w):
-			var i: int = (y * w + x) * 4
-			var brightest: int = maxi(data[i], maxi(data[i + 1], data[i + 2]))
-			if brightest <= KEY_FLOOR:
-				data[i + 3] = 0
-				continue
-			if brightest >= KEY_SOLID:
-				continue
-			if _touches_backdrop(data, w, h, x, y):
-				data[i + 3] = brightest
-				rim.append(i)
-
-	# Pass 2: undo the premultiply, so a rim pixel carries the border's own
-	# colour at partial coverage instead of a colour already mixed with black.
-	for i in rim:
-		var coverage: float = data[i + 3] / 255.0
-		if coverage <= 0.0:
-			continue
-		for c in range(3):
-			data[i + c] = mini(255, int(round(data[i + c] / coverage)))
-
-	var keyed := Image.create_from_data(w, h, false, Image.FORMAT_RGBA8, data)
-	# Built here rather than by the importer, so the linear-with-mipmaps filter
-	# above has levels to fall back on when the card is drawn at a third size.
-	keyed.generate_mipmaps()
-	return keyed
-
-
-# ---------------------------------------------------------------- building
 
 func _build() -> void:
 	for child in get_children():
@@ -746,7 +719,7 @@ func _build() -> void:
 	_card_shadow_overlay.draw.connect(_draw_card_shadow)
 	add_child(_card_shadow_overlay)
 
-	var card_textures := _slice_cards(2, 2)
+	_card_face.clear()
 	_card_characters.clear()
 	_card_art.clear()
 	_card_art_rest_y.clear()
@@ -778,21 +751,25 @@ func _build() -> void:
 		push_warning("%s 가 없어 %s 로 대신 그린다" % [CARD_LOCK_FILE, CARD_LOCK_FALLBACK_FILE])
 		_lock_texture = _load_trimmed(CARD_LOCK_FALLBACK_FILE, CARD_LOCK_BAKE_H)
 	for i in range(CARD_MODES.size()):
-		var slot: int = CARD_SHEET_SLOT[i]
 		var card := TextureButton.new()
-		card.texture_normal = card_textures[slot] if slot < card_textures.size() else null
+		# 그림은 안 넣는다 — 판때기는 _draw_card_face 가 그린다. 버튼은 자리와
+		# 입력, 그리고 고를 때의 확대만 맡는다.
 		card.ignore_texture_size = true
-		# 칸을 아트 비율보다 세로로 늘리므로(CARD_HEIGHT_SCALE) 아트도 같이
-		# 늘어나야 한다. KEEP_ASPECT_CENTERED 로 두면 그림은 예전 크기 그대로
-		# 가운데 뜨고 눌리는 범위만 커져서, 카드가 커진 것이 아니라 빈 데를
-		# 눌러도 반응하는 것이 된다. _layout_card_contents 도 아트가 칸을 꽉
-		# 채운다고 보고 이름판·점수판을 놓는다.
 		card.stretch_mode = TextureButton.STRETCH_SCALE
 		card.focus_mode = Control.FOCUS_NONE
 		_use_smooth_filter(card)
 		card.pressed.connect(_on_card_pressed.bind(i))
 		add_child(card)
 		_cards.append(card)
+
+		# 판때기. 카드의 첫 자식이라 이름판·캐릭터·점수판 아래에 깔린다.
+		var face := Control.new()
+		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		face.set_anchors_preset(Control.PRESET_FULL_RECT)
+		face.resized.connect(face.queue_redraw)
+		face.draw.connect(_draw_card_face.bind(i))
+		card.add_child(face)
+		_card_face.append(face)
 
 		# Contents ride inside the card so the press animation scales them
 		# along with it; none of them take clicks.
@@ -1179,7 +1156,8 @@ func _layout() -> void:
 	var cards_w: float = view.x * CARDS_WIDTH_FRAC
 	var card_gap: float = view.x * CARD_GAP_FRAC
 	var card_w: float = (cards_w - card_gap) * 0.5
-	var card_h: float = card_w / (_aspect(_cards[0]) if not _cards.is_empty() else 1.27)
+	# 판을 직접 그리므로 비율도 상수에서 온다 — 예전에는 카드 텍스처에서 읽었다.
+	var card_h: float = card_w * SELECT_SHEET_HEIGHT_NATIVE / SELECT_SHEET_WIDTH_NATIVE
 	var cards_h: float = card_h * 2.0 + card_gap
 	# Matched to the cards block, so the bar's ends sit exactly under the outer
 	# edges of the left and right columns.
@@ -1365,14 +1343,11 @@ func _layout() -> void:
 func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: float) -> void:
 	if index >= _card_art.size():
 		return
-	# Against the card's own art, not the button rect. The four cards sit at
-	# slightly different offsets inside their cells — up to about 2px once
-	# drawn — so laying contents out on the button would put the title and
-	# the score plate in a visibly different spot on each card.
-	var bounds: Rect2 = _card_art_bounds[index] if index < _card_art_bounds.size() else Rect2(0, 0, 1, 1)
-	var origin := Vector2(bounds.position.x * card_w, bounds.position.y * card_h)
-	var art_w_total: float = bounds.size.x * card_w
-	var art_h_total: float = bounds.size.y * card_h
+	# 판을 직접 그리므로 카드 사각형이 곧 판이다. 예전에는 네 장이 시트 칸 안에서
+	# 저마다 2px 쯤 어긋나 있어 아트의 불투명 경계를 따로 재야 했다.
+	var origin := Vector2.ZERO
+	var art_w_total: float = card_w
+	var art_h_total: float = card_h
 
 	# 이름판·점수판·여백은 **늘리기 전** 높이로 잡는다. 늘어난 몫은 전부
 	# 캐릭터 자리로 간다.
@@ -1381,7 +1356,7 @@ func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: flo
 	# 같이 부풀었다. 그중 점수판이 특히 나빴는데, 여백(inset)도 높이 비율이라
 	# 같이 커지면서 가로를 먹어 세로 22.8 -> 26.9, 가로 149.9 -> 147.1 이 됐다.
 	# 커진 것이 아니라 눌린 것이고, 그렇게 보였다.
-	var base_total: float = bounds.size.y * base_h
+	var base_total: float = base_h
 	var inset: float = base_total * CARD_TEXT_INSET_FRAC
 	var inner_w: float = art_w_total - inset * 2.0
 	var name_h: float = base_total * CARD_NAME_HEIGHT_FRAC
@@ -1678,25 +1653,22 @@ func _draw_remove_ads_rule() -> void:
 		REMOVE_ADS_COLOR, REMOVE_ADS_UNDERLINE_WIDTH)
 
 
-# 고른 카드가 화면에서 실제로 차지하는 사각형. 카드들이 셀 안에서 조금씩 다른
-# 자리에 있으므로(_card_art_bounds) 버튼 사각형이 아니라 아트의 불투명 경계를
-# 쓴다 — 버튼으로 잡으면 그림자가 어느 카드에서는 떠 보이고 어느 카드에서는
-# 파고든다. scale 이 걸려 있으면 그만큼 가운데에서 키운다.
 func _selected_card_rect() -> Rect2:
 	return _card_rect(selected_index)
 
 
-# 한 카드가 실제로 그려지는 사각형. 고른 카드만이 아니라 아무 카드나 — 잠금
-# 표시는 고르지 않은 카드에도 붙어야 해서 일반화했다.
+# 한 카드가 화면에서 실제로 차지하는 사각형. 고른 카드만이 아니라 아무 카드나 —
+# 잠금 덮개는 고르지 않은 카드에도 씌워야 해서 일반화했다.
+#
+# 판때기를 직접 그리게 되면서 이 함수가 짧아졌다. 예전에는 아트의 불투명 경계를
+# 재서(_card_art_bounds) 카드마다 다른 오프셋을 보정하고, 아래쪽이 흐려지며
+# 끝나는 만큼(SELECT_BOTTOM_EXTEND_FRAC) 더 늘려야 했다. 지금은 그린 판이
+# 버튼을 정확히 채우므로 버튼 사각형이 곧 카드다.
 func _card_rect(index: int) -> Rect2:
 	if index < 0 or index >= _cards.size():
 		return Rect2()
 	var card: TextureButton = _cards[index]
-	var bounds: Rect2 = _card_art_bounds[index] if index < _card_art_bounds.size() else Rect2(0, 0, 1, 1)
-	var rect := Rect2(
-		card.position + Vector2(bounds.position.x * card.size.x, bounds.position.y * card.size.y),
-		Vector2(bounds.size.x * card.size.x, bounds.size.y * card.size.y))
-	rect.size.y += card.size.y * SELECT_BOTTOM_EXTEND_FRAC
+	var rect := Rect2(card.position, card.size)
 	# pivot_offset 이 카드 한가운데라 scale 은 그 점을 중심으로 커진다.
 	var pivot: Vector2 = card.position + card.pivot_offset
 	rect.position = pivot + (rect.position - pivot) * card.scale.x
