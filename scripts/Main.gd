@@ -2167,6 +2167,39 @@ const SAVE_KEY_BEST_PREFIX := "best_score_"
 const SAVE_KEY_BEST_LEGACY := "best_score"
 # 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
 const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
+# ============================================================
+# 전면광고 노출 판단.
+#
+# 여기에는 광고를 띄우는 코드가 없다 — 프로젝트에 광고 SDK 자체가 없다(git log
+# 의 감사 참고). 판단만 하고, 플러그인이 붙으면 _ad_try_interstitial 안쪽만
+# 실제 호출로 바꾸면 된다.
+#
+# 규칙:
+#   - 판을 떠날 때마다 하나씩 센다. "떠난다"는 게임오버 후 PLAY AGAIN /
+#     HOME 이든 일시정지의 RESTART / HOME 이든 같다 — 사용자에게는 전부 "한 판
+#     끝"이고, 한 경로만 빼두면 그게 다음 구멍이 된다.
+#   - 리워드 광고를 본 판은 세지 않는다. 안 그러면 부활 광고 직후 전면광고가
+#     붙어 30초 안에 광고 둘을 보게 된다.
+#   - 설치 후 처음 몇 판은 면제한다. 신규 사용자가 게임을 파악하기 전에 광고를
+#     보지 않게 하려는 것으로, 앱 오프닝 광고를 안 쓰는 것과 같은 이유다.
+#
+# 카운터는 저장된다. 세션에만 두면 4판 하고 앱을 껐다 켜는 것으로 광고를 계속
+# 피할 수 있고, 그보다 흔하게는 안드로이드가 메모리 압박으로 앱을 죽일 때마다
+# 사용자가 아무 짓도 안 했는데 카운터가 날아간다.
+#
+# 면제도 "실행마다"가 아니라 "설치 후 한 번"이다. 실행마다 주면 1판씩 하고 끄는
+# 것으로 영원히 광고를 안 보게 되어, 카운터를 저장한 의미가 없어진다.
+#
+# Whole feature = these consts + games_played_total/restarts_since_interstitial/
+# run_active + the _ad_* functions + the [ads] save section.
+@export_range(1, 20, 1) var interstitial_every_restarts: int = 5
+# 3 = 잠금 해제된 모드 수(FLAG/MATH/STROOP). 모드당 한 판씩 겪어 보라는 몫이다.
+@export_range(0, 20, 1) var interstitial_free_games: int = 3
+
+const SAVE_SECTION_ADS := "ads"
+const SAVE_KEY_GAMES_PLAYED := "games_played"
+const SAVE_KEY_RESTARTS_SINCE_AD := "restarts_since_ad"
+
 const SAVE_SECTION_AUDIO := "audio"
 # 조작 설정. 볼륨과 같은 파일을 쓰되 오디오와 섞지 않는다.
 const SAVE_SECTION_CONTROLS := "controls"
@@ -2340,6 +2373,12 @@ var max_combo: int = 0   # highest combo reached this run — see the gate-pass 
 # 올라가지 않는다"고 약속하므로, 그 약속을 지키려면 끝까지 들고 가야 한다.
 # (개인 최고 기록은 "always saved"라고 했으니 부활 여부와 무관하게 쓴다.)
 var run_revived: bool = false
+# 판이 실제로 시작됐는가. _reset_game 은 첫 플레이에서도 불리므로, 이것 없이는
+# "떠난 판"과 "아직 없던 판"을 구분할 수 없다.
+var run_active: bool = false
+# 설치 후 누적 판 수(면제 판정용)와 마지막 전면광고 이후 떠난 판 수.
+var games_played_total: int = 0
+var restarts_since_interstitial: int = 0
 # 이 판에서 "첫 실수 전까지" 도달한 점수. 순위표에 올라가는 건 이 값이다.
 #
 # 광고를 보고 이어 뛰면 개인 최고 기록은 끝까지 간 점수로 갱신되지만,
@@ -2594,6 +2633,7 @@ func _boot_load() -> void:
 	_load_best_score()
 	_load_audio_settings()
 	_load_control_settings()
+	_load_ad_state()
 	_load_flags_data()
 	# The four HUD pieces are all per-mode now and get loaded in _apply_mode;
 	# only the parts that never change per mode are set up here.
@@ -5814,6 +5854,7 @@ func _finish_run() -> void:
 func _on_gameover_play_again_pressed() -> void:
 	gameover_popup.visible = false
 	_reset_game()
+	_ad_try_interstitial()
 	_start_countdown()
 
 
@@ -5845,6 +5886,7 @@ func _on_restart_pressed() -> void:
 	# clears the just-ended run's score/gates so mode-select's background
 	# isn't showing stale gates.
 	_reset_game()
+	_ad_try_interstitial()
 	_set_state(State.MODE_SELECT)
 
 
@@ -6059,6 +6101,7 @@ func _apply_mode(mode: int) -> void:
 
 
 func _start_countdown() -> void:
+	run_active = true   # 여기부터 "떠날 수 있는 판"이 된다 — _reset_game 참고
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
 	_set_state(State.COUNTDOWN)
@@ -6069,6 +6112,12 @@ func _start_countdown() -> void:
 
 
 func _reset_game() -> void:
+	# 판을 떠나는 네 경로(게임오버 PLAY AGAIN/HOME, 일시정지 RESTART/HOME)가
+	# 전부 여기를 지난다. 세는 자리를 여기 하나로 두면 경로를 빠뜨릴 수 없다 —
+	# 핸들러마다 넣으면 나중에 다섯 번째 경로가 생겼을 때 조용히 안 세어진다.
+	if run_active:
+		_ad_note_run_left()
+		run_active = false
 	var view_size := get_viewport_rect().size
 	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
@@ -6142,6 +6191,7 @@ func _on_resume_pressed() -> void:
 func _on_pause_restart_pressed() -> void:
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_reset_game()
+	_ad_try_interstitial()
 	_start_countdown()
 
 
@@ -6149,6 +6199,7 @@ func _on_pause_restart_pressed() -> void:
 func _on_pause_home_pressed() -> void:
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_reset_game()
+	_ad_try_interstitial()
 	_set_state(State.MODE_SELECT)
 
 
@@ -6196,6 +6247,70 @@ func _load_audio_settings() -> void:
 		music_volume = clampf(float(cfg.get_value(SAVE_SECTION_AUDIO, SAVE_KEY_MUSIC, music_volume)), 0.0, 1.0)
 	_apply_bus_volume(BUS_SFX, sfx_volume)
 	_apply_bus_volume(BUS_MUSIC, music_volume)
+
+
+# ---- 전면광고 판단. 위 @export 블록의 주석에 규칙이 있다. ----
+
+# 판 하나를 떠났다. _reset_game 에서만 부른다.
+func _ad_note_run_left() -> void:
+	games_played_total += 1
+	# 면제 구간의 판은 세지도 않는다. 처음에는 세되 노출만 막았는데, 그러면
+	# 면제가 끝나는 순간 카운터가 이미 3이라 두 판 만에 첫 광고가 나온다 —
+	# "5판마다"면 첫 광고가 5판째라, 면제 3판이 아무 일도 안 하는 값이 된다.
+	# 세지 않아야 두 값이 각자 뜻대로 움직인다: 처음 3판 무료, 그 뒤 5판마다.
+	if games_played_total <= interstitial_free_games:
+		_save_ad_state()
+		return
+	# 리워드 광고를 본 판은 카운터에 넣지 않는다. run_revived 가 곧 "부활
+	# 광고를 보고 이어 뛰었다"이므로 따로 플래그를 두지 않는다 — 두 개를 두면
+	# 언젠가 한쪽만 갱신된다.
+	if not run_revived:
+		restarts_since_interstitial += 1
+	_save_ad_state()
+
+
+## 지금 전면광고를 띄워야 하는가. 실제로 띄우는 것은 부르는 쪽의 몫이다.
+func should_show_interstitial() -> bool:
+	if games_played_total <= interstitial_free_games:
+		return false
+	return restarts_since_interstitial >= interstitial_every_restarts
+
+
+## 광고가 실제로 나갔을 때 부른다. 판단과 분리해 둔 이유는, 플러그인이 붙으면
+## 광고 로드 실패나 사용자 이탈로 안 나갈 수 있기 때문이다 — 그때 카운터를
+## 비우면 다음 기회까지 또 다섯 판을 기다리게 된다.
+func note_interstitial_shown() -> void:
+	restarts_since_interstitial = 0
+	_save_ad_state()
+
+
+# 지금은 SDK 가 없으므로 "띄웠다" 치고 카운터만 비운다. 플러그인이 붙으면 이
+# 함수 안에서 광고를 요청하고, note_interstitial_shown 은 광고가 닫힌 뒤
+# 콜백에서 부르도록 옮기면 된다.
+func _ad_try_interstitial() -> bool:
+	if not should_show_interstitial():
+		return false
+	print("[광고] 전면광고 노출 지점 (누적 %d판, 마지막 광고 이후 %d판)" % [
+		games_played_total, restarts_since_interstitial])
+	note_interstitial_shown()
+	return true
+
+
+func _load_ad_state() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		games_played_total = int(cfg.get_value(
+			SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total))
+		restarts_since_interstitial = int(cfg.get_value(
+			SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial))
+
+
+func _save_ad_state() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total)
+	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial)
+	cfg.save(SAVE_PATH)
 
 
 # 조작 설정. 볼륨과 같은 파일을 쓰지만 오디오가 아니므로 따로 둔다.

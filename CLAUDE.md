@@ -66,6 +66,7 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
@@ -335,6 +336,41 @@ record; changing it later means recreating all four. It was
 `export_filter` must stay `all_resources`. The game builds asset paths at
 runtime — flags, particles, tap sparkles — so nothing links them from a
 scene, and the scene-following export modes drop them silently.
+
+## Ad policy
+
+The agreed strategy, and what of it exists in code. **No ads SDK is in the
+project** — this is the decision layer only, and it is testable without one.
+
+| | Rule | Built? |
+|---|---|---|
+| Rewarded | Opt-in on the revive popup, once per run. The run's leaderboard entry is frozen at the pre-revive score; the personal best still takes the full score | Yes — `revive_offered`, and `leaderboard_score` captured on the first death only |
+| Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, no ad shown |
+| Banner | Mode-select bottom only, never in gameplay | Slot only — see below |
+| App-open | Not used | n/a |
+
+Three things about the interstitial counter are deliberate and each was
+wrong at first:
+
+- **Counting happens in `_reset_game`, not in the four button handlers.**
+  Every way out of a run — game over PLAY AGAIN or HOME, pause RESTART or
+  HOME — passes through it, so a fifth path added later is counted for free.
+  Per-handler counting is how one path silently stops counting, and a player
+  who always uses that path then never sees an ad.
+- **Exempt runs are not counted at all**, rather than counted-but-suppressed.
+  Suppressing only the display leaves the counter at 3 when the exemption
+  ends, so the first ad lands two runs later — and with a 5-run cycle the
+  first ad was at run 5 either way, making `interstitial_free_games` a knob
+  that did nothing. Not counting them makes the two numbers independent:
+  3 free, then every 5.
+- **The counter is persisted**, in `[ads]` alongside the other saved
+  settings. Session-only state means force-quitting dodges ads, and — far
+  more common — Android killing the app for memory silently resets it.
+  For the same reason the exemption is per **install**, not per launch: per
+  launch, playing one run and closing avoids ads forever.
+
+`run_revived` doubles as "this run used a rewarded ad". It is not a second
+flag, because two flags for one fact drift.
 
 ## The bottom banner slot
 
