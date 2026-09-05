@@ -75,6 +75,7 @@ on failure.
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
@@ -419,6 +420,15 @@ project** — this is the decision layer only, and it is testable without one.
 | | Rule | Built? |
 |---|---|---|
 | Rewarded | Opt-in on the revive popup, once per run. The run's leaderboard entry is frozen at the pre-revive score; the personal best still takes the full score | Yes — `revive_offered`, and `leaderboard_score` captured on the first death only |
+
+Continuing after the ad resumes the run, it does not restart it: `score`,
+`gates_passed` and `max_combo` all survive, and because the phase is derived
+from `gates_passed` alone the difficulty curve picks up exactly where it
+stopped. `combo` is the one thing that breaks, deliberately — you did miss —
+and since scoring is `SCORE_PER_COMBO * combo`, the per-gate rate drops from
+700 back to 20 at the moment you continue. That collapse is what makes a
+resumed run *feel* like it restarted even though nothing else did; measure
+before believing it, which is what `check_revive_continuity.gd` is for.
 | Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, no ad shown |
 | Banner | Mode-select bottom only, never in gameplay | Slot only — see below |
 | App-open | Not used | n/a |
