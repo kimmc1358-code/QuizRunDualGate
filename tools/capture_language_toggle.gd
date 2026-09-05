@@ -92,6 +92,24 @@ func _run() -> void:
 		await _shot("revive_%s" % lang[0])
 		revive.visible = false
 
+		# 게임오버는 세 얼굴이 다 다른 글자를 쓴다. 순위표 줄이 나오는 것은
+		# 로그인 + 부활한 판이고, 기록까지 남은 점수 줄은 아깝게 놓쳤을
+		# 때만이라 기록의 80% 를 넘는 점수를 넣어야 나온다.
+		var over: Control = main.get("gameover_popup")
+		over.call("ensure_built")
+		for shot in [["revived", 12600, 14000, false, 9800], ["close", 13500, 14000, false, 13500]]:
+			over.call("set_result", null, 0.0, int(shot[1]), 24, int(shot[2]),
+				bool(shot[3]), true, int(shot[4]))
+			over.visible = true
+			await _shot("gameover_%s_%s" % [shot[0], lang[0]])
+			over.visible = false
+
+		var about: Control = main.get("about_popup")
+		about.call("ensure_built")
+		about.visible = true
+		await _shot("about_%s" % lang[0])
+		about.visible = false
+
 	main.call("set_language_korean", false)
 	for i in range(4):
 		await process_frame

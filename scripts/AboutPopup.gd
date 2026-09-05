@@ -300,7 +300,7 @@ func _row_height(row: Control, pw: float, w: float) -> float:
 		"intro":
 			var size: int = int(round(pw * INTRO_SIZE_FRAC))
 			var h: float = _font_bold.get_multiline_string_size(
-				INTRO_TEXT, HORIZONTAL_ALIGNMENT_CENTER, w, size).y
+				tr(INTRO_TEXT), HORIZONTAL_ALIGNMENT_CENTER, w, size).y
 			return h + size * 0.5
 		"logo":
 			if _logo_texture == null:
@@ -335,10 +335,10 @@ func _draw_row(row: Control) -> void:
 		"intro":
 			var size: int = int(round(pw * INTRO_SIZE_FRAC))
 			row.draw_multiline_string(_font_bold, Vector2(0.0, size),
-				INTRO_TEXT, HORIZONTAL_ALIGNMENT_CENTER, w, size, -1, INTRO_COLOR)
+				tr(INTRO_TEXT), HORIZONTAL_ALIGNMENT_CENTER, w, size, -1, INTRO_COLOR)
 		"section":
 			var size: int = int(round(pw * SECTION_SIZE_FRAC))
-			var text: String = data[0]
+			var text: String = tr(data[0])
 			var baseline: float = size
 			row.draw_string(_font_heavy, Vector2(0.0, baseline), text,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, size, SECTION_COLOR)
@@ -349,27 +349,31 @@ func _draw_row(row: Control) -> void:
 		"team":
 			var lsize: int = int(round(pw * TEAM_LABEL_SIZE_FRAC))
 			var nsize: int = int(round(pw * TEAM_NAME_SIZE_FRAC))
-			row.draw_string(_font_bold, Vector2(0.0, lsize), data[0],
+			# 이름은 번역하지 않는다 — 사람 이름은 옮기는 것이 아니라 다시 쓰는
+			# 것이고, 본인이 정할 일이다. 앞의 라벨만 옮긴다.
+			row.draw_string(_font_bold, Vector2(0.0, lsize), tr(data[0]),
 				HORIZONTAL_ALIGNMENT_LEFT, -1, lsize, TEAM_LABEL_COLOR)
 			row.draw_string(_font_heavy, Vector2(0.0, lsize * 1.45 + nsize), data[1],
 				HORIZONTAL_ALIGNMENT_LEFT, -1, nsize, TEAM_NAME_COLOR)
 		"entry":
 			# 라벨과 값이 한 줄에 안 들어가면 줄인다 — "Art & Image Generation"
 			# 처럼 긴 라벨이 값과 겹치는 것을 막는다.
+			# 값은 제품 이름이라 그대로 둔다(Godot Engine, Photopea...).
+			var label: String = tr(data[0])
 			var size: int = int(round(pw * ENTRY_SIZE_FRAC))
 			while size > ENTRY_MIN_SIZE and \
-					_font_bold.get_string_size(data[0], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x \
+					_font_bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x \
 					+ _font_heavy.get_string_size(data[1], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x \
 					+ ENTRY_LEADER_PAD * 2.0 + ENTRY_LEADER_STEP * 3.0 > w:
 				size -= 1
 			var baseline: float = row.size.y * 0.5 + size * 0.36
-			row.draw_string(_font_bold, Vector2(0.0, baseline), data[0],
+			row.draw_string(_font_bold, Vector2(0.0, baseline), label,
 				HORIZONTAL_ALIGNMENT_LEFT, -1, size, ENTRY_LABEL_COLOR)
 			var vw: float = _font_heavy.get_string_size(data[1], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 			row.draw_string(_font_heavy, Vector2(w - vw, baseline), data[1],
 				HORIZONTAL_ALIGNMENT_LEFT, -1, size, ENTRY_VALUE_COLOR)
 			# 라벨 끝에서 값 시작까지 점선으로 잇는다.
-			var lw: float = _font_bold.get_string_size(data[0], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+			var lw: float = _font_bold.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 			var from: float = lw + ENTRY_LEADER_PAD
 			var to: float = w - vw - ENTRY_LEADER_PAD
 			var dy: float = baseline - size * 0.18
@@ -381,9 +385,11 @@ func _draw_row(row: Control) -> void:
 			_draw_dotted_divider(row)
 		_:
 			var size: int = int(round(pw * FOOTER_SIZE_FRAC))
-			var tw: float = _font_bold.get_string_size(data[0], HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+			# 저작권 줄은 번역할 것이 없어 그대로 지난다.
+			var foot: String = tr(data[0])
+			var tw: float = _font_bold.get_string_size(foot, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
 			row.draw_string(_font_bold, Vector2((w - tw) * 0.5, row.size.y * 0.5 + size * 0.36),
-				data[0], HORIZONTAL_ALIGNMENT_LEFT, -1, size, FOOTER_COLOR)
+				foot, HORIZONTAL_ALIGNMENT_LEFT, -1, size, FOOTER_COLOR)
 
 # 판 바깥을 누르면 닫는다 — 설정 팝업과 같다.
 func _gui_input(event: InputEvent) -> void:

@@ -192,7 +192,7 @@ func _draw_sliders() -> void:
 # 슬라이더 이름표 그리기를 한 줄짜리로 재사용한다 — 아이콘이 없으니 글자만
 # 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
 func _draw_boost_row() -> void:
-	_draw_slider_labels(_boost_row, [[BOOST_ROW_LABEL, null]],
+	_draw_slider_labels(_boost_row, [[tr(BOOST_ROW_LABEL), null]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _boost_row.size.y, 0.0)
 
 

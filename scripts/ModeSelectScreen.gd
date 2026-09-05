@@ -1519,8 +1519,8 @@ func _explain_candidates() -> Array:
 	var out: Array = []
 	for i in range(CARD_MODES.size()):
 		if CARD_MODES[i] != MODE_HIDDEN and i < CARD_EXPLAIN.size():
-			out.append(CARD_EXPLAIN[i])
-	out.append(CARD_EXPLAIN_HIDDEN_OPEN)
+			out.append(tr(CARD_EXPLAIN[i]))
+	out.append(tr(CARD_EXPLAIN_HIDDEN_OPEN))
 	for n in range(hidden_modes_required + 1):
 		out.append(_hidden_locked_text(n))
 	return out

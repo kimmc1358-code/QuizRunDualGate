@@ -649,7 +649,7 @@ func _gap_line_text() -> String:
 		return ""
 	if float(_score) < float(_best) * GAP_LINE_MIN_RATIO:
 		return ""
-	return GAP_LINE_FORMAT % _group(_best - _score)
+	return tr(GAP_LINE_FORMAT) % _group(_best - _score)
 
 
 # NEW BEST!를 리본의 휨을 따라 한 자씩 얹는다.
@@ -749,7 +749,7 @@ func _draw_login_box() -> void:
 		# 순위표가 없으니, 로그인 권유를 그대로 두는 편이 쓸모 있다.
 		colour = REVIVED_BOX_COLOR
 		icon = _info
-		text = REVIVED_BOX_FORMAT % _group(_leaderboard_score)
+		text = tr(REVIVED_BOX_FORMAT) % _group(_leaderboard_score)
 	elif _logged_in:
 		colour = SAVED_BOX_COLOR
 		icon = _check

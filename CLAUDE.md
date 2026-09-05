@@ -59,8 +59,8 @@ dev machine shows Korean in the editor, which is worth knowing before you
 think something is broken.
 
 Only part of the game is translated, deliberately: the mode names and their
-blurbs, the leaderboard label, the tutorial, and the pause / revive / game
-over popups. **Words that live in painted art stay English** — START, READY,
+blurbs, the leaderboard label, the tutorial, the pause / revive / game over
+popups, and the settings and about popups. **Words that live in painted art stay English** — START, READY,
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
 them. So does `LOGIN WITH`, which is glued to the Google mark.
 
@@ -80,6 +80,26 @@ because they also key the problem generator, the repeat guard and the answer
 matching. Translating at the source would tie that logic to the locale for no
 gain. So each is one `tr()` at the draw site, plus the width measurement that
 sizes the gate labels.
+
+**The gap this leaves is a string that never reaches `tr()`**, and it does not
+look like a bug: `tr()` returns its key when there is no translation, so a
+missed string is one tidy English line in the middle of a Korean screen. Four
+were found by eye before `check_translations.gd` existed, and every one of
+them took a value — `"Leaderboard kept your score at %s"`, `"%s to beat your
+best"` — because the `tr()` had gone on the plain constants next to them and
+the `%` line was built somewhere else entirely. The checker's list of
+deliberate exceptions (`ENGLISH_ON_PURPOSE`, `LEAVE_ALONE`) is the record of
+which words stay English and why; adding a string now forces that decision
+instead of deferring it to whoever next reads the screen in Korean.
+
+The **HUD's own `SCORE` and `BEST` stay English** while the game-over popup
+says 점수 — the Korean scope was drawn around the menus and popups, and those
+two labels belong to the play screen, sitting on painted plates beside the
+mode cards' English `BEST`. It is a real inconsistency and it is on purpose;
+`LEAVE_ALONE` carries the reason.
+
+People's names in the about popup are **not** translated. Transliterating a
+name is rewriting it, and that is the owner's call, not the translator's.
 
 `scripts/AppFont.gd` is where the fonts are decided, and every screen takes
 its base font from there. Fredoka has no Hangul, so a Korean face is attached
@@ -157,6 +177,7 @@ on failure.
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
+| `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
