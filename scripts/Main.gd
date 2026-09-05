@@ -1944,8 +1944,8 @@ const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH, LOGO }
 
 # ============================================================
-# 로고 화면 — 부팅 직후, 스플래시보다 먼저. 검은 바탕에 로고와 크레딧만
-# 띄우고 페이드 인/유지/페이드 아웃 뒤 스스로 스플래시로 넘어간다.
+# 로고 화면 — 부팅 직후, 스플래시보다 먼저. 검은 바탕에 로고만 띄우고
+# 페이드 인/유지/페이드 아웃 뒤 스스로 스플래시로 넘어간다.
 # 아무 데나 누르면 바로 페이드 아웃으로 건너뛴다. 음악은 아직 틀지 않는다 —
 # 스플래시로 넘어갈 때 시작해야 로고가 조용히 뜬다.
 # ============================================================
@@ -1955,25 +1955,13 @@ const LOGO_FADE_IN := 0.45
 const LOGO_HOLD := 1.5
 const LOGO_FADE_OUT := 0.45
 const LOGO_WIDTH_FRAC := 0.78        # of view width
-# 로고와 글자를 한 덩어리로 묶어 화면 가운데에 놓는다.
+# 로고 한 장만 놓는다. 정중앙보다 살짝 위 — 화면 가운데에 정확히 두면 아래가
+# 비어 보인다.
+#
+# 예전에는 로고 아래에 "BETA VERSION"과 제작자 두 줄이 함께 붙어 한 덩어리로
+# 가운데 정렬됐다. 크레딧은 About 팝업에 이미 있고, 시작할 때마다 이름을
+# 지나쳐야 할 이유가 없다.
 const LOGO_BLOCK_CENTER_FRAC := 0.46  # of view height
-const LOGO_TO_BETA_GAP_FRAC := 0.055  # of view height
-const LOGO_BETA_TO_CREDIT_GAP_FRAC := 0.040
-const LOGO_CREDIT_LINE_GAP_FRAC := 0.028
-const LOGO_BETA_TEXT := "BETA VERSION"
-const LOGO_BETA_FONT_FRAC := 0.026    # of view height
-const LOGO_BETA_COLOR := Color(1.0, 0.84, 0.32, 1.0)
-const LOGO_CREDIT_FONT_FRAC := 0.019
-const LOGO_CREDIT_ROLE_COLOR := Color(0.62, 0.66, 0.74, 1.0)
-const LOGO_CREDIT_NAME_COLOR := Color(0.92, 0.94, 0.98, 1.0)
-const LOGO_CREDIT_DOT := "·"
-# 역할 칸을 가장 긴 역할에 맞춰 잡고 그 뒤에 점과 이름을 놓으므로, 글꼴이
-# 바뀌어도 두 줄의 점이 세로로 맞는다.
-const LOGO_CREDIT_GAP_FRAC := 0.030   # of view width — 역할|점|이름 사이 간격
-const LOGO_CREDITS := [
-	["Game Design & Development", "Kim Min Cheol"],
-	["Art & Design", "Kang Sol Ji"],
-]
 
 # ============================================================
 # Splash / title screen — the first thing shown on boot, before the mode
@@ -6309,8 +6297,7 @@ func _animate_button_release(button: Button) -> void:
 # minified. The layer is a child CanvasItem carrying its own filter, so the
 # title screen gets smooth minification without changing how the game itself
 # draws a single pixel.
-# 로고 화면. 검은 바탕 + 로고 + "BETA VERSION" + 크레딧 두 줄을 한 덩어리로
-# 묶어 가운데에 놓고, 전체에 같은 페이드를 건다.
+# 로고 화면. 검은 바탕에 로고 한 장, 페이드 인/아웃.
 func _draw_logo(view_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, view_size), LOGO_BACKGROUND)
 	if logo_texture == null:
@@ -6323,53 +6310,13 @@ func _draw_logo(view_size: Vector2) -> void:
 		alpha = clampf(1.0 - out_t, 0.0, 1.0)
 	if alpha <= 0.0:
 		return
-	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 
 	var logo_w: float = view_size.x * LOGO_WIDTH_FRAC
 	var logo_h: float = logo_w * float(logo_texture.get_height()) / float(logo_texture.get_width())
-	var beta_size: int = maxi(8, int(round(view_size.y * LOGO_BETA_FONT_FRAC)))
-	var credit_size: int = maxi(7, int(round(view_size.y * LOGO_CREDIT_FONT_FRAC)))
-	var beta_h: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).y
-	var credit_h: float = font.get_string_size("Ag", HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).y
-	var gap1: float = view_size.y * LOGO_TO_BETA_GAP_FRAC
-	var gap2: float = view_size.y * LOGO_BETA_TO_CREDIT_GAP_FRAC
-	var line_gap: float = view_size.y * LOGO_CREDIT_LINE_GAP_FRAC
-
-	var block_h: float = logo_h + gap1 + beta_h + gap2 + credit_h * LOGO_CREDITS.size() \
-		+ line_gap * (LOGO_CREDITS.size() - 1)
-	var top: float = view_size.y * LOGO_BLOCK_CENTER_FRAC - block_h * 0.5
-
+	var top: float = view_size.y * LOGO_BLOCK_CENTER_FRAC - logo_h * 0.5
 	draw_texture_rect(logo_texture,
 		Rect2(view_size.x * 0.5 - logo_w * 0.5, top, logo_w, logo_h),
 		false, Color(1.0, 1.0, 1.0, alpha))
-
-	var beta_w: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).x
-	var beta_baseline: float = top + logo_h + gap1 + beta_h * 0.78
-	draw_string(font, Vector2(view_size.x * 0.5 - beta_w * 0.5, beta_baseline),
-		LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size,
-		Color(LOGO_BETA_COLOR, LOGO_BETA_COLOR.a * alpha))
-
-	# 역할 칸을 가장 긴 역할에 맞춰 두면 두 줄의 점이 세로로 맞는다.
-	var gap: float = view_size.x * LOGO_CREDIT_GAP_FRAC
-	var role_w := 0.0
-	var name_w := 0.0
-	for row in LOGO_CREDITS:
-		role_w = maxf(role_w, font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
-		name_w = maxf(name_w, font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
-	var dot_w: float = font.get_string_size(LOGO_CREDIT_DOT, HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x
-	var block_w: float = role_w + gap + dot_w + gap + name_w
-	var left: float = view_size.x * 0.5 - block_w * 0.5
-	var y: float = top + logo_h + gap1 + beta_h + gap2 + credit_h * 0.78
-	for row in LOGO_CREDITS:
-		draw_string(font, Vector2(left, y), row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
-		draw_string(font, Vector2(left + role_w + gap, y), LOGO_CREDIT_DOT,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
-		draw_string(font, Vector2(left + role_w + gap + dot_w + gap, y), row[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_NAME_COLOR, LOGO_CREDIT_NAME_COLOR.a * alpha))
-		y += credit_h + line_gap
 
 
 func _draw_splash_characters() -> void:
