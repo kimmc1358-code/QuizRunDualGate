@@ -142,6 +142,11 @@ func _run() -> void:
 				# 설명이 그 자리를 덮으면 안 된다.
 				if card.intersects(r):
 					problems.append("설명 판이 밝힌 자리를 덮는다")
+			# 글자가 판을 넘으면 draw_string 이 잘라 낸다. 넘칠 때 줄여서
+			# 맞추게 해 두었지만, 바닥까지 줄여도 안 들어가면 문구가 너무 길다.
+			var over: float = overlay.call("_line_overflow", step)
+			if over > 0.5:
+				problems.append("가장 긴 줄이 판을 %.0fpx 넘는다 — 글자가 잘린다" % over)
 			if card.size.y <= 0.0:
 				problems.append("설명이 비어 있다")
 			elif card.position.y < -1.0 or card.end.y > view.y + 1.0:

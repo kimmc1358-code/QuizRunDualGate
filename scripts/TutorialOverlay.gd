@@ -37,6 +37,9 @@ const CARD_MARGIN_X_FRAC := 0.07     # 화면 폭 대비 좌우 여백
 const CARD_PAD_FRAC := 0.045         # 화면 폭 대비 판 안쪽 여백
 const CARD_GAP := 18.0               # 구멍과 판 사이
 const TEXT_SIZE_FRAC := 0.048        # 화면 폭 대비
+# 한 줄이 판을 넘으면 글자를 줄여 맞춘다. 문구를 고칠 때마다 폭을 재 보게
+# 하는 대신, 넘치면 알아서 작아지고 이 바닥 밑으로 가면 체커가 잡는다.
+const TEXT_MIN_SIZE := 13
 const TEXT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const TEXT_LINE_GAP := 1.30          # 줄 간격, 글자 크기 대비
 
@@ -242,6 +245,38 @@ func _draw_ring(hole: Dictionary) -> void:
 
 
 # 설명 판. 구멍 덩어리의 반대쪽 — 구멍이 위쪽이면 아래에, 아래쪽이면 위에.
+## 모든 줄이 판 안에 들어가는 가장 큰 글자 크기.
+##
+## draw_string 은 폭을 넘는 줄을 잘라 낸다 — 문구를 한 단어 늘렸다가 마지막
+## 글자가 사라지는 식으로 조용히 깨진다. 넘치면 줄여서 맞추고, 바닥
+## (TEXT_MIN_SIZE)까지 줄여도 안 들어가면 문구가 너무 긴 것이므로 체커가 잡는다.
+func _fit_text_size(lines: PackedStringArray, room: float) -> int:
+	var font: Font = _font_bold if _font_bold != null else ThemeDB.fallback_font
+	var s: int = maxi(TEXT_MIN_SIZE, int(round(size.x * TEXT_SIZE_FRAC)))
+	while s > TEXT_MIN_SIZE:
+		var widest := 0.0
+		for line in lines:
+			widest = maxf(widest, font.get_string_size(
+				line, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x)
+		if widest <= room:
+			break
+		s -= 1
+	return s
+
+
+## 가장 긴 줄이 자리를 얼마나 넘는가. 0 이하면 다 들어간다. 체커용이 아니라
+## 위 피팅이 바닥까지 갔을 때 남는 초과분을 재는 값이다.
+func _line_overflow(step: Dictionary) -> float:
+	var lines: PackedStringArray = str(step.get("text", "")).split("\n")
+	var room: float = size.x * (1.0 - CARD_MARGIN_X_FRAC * 2.0) - size.x * CARD_PAD_FRAC * 2.0
+	var font: Font = _font_bold if _font_bold != null else ThemeDB.fallback_font
+	var s: int = _fit_text_size(lines, room)
+	var widest := 0.0
+	for line in lines:
+		widest = maxf(widest, font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, s).x)
+	return widest - room
+
+
 ## 설명 판이 놓일 사각형. 그리는 쪽과 체커가 같은 답을 봐야 하므로 함수로 둔다 —
 ## 판이 하이라이트를 덮는 것이 정확히 이 계산의 실수였다.
 func _card_rect(step: Dictionary) -> Rect2:
@@ -250,9 +285,9 @@ func _card_rect(step: Dictionary) -> Rect2:
 		return Rect2()
 	var margin: float = size.x * CARD_MARGIN_X_FRAC
 	var pad: float = size.x * CARD_PAD_FRAC
-	var text_size: int = maxi(10, int(round(size.x * TEXT_SIZE_FRAC)))
-	var label_size: int = maxi(8, int(round(size.x * STEP_LABEL_SIZE_FRAC)))
 	var lines: PackedStringArray = text.split("\n")
+	var text_size: int = _fit_text_size(lines, size.x * (1.0 - CARD_MARGIN_X_FRAC * 2.0) - size.x * CARD_PAD_FRAC * 2.0)
+	var label_size: int = maxi(8, int(round(size.x * STEP_LABEL_SIZE_FRAC)))
 	var card_h: float = pad * 2.0 + label_size * TEXT_LINE_GAP \
 		+ text_size * TEXT_LINE_GAP * lines.size()
 	return Rect2(margin, _card_y(step.get("holes", []), card_h),
@@ -265,9 +300,9 @@ func _draw_card(step: Dictionary, _holes: Array) -> void:
 		return
 	var text: String = str(step.get("text", ""))
 	var pad: float = size.x * CARD_PAD_FRAC
-	var text_size: int = maxi(10, int(round(size.x * TEXT_SIZE_FRAC)))
-	var label_size: int = maxi(8, int(round(size.x * STEP_LABEL_SIZE_FRAC)))
 	var lines: PackedStringArray = text.split("\n")
+	var text_size: int = _fit_text_size(lines, size.x * (1.0 - CARD_MARGIN_X_FRAC * 2.0) - size.x * CARD_PAD_FRAC * 2.0)
+	var label_size: int = maxi(8, int(round(size.x * STEP_LABEL_SIZE_FRAC)))
 	var line_h: float = text_size * TEXT_LINE_GAP
 	var label: String = "%d / %d" % [_index + 1, _steps.size()]
 	var card_w: float = card.size.x

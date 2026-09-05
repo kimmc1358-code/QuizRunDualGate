@@ -6124,7 +6124,10 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 				{"rect": bar, "round": bar.size.y * 0.5},
 				{"rect": button, "round": maxf(button.size.x, button.size.y)},
 			],
-			"text": "Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.",
+			# 마지막 줄은 자리 바꾸기 안내다. 왼손잡이에게는 이 버튼이 처음부터
+			# 반대쪽에 있어야 하는데, 설정을 뒤져 볼 생각을 하려면 그런 것이
+			# 있다는 걸 먼저 알아야 한다 — 버튼을 가리키고 있는 지금이 그 자리다.
+			"text": "Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.\nSwap its side in Settings or Pause.",
 		},
 	]
 
