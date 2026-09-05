@@ -315,6 +315,26 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
 
 - `.tscn` is **not XML**. Writing `&gt;` in a `text =` field stores those
   five characters literally.
+- **Comments in `project.godot` do not survive.** The editor rewrites the
+  whole file from its in-memory settings whenever it saves, and `;` lines are
+  not part of that — every comment there has already been silently deleted
+  once. Values are untouched; only the reasoning goes. So anything worth
+  explaining about a project setting belongs here, not next to it. The three
+  that were lost, since each cost real time to find:
+  - `display/window/handheld/orientation` is an **int enum** in Godot 4
+    (0=landscape, 1=portrait). Godot 3's `"portrait"` string fails the type
+    check, is dropped, and falls back to 0 — the APK ran landscape while the
+    file read correctly, and desktop never showed it because the window is
+    sized from `viewport_width/height` anyway.
+  - `window/size/window_*_override.editor` runs the editor at 480x1067 (20:9,
+    what most phones actually are) while the base viewport stays 16:9. The
+    `.editor` suffix keeps it out of exported builds, which have no `editor`
+    feature tag. Do not "fix" this by changing the base viewport — that is
+    where `_gate_field_height_cap` gets the play field's ceiling, so it moves
+    the difficulty.
+  - `rendering/textures/vram_compression/import_etc2_astc` exists only
+    because the Android export refuses without it. Nothing is actually
+    re-encoded: all 473 textures import lossless.
 - `assets/backgrounds/<mode>_world/` has no `sky_world/particles/` — SKY
   intentionally has no ambient layer.
 - The score box art (`assets/gates/flag_panel/panel_*.png`) is shared
