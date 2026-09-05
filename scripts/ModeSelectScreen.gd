@@ -228,15 +228,17 @@ const CARD_LOCK_FALLBACK_FILE := "res://assets/ui_assets/popup/icon_lock.png"
 # 계열로 덮으면 원래 색에 따라 흐려지는 정도가 제각각이라, 어두운 쪽으로 덮어
 # 넷을 같은 밝기로 눌러 준다.
 const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.70)
-# 카드 아트의 흰 테두리는 반투명으로 덮어도 계속 밝게 남는다 — 재 보니 흰색
-# 254,254,254 이 덮개를 통과하고도 114,117,126 이라, 어두워진 속(114,70,103)
-# 둘레에 밝은 링이 그려져 카드가 반쯤만 잠긴 것처럼 보였다. 그 띠만 불투명으로
-# 덮어 없앤다.
+# 덮개는 카드의 흰 테두리 **안쪽까지만** 덮는다. 테두리는 원래 밝기로 남는다.
+#
+# 흰 띠를 반투명으로 덮으면 254,254,254 이 117 로만 내려가, 어두워진 속
+# 둘레에 어중간하게 밝은 링이 생긴다 — 덮다 만 것으로 보인다. 그렇다고 그
+# 자리에 불투명한 띠를 얹으면 이번엔 검은 테두리가 새로 생긴다. 아예 손대지
+# 않으면 카드는 다른 세 장과 같은 흰 테두리를 그대로 두른 채 속만 어두워져서,
+# 세 방법 중 유일하게 "원래 그런 카드"처럼 보인다.
 #
 # 두께는 아트에서 잰 값이다: 706px 폭 원본에서 흰 테두리가 14px. 카드가 그려지는
 # 배율은 모서리 반지름과 같은 식으로 구한다(_card_corner_radius).
 const CARD_LOCK_VEIL_BORDER_NATIVE := 14.0
-const CARD_LOCK_VEIL_BORDER_COLOR := Color(0.08, 0.10, 0.17, 1.0)
 # 그려지는 크기에 맞춰 굽는다 — CARD_LOCK_FILE 을 읽는 곳의 설명을 볼 것.
 const CARD_LOCK_BAKE_H := 72
 const CARD_LOCK_ICON_HEIGHT_FRAC := 0.54   # 덮개가 쓸 수 있는 자리 높이 대비
@@ -1702,13 +1704,22 @@ func _card_rect(index: int) -> Rect2:
 	return rect
 
 
-# 잠금 덮개의 불투명 테두리 두께. 카드 아트의 흰 띠와 같은 배율로 줄인다.
+# 덮개가 실제로 칠하는 사각형 — 카드에서 흰 테두리만큼 안으로 들어온 자리.
+# 체커가 같은 답을 봐야 하므로 함수로 둔다.
+func _lock_veil_rect(index: int, card_rect: Rect2) -> Rect2:
+	return card_rect.grow(-float(_card_lock_border_width(index)))
+
+
+# 카드 아트의 흰 테두리 두께를 그려지는 배율로 옮긴 값. 덮개는 이만큼 안쪽에서
+# 시작한다.
 func _card_lock_border_width(index: int) -> int:
 	if index < 0 or index >= _cards.size():
 		return 0
 	var card: TextureButton = _cards[index]
 	var art_scale: float = card.size.x * card.scale.x / SELECT_SHEET_WIDTH_NATIVE
-	return maxi(1, int(ceil(CARD_LOCK_VEIL_BORDER_NATIVE * art_scale)))
+	# ceil 이 아니라 round 다. 올림하면 카드 속의 밝은 띠가 1px 안 덮인 채
+	# 남고, 그게 흰 링이 반쯤 남은 것과 똑같이 보인다.
+	return maxi(1, int(round(CARD_LOCK_VEIL_BORDER_NATIVE * art_scale)))
 
 
 func _card_corner_radius(index: int = -1) -> int:
@@ -1758,14 +1769,10 @@ func _draw_card_lock(card_rect: Rect2) -> void:
 	var index: int = CARD_MODES.find(MODE_HIDDEN)
 	var veil := StyleBoxFlat.new()
 	veil.bg_color = CARD_LOCK_VEIL_COLOR
-	veil.set_corner_radius_all(_card_corner_radius(index))
-	# 흰 테두리 자리에만 불투명한 띠를 얹는다. StyleBoxFlat 의 테두리는 상자
-	# 안쪽으로 그려지고 상자는 카드와 같은 사각형이므로, 두께만 맞으면 아트의
-	# 흰 띠와 정확히 겹친다.
-	veil.set_border_width_all(_card_lock_border_width(index))
-	veil.border_color = CARD_LOCK_VEIL_BORDER_COLOR
+	var inset: int = _card_lock_border_width(index)
+	veil.set_corner_radius_all(maxi(0, _card_corner_radius(index) - inset))
 	veil.anti_aliasing = true
-	_select_overlay.draw_style_box(veil, card_rect)
+	_select_overlay.draw_style_box(veil, _lock_veil_rect(index, card_rect))
 
 	var parts: Dictionary = _lock_layout(index, card_rect)
 	if _lock_texture != null:

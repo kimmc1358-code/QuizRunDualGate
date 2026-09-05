@@ -278,26 +278,43 @@ func _run() -> void:
 					hint.size.x, hint.size.y, int(parts["hint_size"]),
 					"ok" if probs.is_empty() else "FAIL"])
 
-		# 불투명 테두리가 카드의 흰 띠를 다 덮는가. 반투명 덮개만으로는 흰색이
-		# 계속 밝게 남아(254 -> 117) 잠긴 카드 둘레에 링이 생겼다. 두께를
-		# 아트에서 직접 재어 비교한다 — 상수(14px)를 여기 베껴 두면 아트를
-		# 다시 그렸을 때 둘 다 옛 값을 말하며 통과한다.
+		# 덮개가 흰 테두리 안쪽에서 딱 멈추는가.
+		#
+		# 두 방향 모두 틀릴 수 있다. 덜 들어가면 흰 띠가 반쯤 어두워져 어중간한
+		# 링이 남고(254 -> 117), 너무 들어가면 카드 속의 밝은 띠가 덮이지 않고
+		# 남는다. 기준값은 아트에서 직접 잰다 — 상수(14px)를 여기 베껴 두면
+		# 카드 아트를 다시 그렸을 때 둘 다 옛 값을 말하며 통과한다.
 		screen.size = view
 		screen.call("_layout")
 		await process_frame
 		var card_img: Image = cards[hidden_card].texture_normal.get_image()
 		var white_native: int = _white_border_px(card_img)
-		var art_scale: float = cards[hidden_card].size.x / float(screen.get("SELECT_SHEET_WIDTH_NATIVE"))
-		var need_px: float = white_native * art_scale
-		var got_px: int = screen.call("_card_lock_border_width", hidden_card)
-		if got_px + 0.5 < need_px:
-			_fail("덮개 테두리가 %dpx 인데 카드의 흰 띠는 %.1fpx 다 — 흰색이 삐져나온다" % [
-				got_px, need_px])
+		if white_native <= 0:
+			_fail("카드 아트에서 흰 테두리를 못 찾았다 — 이 검사가 아무것도 안 잰다")
+		# 고른 카드는 105%% 로 그려지고 흰 띠도 같이 커진다. 배율을 빼먹으면
+		# 기준값이 실제보다 작게 나와 검사가 헐거워진다.
+		var native_w: float = float(screen.get("SELECT_SHEET_WIDTH_NATIVE"))
+		var art_scale: float = cards[hidden_card].size.x * cards[hidden_card].scale.x / native_w
+		var want_inset: float = white_native * art_scale
+		var lock_card2: Rect2 = screen.call("_lock_draw_rect")
+		var veil: Rect2 = screen.call("_lock_veil_rect", hidden_card, lock_card2)
+		var got_inset: float = veil.position.x - lock_card2.position.x
+		# 위아래 좌우가 같은 값이어야 한다 — 한쪽만 어긋나면 링이 한 변에만 남는다.
+		for entry in [["top", veil.position.y - lock_card2.position.y],
+				["right", lock_card2.end.x - veil.end.x],
+				["bottom", lock_card2.end.y - veil.end.y]]:
+			if absf(float(entry[1]) - got_inset) > 0.5:
+				_fail("덮개가 왼쪽에서 %.1fpx, %s 에서 %.1fpx 들어와 있다" % [
+					got_inset, entry[0], float(entry[1])])
+		if got_inset < want_inset - 0.5:
+			_fail("덮개가 %.1fpx 만 들어와 있는데 흰 띠는 %.1fpx 다 — 띠가 반쯤 어두워져 링이 남는다" % [
+				got_inset, want_inset])
+		elif got_inset > want_inset + 1.0:
+			_fail("덮개가 %.1fpx 들어와 있어 흰 띠(%.1fpx)보다 더 물러섰다 — 카드 속이 덜 덮인다" % [
+				got_inset, want_inset])
 		else:
-			print("  veil border %dpx vs the card's white rim %.1fpx (native %d)" % [
-				got_px, need_px, white_native])
-		if not screen.get("CARD_LOCK_VEIL_BORDER_COLOR").a >= 0.999:
-			_fail("덮개 테두리가 불투명하지 않다 — 반투명이면 흰 띠가 그대로 비친다")
+			print("  veil stops %.1fpx in, the card's white rim is %.1fpx (native %d)" % [
+				got_inset, want_inset, white_native])
 
 		# 해금하면 사라져야 한다. _draw_selection 은 _lock_draw_rect() 가 빈
 		# 사각형인지만 보고 그리므로, 그 함수의 답이 곧 화면에 나오는 답이다.
