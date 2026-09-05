@@ -500,6 +500,18 @@ func ensure_built() -> void:
 	_ready()
 
 
+## 처음부터 다시 짓는다 — 언어가 바뀌었을 때 Main 이 부른다. _build 가 이미
+## 자식을 비우므로(소리 재생기는 남긴다) 그대로 다시 부르면 된다. 다만 고른
+## 카드는 _build 가 모르는 상태다 — 다시 걸어 주지 않으면 언어를 바꾼 순간
+## 고르지도 않은 첫 카드가 커진다.
+func rebuild() -> void:
+	if not _built:
+		return
+	_build()
+	_select(selected_index, false)
+	_layout()
+
+
 func _ready() -> void:
 	if not _built:
 		return
@@ -691,6 +703,9 @@ func _build() -> void:
 		# rebuild — they are created before this runs.
 		if child is AudioStreamPlayer:
 			continue
+		# 떼고 나서 지운다. queue_free 만 하면 이번 프레임이 끝날 때까지 트리에
+		# 남아, 다시 지은 카드 위에서 탭을 한 번 더 받아 낸다.
+		remove_child(child)
 		child.queue_free()
 	_cards.clear()
 
@@ -926,7 +941,7 @@ func _build() -> void:
 	_start.add_child(_start_label)
 
 	_remove_ads = Button.new()
-	_remove_ads.text = REMOVE_ADS_TEXT
+	_remove_ads.text = tr(REMOVE_ADS_TEXT)
 	_remove_ads.flat = true
 	_remove_ads.focus_mode = Control.FOCUS_NONE
 	_remove_ads.add_theme_font_override("font", AppFont.base())
@@ -1634,7 +1649,7 @@ func _draw_remove_ads_rule() -> void:
 	if font == null:
 		return
 	var font_size: int = _remove_ads.get_theme_font_size("font_size")
-	var text_size: Vector2 = font.get_string_size(REMOVE_ADS_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
+	var text_size: Vector2 = font.get_string_size(tr(REMOVE_ADS_TEXT), HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 	var centre: Vector2 = _remove_ads.size * 0.5
 	# The baseline sits below the visual middle by roughly a quarter of the
 	# line box, the same approximation the text drawing elsewhere uses.

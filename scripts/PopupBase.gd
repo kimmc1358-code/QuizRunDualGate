@@ -229,6 +229,22 @@ func ensure_built() -> void:
 	_ready()
 
 
+## 처음부터 다시 짓는다. 언어가 바뀌었을 때 Main 이 부른다 — 글자는 지을 때
+## tr() 을 거쳐 굳고 글자 크기도 그때 맞춰지므로, 로케일만 바꿔서는 이미
+## 만들어진 것들이 옛 언어로 남는다.
+func rebuild() -> void:
+	if not _built:
+		return
+	var was_visible := visible
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+	_built = false
+	ensure_built()
+	visible = was_visible
+	_layout()
+
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP  # 팝업 뒤로 탭이 새지 않게
 	# 프로젝트 기본 필터가 Nearest다(project.godot의 default_texture_filter=0).
@@ -261,7 +277,10 @@ func _ready() -> void:
 	add_child(_panel)
 
 	_build_content()
-	resized.connect(_layout)
+	# rebuild() 가 이 함수를 다시 지나므로 이미 걸려 있을 수 있다. 그냥
+	# 걸면 Godot 이 중복 연결로 오류를 낸다.
+	if not resized.is_connected(_layout):
+		resized.connect(_layout)
 	_layout()
 
 
@@ -1055,6 +1074,16 @@ func _slider_label_column(font_size: int, texts: Array) -> float:
 		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
 	# 아이콘(글자 높이와 같은 정사각형 가정) + 간격 + 글자 + 트랙까지 숨돌릴 틈
 	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
+
+
+# 아이콘 없이 칸을 통째로 쓰는 이름표(BOOST/LANGUAGE)용 — 슬라이더와 같은
+# 칸을 나눠 쓰므로 둘 다 재서 넓은 쪽을 골라야 한다. 슬라이더 쪽만 재면
+# 이름표가 트랙 밑으로 파고든다: "LANGUAGE" 가 "MUSIC" 보다 길다.
+func _row_label_column(font_size: int, texts: Array) -> float:
+	var w := 0.0
+	for text in texts:
+		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	return w + font_size * 0.5
 
 
 # ---- 두 갈래 토글 ----

@@ -95,6 +95,9 @@ func panel_center_y_frac() -> float:
 
 
 func _build_content() -> void:
+	# 다시 지을 때(rebuild) 자식은 모두 지워진 뒤다 — 비우지 않으면 배치가
+	# 이미 사라진 노드를 짚는다.
+	_rows.clear()
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_scroll.follow_focus = false

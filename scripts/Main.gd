@@ -2225,6 +2225,12 @@ const SAVE_KEY_RESTARTS_SINCE_AD := "restarts_since_ad"
 const SAVE_SECTION_AUDIO := "audio"
 # 조작 설정. 볼륨과 같은 파일을 쓰되 오디오와 섞지 않는다.
 const SAVE_SECTION_CONTROLS := "controls"
+# 언어. 저장이 없으면 기기 언어를 따른다 — 처음 켠 사람이 설정을 찾을 필요가
+# 없어야 한다. 한 번 고르고 나면 그 선택이 기기 언어보다 앞선다.
+const SAVE_SECTION_LOCALE := "locale"
+const SAVE_KEY_LANGUAGE := "language"
+const LOCALE_EN := "en"
+const LOCALE_KO := "ko"
 const SAVE_KEY_SFX := "sfx_volume"
 const SAVE_KEY_MUSIC := "music_volume"
 
@@ -2658,6 +2664,10 @@ func _setup_fonts() -> void:
 
 # 부팅의 무거운 쪽. _ready 에서 곧바로, 또는 로고가 뜬 뒤에 불린다.
 func _boot_load() -> void:
+	# 무엇보다 먼저. 판들은 지어질 때 tr() 을 한 번 지나고 그 결과를 라벨과
+	# 맞춰 둔 글자 크기에 굳혀 버린다 — 다 지은 뒤에 로케일을 바꾸면 화면은
+	# 기기 언어 그대로 남는다.
+	_load_language()
 	# 팝업 셋과 모드 선택 화면은 씬의 자식이라 원래 Main 보다 먼저 _ready 가
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
@@ -2804,6 +2814,7 @@ func _boot_load() -> void:
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
 	settings_popup.music_volume_changed.connect(set_music_volume)
 	settings_popup.boost_side_changed.connect(set_boost_button_on_left)
+	settings_popup.language_changed.connect(set_language_korean)
 	settings_popup.login_pressed.connect(_on_login_pressed)
 	settings_popup.logout_pressed.connect(_on_logout_pressed)
 	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
@@ -6016,6 +6027,7 @@ func _on_restart_pressed() -> void:
 func _open_settings() -> void:
 	settings_popup.set_volumes(sfx_volume, music_volume)
 	settings_popup.set_boost_side(boost_button_on_left)
+	settings_popup.set_language(TranslationServer.get_locale().begins_with(LOCALE_KO))
 	# 프로필 사진과 닉네임은 인증이 붙으면 여기로 들어온다.
 	settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
 	settings_popup.visible = true
@@ -6530,6 +6542,21 @@ func _load_control_settings() -> void:
 			SAVE_SECTION_CONTROLS, SAVE_KEY_BOOST_LEFT, boost_button_on_left))
 
 
+# 저장해 둔 언어. 없으면 기기 언어를 그대로 쓴다.
+#
+# 다른 설정들과 달리 _boot_load 의 맨 앞에서 불린다 — 판을 짓는 것보다 먼저
+# 정해져 있어야 한다. 여기 뒤로 밀려 있었을 때는, 한국어를 고른 기기에서
+# 영어를 골라 두고 다시 켜면 화면 전체가 한국어로 뜬 뒤 로케일만 영어가
+# 되어 있었다.
+func _load_language() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	var saved: String = str(cfg.get_value(SAVE_SECTION_LOCALE, SAVE_KEY_LANGUAGE, ""))
+	if saved != "":
+		TranslationServer.set_locale(saved)
+
+
 func _save_control_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
@@ -6551,6 +6578,49 @@ func set_boost_button_on_left(on_left: bool) -> void:
 		settings_popup.set_boost_side(on_left)
 	if pause_panel != null:
 		pause_panel.set_boost_side(on_left)
+
+
+# ---- 언어 ----
+#
+# 설정에서 ENG/KOR 을 고를 때. 저장한 뒤 화면들을 다시 짓는다.
+#
+# 다시 짓는 것 말고는 방법이 마땅치 않다. 이 프로젝트는 글자를 그릴 때 tr() 을
+# 거치는데, 그 결과가 라벨의 text 나 미리 맞춰 둔 글자 크기·판 너비로 굳어
+# 있다 — 로케일만 바꾸면 이미 굳은 것들은 옛 언어 그대로 남는다. 판을 새로
+# 짓게 하면 모든 tr() 과 모든 맞춤 계산이 새 언어로 다시 돈다.
+func set_language_korean(korean: bool) -> void:
+	var want: String = LOCALE_KO if korean else LOCALE_EN
+	if TranslationServer.get_locale().begins_with(want):
+		return
+	TranslationServer.set_locale(want)
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_LOCALE, SAVE_KEY_LANGUAGE, want)
+	cfg.save(SAVE_PATH)
+	# 지금 이 호출은 설정 팝업의 버튼 신호 안이다. 그 팝업을 여기서 헐면
+	# 신호를 쏜 노드가 자기 아래에서 사라진다.
+	_rebuild_for_language.call_deferred()
+
+
+func _rebuild_for_language() -> void:
+	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
+			mode_select_panel]:
+		if panel != null and panel.has_method("rebuild"):
+			panel.rebuild()
+	# 설정 팝업은 다시 지어지면서 토글도 초기값으로 돌아간다 — 지금 값을 도로
+	# 넣어 준다. 보스트 쪽도 같은 이유로 함께.
+	if settings_popup != null:
+		settings_popup.set_language(TranslationServer.get_locale().begins_with(LOCALE_KO))
+		settings_popup.set_boost_side(boost_button_on_left)
+		settings_popup.set_volumes(sfx_volume, music_volume)
+		settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
+	if pause_panel != null:
+		pause_panel.set_boost_side(boost_button_on_left)
+		pause_panel.set_volumes(sfx_volume, music_volume)
+	if mode_select_panel != null:
+		mode_select_panel.set_best_scores(best_scores)
+		_push_hidden_progress()
+	queue_redraw()
 
 
 # 최고 점수와 같은 파일을 쓰므로, 먼저 읽어 들여 다른 값을 지우지 않는다.

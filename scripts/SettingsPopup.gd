@@ -21,6 +21,8 @@ signal terms_pressed
 signal sfx_volume_changed(value: float)
 signal music_volume_changed(value: float)
 signal boost_side_changed(on_left: bool)
+## 언어 토글. true 면 한국어.
+signal language_changed(korean: bool)
 
 # 2172px 짜리 원본을 그대로 GPU 밉맵에 맡겨 줄이면 테두리에 계단이 남는다.
 # _load_icon_from 은 알파를 곱한 채 Lanczos 로 미리 줄이고 여백까지 둘러 주므로
@@ -110,6 +112,12 @@ const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 # 파고들며 테두리가 깨졌다.
 const BOOST_ROW_LABEL := "BOOST"
 const BOOST_OPTION_TEXTS := ["LEFT", "RIGHT"]
+
+# 언어 줄. 두 칸의 글자는 번역하지 않는다 — 지금 언어가 무엇이든 두 선택지가
+# 자기 언어로 적혀 있어야 고를 수 있다. 잘못 눌러 못 읽는 언어로 바뀌었을 때
+# 되돌아올 길이 이것뿐이기도 하다.
+const LANGUAGE_ROW_LABEL := "LANGUAGE"
+const LANGUAGE_OPTION_TEXTS := ["ENG", "KOR"]
 const BOOST_ROW_HEIGHT_FRAC := 0.105    # 판 너비 대비
 
 var _title: TextureRect
@@ -117,6 +125,9 @@ var _sliders: Control
 var _sfx_slider: HSlider
 var _music_slider: HSlider
 var _boost_row: Control          # "BOOST" 이름표 + LEFT/RIGHT 두 칸
+var _language_row: Control       # "LANGUAGE" 이름표 + ENG/KOR 두 칸
+var _language_toggle: Control
+var _korean := false
 var _boost_toggle: Control
 var _boost_on_left := false
 var _divider_top: Control
@@ -141,8 +152,9 @@ var _version_text: String = ""
 
 func panel_size_frac() -> Vector2:
 	# 담을 것이 늘어난 만큼 세로로 키운다. 줄 높이는 너비 기준이라 여기를
-	# 키우면 줄이 아니라 줄 사이 여백이 늘어난다.
-	return Vector2(0.90, 0.86)
+	# 키우면 줄이 아니라 줄 사이 여백이 늘어난다. 0.86 이었는데 언어 줄이
+	# 하나 붙으면서 맨 아래 버전 표시가 판 밖으로 밀려 나갔다.
+	return Vector2(0.90, 0.92)
 
 
 func panel_texture_width() -> int:
@@ -155,6 +167,9 @@ func panel_center_y_frac() -> float:
 
 
 func _build_content() -> void:
+	# 다시 지을 때(rebuild) 자식은 모두 지워진 뒤다 — 비우지 않으면 배치가
+	# 이미 사라진 노드를 짚는다.
+	_links.clear()
 	_account_text = tr(LOGGED_OUT_TEXT)
 	# 소리 조절 — 일시정지 팝업과 같은 슬라이더.
 	_sliders = Control.new()
@@ -180,6 +195,16 @@ func _build_content() -> void:
 			_boost_on_left = not on_second
 			boost_side_changed.emit(_boost_on_left))
 	add_child(_boost_toggle)
+
+	_language_row = Control.new()
+	_language_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_language_row.draw.connect(_draw_language_row)
+	add_child(_language_row)
+	_language_toggle = _make_side_toggle(LANGUAGE_OPTION_TEXTS, _korean,
+		func(on_second: bool) -> void:
+			_korean = on_second
+			language_changed.emit(_korean))
+	add_child(_language_toggle)
 
 	_divider_top = _make_divider()
 	_divider_account = _make_divider()
@@ -285,21 +310,26 @@ func _layout_content(inner: Rect2) -> void:
 	var link_count: int = LINK_TEXTS.size()
 	var remove_gap: float = pw * REMOVE_ADS_GAP_FRAC
 	# 따로 정한 간격(광고 제거 버튼 위아래 + 약관 줄 사이 + 약관-버전)을 뺀
-	# 나머지를, 남은 간격 다섯이 고르게 나눈다: 슬라이더 사이 / 슬라이더-점선 /
-	# 점선-계정 / 계정-점선 / 점선-첫 약관.
+	# 나머지를 남은 간격들이 고르게 나눈다.
 	var boost_row_h: float = pw * BOOST_ROW_HEIGHT_FRAC
-	var used: float = slider_h * 2.0 + boost_row_h + divider_h * 3.0 + account_h + remove_h \
+	var used: float = slider_h * 2.0 + boost_row_h * 2.0 + divider_h * 3.0 + account_h + remove_h \
 		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap \
 		+ remove_gap * 2.0
-	# 간격 하나가 늘었다 — 슬라이더 뒤에 가속 버튼 줄이 붙으면서.
-	var gap: float = maxf(6.0, (bottom - top - used) / 6.0)
+	# 같은 모양의 줄이 둘이다 — 가속 버튼 좌/우와 언어. 하나만 세면 판이 한
+	# 줄만큼 모자라고, 넘친 만큼이 맨 아래 버전 표시부터 밖으로 나간다.
+	# 고르게 나눌 간격 일곱: 슬라이더 사이 / 슬라이더-가속 / 가속-언어 /
+	# 언어-점선 / 점선-계정 / 계정-점선 / 점선-첫 약관.
+	var gap: float = maxf(6.0, (bottom - top - used) / 7.0)
 
 	var y := top
 	_sliders.position = Vector2(inner_x, y)
 	_sliders.size = Vector2(inner_w, slider_h * 2.0 + gap)
 	_sliders.set_meta("gap", gap)
 	_sliders.set_meta("row_h", slider_h)
-	var track_x: float = minf(_slider_label_column(slider_font, [tr("SFX"), tr("MUSIC")]), inner_w * 0.55)
+	var track_x: float = minf(maxf(
+			_slider_label_column(slider_font, [tr("SFX"), tr("MUSIC")]),
+			_row_label_column(slider_font, [tr(BOOST_ROW_LABEL), tr(LANGUAGE_ROW_LABEL)])),
+		inner_w * 0.55)
 	var track_w: float = inner_w - track_x
 	# 손잡이가 트랙 양끝에서 반쯤 걸치므로 그만큼 안쪽으로.
 	var knob_pad: float = SLIDER_KNOB_SIZE * 0.5
@@ -321,6 +351,15 @@ func _layout_content(inner: Rect2) -> void:
 	_boost_toggle.position = Vector2(inner_x + track_x, y + (boost_row_h - toggle_h) * 0.5)
 	_boost_toggle.size = Vector2(track_w, toggle_h)
 	_boost_toggle.queue_redraw()
+	y += boost_row_h + gap
+
+	# 언어 줄은 가속 줄과 같은 모양이다 — 이름표는 같은 칸에, 두 칸은 같은 폭.
+	_language_row.position = Vector2(inner_x, y)
+	_language_row.size = Vector2(inner_w, boost_row_h)
+	_language_row.queue_redraw()
+	_language_toggle.position = Vector2(inner_x + track_x, y + (boost_row_h - toggle_h) * 0.5)
+	_language_toggle.size = Vector2(track_w, toggle_h)
+	_language_toggle.queue_redraw()
 	y += boost_row_h + gap
 
 	_divider_top.position = Vector2(inner_x, y)
@@ -400,6 +439,11 @@ func _draw_sliders() -> void:
 
 # 슬라이더와 같은 이름표 그리기를 한 줄짜리로 재사용한다 — 아이콘이 없으니
 # 글자만 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
+func _draw_language_row() -> void:
+	_draw_slider_labels(_language_row, [[tr(LANGUAGE_ROW_LABEL), null]],
+		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _language_row.size.y, 0.0)
+
+
 func _draw_boost_row() -> void:
 	_draw_slider_labels(_boost_row, [[tr(BOOST_ROW_LABEL), null]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _boost_row.size.y, 0.0)
@@ -407,6 +451,14 @@ func _draw_boost_row() -> void:
 
 ## 어느 쪽이 켜져 있는지 표시만 바꾼다 — 신호는 보내지 않는다. Main 이 저장된
 ## 값을 넣어 줄 때와, 사용자가 눌렀을 때 둘 다 여기를 지난다.
+## Main 이 저장된 값을 넣어 준다. 토글만 맞추고 신호는 안 쏜다 — 쏘면
+## 값을 되돌리는 것이 다시 바꾸라는 요청으로 돌아온다.
+func set_language(korean: bool) -> void:
+	_korean = korean
+	if _language_toggle != null:
+		_set_side_toggle(_language_toggle, korean)
+
+
 func set_boost_side(on_left: bool) -> void:
 	_boost_on_left = on_left
 	_set_side_toggle(_boost_toggle, not on_left)
