@@ -20,9 +20,9 @@ const PRIVACY_POLICY_URL := ""
 ## 이용약관.
 const TERMS_OF_SERVICE_URL := ""
 
-## 문의/피드백을 받을 주소. 여기에 메일 주소를 넣으면 mailto 로 열린다.
-## 스튜디오 공용 주소를 쓸지 개인 주소를 쓸지는 정해지지 않았다.
-const CONTACT_EMAIL := ""
+## 문의/피드백을 받을 주소. 채워져 있으므로 설정의 그 줄은 살아 있고, 누르면
+## 기기의 기본 메일 앱이 제목까지 채워진 채로 열린다.
+const CONTACT_EMAIL := "janiju.studio@gmail.com"
 
 ## 메일 앱이 미리 채워 줄 제목. 여러 앱에서 온 문의가 섞이지 않게 앱 이름을
 ## 넣어 둔다.
