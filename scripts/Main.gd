@@ -7143,7 +7143,10 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if upcoming_target == "":
 		return
 	var box_top: float = _quiz_box_rect(view_size).position.y
-	var text: String = upcoming_target
+	# 국기 모드의 나라 이름만 옮겨진다 — 연산 모드의 "3 + 4 = ?" 는 표에 없어
+	# 그대로 돌아온다. 색 이름과 같은 규칙이다: 이름표는 영어로 두고 그리는
+	# 자리에서만 번역한다.
+	var text: String = tr(upcoming_target)
 	if quiz_box_texture != null:
 		var rect := _quiz_box_rect(view_size)
 		var draw_size: Vector2 = rect.size

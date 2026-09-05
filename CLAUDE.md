@@ -64,18 +64,22 @@ over popups. **Words that live in painted art stay English** — START, READY,
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
 them. So does `LOGIN WITH`, which is glued to the Google mark.
 
-**The Stroop colour words are translated; country names are not.** That split
-is deliberate. A flag quiz in English is a vocabulary question and still
-works. Stroop does not: the interference comes from reading being
-involuntary, so an English `RED` in front of a Korean player is closer to a
-shape than a word, the conflict never fires, and the mode collapses into
-"what colour is this text" with no trap in it. Those eleven words are the
-mode.
+The quiz content is translated too: the eleven Stroop colour words, and all
+193 country names in `assets/i18n/countries.csv` (a second file so the UI
+table stays readable). Arithmetic needs nothing.
 
-Only the **drawn** colour name goes through `tr()` — `OCEAN_COLOR_NAMES`
-stays English everywhere else, because it also keys the problem generator,
-the repeat guard and the answer matching. Translating at the source would tie
-that logic to the locale for no gain.
+Stroop was the one that had to be done. The interference comes from reading
+being involuntary, so an English `RED` in front of a Korean player is closer
+to a shape than a word — the conflict never fires and the mode collapses into
+"what colour is this text" with no trap in it. Those eleven words are the
+mode, not decoration on it.
+
+In both cases **only the drawn string goes through `tr()`.**
+`OCEAN_COLOR_NAMES` and the JSON's `name` stay English everywhere else,
+because they also key the problem generator, the repeat guard and the answer
+matching. Translating at the source would tie that logic to the locale for no
+gain. So each is one `tr()` at the draw site, plus the width measurement that
+sizes the gate labels.
 
 No Korean font is bundled. Fredoka has no Hangul, and the glyphs come from
 the platform's fallback — which works but is a plain gothic against Fredoka's
