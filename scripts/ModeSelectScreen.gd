@@ -317,11 +317,6 @@ const REMOVE_ADS_UNDERLINE_WIDTH := 1.5
 const TOP_MARGIN_FRAC := 0.035    # of screen height
 const BOTTOM_MARGIN_FRAC := 0.035
 const MAX_GAP_FRAC := 0.055       # cap, so a tall screen spreads rather than sprawls
-# Extra clearance above the explain bar. The selected card carries a glow
-# that reaches past its edge, and at the plain gap the bottom row of cards
-# was touching the bar.
-const EXPLAIN_TOP_EXTRA_FRAC := 0.020   # of screen height
-
 
 var selected_index: int = 0
 
@@ -1076,17 +1071,28 @@ func _layout() -> void:
 	# bottom rather than stretching the column.
 	var remove_ads_h: float = view.y * REMOVE_ADS_BLOCK_FRAC
 
-	# Six blocks, so five gaps between them. The cards need more clearance
-	# than the rest: the selected one wears a glow that reaches past its edge,
-	# and at the plain gap it landed on the explain bar below.
-	var explain_clearance: float = view.y * EXPLAIN_TOP_EXTRA_FRAC
+	# 설명 바는 카드에 붙는다 — 카드끼리의 세로 간격을 그대로 쓴다. 넷과 한
+	# 덩어리로 읽혀야 하는 것이지 따로 떠 있을 것이 아니다.
+	#
+	# 예전에는 여기에 EXPLAIN_TOP_EXTRA_FRAC 을 더 얹었다. 선택된 카드가 테두리
+	# 밖으로 번지는 후광을 쓰던 시절, 그게 설명 바에 닿아서 띄운 것이다. 선택
+	# 표시가 확대+그림자+체크로 바뀌면서 후광은 사라졌는데 이 여백만 남아,
+	# 20:9 에서 카드 간격 14px 대 카드-설명 60px 으로 벌어져 있었다.
+	var board_gap: float = card_gap
 	var content_h: float = title_h + cards_h + explain_h + leaderboard_h + start_h + remove_ads_h
 	var top: float = view.y * TOP_MARGIN_FRAC
 	var bottom: float = view.y * BOTTOM_MARGIN_FRAC
+	# 남는 세로를 다섯 몫으로 나눈다: 제목 위 / 제목-카드 / 설명-리더보드 /
+	# 리더보드-START / START-광고제거. 카드-설명은 board_gap 으로 고정이라 이
+	# 나눗셈에 끼지 않는다.
+	#
+	# "제목 위"가 한 몫을 받는 것이 이번에 달라진 점이다. 예전에는 남는 세로가
+	# 전부 블록 사이로만 갔고 위쪽 여백은 TOP_MARGIN_FRAC 에 묶여 있어서, 화면이
+	# 길수록 제목·카드는 위에 붙고 리더보드 둘레만 휑했다.
 	var gap: float = clampf(
-		(view.y - top - bottom - content_h - explain_clearance) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
+		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
 
-	var y: float = top
+	var y: float = top + gap
 	# 두 구석 버튼은 세로 흐름에 끼지 않는다 — 화면 맨 위에 그대로 붙인다.
 	if _login != null and _setting != null:
 		var icon: float = view.y * TOP_ICON_HEIGHT_FRAC
@@ -1113,7 +1119,7 @@ func _layout() -> void:
 	_card_shadow_overlay.position = Vector2.ZERO
 	_card_shadow_overlay.size = view
 	_card_shadow_overlay.queue_redraw()
-	y += cards_h + gap + explain_clearance
+	y += cards_h + board_gap
 
 	_place(_explain, explain_w, explain_h, y)
 	if _explain_label != null:
