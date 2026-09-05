@@ -2179,9 +2179,9 @@ const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 # 저장 파일이 더 이상 바뀌지 않는다.
 const HIDDEN_UNLOCK_GATES := 10
 const SAVE_KEY_GATES_PREFIX := "gates_cleared_"
-# 가속 보너스 안내를 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다
-# 켤 때마다 다시 뜬다.
-const SAVE_KEY_BOOST_HINT := "boost_hint_seen"
+# 튜토리얼을 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다 켤 때마다
+# 다시 돈다.
+const SAVE_KEY_TUTORIAL := "tutorial_seen"
 # 해금 대상이 아닌 모드. 자기 자신을 조건에 넣을 수는 없다.
 const HIDDEN_MODE := Mode.DREAM
 # ============================================================
@@ -2457,8 +2457,11 @@ var leaderboard_bests := PackedInt32Array()
 # 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
 # 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
 var mode_gates_cleared := PackedInt32Array()
-# 가속 보너스 안내를 봤는지. SAVE_KEY_BOOST_HINT 참고.
-var boost_hint_seen: bool = false
+# 튜토리얼을 봤는지. SAVE_KEY_TUTORIAL 참고.
+var tutorial_seen: bool = false
+# 튜토리얼이 도는 동안. 카운트다운 시계를 세우고, 평소 PLAYING 에서만 보이는
+# 가속 버튼을 보이게 하는 데 쓴다.
+var tutorial_active: bool = false
 ## 잠긴 MIX 카드를 에디터에서 바로 보기 위한 스위치.
 ##
 ## 켜면 저장된 진행도와 상관없이 0/3 으로 보고하므로, 이미 해금한 기기에서도
@@ -2589,7 +2592,7 @@ var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be kil
 @onready var gameover_popup: Control = $UI/GameOverPopupPanel
 @onready var settings_popup: Control = $UI/SettingsPopupPanel
 @onready var about_popup: Control = $UI/AboutPopupPanel
-@onready var boost_hint_popup: Control = $UI/BoostHintPanel
+@onready var tutorial_overlay: Control = $UI/TutorialOverlay
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
 @onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
@@ -2646,7 +2649,7 @@ func _boot_load() -> void:
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
 	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
-			boost_hint_popup, mode_select_panel]:
+			tutorial_overlay, mode_select_panel]:
 		if panel != null and panel.has_method("ensure_built"):
 			panel.ensure_built()
 	# ...except the top HUD, whose painted frames are minified hard enough
@@ -2795,7 +2798,7 @@ func _boot_load() -> void:
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
 	settings_popup.about_pressed.connect(_on_about_pressed)
 	about_popup.close_pressed.connect(_on_about_closed)
-	boost_hint_popup.ok_pressed.connect(_on_boost_hint_ok)
+	tutorial_overlay.finished.connect(_on_tutorial_finished)
 	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
@@ -3870,7 +3873,7 @@ func _process(delta: float) -> void:
 	_update_mute_button_visibility()
 	# Only while actually flying — during the countdown the world is not
 	# scrolling yet, and a paused run has a popup over this corner.
-	boost_button.visible = state == State.PLAYING and not paused
+	boost_button.visible = (state == State.PLAYING and not paused) or tutorial_active
 	if not boost_button.visible:
 		# A Button hidden mid-press never emits button_up, which would leave
 		# the world accelerated forever after dying with it held down. The
@@ -3889,7 +3892,9 @@ func _process(delta: float) -> void:
 	if not paused:
 		if state == State.PLAYING:
 			_update_playing(delta)
-		elif state == State.COUNTDOWN:
+		elif state == State.COUNTDOWN and not tutorial_active:
+			# 튜토리얼이 도는 동안은 시계를 세워 둔다 — 안 그러면 설명을 읽는
+			# 중에 카운트다운이 끝나고 판이 시작된다.
 			_update_countdown(delta)
 		if flash_time > 0.0:
 			flash_time = max(0.0, flash_time - delta)
@@ -4934,6 +4939,16 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 		Color(boost_pop_color * boost_pop_gradient_bottom, alpha))
 
 
+# 가속 버튼 자리. 버튼을 놓는 쪽과 튜토리얼이 밝히는 쪽이 같은 답을 봐야 해서
+# 함수로 둔다 — 노드의 현재 위치를 읽으면 화면 크기를 넣어 계산하는 쪽과
+# 어긋난다.
+func _boost_button_rect(view_size: Vector2) -> Rect2:
+	var s := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
+	return Rect2(Vector2(
+		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - s.x,
+		view_size.y - BOOST_BUTTON_MARGIN - s.y), s)
+
+
 func _boost_bar_rect(view_size: Vector2) -> Rect2:
 	var box := _quiz_box_rect(view_size)
 	return Rect2(
@@ -5815,7 +5830,7 @@ func _load_best_score() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
-	boost_hint_seen = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_BOOST_HINT, false))
+	tutorial_seen = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_TUTORIAL, false))
 	for mode in range(Mode.size()):
 		best_scores[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
@@ -5832,13 +5847,13 @@ func _load_best_score() -> void:
 		_save_best_score(Mode.SKY)
 
 
-func _save_boost_hint_seen() -> void:
+func _save_tutorial_seen() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
-	cfg.set_value(SAVE_SECTION, SAVE_KEY_BOOST_HINT, boost_hint_seen)
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_TUTORIAL, tutorial_seen)
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
-		push_warning("could not write %s (error %d) — the boost hint will show again" % [SAVE_PATH, err])
+		push_warning("could not write %s (error %d) — the tutorial will run again" % [SAVE_PATH, err])
 
 
 func _save_best_score(mode: int) -> void:
@@ -6037,33 +6052,75 @@ func _on_mode_selected(mode: int) -> void:
 	# ReadyPanel/PlayButton 은 그대로 두었다 — 되돌리려면 이 두 줄만 바꾸면 된다.
 	_apply_mode(mode)
 	_reset_game()
-	# 설치 후 첫 판에서만, 카운트다운 전에 가속 안내를 한 번 띄운다. OK 를
-	# 누르면 _on_boost_hint_ok 가 이어서 카운트다운을 건다.
-	if not boost_hint_seen and boost_hint_popup != null:
-		_show_boost_hint()
+	# 게임 화면에 처음 들어온 것이면 튜토리얼을 먼저 돌린다. 다 보고 나면
+	# _on_tutorial_finished 가 이어서 카운트다운을 건다.
+	if not tutorial_seen and tutorial_overlay != null:
+		_begin_tutorial()
 		return
 	_start_countdown()
 
 
-# ---- 가속 보너스 안내 (설치 후 1회) ----
+# ---- 튜토리얼 (설치 후 1회, 모드 무관) ----
 #
-# 카운트다운 '전'에 띄운다. 카운트다운 중에 띄우면 READY/START 글자와 겹치고,
-# 판이 시작된 뒤에 띄우면 게이트가 이미 다가오는 중이라 읽을 틈이 없다.
-func _show_boost_hint() -> void:
-	boost_hint_popup.set_boost_info(
-		boost_bar_track_texture, boost_bar_fill_textures, BOOST_BAR_FILL_INSET_FRAC,
-		PackedFloat32Array([boost_bonus_mid_threshold, boost_bonus_best_threshold]),
-		PackedFloat32Array([boost_bonus_none_multiplier, boost_bonus_mid_multiplier,
-			boost_bonus_best_multiplier]))
-	boost_hint_popup.visible = true
+# 메뉴가 아니라 게임 화면 위에서 돈다. 설명하는 것들이 전부 "화면의 이 물건"에
+# 관한 것이라, 그 물건을 옆에 두고 봐야 옮겨진다.
+#
+# State.COUNTDOWN 에 세워 둔다. 이 상태는 세계를 그리면서 물리는 안 돌리는
+# 유일한 상태라 그대로 쓸 수 있고, 시계만 tutorial_active 로 멈춘다
+# (_process). READY/START 글자도 같은 값으로 잠시 접어 둔다.
+func _begin_tutorial() -> void:
+	tutorial_active = true
+	_set_state(State.COUNTDOWN)
+	var view_size := get_viewport_rect().size
+	# 게이트를 하나 띄워 둔다. 퀴즈 상자는 다음 게이트의 문제를 그리므로
+	# (_get_upcoming_gate) 게이트가 없으면 빈 상자를 가리키게 된다.
+	if gates.is_empty():
+		_spawn_gate(view_size)
+	_apply_screen_visibility()
+	tutorial_overlay.begin(_tutorial_steps(view_size))
+	queue_redraw()
 
 
-func _on_boost_hint_ok() -> void:
-	boost_hint_popup.visible = false
-	# 닫는 순간 저장한다. 여기서 안 쓰고 판이 끝날 때 쓰면, 첫 판 도중에 앱이
-	# 죽었을 때 다음 실행에서 또 뜬다.
-	boost_hint_seen = true
-	_save_boost_hint_seen()
+# 밝힐 자리와 문구. 자리는 전부 게임이 실제로 그리는 데서 가져온다 — 여기에
+# 좌표를 적어 두면 HUD 를 옮길 때 하이라이트만 옛 자리에 남는다.
+func _tutorial_steps(view_size: Vector2) -> Array:
+	var char_size: Vector2 = PLAYER_VISUAL_SIZE * active_visual_size_scale
+	var char_rect := Rect2(
+		Vector2(PLAYER_X, player_y) - char_size * 0.5, char_size)
+	var quiz: Rect2 = _quiz_box_rect(view_size)
+	var bar: Rect2 = _boost_bar_rect(view_size)
+	var button: Rect2 = _boost_button_rect(view_size)
+	return [
+		{
+			"holes": [{"rect": char_rect, "round": maxf(char_size.x, char_size.y)}],
+			"text": "TAP anywhere to fly up.\nStop tapping and you fall.",
+			# 캐릭터 바로 아래 빈 자리. 캐릭터 위에 겹치면 정작 밝힌 것을 가린다.
+			"tap": Vector2(view_size.x * 0.5, char_rect.end.y + char_size.y * 0.55),
+		},
+		{
+			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
+			"text": "Read the question up here,\nthen fly through the gate\nwith the right answer.",
+		},
+		{
+			# 둘을 같이 밝힌다. 화면 반대쪽 끝에 떨어져 있어서 따로 보여 주면
+			# "버튼을 누르면 저 바가 남는다"가 안 읽힌다.
+			"holes": [
+				{"rect": bar, "round": bar.size.y * 0.5},
+				{"rect": button, "round": maxf(button.size.x, button.size.y)},
+			],
+			"text": "Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.",
+		},
+	]
+
+
+func _on_tutorial_finished() -> void:
+	tutorial_active = false
+	# 다 본 순간 저장한다. 판이 끝날 때 쓰면 첫 판 도중에 앱이 죽었을 때
+	# 다음 실행에서 또 돈다.
+	tutorial_seen = true
+	_save_tutorial_seen()
+	# 튜토리얼용으로 띄워 둔 게이트는 그대로 두고 시작한다 — 지우면 첫 게이트가
+	# 한 칸 늦게 오고, 그 한 칸이 다른 판과 다른 시작이 된다.
 	_start_countdown()
 
 
@@ -6914,12 +6971,10 @@ func _layout_hud_buttons() -> void:
 	# Bottom corner, sized off its own constant rather than the HUD row's
 	# scale — it belongs to the play area, not to the top bar. Which corner is
 	# the player's choice (see boost_button_on_left).
-	var boost_size := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
-	boost_button.set_deferred("size", boost_size)
-	boost_button.set_deferred("position", Vector2(
-		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - boost_size.x,
-		view_size.y - BOOST_BUTTON_MARGIN - boost_size.y))
-	boost_button.set_deferred("pivot_offset", boost_size * 0.5)
+	var boost_rect: Rect2 = _boost_button_rect(view_size)
+	boost_button.set_deferred("size", boost_rect.size)
+	boost_button.set_deferred("position", boost_rect.position)
+	boost_button.set_deferred("pivot_offset", boost_rect.size * 0.5)
 
 
 # Called from HudCanvas._draw. Everything here draws onto `ci` (the HUD's
@@ -7315,7 +7370,7 @@ func _draw() -> void:
 	# _draw_combo_glow also moved to HudCanvas: its top band overlaps the
 	# score box, and it has to stay on top of it the way it was here.
 
-	if state == State.COUNTDOWN:
+	if state == State.COUNTDOWN and not tutorial_active:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
 			if ready_texture != null:

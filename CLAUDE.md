@@ -95,7 +95,7 @@ on failure.
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's panel keeps its icon, LOCKED and hint strip inside the card and clear of both plates at either ratio, stacked in that order and readable, with the hint text inside its own strip and the selection check clear of all three; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
-| `check_boost_hint.gd` | the boost-bonus hint shows on the first run after install and not before the countdown is held back for it; OK closes it **and** starts the run; it never shows again, including after a relaunch; and the multipliers and bar fills it draws follow `boost_bonus_*` rather than being written into the popup | `boost_hint_seen`/`_show_boost_hint`/`_on_boost_hint_ok`, `_on_mode_selected`, or any `boost_bonus_*` export |
+| `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; and it never runs again — other modes included, relaunch included | `tutorial_seen`/`tutorial_active`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
 | `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
@@ -194,20 +194,30 @@ Consequences worth knowing before editing:
   `_ready`. A headless run that only survives a few frames will not have
   reached it.
 
-**The boost bonus is the one rule the screen cannot teach.** "Read the prompt,
-fly through the matching gate" is legible from the picture; "hold BOOST and
-you score more" is not, for two reasons. Holding the button does not change
-how fast the bar drains — the gate simply arrives sooner, so more is left at
-the judge line — which means nothing on screen visibly reacts to the press.
-And a bar that empties reads as *time running out*, the opposite of "keeping
-it full pays". `BoostHintPopup` therefore shows once per install, before the
-first countdown, laying the real bar art out at all three tiers with its
-multiplier beside it. It is shown the game's own textures and thresholds
-(`set_boost_info`) rather than holding copies, so retuning `boost_bonus_*`
-cannot leave the tutorial quoting old numbers.
+**A three-step tutorial runs once per install**, on the first entry to the
+play screen in any mode. `TutorialOverlay` dims the game and opens one hole
+at a time — character, then the quiz box, then the boost bar and button
+together — with a caption beside each.
+
+It runs on the play screen rather than in a menu because every one of those
+sentences is about *that thing on that screen*; shown as a picture in a menu,
+the player still has to find the real one afterwards. The boost step is the
+reason the tutorial exists at all: holding the button does not change how
+fast the bar drains (the gate arrives sooner, so more is left at the judge
+line), so nothing on screen visibly answers the press — and a bar that
+empties reads as time running out, the opposite of "keeping it full pays".
+The button and the bar also sit at opposite ends of the screen, which is why
+that step lights both at once.
+
+The game is held in `State.COUNTDOWN` throughout: the one state that draws
+the world without running physics. `tutorial_active` freezes its clock and
+folds away the READY/START art, and keeps the boost button visible, which
+normally shows only in `State.PLAYING`. Main hands the overlay the rects,
+read from the same helpers that place the real widgets, so moving the HUD
+cannot leave a highlight behind on empty background.
 
 Other scripts: `PopupBase.gd` is the shared popup chrome (pause / revive /
-game over / settings / about / the boost hint all extend it). `HudCanvas.gd` is a 34-line
+game over / settings / about all extend it). `HudCanvas.gd` is a 34-line
 node that exists **only** to give the HUD a different texture filter from
 the world — the drawing logic still lives in `Main.gd` (`draw_hud_into`).
 `ScoreFormat.gd` is a `class_name` with one static function, and exists
