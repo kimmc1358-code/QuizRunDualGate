@@ -24,10 +24,10 @@ const BASE_PATH := "res://assets/fonts/Fredoka.ttf"
 ## 버전이 파일 이름에 붙어 오는데, 그것 때문에 "왜 한글이 안 바뀌지"로
 ## 시간을 쓰게 하고 싶지 않다.
 const KOREAN_CANDIDATES := [
-	"res://assets/fonts/Cafe24Ssurround.ttf",
+	"res://assets/fonts/Cafe24Ssurround-v2.0.otf",
 	"res://assets/fonts/Cafe24Ssurround.otf",
 	"res://assets/fonts/Cafe24Ssurround-v2.0.ttf",
-	"res://assets/fonts/Cafe24SsurroundAir.ttf",
+	"res://assets/fonts/Cafe24Ssurround.ttf",
 ]
 
 static var _base: Font = null

@@ -86,12 +86,19 @@ its base font from there. Fredoka has no Hangul, so a Korean face is attached
 as its `fallbacks` — one chain on one base font, because the weights are
 `FontVariation`s over it and they look glyphs up through `base_font`.
 
-The Korean face is **Cafe24 Ssurround**, and it is not in the repo: drop the
-file in `assets/fonts/` (any of the names `AppFont.KOREAN_CANDIDATES` lists,
-so the download needs no renaming) along with its licence text, the way
-Fredoka carries `Fredoka_LICENSE.txt`. Without it the game still runs and
-Hangul still renders — from whatever the device provides, which is a plain
-gothic beside Fredoka's rounded Latin and differs per phone. Boot says so once.
+The Korean face is **Cafe24 Ssurround**, whose rounded shapes sit next to
+Fredoka without looking borrowed. `AppFont.KOREAN_CANDIDATES` lists the names
+Cafe24 ships under so a download needs no renaming, and takes the **OTF over
+the TTF**: the two render identically here and the OTF is 1.6MB against
+3.8MB, all of which would ride along in the APK.
+
+If the file goes missing the game still runs and Hangul still renders — from
+whatever the device provides, which is a plain gothic beside Fredoka and
+differs per phone. Boot says so once.
+
+**The licence text is not in the repo yet.** Fredoka carries
+`Fredoka_LICENSE.txt` beside it; Cafe24 Ssurround should too before this
+ships, since the font is redistributed inside the APK.
 
 Changing that font moves every text measurement, so the fit checks — the
 explain bar, card names, tutorial captions — are what to re-run afterwards.
