@@ -323,9 +323,19 @@ the preset on another machine has to reproduce them exactly.
 | | |
 |---|---|
 | Package name | `com.janiju.quizrundualgate` |
+| Launcher label (`package/name`) | `QuizRun` |
 | Export filter | `all_resources` |
 | Excluded | `assets/references/*`, `tools/*` |
 | Gradle build | off (no plugins yet) |
+
+The game answers to three different names and they are not meant to match.
+The **launcher label** is the one under the icon on the home screen, where
+roughly ten characters survive before truncation — hence `QuizRun` rather
+than the full title. The **Play Store title** is `QuizRun: Dual Gate`, set in
+the Play Console and not in this repo at all. The **in-game title art** is
+its own painted asset. Left empty, `package/name` falls back to
+`application/config/name`, which is `QuizRunDualGate` — the Godot project
+folder name leaking out as a product name.
 
 **The package name is permanent once published.** It keys the Play Console
 listing, every OAuth client, the GPGS configuration and the AdMob app
