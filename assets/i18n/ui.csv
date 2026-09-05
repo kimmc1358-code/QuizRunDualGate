@@ -62,3 +62,15 @@ BROWN,BROWN,갈색
 BLACK,BLACK,검정
 WHITE,WHITE,하양
 GRAY,GRAY,회색
+Not logged in,Not logged in,로그인하지 않음
+Logged in as %s,Logged in as %s,%s 님으로 로그인됨
+LOGIN,LOGIN,로그인
+LOGOUT,LOGOUT,로그아웃
+REMOVE ADS,REMOVE ADS,광고 제거
+Privacy Policy,Privacy Policy,개인정보 처리방침
+Terms of Service,Terms of Service,이용약관
+Contact / Feedback,Contact / Feedback,문의 · 피드백
+About,About,정보
+SFX,SFX,효과음
+MUSIC,MUSIC,음악
+Version %s,Version %s,버전 %s

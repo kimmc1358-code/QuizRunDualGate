@@ -129,7 +129,9 @@ var _links: Array[Button] = []
 var _sfx_icon: Texture2D
 var _music_icon: Texture2D
 var _avatar: Texture2D          # 로그인하면 Main이 넣어 준다
-var _account_text: String = LOGGED_OUT_TEXT
+# 번역을 거쳐야 해서 선언이 아니라 _build_content 에서 채운다 — 상수를 그대로
+# 넣어 두면 로그인 전 화면만 영어로 남는다.
+var _account_text: String = ""
 var _logged_in := false
 var _cancel: Button
 var _version: Control
@@ -153,6 +155,7 @@ func panel_center_y_frac() -> float:
 
 
 func _build_content() -> void:
+	_account_text = tr(LOGGED_OUT_TEXT)
 	# 소리 조절 — 일시정지 팝업과 같은 슬라이더.
 	_sliders = Control.new()
 	_sliders.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -172,7 +175,7 @@ func _build_content() -> void:
 	_boost_row.draw.connect(_draw_boost_row)
 	add_child(_boost_row)
 	# 값은 "왼쪽인가"인데 토글은 "두 번째 칸인가"를 다루므로, 오른쪽이 두 번째다.
-	_boost_toggle = _make_side_toggle(BOOST_OPTION_TEXTS, not _boost_on_left,
+	_boost_toggle = _make_side_toggle([tr(BOOST_OPTION_TEXTS[0]), tr(BOOST_OPTION_TEXTS[1])], not _boost_on_left,
 		func(on_second: bool) -> void:
 			_boost_on_left = not on_second
 			boost_side_changed.emit(_boost_on_left))
@@ -192,13 +195,13 @@ func _build_content() -> void:
 	# 크림 아트는 1939x613 에 모서리 202 라, 모서리는 늘 텍스처 높이의 33% 다 —
 	# 즉 텍스처 높이가 버튼 높이의 1.5 배를 넘으면 안 된다. 105 면 텍스처가
 	# 210x66, 모서리 22 로 50px 버튼 안에 넉넉히 들어온다.
-	_login = _make_button(CREAM_FILE, CREAM_CORNER, LOGIN_TEXT, null, false,
+	_login = _make_button(CREAM_FILE, CREAM_CORNER, tr(LOGIN_TEXT), null, false,
 		CREAM_GRADIENT, LOGIN_TEXTURE_WIDTH)
 	# 같은 버튼이 상태에 따라 로그인/로그아웃 둘 다 맡는다.
 	_login.pressed.connect(func(): (logout_pressed if _logged_in else login_pressed).emit())
 	add_child(_login)
 
-	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, REMOVE_ADS_TEXT,
+	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, tr(REMOVE_ADS_TEXT),
 		_load_icon_from(REMOVE_ADS_ICON, Vector2i(1, 1), 0, REMOVE_ADS_ICON_HEIGHT),
 		true, Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
 	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
@@ -296,7 +299,7 @@ func _layout_content(inner: Rect2) -> void:
 	_sliders.size = Vector2(inner_w, slider_h * 2.0 + gap)
 	_sliders.set_meta("gap", gap)
 	_sliders.set_meta("row_h", slider_h)
-	var track_x: float = minf(_slider_label_column(slider_font, ["SFX", "MUSIC"]), inner_w * 0.55)
+	var track_x: float = minf(_slider_label_column(slider_font, [tr("SFX"), tr("MUSIC")]), inner_w * 0.55)
 	var track_w: float = inner_w - track_x
 	# 손잡이가 트랙 양끝에서 반쯤 걸치므로 그만큼 안쪽으로.
 	var knob_pad: float = SLIDER_KNOB_SIZE * 0.5
@@ -377,11 +380,11 @@ func set_volumes(sfx: float, music: float) -> void:
 func set_account(avatar: Texture2D, display_name: String, logged_in: bool) -> void:
 	_avatar = avatar
 	_logged_in = logged_in
-	_account_text = (LOGGED_IN_FORMAT % display_name) if logged_in else LOGGED_OUT_TEXT
+	_account_text = (tr(LOGGED_IN_FORMAT) % display_name) if logged_in else tr(LOGGED_OUT_TEXT)
 	if _login != null:
 		var caption: Label = _login.get_node_or_null("Caption")
 		if caption != null:
-			caption.text = LOGOUT_TEXT if logged_in else LOGIN_TEXT
+			caption.text = tr(LOGOUT_TEXT) if logged_in else tr(LOGIN_TEXT)
 		# 글자 길이가 바뀌었으니 버튼 안쪽 배치를 다시 맞춘다.
 		_layout()
 	if _account != null:
@@ -390,7 +393,7 @@ func set_account(avatar: Texture2D, display_name: String, logged_in: bool) -> vo
 
 func _draw_sliders() -> void:
 	_draw_slider_labels(_sliders,
-		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
+		[[tr("SFX"), _sfx_icon], [tr("MUSIC"), _music_icon]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
 		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
 
@@ -398,7 +401,7 @@ func _draw_sliders() -> void:
 # 슬라이더와 같은 이름표 그리기를 한 줄짜리로 재사용한다 — 아이콘이 없으니
 # 글자만 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
 func _draw_boost_row() -> void:
-	_draw_slider_labels(_boost_row, [[BOOST_ROW_LABEL, null]],
+	_draw_slider_labels(_boost_row, [[tr(BOOST_ROW_LABEL), null]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _boost_row.size.y, 0.0)
 
 
@@ -460,8 +463,8 @@ func _read_version_text() -> String:
 	if v.is_empty():
 		# 그럴듯한 거짓말을 그리느니 비어 있는 것을 보인다.
 		push_warning("application/config/version is empty — the settings popup has no version to show.")
-		return "Version ?"
-	return "Version " + v
+		return tr("Version %s") % "?"
+	return tr("Version %s") % v
 
 
 # 판 맨 아래 가운데의 버전 표시.
@@ -476,7 +479,7 @@ func _draw_version() -> void:
 # 약관 한 줄: 왼쪽에 밑줄 친 글자, 오른쪽 끝에 ">".
 func _draw_link(link: Button, index: int) -> void:
 	var font_size: int = int(round(_panel_rect.size.x * LINK_TEXT_SIZE_FRAC))
-	var text: String = LINK_TEXTS[index]
+	var text: String = tr(LINK_TEXTS[index])
 	var baseline: float = link.size.y * 0.5 + font_size * 0.36
 	link.draw_string(_font_bold, Vector2(0.0, baseline), text,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, LINK_COLOR)

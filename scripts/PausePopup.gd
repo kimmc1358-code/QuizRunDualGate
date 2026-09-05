@@ -141,7 +141,7 @@ func _layout_content(inner: Rect2) -> void:
 	# 트랙은 이름표 칸 오른쪽부터. 칸 너비는 고정 비율이 아니라 실제로 재서
 	# 정한다 — MUSIC이 SFX보다 길어서 비율로 잡으면 긴 쪽이 트랙에 물린다.
 	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
-	var track_x: float = minf(_slider_label_column(slider_font, ["SFX", "MUSIC"]), inner_w * 0.55)
+	var track_x: float = minf(_slider_label_column(slider_font, [tr("SFX"), tr("MUSIC")]), inner_w * 0.55)
 	var track_w: float = inner_w - track_x
 	# 손잡이가 트랙 양끝에서 반쯤 걸치므로, 그만큼 안쪽으로 넣어 판 밖으로
 	# 삐져나가지 않게 한다.
@@ -184,7 +184,7 @@ func set_volumes(sfx: float, music: float) -> void:
 # 아이콘과 글자를 같은 높이로 맞춰 한 줄로 읽히게 한다.
 func _draw_sliders() -> void:
 	_draw_slider_labels(_sliders,
-		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
+		[[tr("SFX"), _sfx_icon], [tr("MUSIC"), _music_icon]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
 		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
 
