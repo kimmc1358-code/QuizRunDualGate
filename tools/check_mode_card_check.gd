@@ -60,6 +60,24 @@ func _opaque_screen_rect(node: Control) -> Rect2:
 		Vector2(float(used.size.x), float(used.size.y)) * s)
 
 
+# 카드 아트 왼쪽 가장자리의 흰 띠 두께(원본 픽셀). 세로 한가운데를 훑어
+# 불투명해진 뒤 처음 이어지는 흰 픽셀을 센다.
+func _white_border_px(image: Image) -> int:
+	var y: int = int(image.get_height() * 0.5)
+	var run := 0
+	var started := false
+	for x in range(image.get_width()):
+		var c: Color = image.get_pixel(x, y)
+		if c.a < 0.5:
+			continue
+		if c.r > 0.85 and c.g > 0.85 and c.b > 0.85:
+			started = true
+			run += 1
+		elif started:
+			break
+	return run
+
+
 func _run() -> void:
 	await process_frame
 	await process_frame
@@ -259,6 +277,27 @@ func _run() -> void:
 					icon.size.x, icon.size.y, int(parts["title_size"]),
 					hint.size.x, hint.size.y, int(parts["hint_size"]),
 					"ok" if probs.is_empty() else "FAIL"])
+
+		# 불투명 테두리가 카드의 흰 띠를 다 덮는가. 반투명 덮개만으로는 흰색이
+		# 계속 밝게 남아(254 -> 117) 잠긴 카드 둘레에 링이 생겼다. 두께를
+		# 아트에서 직접 재어 비교한다 — 상수(14px)를 여기 베껴 두면 아트를
+		# 다시 그렸을 때 둘 다 옛 값을 말하며 통과한다.
+		screen.size = view
+		screen.call("_layout")
+		await process_frame
+		var card_img: Image = cards[hidden_card].texture_normal.get_image()
+		var white_native: int = _white_border_px(card_img)
+		var art_scale: float = cards[hidden_card].size.x / float(screen.get("SELECT_SHEET_WIDTH_NATIVE"))
+		var need_px: float = white_native * art_scale
+		var got_px: int = screen.call("_card_lock_border_width", hidden_card)
+		if got_px + 0.5 < need_px:
+			_fail("덮개 테두리가 %dpx 인데 카드의 흰 띠는 %.1fpx 다 — 흰색이 삐져나온다" % [
+				got_px, need_px])
+		else:
+			print("  veil border %dpx vs the card's white rim %.1fpx (native %d)" % [
+				got_px, need_px, white_native])
+		if not screen.get("CARD_LOCK_VEIL_BORDER_COLOR").a >= 0.999:
+			_fail("덮개 테두리가 불투명하지 않다 — 반투명이면 흰 띠가 그대로 비친다")
 
 		# 해금하면 사라져야 한다. _draw_selection 은 _lock_draw_rect() 가 빈
 		# 사각형인지만 보고 그리므로, 그 함수의 답이 곧 화면에 나오는 답이다.

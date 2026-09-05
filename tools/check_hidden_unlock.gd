@@ -109,6 +109,11 @@ func _run() -> void:
 		if mode != hidden:
 			single.append(mode)
 	_backup_save()
+	# 에디터에서 잠금 화면을 보려고 켜 두는 스위치. @export 라 인스펙터에서
+	# 켜면 Main.tscn 에 저장되고, 그대로 커밋되면 모두에게 MIX 가 영영 잠긴
+	# 채로 나간다 — 게임은 멀쩡히 돌아가므로 아무도 눈치채지 못한다.
+	if m.get("debug_force_hidden_locked"):
+		_fail("debug_force_hidden_locked 가 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
 	print("check_hidden_unlock: 모드 %d개에서 각 %d게이트, 히든은 모드 %d" % [
 		required, need, hidden])
 	print("")

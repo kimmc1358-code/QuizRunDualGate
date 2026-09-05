@@ -228,7 +228,18 @@ const CARD_LOCK_FALLBACK_FILE := "res://assets/ui_assets/popup/icon_lock.png"
 # 계열로 덮으면 원래 색에 따라 흐려지는 정도가 제각각이라, 어두운 쪽으로 덮어
 # 넷을 같은 밝기로 눌러 준다.
 const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.58)
-const CARD_LOCK_ICON_HEIGHT_FRAC := 0.36   # 덮개가 쓸 수 있는 자리 높이 대비
+# 카드 아트의 흰 테두리는 반투명으로 덮어도 계속 밝게 남는다 — 재 보니 흰색
+# 254,254,254 이 덮개를 통과하고도 114,117,126 이라, 어두워진 속(114,70,103)
+# 둘레에 밝은 링이 그려져 카드가 반쯤만 잠긴 것처럼 보였다. 그 띠만 불투명으로
+# 덮어 없앤다.
+#
+# 두께는 아트에서 잰 값이다: 706px 폭 원본에서 흰 테두리가 14px. 카드가 그려지는
+# 배율은 모서리 반지름과 같은 식으로 구한다(_card_corner_radius).
+const CARD_LOCK_VEIL_BORDER_NATIVE := 14.0
+const CARD_LOCK_VEIL_BORDER_COLOR := Color(0.08, 0.10, 0.17, 1.0)
+# 그려지는 크기에 맞춰 굽는다 — CARD_LOCK_FILE 을 읽는 곳의 설명을 볼 것.
+const CARD_LOCK_BAKE_H := 72
+const CARD_LOCK_ICON_HEIGHT_FRAC := 0.46   # 덮개가 쓸 수 있는 자리 높이 대비
 const CARD_LOCK_ICON_MAX_WIDTH_FRAC := 0.52  # 카드 너비 대비 — 가로로 넓은 그림 대비
 const CARD_LOCK_TEXT := "LOCKED"
 const CARD_LOCK_TEXT_SIZE_FRAC := 0.170    # 자리 높이 대비
@@ -755,11 +766,15 @@ func _build() -> void:
 	# _load_trimmed 로 읽는다. 자물쇠 아트는 1240px 캔버스에 그림이 가운데만
 	# 차지하고 있어서, 캔버스째 40px 로 줄이면 요청한 크기보다 한참 작게 보인다.
 	# 잘라 내고 미리 구운 뒤 ink_frac 로 되돌리는 것이 왕관과 같은 길이다.
+	# 굽는 높이를 그려지는 크기(비율에 따라 대략 40~60px)에 맞춘다. 기본값
+	# 128 로 구우면 1240 -> 128 -> 45 로 두 번 줄어들고, 자물쇠의 가는 갈색
+	# 외곽선이 그 두 번째 축소에서 계단으로 남는다. 한 번에 줄여 두면 그리는
+	# 쪽은 거의 등배라 가장자리가 부드럽다.
 	if ResourceLoader.exists(CARD_LOCK_FILE):
-		_lock_texture = _load_trimmed(CARD_LOCK_FILE)
+		_lock_texture = _load_trimmed(CARD_LOCK_FILE, CARD_LOCK_BAKE_H)
 	else:
 		push_warning("%s 가 없어 %s 로 대신 그린다" % [CARD_LOCK_FILE, CARD_LOCK_FALLBACK_FILE])
-		_lock_texture = _load_trimmed(CARD_LOCK_FALLBACK_FILE)
+		_lock_texture = _load_trimmed(CARD_LOCK_FALLBACK_FILE, CARD_LOCK_BAKE_H)
 	for i in range(CARD_MODES.size()):
 		var slot: int = CARD_SHEET_SLOT[i]
 		var card := TextureButton.new()
@@ -989,7 +1004,7 @@ func _texture_bounds(texture: Texture2D) -> Rect2:
 # A whole file, cropped to its art. The crown is generated pixel art and
 # carries empty margin around the shape; centring the untrimmed image would
 # centre that margin instead.
-func _load_trimmed(file_name: String) -> Texture2D:
+func _load_trimmed(file_name: String, bake_h: int = TRIM_INK_BAKE_H) -> Texture2D:
 	var texture := _load_art(file_name)
 	if texture == null:
 		return null
@@ -1007,7 +1022,7 @@ func _load_trimmed(file_name: String) -> Texture2D:
 	# 505px 짜리 왕관이 14px 로 그려진다. 그 축소를 GPU 밉맵 체인에 통째로
 	# 맡기면 홀수 크기에서 마지막 열이 버려져 오른쪽이 깎여 보인다. 미리
 	# 짝수 크기로 줄여 굽고 투명 여백을 둘러 가장자리가 흐려질 자리를 만든다.
-	trimmed = _bake_small(trimmed)
+	trimmed = _bake_small(trimmed, bake_h)
 	var ink := trimmed.get_size()
 	var pad: int = maxi(4, int(round(maxi(ink.x, ink.y) * TRIM_INK_PAD_FRAC)))
 	var pw: int = ink.x + pad * 2
@@ -1028,13 +1043,13 @@ func _load_trimmed(file_name: String) -> Texture2D:
 
 # 그릴 크기에 가깝게 미리 줄인다. 알파를 곱한 채로 줄여야 투명한 쪽 RGB 가
 # 끌려 들어오지 않는다.
-func _bake_small(image: Image) -> Image:
-	if image.get_height() <= TRIM_INK_BAKE_H:
+func _bake_small(image: Image, bake_h: int = TRIM_INK_BAKE_H) -> Image:
+	if image.get_height() <= bake_h:
 		return image
-	var w: int = maxi(2, int(round(image.get_width() * float(TRIM_INK_BAKE_H) / float(image.get_height()))))
+	var w: int = maxi(2, int(round(image.get_width() * float(bake_h) / float(image.get_height()))))
 	var out := image.duplicate() as Image
 	out.premultiply_alpha()
-	out.resize(w + w % 2, TRIM_INK_BAKE_H, Image.INTERPOLATE_LANCZOS)
+	out.resize(w + w % 2, bake_h, Image.INTERPOLATE_LANCZOS)
 	for y in range(out.get_height()):
 		for x in range(out.get_width()):
 			var c: Color = out.get_pixel(x, y)
@@ -1687,6 +1702,15 @@ func _card_rect(index: int) -> Rect2:
 	return rect
 
 
+# 잠금 덮개의 불투명 테두리 두께. 카드 아트의 흰 띠와 같은 배율로 줄인다.
+func _card_lock_border_width(index: int) -> int:
+	if index < 0 or index >= _cards.size():
+		return 0
+	var card: TextureButton = _cards[index]
+	var art_scale: float = card.size.x * card.scale.x / SELECT_SHEET_WIDTH_NATIVE
+	return maxi(1, int(ceil(CARD_LOCK_VEIL_BORDER_NATIVE * art_scale)))
+
+
 func _card_corner_radius(index: int = -1) -> int:
 	var at: int = selected_index if index < 0 else index
 	if at < 0 or at >= _cards.size():
@@ -1735,6 +1759,11 @@ func _draw_card_lock(card_rect: Rect2) -> void:
 	var veil := StyleBoxFlat.new()
 	veil.bg_color = CARD_LOCK_VEIL_COLOR
 	veil.set_corner_radius_all(_card_corner_radius(index))
+	# 흰 테두리 자리에만 불투명한 띠를 얹는다. StyleBoxFlat 의 테두리는 상자
+	# 안쪽으로 그려지고 상자는 카드와 같은 사각형이므로, 두께만 맞으면 아트의
+	# 흰 띠와 정확히 겹친다.
+	veil.set_border_width_all(_card_lock_border_width(index))
+	veil.border_color = CARD_LOCK_VEIL_BORDER_COLOR
 	veil.anti_aliasing = true
 	_select_overlay.draw_style_box(veil, card_rect)
 

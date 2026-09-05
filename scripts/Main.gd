@@ -2454,6 +2454,17 @@ var leaderboard_bests := PackedInt32Array()
 # 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
 # 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
 var mode_gates_cleared := PackedInt32Array()
+## 잠긴 MIX 카드를 에디터에서 바로 보기 위한 스위치.
+##
+## 켜면 저장된 진행도와 상관없이 0/3 으로 보고하므로, 이미 해금한 기기에서도
+## 잠금 덮개가 그려진다. 해금 조건을 실제로 채우려면 서른 게이트를 지나야 하고,
+## 한 번 채우면 되돌릴 방법이 저장 파일을 손대는 것뿐이라 잠금 화면을 손볼
+## 때마다 그 값을 치르게 된다.
+##
+## 디버그 빌드에서만 듣는다. @export 라 인스펙터에서 켜면 Main.tscn 에 저장돼
+## 그대로 커밋될 수 있는데, 그러면 모두에게 영영 잠긴 채로 나간다 —
+## tools/check_hidden_unlock.gd 가 켜진 채로 커밋된 것을 잡는다.
+@export var debug_force_hidden_locked: bool = false
 var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
@@ -5780,8 +5791,11 @@ func hidden_mode_unlocked() -> bool:
 func _push_hidden_progress() -> void:
 	if mode_select_panel == null:
 		return
+	var cleared: int = hidden_modes_cleared()
+	if debug_force_hidden_locked and OS.is_debug_build():
+		cleared = 0
 	mode_select_panel.set_hidden_progress(
-		hidden_modes_cleared(), hidden_modes_required(), HIDDEN_UNLOCK_GATES)
+		cleared, hidden_modes_required(), HIDDEN_UNLOCK_GATES)
 
 
 func _load_best_score() -> void:
