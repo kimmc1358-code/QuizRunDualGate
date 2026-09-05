@@ -178,55 +178,92 @@ func _run() -> void:
 	if hidden_card < 0:
 		_fail("no card maps to MODE_HIDDEN")
 
-	# ---- 잠긴 히든 카드의 자물쇠 ----
+	# ---- 잠긴 히든 카드의 덮개 ----
 	#
-	# 체크와 같은 조건을 지켜야 하고(글자·캐릭터·카드 경계) 조건이 하나 더 있다:
-	# 잠긴 카드도 고를 수 있으므로 체크와 자물쇠가 한 카드에 같이 뜬다. 둘이
-	# 겹치면 아무것도 안 읽힌다.
+	# 덮개는 카드를 통째로 가리므로 "무엇을 가리는가"는 볼 것이 없다. 대신
+	# 안에 든 세 조각(자물쇠·LOCKED·안내판)이 카드 밖으로 새지 않는지, 서로
+	# 겹치지 않는지, 그리고 읽을 수 있는 크기인지를 본다 — 셋을 한 덩어리로
+	# 세로 가운데에 놓는 계산이라, 카드 높이가 비율마다 다른 이 화면에서는
+	# 한 비율만 재면 다른 비율에서 넘치는 것을 못 본다.
 	#
-	# 그리고 잠겼을 때만 떠야 한다. 늘 떠 있으면 해금해도 잠긴 것처럼 보이고,
-	# 그건 스크린샷으로는 "자물쇠가 있다"로 똑같이 보인다.
+	# 그리고 잠겼을 때만 떠야 한다. 늘 떠 있으면 해금해도 잠긴 것처럼 보이는데,
+	# 스크린샷으로는 "덮개가 있다"로 똑같이 보인다.
 	print("")
 	var lock_tex: Texture2D = screen.get("_lock_texture")
 	if lock_tex == null:
-		_fail("lock icon did not load — is %s missing?" % screen.get("CARD_LOCK_FILE"))
+		_fail("lock art did not load — is %s missing?" % screen.get("CARD_LOCK_FILE"))
 	if hidden_card >= 0 and lock_tex != null:
-		screen.size = view
-		screen.call("_layout")
-		# 고르지 않은 상태에서도, 고른 상태에서도 본다.
-		for pick in [0, hidden_card]:
-			screen.call("set_hidden_progress", 0, required, gates)
-			screen.call("_select", pick, false)
-			await process_frame
-			var lock_card: Rect2 = screen.call("_card_rect", hidden_card)
-			var lock: Rect2 = screen.call("_lock_rect", hidden_card, lock_card)
-			var plate2: Rect2 = screen.call("_drawn_rect", names[hidden_card])
-			var ink2: Rect2 = _opaque_screen_rect(arts[hidden_card])
-			var best_plate: Rect2 = screen.call("_drawn_rect", screen.get("_card_best_plate")[hidden_card])
-			var probs := []
-			if lock.intersects(plate2):
-				probs.append("covers the name plate")
-			if lock.intersects(ink2):
-				probs.append("covers the character")
-			if lock.intersects(best_plate):
-				probs.append("covers the BEST plate")
-			if not lock_card.encloses(lock):
-				probs.append("hangs outside the card")
-			if lock.size.x < lock_card.size.x * 0.10:
-				probs.append("is under 10%% of the card wide — too small to read")
-			if pick == hidden_card:
-				var check2: Rect2 = screen.call("_check_rect", hidden_card, screen.call("_selected_card_rect"))
-				if lock.intersects(check2):
-					probs.append("overlaps the selection check on the same card")
-			if not probs.is_empty():
-				_fail("the lock (card %s) %s" % [
-					"selected" if pick == hidden_card else "unselected", ", ".join(probs)])
-			print("  lock %-10s %.0f,%.0f %.0fx%.0f  %s" % [
-				"selected" if pick == hidden_card else "unselected",
-				lock.position.x, lock.position.y, lock.size.x, lock.size.y,
-				"ok" if probs.is_empty() else "FAIL"])
+		for h2 in [base.y, base.x * 20.0 / 9.0]:
+			screen.size = Vector2(base.x, h2)
+			screen.call("_layout")
+			for pick in [0, hidden_card]:
+				screen.call("set_hidden_progress", 0, required, gates)
+				screen.call("_select", pick, false)
+				await process_frame
+				var lock_card: Rect2 = screen.call("_lock_draw_rect")
+				if lock_card.size.x <= 0.0:
+					_fail("잠긴 상태인데 덮개가 안 나온다")
+					continue
+				var parts: Dictionary = screen.call("_lock_layout", hidden_card, lock_card)
+				var icon: Rect2 = parts["icon"]
+				var title: Rect2 = parts["title"]
+				var hint: Rect2 = parts["hint"]
+				var probs := []
+				# 카드 안에 있는 것만으로는 부족하다 — 이름판과 점수판 사이에
+				# 들어가야 한다. 카드 한가운데에 놓았을 때 안내판이 BEST 판에
+				# 맞닿았고, 덮개 때문에 "가린다"로는 안 잡혔다.
+				var np: Rect2 = screen.call("_drawn_rect", names[hidden_card])
+				var bp: Rect2 = screen.call("_drawn_rect", screen.get("_card_best_plate")[hidden_card])
+				for entry in [["icon", icon], ["LOCKED", title], ["hint box", hint]]:
+					if not lock_card.encloses(entry[1]):
+						probs.append("%s spills outside the card" % entry[0])
+					if entry[1].intersects(np):
+						probs.append("%s touches the name plate" % entry[0])
+					if entry[1].intersects(bp):
+						probs.append("%s touches the BEST plate" % entry[0])
+				if icon.intersects(title):
+					probs.append("the icon runs into LOCKED")
+				if title.intersects(hint):
+					probs.append("LOCKED runs into the hint box")
+				if title.position.y < icon.end.y:
+					probs.append("LOCKED is not below the icon")
+				if hint.position.y < title.end.y:
+					probs.append("the hint box is not below LOCKED")
+				# 읽을 수 있는 크기인가. 0 에 가까우면 위의 검사가 전부 저절로
+				# 통과하므로 이 검사가 아무것도 안 지키게 된다.
+				if icon.size.y < lock_card.size.y * 0.12:
+					probs.append("the icon is under 12%% of the card tall")
+				if int(parts["title_size"]) < 8:
+					probs.append("LOCKED is under 8px")
+				if int(parts["hint_size"]) < 7:
+					probs.append("the hint is under 7px")
+				# 안내 글자가 자기 판을 넘지 않는가.
+				var hf: Font = parts["hint_font"]
+				var text_w: float = hf.get_string_size(
+					screen.get("CARD_LOCK_HINT"), HORIZONTAL_ALIGNMENT_LEFT, -1,
+					int(parts["hint_size"])).x
+				if text_w > hint.size.x + 0.5:
+					probs.append("\"%s\" is %.0fpx but its plate is %.0f" % [
+						screen.get("CARD_LOCK_HINT"), text_w, hint.size.x])
+				if pick == hidden_card:
+					var check2: Rect2 = screen.call("_check_rect", hidden_card,
+						screen.call("_selected_card_rect"))
+					if check2.intersects(icon) or check2.intersects(title) or check2.intersects(hint):
+						probs.append("the selection check lands on the lock panel")
+				if not probs.is_empty():
+					_fail("%.0fx%.0f lock panel (%s): %s" % [
+						base.x, h2, "selected" if pick == hidden_card else "unselected",
+						", ".join(probs)])
+				print("  %.0fx%.0f lock %-10s icon %.0fx%.0f  LOCKED %dpx  hint %.0fx%.0f @%dpx  %s" % [
+					base.x, h2, "selected" if pick == hidden_card else "unselected",
+					icon.size.x, icon.size.y, int(parts["title_size"]),
+					hint.size.x, hint.size.y, int(parts["hint_size"]),
+					"ok" if probs.is_empty() else "FAIL"])
+
 		# 해금하면 사라져야 한다. _draw_selection 은 _lock_draw_rect() 가 빈
 		# 사각형인지만 보고 그리므로, 그 함수의 답이 곧 화면에 나오는 답이다.
+		screen.size = view
+		screen.call("_layout")
 		for cleared2 in range(required + 1):
 			screen.call("set_hidden_progress", cleared2, required, gates)
 			screen.call("_select", 0, false)
@@ -235,12 +272,12 @@ func _run() -> void:
 			var shows: bool = drawn.size.x > 0.0
 			var want_shown: bool = cleared2 < required
 			if shows != want_shown:
-				_fail("%d/%d 에서 자물쇠가 %s — 기대 %s" % [
+				_fail("%d/%d 에서 덮개가 %s — 기대 %s" % [
 					cleared2, required,
 					"보인다" if shows else "안 보인다",
 					"보임" if want_shown else "안 보임"])
 			else:
-				print("  %d/%d -> 자물쇠 %s" % [
+				print("  %d/%d -> 덮개 %s" % [
 					cleared2, required, "보임" if shows else "없음 (해금)"])
 		screen.call("set_hidden_progress", 0, required, gates)
 
