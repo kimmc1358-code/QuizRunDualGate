@@ -98,7 +98,7 @@ const BUTTON_TEXT_FIT_H := 0.80
 #                버튼에는 이쪽을 우선 쓴다.
 const ICON_SHEET := "res://assets/ui_assets/main/icon_sheet.png"
 const ICON_GRID := Vector2i(5, 3)
-const ICON_PLAY := 0
+const ICON_PLAY := 0            # 지금 쓰는 곳은 없다 — 시트의 목차라 자리를 지운다
 const ICON_RESTART := 1
 const ICON_HOME := 2
 const ICON_SPEAKER := 5
@@ -1133,10 +1133,6 @@ func _set_side_toggle(t: Control, on_second: bool) -> void:
 		return
 	t.set_meta("second", on_second)
 	t.queue_redraw()
-
-
-func _side_toggle_value(t: Control) -> bool:
-	return t != null and bool(t.get_meta("second", false))
 
 
 func _draw_side_toggle(t: Control) -> void:

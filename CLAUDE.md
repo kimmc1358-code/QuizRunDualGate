@@ -185,6 +185,7 @@ on failure.
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
+| `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 | `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
@@ -244,6 +245,13 @@ it sets a score, redraws, and shoots, once per digit count.
 `capture_combo.gd` freezes the clock and writes a combo count straight in,
 because tier 4 needs 76 consecutive gates and its colour animates — a value
 you cannot reach by playing and a colour one frame cannot show.
+
+`capture_mix_mode.gd` shoots one gate of each quiz kind in MIX, because
+`check_mix_mode.gd` only counts which kind came up — it cannot see a flag
+gate drawn with the Stroop code path. `capture_language_toggle.gd` shoots the
+mode select, settings, revive, game over and about screens in both languages,
+and drives the language switch through `Main` rather than the popup so the
+rebuild path is the one being photographed.
 
 `capture_mode_select.gd` is the other one, and it shoots four aspect ratios
 plus the hidden card in both of its states. That screen divides its leftover

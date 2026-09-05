@@ -16,10 +16,6 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
-[internationalization]
-
-locale/translations=PackedStringArray("res://assets/i18n/ui.en.translation", "res://assets/i18n/ui.ko.translation", "res://assets/i18n/countries.en.translation", "res://assets/i18n/countries.ko.translation")
-
 [display]
 
 window/size/viewport_width=480
@@ -29,6 +25,10 @@ window/stretch/aspect="expand"
 window/handheld/orientation=1
 window/size/window_width_override.editor=480
 window/size/window_height_override.editor=1067
+
+[internationalization]
+
+locale/translations=PackedStringArray("res://assets/i18n/ui.en.translation", "res://assets/i18n/ui.ko.translation", "res://assets/i18n/countries.en.translation", "res://assets/i18n/countries.ko.translation")
 
 [physics]
 

@@ -313,9 +313,16 @@ const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) fro
 # 높아진(안쪽 면 정렬용 여백) 만큼 올려, 눈에 보이는 박스 크기는 그대로다.
 # The quiz TEXT does not grow with it; see QUIZ_TEXT_*_FONT_FRAC.
 const QUIZ_BOX_HEIGHT_STRETCH := 1.429
-# Canvas sizes the slicer produced — see tools/slice_hud_sheet_v5.gd, which
-# prints them. Used for layout maths and as the aspect fallback when a
-# texture is missing; the real texture's size wins when it is loaded.
+# 세 조각의 '그려질 비율'. 아트를 재서 나온 값이 아니라 정해 둔 값이고, 지금은
+# 어느 것도 실제 아트와 크기가 다르다 — 그래서 여기 적혀 있다.
+#
+# 원래는 hud_sheet_v5 를 자른 캔버스 크기였는데, 그 아트가 v3 조각들로 바뀌면서
+# 숫자만 남았다. 바꾸지 않은 것은 셋 다 아트 비율을 따르면 안 되는 자리이기
+# 때문이다 — 점수 박스와 퀴즈 박스는 9-slice 로 늘려 그리므로 원본 비율을
+# 따르면 각각 세 배, 1.6 배로 두꺼워진다(_score_box_rect / _quiz_box_rect 의
+# 주석 참고). 즉 이 셋은 측정값이 아니라 튜닝값이다.
+#
+# 아트가 없을 때의 대체 비율로도 쓰인다 — 실제 텍스처가 있으면 그쪽이 이긴다.
 const SCORE_BOX_SRC := Vector2(937.0, 135.0)
 const QUIZ_BOX_SRC := Vector2(1190.0, 117.0)
 const HUD_BUTTON_SRC := Vector2(117.0, 109.0)
@@ -2110,10 +2117,14 @@ const COUNTDOWN_ART_OVERSAMPLE := 1.2
 
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
-# as real Buttons. All four come out of one hand-authored sheet,
-# assets/ui_assets/hud_sheet_v5.png, cut by tools/slice_hud_sheet_v5.gd.
+# as real Buttons.
 #
-# The slicer is what makes the three modes interchangeable here: rather than
+# Pause / mute / quiz box come out of one hand-authored sheet,
+# assets/ui_assets/hud_sheet_v7.png, cut by tools/slice_hud_sheet_v7.gd into
+# the *_v3 pieces below. The score box no longer does — it borrows the gate's
+# flag panel art (see MODE_SCORE_BOX_PATH).
+#
+# The slicer is what makes the modes interchangeable here: rather than
 # cropping each mode to its own tight bounding box (which lands the writing
 # area somewhere different in every mode, because the frames differ in
 # thickness and the decorations — wings, leaves, coral — stick out by
