@@ -13,12 +13,12 @@ extends RefCounted
 ## (SettingsPopup._link_enabled). 죽은 링크를 멀쩡한 얼굴로 보여 주는 것보다
 ## 낫다 — 지인 테스트에서 눌러 볼 것이 뻔한 자리다.
 
-## 개인정보 처리방침. Play 스토어 등록에도 호스팅된 주소가 따로 필요하므로,
-## 그때 쓰는 것과 같은 주소를 여기에도 넣으면 된다.
-const PRIVACY_POLICY_URL := ""
+## 개인정보 처리방침. Play 스토어 콘솔에도 같은 주소를 넣으면 된다 — 등록에는
+## 호스팅된 주소가 따로 요구된다.
+const PRIVACY_POLICY_URL := "https://kimmc1358-code.github.io/quizrun-legal/privacy-policy"
 
 ## 이용약관.
-const TERMS_OF_SERVICE_URL := ""
+const TERMS_OF_SERVICE_URL := "https://kimmc1358-code.github.io/quizrun-legal/terms-of-service"
 
 ## 문의/피드백을 받을 주소. 채워져 있으므로 설정의 그 줄은 살아 있고, 누르면
 ## 기기의 기본 메일 앱이 제목까지 채워진 채로 열린다.
