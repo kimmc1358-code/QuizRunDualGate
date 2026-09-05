@@ -192,6 +192,18 @@ generates the round cut-out from a fitted circle, because keying out
 green circle. Check what a sheet's alpha really is before assuming a slicer
 can band it.
 
+`tools/build_app_icon.ps1` produces the launcher icons from a character
+sprite, and the sizes are not interchangeable. An **adaptive** icon is two
+432x432 layers the launcher composites and then masks to whatever shape it
+wants, and only the middle 66% survives that mask — art that fills the canvas
+gets its edges eaten on a circular launcher, so the character is fitted to a
+264px safe circle. The **legacy** 192 is those two layers flattened. The
+**Play Store** 512 must be 32-bit PNG with no transparency and square
+corners, since Google rounds it itself; it lives in `store/` behind a
+`.gdignore`, because it is a listing asset and there is no reason to ship it
+inside the APK. Pass `-Character dragon|shark|unicorn` to rebuild from a
+different mode's sprite.
+
 The exception is an **animation strip** — the character sheets and the boost
 burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
 which takes a cell grid, drops fully transparent cells and rebuilds each
@@ -324,6 +336,7 @@ the preset on another machine has to reproduce them exactly.
 |---|---|
 | Package name | `com.janiju.quizrundualgate` |
 | Launcher label (`package/name`) | `QuizRun` |
+| Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back 432 |
 | Export filter | `all_resources` |
 | Excluded | `assets/references/*`, `tools/*` |
 | Gradle build | off (no plugins yet) |
