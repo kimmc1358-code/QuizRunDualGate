@@ -102,22 +102,19 @@ const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 # 가속 버튼을 어느 쪽 아래 구석에 둘지. 같은 자리를 두고 "편하다"와 "너무
 # 불편하다"로 갈린다는 피드백이 있어서 고를 수 있게 했다.
 #
-# 두 칸 다 같은 금색 아트로 만들고, 고르지 않은 쪽을 흐리게 해서 상태를
-# 보인다. 아트를 서로 바꿔 끼우는 것보다 한 줄이면 되고, 음소거 버튼이 이미
-# 같은 방식으로 꺼짐을 표시한다.
+# 두 갈래 토글로 그린다(_make_side_toggle). 처음에는 금색 버튼 두 개였는데
+# 트랙 절반 폭이 GOLD_CORNER(88px) 의 두 배에 못 미쳐 나인패치 모서리가 서로
+# 파고들며 테두리가 깨졌다.
 const BOOST_ROW_LABEL := "BOOST"
 const BOOST_OPTION_TEXTS := ["LEFT", "RIGHT"]
 const BOOST_ROW_HEIGHT_FRAC := 0.105    # 판 너비 대비
-const BOOST_OPTION_GAP_FRAC := 0.022    # 판 너비 대비 — 두 칸 사이
-const BOOST_OPTION_DIM := 0.45          # 고르지 않은 쪽의 불투명도
 
 var _title: TextureRect
 var _sliders: Control
 var _sfx_slider: HSlider
 var _music_slider: HSlider
 var _boost_row: Control          # "BOOST" 이름표 + LEFT/RIGHT 두 칸
-var _boost_left: Button
-var _boost_right: Button
+var _boost_toggle: Control
 var _boost_on_left := false
 var _divider_top: Control
 var _divider_account: Control    # 계정 줄과 광고 제거 사이
@@ -169,17 +166,12 @@ func _build_content() -> void:
 	_boost_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_boost_row.draw.connect(_draw_boost_row)
 	add_child(_boost_row)
-	_boost_left = _make_button(GOLD_FILE, GOLD_CORNER, BOOST_OPTION_TEXTS[0], null, true)
-	_boost_right = _make_button(GOLD_FILE, GOLD_CORNER, BOOST_OPTION_TEXTS[1], null, true)
-	for i in range(2):
-		var b: Button = _boost_left if i == 0 else _boost_right
-		var want_left: bool = i == 0
-		b.pressed.connect(func() -> void:
-			if _boost_on_left == want_left:
-				return
-			set_boost_side(want_left)
-			boost_side_changed.emit(want_left))
-		add_child(b)
+	# 값은 "왼쪽인가"인데 토글은 "두 번째 칸인가"를 다루므로, 오른쪽이 두 번째다.
+	_boost_toggle = _make_side_toggle(BOOST_OPTION_TEXTS, not _boost_on_left,
+		func(on_second: bool) -> void:
+			_boost_on_left = not on_second
+			boost_side_changed.emit(_boost_on_left))
+	add_child(_boost_toggle)
 
 	_divider_top = _make_divider()
 	_divider_account = _make_divider()
@@ -310,12 +302,11 @@ func _layout_content(inner: Rect2) -> void:
 	_boost_row.position = Vector2(inner_x, y)
 	_boost_row.size = Vector2(inner_w, boost_row_h)
 	_boost_row.queue_redraw()
-	var opt_gap: float = pw * BOOST_OPTION_GAP_FRAC
-	var opt_w: float = (track_w - opt_gap) * 0.5
-	for i in range(2):
-		var b: Button = _boost_left if i == 0 else _boost_right
-		_place(b, inner_x + track_x + i * (opt_w + opt_gap), y, opt_w, boost_row_h,
-			0.0, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	# 토글은 트랙과 같은 폭·같은 왼쪽 끝. 높이는 알약이 뭉툭해지지 않게 상한을 둔다.
+	var toggle_h: float = minf(boost_row_h, TOGGLE_HEIGHT)
+	_boost_toggle.position = Vector2(inner_x + track_x, y + (boost_row_h - toggle_h) * 0.5)
+	_boost_toggle.size = Vector2(track_w, toggle_h)
+	_boost_toggle.queue_redraw()
 	y += boost_row_h + gap
 
 	_divider_top.position = Vector2(inner_x, y)
@@ -404,10 +395,7 @@ func _draw_boost_row() -> void:
 ## 값을 넣어 줄 때와, 사용자가 눌렀을 때 둘 다 여기를 지난다.
 func set_boost_side(on_left: bool) -> void:
 	_boost_on_left = on_left
-	if _boost_left != null:
-		_boost_left.modulate.a = 1.0 if on_left else BOOST_OPTION_DIM
-	if _boost_right != null:
-		_boost_right.modulate.a = BOOST_OPTION_DIM if on_left else 1.0
+	_set_side_toggle(_boost_toggle, not on_left)
 
 
 # 동그란 프로필 자리 + 상태 글자. 그림이 아직 없으면 사람 모양 자리표시를 그린다.

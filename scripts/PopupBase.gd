@@ -1058,6 +1058,88 @@ func _slider_label_column(font_size: int, texts: Array) -> float:
 	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
 
 
+# ---- 두 갈래 토글 ----
+#
+# 알약 모양 트랙 위를 손잡이가 좌우로 옮겨 다니고, 두 칸에 각각 이름이 적힌다.
+# 지금 쓰는 곳은 가속 버튼의 좌/우 하나뿐이지만, 설정 팝업과 일시정지 팝업
+# 둘 다에서 쓰므로 여기 둔다.
+#
+# 처음에는 금색 버튼(_make_button) 두 개로 만들었는데 테두리가 깨졌다.
+# GOLD_CORNER 가 88px 이고 나인패치는 모서리를 원본 크기로 그리므로, 버튼을
+# 176px 보다 좁게 만들면 좌우 모서리가 서로 파고든다. 트랙 절반 폭에 넣으려던
+# 것이라 어느 화면에서도 그보다 좁았다. 직접 그리면 그 제약이 아예 없다.
+#
+# 색은 슬라이더에서 그대로 가져온다 — 같은 줄에 나란히 서므로 트랙과 채움이
+# 같은 색이어야 한 벌로 읽힌다.
+const TOGGLE_HEIGHT := 40.0
+const TOGGLE_PAD := 4.0            # 트랙 안쪽, 손잡이 둘레의 여백
+const TOGGLE_LABEL_FRAC := 0.42    # 토글 높이 대비 글자 크기
+const TOGGLE_OFF_TEXT := Color(0.42, 0.40, 0.36, 1.0)
+
+
+## 두 갈래 토글 하나. `texts` 는 [왼쪽, 오른쪽] 이름이고, 값이 false 면 왼쪽이
+## 아니라 오른쪽이 켜진 것으로 본다 — 부르는 쪽의 bool 이 "왼쪽인가"가 아니라
+## 무엇이든 될 수 있게, 어느 칸이 켜졌는지는 인덱스로 다룬다.
+func _make_side_toggle(texts: Array, on_second: bool, on_change: Callable) -> Control:
+	var t := Control.new()
+	t.mouse_filter = Control.MOUSE_FILTER_STOP
+	t.set_meta("texts", texts)
+	t.set_meta("second", on_second)
+	t.draw.connect(_draw_side_toggle.bind(t))
+	t.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			var want_second: bool = e.position.x > t.size.x * 0.5
+			if want_second == bool(t.get_meta("second")):
+				return
+			_set_side_toggle(t, want_second)
+			on_change.call(want_second))
+	return t
+
+
+## 표시만 바꾼다 — 신호는 보내지 않는다. 저장된 값을 넣어 줄 때도 여기를 지난다.
+func _set_side_toggle(t: Control, on_second: bool) -> void:
+	if t == null:
+		return
+	t.set_meta("second", on_second)
+	t.queue_redraw()
+
+
+func _side_toggle_value(t: Control) -> bool:
+	return t != null and bool(t.get_meta("second", false))
+
+
+func _draw_side_toggle(t: Control) -> void:
+	var texts: Array = t.get_meta("texts", ["", ""])
+	var second: bool = bool(t.get_meta("second", false))
+	var h: float = t.size.y
+	var w: float = t.size.x
+	var r: float = h * 0.5
+	# 트랙.
+	t.draw_style_box(_pill(SLIDER_TRACK_COLOR, r), Rect2(Vector2.ZERO, Vector2(w, h)))
+	# 손잡이 — 켜진 칸을 덮는다.
+	var knob_w: float = (w - TOGGLE_PAD * 2.0) * 0.5
+	var knob_x: float = TOGGLE_PAD + (knob_w if second else 0.0)
+	t.draw_style_box(_pill(SLIDER_FILL_COLOR, (h - TOGGLE_PAD * 2.0) * 0.5),
+		Rect2(Vector2(knob_x, TOGGLE_PAD), Vector2(knob_w, h - TOGGLE_PAD * 2.0)))
+	# 이름 둘. 켜진 쪽은 진한 잉크, 꺼진 쪽은 흐리게.
+	var fs: int = maxi(9, int(round(h * TOGGLE_LABEL_FRAC)))
+	for i in range(2):
+		var text: String = str(texts[i]) if i < texts.size() else ""
+		var tw: float = _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var cx: float = TOGGLE_PAD + knob_w * (float(i) + 0.5)
+		var lit: bool = (i == 1) == second
+		t.draw_string(_font_bold, Vector2(cx - tw * 0.5, h * 0.5 + fs * 0.36),
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK if lit else TOGGLE_OFF_TEXT)
+
+
+func _pill(color: Color, radius: float) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.set_corner_radius_all(int(round(radius)))
+	box.anti_aliasing = true
+	return box
+
+
 # 판을 가로지르는 점선.
 func _draw_dotted_divider(ctrl: Control) -> void:
 	var w: float = ctrl.size.x

@@ -13,6 +13,7 @@ signal restart_pressed
 signal home_pressed
 signal sfx_volume_changed(value: float)
 signal music_volume_changed(value: float)
+signal boost_side_changed(on_left: bool)
 
 const TITLE_TEXT := "PAUSED"
 const TITLE_SIZE_FRAC := 0.105        # 판 너비 대비 글자 크기
@@ -24,7 +25,17 @@ const SECONDARY_WIDTH_FRAC := 0.88
 
 # 슬라이더와 점선 구분선은 PopupBase 가 들고 있다 — 설정 팝업과 같은 것을 쓴다.
 
+# 가속 버튼 좌/우. 설정 팝업에도 같은 줄이 있지만, 그 팝업은 메인 화면에서만
+# 열린다 — 손이 불편한 걸 깨닫는 건 판이 도는 중이라, 여기서도 바꿀 수 있어야
+# 게임을 나갔다 오지 않는다.
+const BOOST_ROW_LABEL := "BOOST"
+const BOOST_OPTION_TEXTS := ["LEFT", "RIGHT"]
+const BOOST_ROW_HEIGHT_FRAC := 0.105    # 판 너비 대비
+
 var _title: Label
+var _boost_row: Control
+var _boost_toggle: Control
+var _boost_on_left := false
 var _resume: Button
 var _restart: Button
 var _home: Button
@@ -63,6 +74,17 @@ func _build_content() -> void:
 	_music_slider.value_changed.connect(func(v: float): music_volume_changed.emit(v))
 	_sliders.add_child(_music_slider)
 
+	_boost_row = Control.new()
+	_boost_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boost_row.draw.connect(_draw_boost_row)
+	add_child(_boost_row)
+	# 값은 "왼쪽인가"인데 토글은 "두 번째 칸인가"를 다루므로, 오른쪽이 두 번째다.
+	_boost_toggle = _make_side_toggle(BOOST_OPTION_TEXTS, not _boost_on_left,
+		func(on_second: bool) -> void:
+			_boost_on_left = not on_second
+			boost_side_changed.emit(_boost_on_left))
+	add_child(_boost_toggle)
+
 	_divider = Control.new()
 	_divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_divider.draw.connect(_draw_divider)
@@ -91,10 +113,12 @@ func _layout_content(inner: Rect2) -> void:
 	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_TRACK_HEIGHT + 6.0
 	var divider_h: float = DIVIDER_DOT_RADIUS * 2.0
 
-	# 항목 7개(제목, 버튼3, 슬라이더2, 구분선)의 높이 합을 뺀 나머지를
-	# 사이 간격 6개로 나눈다.
-	var used: float = title_h + primary_h + secondary_h * 2.0 + slider_h * 2.0 + divider_h
-	var gap: float = maxf(6.0, (bottom - top - used) / 6.0)
+	var boost_row_h: float = pw * BOOST_ROW_HEIGHT_FRAC
+	# 항목 8개(제목, 버튼3, 슬라이더2, 가속 줄, 구분선)의 높이 합을 뺀 나머지를
+	# 사이 간격 7개로 나눈다.
+	var used: float = title_h + primary_h + secondary_h * 2.0 + slider_h * 2.0 \
+		+ boost_row_h + divider_h
+	var gap: float = maxf(6.0, (bottom - top - used) / 7.0)
 
 	var y := top
 	_title.position = Vector2(inner_x, y)
@@ -129,6 +153,16 @@ func _layout_content(inner: Rect2) -> void:
 	_sliders.queue_redraw()
 	y += slider_h * 2.0 + gap + gap
 
+	# 가속 버튼 좌/우 — 슬라이더와 같은 이름표 칸, 같은 트랙 폭.
+	_boost_row.position = Vector2(inner_x, y)
+	_boost_row.size = Vector2(inner_w, boost_row_h)
+	_boost_row.queue_redraw()
+	var toggle_h: float = minf(boost_row_h, TOGGLE_HEIGHT)
+	_boost_toggle.position = Vector2(inner_x + track_x, y + (boost_row_h - toggle_h) * 0.5)
+	_boost_toggle.size = Vector2(track_w, toggle_h)
+	_boost_toggle.queue_redraw()
+	y += boost_row_h + gap
+
 	_divider.position = Vector2(inner_x, y)
 	_divider.size = Vector2(inner_w, divider_h)
 	_divider.queue_redraw()
@@ -153,6 +187,19 @@ func _draw_sliders() -> void:
 		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
 		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
+
+
+# 슬라이더 이름표 그리기를 한 줄짜리로 재사용한다 — 아이콘이 없으니 글자만
+# 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
+func _draw_boost_row() -> void:
+	_draw_slider_labels(_boost_row, [[BOOST_ROW_LABEL, null]],
+		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _boost_row.size.y, 0.0)
+
+
+## 표시만 바꾼다 — 신호는 보내지 않는다. Main 이 저장된 값을 넣어 줄 때 쓴다.
+func set_boost_side(on_left: bool) -> void:
+	_boost_on_left = on_left
+	_set_side_toggle(_boost_toggle, not on_left)
 
 
 # 판을 가로지르는 점선. 위쪽 조작과 아래쪽 나가기를 갈라 준다.

@@ -2746,6 +2746,7 @@ func _boot_load() -> void:
 	pause_panel.home_pressed.connect(_on_pause_home_pressed)
 	pause_panel.sfx_volume_changed.connect(set_sfx_volume)
 	pause_panel.music_volume_changed.connect(set_music_volume)
+	pause_panel.boost_side_changed.connect(set_boost_button_on_left)
 	revive_panel.watch_ad_pressed.connect(_on_revive_continue)
 	revive_panel.decline_pressed.connect(_on_revive_decline)
 	mute_button.pressed.connect(_on_mute_pressed)
@@ -6134,6 +6135,7 @@ func _on_pause_pressed() -> void:
 	# 슬라이더가 현재 볼륨을 비추도록 — 팝업은 값을 들고 있지 않고, 열릴 때마다
 	# 받아 간다.
 	pause_panel.set_volumes(sfx_volume, music_volume)
+	pause_panel.set_boost_side(boost_button_on_left)
 	pause_panel.visible = true
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 0.5)
 
@@ -6228,6 +6230,12 @@ func set_boost_button_on_left(on_left: bool) -> void:
 	boost_button_on_left = on_left
 	_save_control_settings()
 	_layout_hud_buttons()
+	# 두 팝업이 같은 값을 보여야 한다 — 한쪽에서 바꾸고 다른 쪽을 열었을 때
+	# 옛 상태가 켜져 있으면 어느 쪽이 참인지 알 수 없다.
+	if settings_popup != null:
+		settings_popup.set_boost_side(on_left)
+	if pause_panel != null:
+		pause_panel.set_boost_side(on_left)
 
 
 # 최고 점수와 같은 파일을 쓰므로, 먼저 읽어 들여 다른 값을 지우지 않는다.
