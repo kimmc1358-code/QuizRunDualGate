@@ -342,6 +342,21 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
   fraction of the *reference* viewport height, not `view_size.y`. Character
   clamping and the death line deliberately still use the real screen — see
   the comment on `_gate_field_top` for why an invisible floor is worse.
+- **Phones are covered; tablets are not, and that is a decision, not an
+  oversight.** `expand` treats the base size as a minimum on *both* axes, so
+  a screen wider than 16:9 does not lose height — it gains width, and the
+  viewport comes out 640x854 on 4:3 rather than 480x640. Gameplay survives
+  that (the field lands at 650px, near the 690 cap) but the mode-select
+  screen does not: at 4:3 the START button overlaps the bottom row of cards
+  and covers their BEST scores. Left alone deliberately while the game is
+  being tested on phones. Reproduce with
+  `DisplayServer.window_set_size(Vector2i(480, 640))` before the scene loads.
+- **Only `check_gate_reach.gd` sweeps aspect ratios.** Every other checker
+  reads the one resolution out of `ProjectSettings` and therefore only ever
+  sees 16:9. The START overlap above was found by taking a screenshot, not
+  by a checker. Before trusting a green suite about anything layout-shaped,
+  check whether the thing in question is actually measured at more than one
+  ratio.
 - Anything set against the world's scroll rate is set against `GATE_SPEED`
   **in the same breath**, and stops being true when it changes. The one that
   bites is `PARTICLE_DRIFT_X_RATIO`: DREAM's petals are only perceived as
