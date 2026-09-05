@@ -2179,6 +2179,9 @@ const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 # 저장 파일이 더 이상 바뀌지 않는다.
 const HIDDEN_UNLOCK_GATES := 10
 const SAVE_KEY_GATES_PREFIX := "gates_cleared_"
+# 가속 보너스 안내를 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다
+# 켤 때마다 다시 뜬다.
+const SAVE_KEY_BOOST_HINT := "boost_hint_seen"
 # 해금 대상이 아닌 모드. 자기 자신을 조건에 넣을 수는 없다.
 const HIDDEN_MODE := Mode.DREAM
 # ============================================================
@@ -2454,6 +2457,8 @@ var leaderboard_bests := PackedInt32Array()
 # 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
 # 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
 var mode_gates_cleared := PackedInt32Array()
+# 가속 보너스 안내를 봤는지. SAVE_KEY_BOOST_HINT 참고.
+var boost_hint_seen: bool = false
 ## 잠긴 MIX 카드를 에디터에서 바로 보기 위한 스위치.
 ##
 ## 켜면 저장된 진행도와 상관없이 0/3 으로 보고하므로, 이미 해금한 기기에서도
@@ -2584,6 +2589,7 @@ var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be kil
 @onready var gameover_popup: Control = $UI/GameOverPopupPanel
 @onready var settings_popup: Control = $UI/SettingsPopupPanel
 @onready var about_popup: Control = $UI/AboutPopupPanel
+@onready var boost_hint_popup: Control = $UI/BoostHintPanel
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
 @onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
@@ -2640,7 +2646,7 @@ func _boot_load() -> void:
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
 	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
-			mode_select_panel]:
+			boost_hint_popup, mode_select_panel]:
 		if panel != null and panel.has_method("ensure_built"):
 			panel.ensure_built()
 	# ...except the top HUD, whose painted frames are minified hard enough
@@ -2789,6 +2795,7 @@ func _boot_load() -> void:
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
 	settings_popup.about_pressed.connect(_on_about_pressed)
 	about_popup.close_pressed.connect(_on_about_closed)
+	boost_hint_popup.ok_pressed.connect(_on_boost_hint_ok)
 	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
@@ -5808,6 +5815,7 @@ func _load_best_score() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
+	boost_hint_seen = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_BOOST_HINT, false))
 	for mode in range(Mode.size()):
 		best_scores[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
@@ -5822,6 +5830,15 @@ func _load_best_score() -> void:
 	if legacy > 0 and best_scores[Mode.SKY] == 0:
 		best_scores[Mode.SKY] = legacy
 		_save_best_score(Mode.SKY)
+
+
+func _save_boost_hint_seen() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_BOOST_HINT, boost_hint_seen)
+	var err := cfg.save(SAVE_PATH)
+	if err != OK:
+		push_warning("could not write %s (error %d) — the boost hint will show again" % [SAVE_PATH, err])
 
 
 func _save_best_score(mode: int) -> void:
@@ -6020,6 +6037,33 @@ func _on_mode_selected(mode: int) -> void:
 	# ReadyPanel/PlayButton 은 그대로 두었다 — 되돌리려면 이 두 줄만 바꾸면 된다.
 	_apply_mode(mode)
 	_reset_game()
+	# 설치 후 첫 판에서만, 카운트다운 전에 가속 안내를 한 번 띄운다. OK 를
+	# 누르면 _on_boost_hint_ok 가 이어서 카운트다운을 건다.
+	if not boost_hint_seen and boost_hint_popup != null:
+		_show_boost_hint()
+		return
+	_start_countdown()
+
+
+# ---- 가속 보너스 안내 (설치 후 1회) ----
+#
+# 카운트다운 '전'에 띄운다. 카운트다운 중에 띄우면 READY/START 글자와 겹치고,
+# 판이 시작된 뒤에 띄우면 게이트가 이미 다가오는 중이라 읽을 틈이 없다.
+func _show_boost_hint() -> void:
+	boost_hint_popup.set_boost_info(
+		boost_bar_track_texture, boost_bar_fill_textures, BOOST_BAR_FILL_INSET_FRAC,
+		PackedFloat32Array([boost_bonus_mid_threshold, boost_bonus_best_threshold]),
+		PackedFloat32Array([boost_bonus_none_multiplier, boost_bonus_mid_multiplier,
+			boost_bonus_best_multiplier]))
+	boost_hint_popup.visible = true
+
+
+func _on_boost_hint_ok() -> void:
+	boost_hint_popup.visible = false
+	# 닫는 순간 저장한다. 여기서 안 쓰고 판이 끝날 때 쓰면, 첫 판 도중에 앱이
+	# 죽었을 때 다음 실행에서 또 뜬다.
+	boost_hint_seen = true
+	_save_boost_hint_seen()
 	_start_countdown()
 
 
