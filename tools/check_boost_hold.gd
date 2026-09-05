@@ -230,11 +230,62 @@ func _run() -> void:
 	await process_frame
 	_check("reset -> stopped", sfx.playing, false)
 
+	await _check_pop_cues(main)
+
 	if fails == 0:
 		print("\nPASS — the hold releases cleanly on every path")
 	else:
 		print("\nFAIL (%d)" % fails)
 	quit(1 if fails > 0 else 0)
+
+
+# 게이트를 지날 때 뜨는 BOOST! / TURBO! 팝업의 소리.
+#
+# 등급을 정하는 bool 하나가 글자와 소리를 함께 고른다는 것이 이 코드의 주장인데,
+# 어긋나도 화면은 멀쩡하다 — TURBO 라고 쓰인 팝업 밑에서 BOOST 소리가 날 뿐이고,
+# 두 소리를 나란히 들어 본 사람만 안다. 그래서 글자와 울린 플레이어를 같은
+# 호출에서 함께 본다.
+#
+# 홀드음(boost.wav)·점화음(boost_start.wav)과도 다른 파일이어야 한다. 넷이
+# 같은 "부스트" 라는 말을 쓰고 있어서 한 파일로 합쳐지기 쉬운데, 버튼을 누른
+# 사건과 게이트를 지난 사건은 서로 겹쳐 나므로 같은 소리면 구별이 안 된다.
+func _check_pop_cues(main: Node2D) -> void:
+	print("")
+	print("BOOST! / TURBO! 팝업 소리")
+	var mid: AudioStreamPlayer = main.get("fx_sound_boost_pop_mid")
+	var best: AudioStreamPlayer = main.get("fx_sound_boost_pop_best")
+	_check("BOOST! cue loaded", mid != null and mid.stream != null, true)
+	_check("TURBO! cue loaded", best != null and best.stream != null, true)
+	if mid == null or best == null:
+		return
+	_check("the two are different files", mid.stream != best.stream, true)
+	_check("not the hold loop", mid.stream != main.get("fx_sound_boost").stream, true)
+	_check("not the press one-shot", best.stream != main.get("fx_sound_boost_start").stream, true)
+	_check("BOOST! on the SFX bus", mid.bus, "SFX")
+	_check("TURBO! on the SFX bus", best.bus, "SFX")
+
+	# 두 등급을 실제로 띄워 보고, 글자와 울린 쪽이 맞는지 본다. 임계값은
+	# 게임에서 읽어 온다 — 여기 숫자를 적어 두면 임계값이 움직여도 통과한다.
+	var view := Vector2(
+		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+	var mid_at: float = float(main.get("boost_bonus_mid_threshold"))
+	var best_at: float = float(main.get("boost_bonus_best_threshold"))
+	for case in [["BOOST!", mid_at, mid, best], ["TURBO!", best_at, best, mid]]:
+		mid.stop()
+		best.stop()
+		await process_frame
+		main.call("_spawn_boost_pop", 600, float(case[1]), view)
+		await process_frame
+		var text: String = str(main.get("boost_pop_text"))
+		var want: AudioStreamPlayer = case[2]
+		var other: AudioStreamPlayer = case[3]
+		_check("%s bar leaves %s on screen" % [str(case[0]), str(case[0])],
+			text.begins_with(str(case[0])), true)
+		_check("%s cue plays" % str(case[0]), want.playing, true)
+		_check("%s leaves the other silent" % str(case[0]), other.playing, false)
+	mid.stop()
+	best.stop()
 
 
 func _settle(span: float) -> void:

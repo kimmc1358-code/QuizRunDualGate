@@ -1559,6 +1559,15 @@ const SCORE_PER_COMBO := 10           # gate score = SCORE_PER_COMBO x combo, be
 # height of the zone and fails on any intersection or off-screen text.
 #
 # One popup at a time, not a list: a second pass inside 0.45s restarts it.
+# 두 등급의 소리. 팝업이 뜨는 순간 하나만 난다 — 등급을 정하는 bool 하나가
+# 글자·크기·색·컨페티에 이어 소리까지 고르므로, 화면은 TURBO 인데 귀에는
+# BOOST 가 들리는 상태가 생길 수 없다.
+#
+# 부스트 버튼을 누를 때 나는 boost_start.wav 와는 다른 소리다. 그쪽은 "눌렀다",
+# 이쪽은 "게이트를 지날 때 바가 이만큼 남아 있었다" 로 서로 다른 사건이고,
+# 실제로 둘이 겹쳐 날 수 있다.
+const BOOST_POP_SOUND_MID := "res://assets/audio/boost_sound.mp3"
+const BOOST_POP_SOUND_BEST := "res://assets/audio/turbo_sound.mp3"
 const BOOST_POP_CHARACTER_OFFSET := Vector2(58.0, 0.0)  # from the character's centre; clears PLAYER_VISUAL_SIZE's 50px half-width
 const BOOST_POP_SCREEN_MARGIN := 14.0                   # never let the text reach a screen edge
 const BOOST_POP_COMBO_GAP := 10.0                       # clearance kept when pushed below the combo block
@@ -2592,6 +2601,8 @@ var combo_glow_elapsed: float = -1.0   # -1 = inactive; screen-edge glow for com
 var combo_font: Font
 var fx_sound_whoosh: AudioStreamPlayer
 var fx_sound_chime: AudioStreamPlayer
+var fx_sound_boost_pop_mid: AudioStreamPlayer
+var fx_sound_boost_pop_best: AudioStreamPlayer
 var fx_sound_flap: AudioStreamPlayer
 # Two players so a track change can crossfade; bgm_active indexes whichever
 # is currently the audible one. See _play_bgm.
@@ -2756,6 +2767,18 @@ func _boot_load() -> void:
 	fx_sound_chime.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_CHIME_PATH):
 		fx_sound_chime.stream = load(FX_SOUND_CHIME_PATH)
+	# 등급마다 플레이어를 따로 둔다. 한 플레이어에 스트림을 갈아 끼우면 앞
+	# 소리가 끊기는데, 두 게이트를 잇달아 지나면 등급이 바뀌면서 그렇게 된다.
+	fx_sound_boost_pop_mid = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_pop_mid)
+	fx_sound_boost_pop_mid.bus = BUS_SFX
+	if ResourceLoader.exists(BOOST_POP_SOUND_MID):
+		fx_sound_boost_pop_mid.stream = load(BOOST_POP_SOUND_MID)
+	fx_sound_boost_pop_best = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_pop_best)
+	fx_sound_boost_pop_best.bus = BUS_SFX
+	if ResourceLoader.exists(BOOST_POP_SOUND_BEST):
+		fx_sound_boost_pop_best.stream = load(BOOST_POP_SOUND_BEST)
 	fx_sound_flap = AudioStreamPlayer.new()
 	add_child(fx_sound_flap)
 	fx_sound_flap.bus = BUS_SFX
@@ -4798,9 +4821,22 @@ func _spawn_boost_pop(points: int, remaining: float, view_size: Vector2) -> void
 	# Captured now, held for the popup's whole life — see the BOOST_POP_*
 	# header for why this does not track the character.
 	boost_pop_anchor = Vector2(PLAYER_X, player_y) + BOOST_POP_CHARACTER_OFFSET
+	_play_boost_pop_sound(boost_pop_is_best)
 	var count: Vector2i = BOOST_POP_BURST_COUNT_BEST if boost_pop_is_best else BOOST_POP_BURST_COUNT_MID
 	_spawn_spark_burst(boost_pop_anchor, count, BOOST_POP_BURST_SIZE_RANGE,
 		fx_burst_textures, FX_SPARK_SPEED_RANGE, FX_SPARK_LIFETIME_RANGE, BOOST_POP_BURST_RADIUS)
+
+
+# 등급에 맞는 소리 하나. 팝업을 띄우는 곳에서만 불린다 — 소리를 결정하는
+# 자리와 글자를 결정하는 자리가 같아야 둘이 어긋나지 않는다.
+#
+# 반대쪽을 멈추지 않는다. 두 게이트를 빠르게 이어 지나면 앞 소리의 꼬리 위로
+# 다음 소리가 얹히는데, 그게 실제로 일어난 일이다 — 끊으면 두 번 지난 것이
+# 한 번처럼 들린다.
+func _play_boost_pop_sound(is_best: bool) -> void:
+	var player: AudioStreamPlayer = fx_sound_boost_pop_best if is_best else fx_sound_boost_pop_mid
+	if player != null and player.stream != null:
+		player.play()
 
 
 # ---- Text as a texture, for the gradient fill (see _draw_boost_pop) ----
