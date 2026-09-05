@@ -67,6 +67,7 @@ on failure.
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
+| `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
@@ -432,6 +433,40 @@ wrong at first:
 
 `run_revived` doubles as "this run used a rewarded ad". It is not a second
 flag, because two flags for one fact drift.
+
+### Ad unit IDs, and why they are locked
+
+`scripts/AdIds.gd` holds every AdMob unit and decides which set a build gets.
+It exists for one reason: **clicking your own live ad gets the AdMob account
+suspended**, and a suspension takes every future app on that account with it.
+Intent is not considered — a mis-tap while testing counts. The failure is
+also invisible, because a test ad and a live ad differ by one small label.
+
+Two independent locks, and a live unit needs both open:
+
+- `FORCE_TEST_ADS` (currently `true`) — set to `false` once, deliberately, at
+  release, and the change is a commit anyone can see.
+- `OS.is_debug_build()` — a debug export can never serve a live ad no matter
+  what the flag says.
+
+The default is `true` because the two mistakes cost differently. Shipping
+with it on means zero revenue and a "Test Ad" badge; shipping a test build
+with it off means losing the account.
+
+The test units are **Google's published demo IDs**, not real units with test
+devices registered. Device registration is the other supported approach and
+is the wrong one here: it protects only the phones you enrolled, so the first
+friend to install a build serves a real impression. `check_ad_ids.gd` keeps a
+copy of Google's values as an outside reference — editing `AdIds` alone is
+*supposed* to fail it.
+
+Filling `LIVE_*` early is safe; the accessors ignore those values entirely
+while either lock is on. What is not safe is flipping the flag to "just check
+something".
+
+Nothing in the project shows an ad yet. `AdIds` is reachable from exactly one
+place — the unit ID printed by `_ad_try_interstitial` — so that the lock's
+state is visible in a log rather than only in a checker.
 
 ## The bottom banner slot
 

@@ -2172,7 +2172,8 @@ const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 #
 # 여기에는 광고를 띄우는 코드가 없다 — 프로젝트에 광고 SDK 자체가 없다(git log
 # 의 감사 참고). 판단만 하고, 플러그인이 붙으면 _ad_try_interstitial 안쪽만
-# 실제 호출로 바꾸면 된다.
+# 실제 호출로 바꾸면 된다. 그때 넘길 단위 ID 는 AdIds 가 정한다 — 실제 단위가
+# 테스트 빌드로 새어 나가지 못하게 막는 잠금장치가 거기 있다.
 #
 # 규칙:
 #   - 판을 떠날 때마다 하나씩 센다. "떠난다"는 게임오버 후 PLAY AGAIN /
@@ -6290,8 +6291,10 @@ func note_interstitial_shown() -> void:
 func _ad_try_interstitial() -> bool:
 	if not should_show_interstitial():
 		return false
-	print("[광고] 전면광고 노출 지점 (누적 %d판, 마지막 광고 이후 %d판)" % [
-		games_played_total, restarts_since_interstitial])
+	# 단위 ID 를 같이 찍는다. SDK 가 붙기 전까지 AdIds 가 실제로 불리는 곳은
+	# 여기뿐이라, 이 줄이 없으면 잠금장치가 걸려 있는지 로그로 알 수 없다.
+	print("[광고] 전면광고 노출 지점 (누적 %d판, 마지막 광고 이후 %d판) unit=%s" % [
+		games_played_total, restarts_since_interstitial, AdIds.interstitial_id()])
 	note_interstitial_shown()
 	return true
 
