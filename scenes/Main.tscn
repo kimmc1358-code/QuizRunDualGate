@@ -1,15 +1,16 @@
 [gd_scene format=3 uid="uid://8r3igjacvaeq"]
 
 [ext_resource type="Script" uid="uid://b78ee3k30dqkf" path="res://scripts/Main.gd" id="1"]
-[ext_resource type="Script" path="res://scripts/ModeSelectScreen.gd" id="2"]
-[ext_resource type="Script" path="res://scripts/PausePopup.gd" id="3"]
-[ext_resource type="Script" path="res://scripts/RevivePopup.gd" id="4"]
-[ext_resource type="Script" path="res://scripts/GameOverPopup.gd" id="5"]
-[ext_resource type="Script" path="res://scripts/SettingsPopup.gd" id="6"]
-[ext_resource type="Script" path="res://scripts/AboutPopup.gd" id="7"]
+[ext_resource type="Script" uid="uid://cu8kttirju8qv" path="res://scripts/ModeSelectScreen.gd" id="2"]
+[ext_resource type="Script" uid="uid://c414o2v5krn2m" path="res://scripts/PausePopup.gd" id="3"]
+[ext_resource type="Script" uid="uid://bt3xxqwsims6i" path="res://scripts/RevivePopup.gd" id="4"]
+[ext_resource type="Script" uid="uid://b28dkfjai3uo0" path="res://scripts/GameOverPopup.gd" id="5"]
+[ext_resource type="Script" uid="uid://b2yr4pkyry5w6" path="res://scripts/SettingsPopup.gd" id="6"]
+[ext_resource type="Script" uid="uid://bl7g8xpqxiyt4" path="res://scripts/AboutPopup.gd" id="7"]
 
 [node name="Main" type="Node2D" unique_id=1993625809]
 script = ExtResource("1")
+debug_force_hidden_locked = true
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=397217226]
 
@@ -74,10 +75,10 @@ offset_left = 6.0
 offset_top = 4.0
 offset_right = 78.84
 offset_bottom = 66.0
-theme_override_font_sizes/font_size = 16
-flat = true
 focus_mode = 0
+theme_override_font_sizes/font_size = 16
 text = "II"
+flat = true
 
 [node name="MuteButton" type="Button" parent="UI" unique_id=746313814]
 texture_filter = 4
@@ -85,12 +86,12 @@ offset_left = 401.16
 offset_top = 4.0
 offset_right = 474.0
 offset_bottom = 66.0
-theme_override_font_sizes/font_size = 16
-flat = true
 focus_mode = 0
+theme_override_font_sizes/font_size = 16
 text = "M"
+flat = true
 
-[node name="BoostButton" type="Button" parent="UI"]
+[node name="BoostButton" type="Button" parent="UI" unique_id=822220346]
 visible = false
 texture_filter = 4
 offset_left = 380.0
@@ -98,7 +99,6 @@ offset_top = 700.0
 offset_right = 470.0
 offset_bottom = 790.0
 focus_mode = 0
-text = ""
 
 [node name="PausePanel" type="Control" parent="UI" unique_id=2138487738]
 visible = false
@@ -120,7 +120,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("4")
 
-[node name="GameOverPopupPanel" type="Control" parent="UI"]
+[node name="GameOverPopupPanel" type="Control" parent="UI" unique_id=2136123083]
 visible = false
 layout_mode = 3
 anchors_preset = 15
@@ -130,7 +130,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("5")
 
-[node name="SettingsPopupPanel" type="Control" parent="UI"]
+[node name="SettingsPopupPanel" type="Control" parent="UI" unique_id=1742092627]
 visible = false
 layout_mode = 3
 anchors_preset = 15
@@ -140,7 +140,7 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("6")
 
-[node name="AboutPopupPanel" type="Control" parent="UI"]
+[node name="AboutPopupPanel" type="Control" parent="UI" unique_id=1956957839]
 visible = false
 layout_mode = 3
 anchors_preset = 15

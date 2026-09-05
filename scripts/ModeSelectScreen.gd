@@ -227,7 +227,7 @@ const CARD_LOCK_FALLBACK_FILE := "res://assets/ui_assets/popup/icon_lock.png"
 # 카드 전체를 덮는 반투명. 카드마다 바탕색이 달라(민트/연두/하늘/분홍) 흰
 # 계열로 덮으면 원래 색에 따라 흐려지는 정도가 제각각이라, 어두운 쪽으로 덮어
 # 넷을 같은 밝기로 눌러 준다.
-const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.58)
+const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.70)
 # 카드 아트의 흰 테두리는 반투명으로 덮어도 계속 밝게 남는다 — 재 보니 흰색
 # 254,254,254 이 덮개를 통과하고도 114,117,126 이라, 어두워진 속(114,70,103)
 # 둘레에 밝은 링이 그려져 카드가 반쯤만 잠긴 것처럼 보였다. 그 띠만 불투명으로
@@ -239,24 +239,24 @@ const CARD_LOCK_VEIL_BORDER_NATIVE := 14.0
 const CARD_LOCK_VEIL_BORDER_COLOR := Color(0.08, 0.10, 0.17, 1.0)
 # 그려지는 크기에 맞춰 굽는다 — CARD_LOCK_FILE 을 읽는 곳의 설명을 볼 것.
 const CARD_LOCK_BAKE_H := 72
-const CARD_LOCK_ICON_HEIGHT_FRAC := 0.46   # 덮개가 쓸 수 있는 자리 높이 대비
+const CARD_LOCK_ICON_HEIGHT_FRAC := 0.54   # 덮개가 쓸 수 있는 자리 높이 대비
 const CARD_LOCK_ICON_MAX_WIDTH_FRAC := 0.52  # 카드 너비 대비 — 가로로 넓은 그림 대비
 const CARD_LOCK_TEXT := "LOCKED"
-const CARD_LOCK_TEXT_SIZE_FRAC := 0.170    # 자리 높이 대비
+const CARD_LOCK_TEXT_SIZE_FRAC := 0.155    # 자리 높이 대비
 const CARD_LOCK_TEXT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
 const CARD_LOCK_TEXT_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
 const CARD_LOCK_TEXT_OUTLINE_FRAC := 0.20  # 글자 크기 대비
-const CARD_LOCK_ICON_GAP_FRAC := 0.040     # 자리 높이 대비 — 자물쇠와 LOCKED 사이
+const CARD_LOCK_ICON_GAP_FRAC := 0.028     # 자리 높이 대비 — 자물쇠와 LOCKED 사이
 # 아래 한 줄. 자물쇠·LOCKED 는 "잠겼다"를, 이 줄은 "그래서 어떻게 하라"를
 # 말하므로 판을 한 겹 더 깔아 따로 읽히게 한다.
 const CARD_LOCK_HINT := "Unlock to play!"
-const CARD_LOCK_HINT_GAP_FRAC := 0.060     # 자리 높이 대비 — LOCKED 와 판 사이
-const CARD_LOCK_HINT_SIZE_FRAC := 0.115    # 자리 높이 대비
+const CARD_LOCK_HINT_GAP_FRAC := 0.042     # 자리 높이 대비 — LOCKED 와 판 사이
+const CARD_LOCK_HINT_SIZE_FRAC := 0.105    # 자리 높이 대비
 const CARD_LOCK_HINT_COLOR := Color(0.74, 0.76, 0.80, 1.0)   # 회색
 const CARD_LOCK_HINT_BG := Color(0.0, 0.0, 0.0, 0.55)        # 덮개보다 짙게
 const CARD_LOCK_HINT_RADIUS := 6
 const CARD_LOCK_HINT_PAD_X_FRAC := 0.055   # 카드 너비 대비, 글자 양옆
-const CARD_LOCK_HINT_PAD_Y_FRAC := 0.030   # 자리 높이 대비, 글자 위아래
+const CARD_LOCK_HINT_PAD_Y_FRAC := 0.025   # 자리 높이 대비, 글자 위아래
 # 이름판·점수판에서 띄울 여백. 0 이면 덩어리가 두 판에 딱 붙는다.
 const CARD_LOCK_BODY_INSET_FRAC := 0.030   # 카드 높이 대비, 위아래 각각
 
