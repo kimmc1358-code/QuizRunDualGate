@@ -311,6 +311,30 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
   git config --local user.name "kimmc1358-code"
   ```
 
+## Android release identity
+
+`export_presets.cfg` is **gitignored**, so the values below live in one
+untracked file on one machine. They are written down here because two of
+them cannot be changed after the first Play Store release, and rebuilding
+the preset on another machine has to reproduce them exactly.
+
+| | |
+|---|---|
+| Package name | `com.janiju.quizrundualgate` |
+| Export filter | `all_resources` |
+| Excluded | `assets/references/*`, `tools/*` |
+| Gradle build | off (no plugins yet) |
+
+**The package name is permanent once published.** It keys the Play Console
+listing, every OAuth client, the GPGS configuration and the AdMob app
+record; changing it later means recreating all four. It was
+`com.kimmc1358.quizrundualgate` until the studio identity settled on
+`janiju` — everything else already said JANIJU STUDIO.
+
+`export_filter` must stay `all_resources`. The game builds asset paths at
+runtime — flags, particles, tap sparkles — so nothing links them from a
+scene, and the scene-following export modes drop them silently.
+
 ## Gotchas
 
 - `.tscn` is **not XML**. Writing `&gt;` in a `text =` field stores those
