@@ -46,7 +46,10 @@ const CREAM_CORNER := 202
 # 동작만 하므로, 한쪽만 넣어도 된다.
 const BUTTON_SOUND_DIR := "res://assets/audio/"
 const BUTTON_SOUND_EXTENSIONS := [".ogg", ".wav"]
-const GOLD_SOUND_NAME := "button_gold"
+# 금색 버튼은 팝업의 주 버튼 넷뿐이다 — RESUME, PLAY AGAIN, WATCH AD TO
+# CONTINUE, REMOVE ADS. 메인 화면의 START 는 이 길을 안 지나고
+# ModeSelectScreen 이 제 소리(start_main.wav)를 따로 낸다.
+const GOLD_SOUND_NAME := "goldbutton_sound"
 const CREAM_SOUND_NAME := "button_cream"
 # 일시정지 팝업의 SFX 슬라이더가 이 소리도 함께 조절하도록 같은 버스에 태운다.
 const BUTTON_SOUND_BUS := "SFX"
@@ -1253,7 +1256,12 @@ func _play_button_sound(button: Control) -> void:
 				path = candidate
 				break
 		if path == "":
-			_button_players[art] = null   # 파일이 없다 — 다시 찾지 않는다
+			# 한 번만 말하고 다시 찾지 않는다. 조용히 넘기면 버튼이 소리를
+			# 잃었을 때, 소리를 끈 것인지 파일이 없는 것인지 화면으로는 구별할
+			# 길이 없다.
+			push_warning("PopupBase: %s%s(%s) 가 없다 — 이 버튼은 소리 없이 눌린다" % [
+				BUTTON_SOUND_DIR, art, "/".join(BUTTON_SOUND_EXTENSIONS)])
+			_button_players[art] = null
 		else:
 			var player := AudioStreamPlayer.new()
 			player.stream = load(path)
