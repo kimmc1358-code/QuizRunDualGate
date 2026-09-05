@@ -5877,12 +5877,14 @@ func _on_logout_pressed() -> void:
 	push_warning("설정: 로그아웃 아직 연결 안 됨")
 
 
+# 세 링크는 앱 밖으로 나간다. 주소는 scripts/ExternalLinks.gd 한 곳에 있고,
+# 아직 비어 있으면 열리지 않는다 — 설정 화면도 그 줄을 흐리게 그린다.
 func _on_privacy_pressed() -> void:
-	push_warning("설정: 개인정보 처리방침 링크 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.PRIVACY_POLICY_URL)
 
 
 func _on_terms_pressed() -> void:
-	push_warning("설정: 이용약관 링크 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.TERMS_OF_SERVICE_URL)
 
 
 func _on_about_closed() -> void:
@@ -5890,8 +5892,9 @@ func _on_about_closed() -> void:
 	settings_popup.visible = true
 
 
+# 메일 앱을 연다. 주소가 없으면 contact_url 이 빈 문자열을 주고 open 이 거른다.
 func _on_contact_pressed() -> void:
-	push_warning("설정: 문의/피드백 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.contact_url())
 
 
 # About 을 여는 동안 설정은 감춘다. 겹쳐 두면 두 판의 테두리와 닫기 버튼이

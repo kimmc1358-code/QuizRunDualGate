@@ -93,6 +93,9 @@ const LINK_GAP_FRAC := 0.010             # 판 너비 대비 — 약관 줄 사�
 const VERSION_GAP_FRAC := 0.094          # 판 너비 대비 — 약관과 버전 사이
 const LINK_CHEVRON := ">"
 const LINK_CHEVRON_COLOR := Color(0.62, 0.62, 0.66, 1.0)
+# 아직 주소가 없는 줄. 흐리게 그려 "지금은 눌러도 소용없다"를 보인다 —
+# _link_enabled 참고.
+const LINK_DISABLED_DIM := 0.38
 
 # 판 맨 아래 가운데의 버전 표시.
 const VERSION_TEXT := "Version 1.0.0"
@@ -210,6 +213,11 @@ func _build_content() -> void:
 			link.add_theme_stylebox_override(slot, empty)
 		link.draw.connect(_draw_link.bind(link, i))
 		link.pressed.connect(_on_link_pressed.bind(i))
+		# 그리는 것은 그대로 두고 노드째 흐리게 한다 — 글자·밑줄·아이콘·꺾쇠가
+		# 각각 다른 색이라, 색마다 흐린 짝을 두면 넷을 따로 관리하게 된다.
+		# 여기서 한 번만 정하면 된다: 주소는 상수라 실행 중에 바뀌지 않는다.
+		# (_draw_link 안에서 modulate 를 건드리면 그 프레임에는 반영되지 않는다.)
+		link.modulate.a = 1.0 if _link_enabled(i) else LINK_DISABLED_DIM
 		add_child(link)
 		_links.append(link)
 
@@ -477,7 +485,23 @@ func _draw_mail(ctrl: Control, x: float, centre_y: float, h: float) -> void:
 
 
 # 약관 줄을 눌렀을 때 어느 신호를 보낼지.
+# 이 줄이 지금 눌러서 뜻이 있는가.
+#
+# 앞의 세 줄은 앱 밖으로 나가는데, 그 주소가 아직 scripts/ExternalLinks.gd 에
+# 비어 있다. 눌러도 아무 일이 안 일어나는 링크를 멀쩡한 얼굴로 두면 고장으로
+# 읽히므로, 주소가 없으면 흐리게 그리고 누름도 받지 않는다. About 은 앱 안의
+# 팝업이라 언제나 열린다.
+func _link_enabled(index: int) -> bool:
+	match index:
+		0: return ExternalLinks.is_set(ExternalLinks.PRIVACY_POLICY_URL)
+		1: return ExternalLinks.is_set(ExternalLinks.TERMS_OF_SERVICE_URL)
+		2: return ExternalLinks.is_set(ExternalLinks.CONTACT_EMAIL)
+		_: return true
+
+
 func _on_link_pressed(index: int) -> void:
+	if not _link_enabled(index):
+		return
 	match index:
 		0: privacy_pressed.emit()
 		1: terms_pressed.emit()
