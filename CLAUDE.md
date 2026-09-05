@@ -429,6 +429,11 @@ and since scoring is `SCORE_PER_COMBO * combo`, the per-gate rate drops from
 700 back to 20 at the moment you continue. That collapse is what makes a
 resumed run *feel* like it restarted even though nothing else did; measure
 before believing it, which is what `check_revive_continuity.gd` is for.
+
+Carrying the combo through the revive was raised and **declined**. It is the
+one thing an ad would buy back that is worth real points rather than time,
+and the run did miss the gate. Do not "fix" it — the checker asserts the
+reset, so changing it means changing that assertion on purpose.
 | Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, no ad shown |
 | Banner | Mode-select bottom only, never in gameplay | Slot only — see below |
 | App-open | Not used | n/a |
