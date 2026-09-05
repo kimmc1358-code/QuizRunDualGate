@@ -314,6 +314,31 @@ const REMOVE_ADS_BLOCK_FRAC := 0.040   # of screen height, the tappable band
 const REMOVE_ADS_COLOR := Color(1.0, 1.0, 1.0, 0.85)
 const REMOVE_ADS_UNDERLINE_GAP := 2.0
 const REMOVE_ADS_UNDERLINE_WIDTH := 1.5
+# ---- 하단 배너 자리 ----
+#
+# AdMob 배너는 Godot 뷰포트 밖에 얹히는 안드로이드 View 라, 화면이 그만큼
+# 아래를 비워 주지 않으면 그냥 덮는다. 여기서 비우는 것은 "배너가 앉을 자리"
+# 뿐이고, 배너 자체를 그리지는 않는다 — 플러그인이 붙으면 실제 배너 높이를
+# set_banner_reserve 로 넘겨 주면 된다.
+#
+# 픽셀 단위이고 게임 좌표다. 플러그인이 주는 값은 기기 픽셀이므로
+# (480 / 실제 화면 폭) 을 곱해 넘겨야 한다 — 뷰포트 폭은 480 으로 고정이고
+# 기기 폭은 제각각이라, 그대로 넘기면 기기마다 어긋난다.
+#
+# 넣고도 최소 간격이 남는 화면에서만 실제로 비운다. 실측(480 폭 기준)으로
+# 겹치기 직전까지 쓸 수 있는 높이가 16:9 에서 11px, 18:9 에서 118px,
+# 20:9 에서 225px 다. 50dp 배너가 20:9 에서 약 67 게임 px 이니 긴 화면은
+# 넉넉하고 16:9 는 애초에 자리가 없다. 억지로 비우면 START 가 카드를 덮는다.
+@export var banner_reserve_px: float = 0.0
+# 배너를 비우고도 블록 사이에 남아야 할 최소 간격, 화면 픽셀.
+#
+# 화면 높이 비율이 아니라 절대값이다. 처음에 0.012 로 잡았더니 18:9 에서
+# 11.5px 을 요구했는데, 정작 이 화면은 배너 없이도 16:9 에서 1.8px 간격으로
+# 돈다 — 기준이 게임이 이미 굴러가는 상태보다 엄격했고, 자리가 118px 이나
+# 남는 18:9 가 거부됐다. 여기서 막고 싶은 것은 "빽빽함"이 아니라 겹침이므로,
+# 0 을 조금 넘는 값이면 된다.
+const BANNER_MIN_GAP_PX := 6.0
+
 const TOP_MARGIN_FRAC := 0.035    # of screen height
 const BOTTOM_MARGIN_FRAC := 0.035
 const MAX_GAP_FRAC := 0.055       # cap, so a tall screen spreads rather than sprawls
@@ -363,6 +388,9 @@ var _font_heavy: Font
 var _trophy: TextureRect
 var _leaderboard_bounds := Rect2(0, 0, 1, 1)
 var _leaderboard_label: Label
+# 직전 배치에서 실제로 비운 배너 높이. 요청한 값과 다를 수 있다 — 자리가
+# 없으면 0 이다. banner_applied_px 로 읽는다.
+var _banner_applied := 0.0
 
 
 # 조립이 끝났는가. Main 이 로고가 뜬 뒤에 ensure_built() 로 켠다.
@@ -1089,6 +1117,18 @@ func _layout() -> void:
 	# "제목 위"가 한 몫을 받는 것이 이번에 달라진 점이다. 예전에는 남는 세로가
 	# 전부 블록 사이로만 갔고 위쪽 여백은 TOP_MARGIN_FRAC 에 묶여 있어서, 화면이
 	# 길수록 제목·카드는 위에 붙고 리더보드 둘레만 휑했다.
+	# 배너 자리는 전부 비우거나 아예 안 비운다. 절반만 비우면 배너가 그만큼
+	# START 를 덮는데, 그건 안 비운 것보다 나쁘다 — 화면은 좁아졌는데 가려지기까지
+	# 한다. 그래서 넣고도 최소 간격이 남을 때만 받아들이고, 아니면 0 을 돌려
+	# 부르는 쪽이 배너를 아예 띄우지 않게 한다.
+	_banner_applied = 0.0
+	if banner_reserve_px > 0.0:
+		var gap_with_banner: float = (view.y - top - (bottom + banner_reserve_px)
+			- content_h - board_gap) / 5.0
+		if gap_with_banner >= BANNER_MIN_GAP_PX:
+			_banner_applied = banner_reserve_px
+	bottom += _banner_applied
+
 	var gap: float = clampf(
 		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
 
@@ -1711,3 +1751,19 @@ func _on_start_pressed() -> void:
 
 func _on_unimplemented(what: String) -> void:
 	print("[미구현] ", what)
+
+
+## 하단에 비워 둘 배너 높이(게임 픽셀)를 정하고 다시 배치한다.
+##
+## 돌려주는 값은 **실제로 비운 높이**다. 화면이 짧아 자리가 안 나면 0 을
+## 돌려주므로, 부르는 쪽은 그때 배너를 띄우지 않아야 한다. 요청한 만큼
+## 비웠는지 되묻지 않고 돌려받은 값을 그대로 믿으면 된다.
+func set_banner_reserve(px: float) -> float:
+	banner_reserve_px = maxf(0.0, px)
+	_layout()
+	return _banner_applied
+
+
+## 직전 배치에서 실제로 비운 높이.
+func banner_applied_px() -> float:
+	return _banner_applied

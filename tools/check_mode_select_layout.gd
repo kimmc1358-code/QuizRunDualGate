@@ -23,6 +23,9 @@ const RATIOS := [
 ]
 # 붙었다고 볼 오차. 간격은 화면 폭 비율에서 나오므로 반올림 몇 px 은 늘 생긴다.
 const BOARD_GAP_EPS := 1.5
+# 배너 검사에 쓸 높이. 20:9 에서 50dp 적응형 배너가 대략 67 게임 px 이다
+# (뷰포트 폭 480, 기기 폭 1080, 밀도 3x).
+const BANNER_TEST_PX := 67.0
 
 var fails := 0
 
@@ -67,6 +70,8 @@ func _run() -> void:
 	print("check_mode_select_layout: base %.0fx%.0f, %d ratios" % [base.x, base.y, RATIOS.size()])
 	print("")
 	print("  %-12s %11s %9s %10s %8s" % ["ratio", "viewport", "card gap", "card->bar", "verdict"])
+	# 배너 구간에서 "원래 멀쩡했는데 배너가 깨뜨렸는가"를 가리는 데 쓴다.
+	var base_ok := {}
 
 	for row in RATIOS:
 		var ratio: float = float(row[1])
@@ -118,11 +123,75 @@ func _run() -> void:
 			problems.append("explain bar sits %.0fpx under the cards but the cards are %.0fpx apart" % [
 				bar_gap, card_gap])
 
+		base_ok[row[0]] = problems.is_empty()
 		if not problems.is_empty():
 			for p in problems:
 				_fail("%s: %s" % [row[0], p])
 		print("  %-12s %11s %9.1f %10.1f %8s" % [
 			row[0], "%.0fx%.0f" % [w, h], card_gap, bar_gap, "ok" if problems.is_empty() else "FAIL"])
+
+	# ---- 하단 배너 자리 ----
+	#
+	# 배너는 Godot 뷰포트 밖에 얹히는 안드로이드 View 라, 비운 만큼만 안 덮는다.
+	# 그래서 검사할 것은 두 가지뿐이다: 비웠다면 그 띠에 아무 블록도 들어오지
+	# 않을 것, 그리고 비우기로 한 화면에서 겹침이 생기지 않을 것.
+	#
+	# 자리가 없으면 0 을 돌려주는 것이 정상 동작이다 — 실패가 아니라 "이 기기에는
+	# 배너를 띄우지 말라"는 답이다. 부르는 쪽이 그 값을 보고 결정한다.
+	print("")
+	print("  배너 %.0fpx 요청 시" % BANNER_TEST_PX)
+	print("  %-12s %11s %9s %11s %s" % ["ratio", "viewport", "applied", "content end", ""])
+	var applied_any := false
+	for row in RATIOS:
+		var ratio: float = float(row[1])
+		var view: Vector2 = Vector2(base.x, base.x * ratio) if ratio >= base_ratio \
+			else Vector2(base.y / ratio, base.y)
+		s.size = view
+		var applied: float = s.call("set_banner_reserve", BANNER_TEST_PX)
+		await process_frame
+		var cards2: Array = s.get("_cards")
+		var blocks2 := [
+			["title", s.get("_title")], ["cards top row", cards2[0]],
+			["cards bottom row", cards2[2]], ["explain bar", s.get("_explain")],
+			["leaderboard", s.get("_leaderboard")], ["START", s.get("_start")],
+			["remove ads", s.get("_remove_ads")],
+		]
+		var problems2: Array = []
+		# 배너 없이 이미 겹치는 비율(태블릿 쪽)에서는 겹침을 다시 세지 않는다.
+		# 같은 결함을 두 번 보고하면 "배너가 깨뜨린 것"과 "원래 깨져 있던 것"이
+		# 섞여서, 배너 작업이 뭘 망쳤는지 읽을 수 없게 된다.
+		if base_ok.get(row[0], false):
+			for i in range(blocks2.size() - 1):
+				var a: Control = blocks2[i][1]
+				var b: Control = blocks2[i + 1][1]
+				if a == null or b == null:
+					continue
+				if (a.position.y + a.size.y) - b.position.y > 0.5:
+					problems2.append("%s overruns %s" % [blocks2[i][0], blocks2[i + 1][0]])
+		var content_end := 0.0
+		for entry in blocks2:
+			if entry[1] != null:
+				content_end = maxf(content_end, entry[1].position.y + entry[1].size.y)
+		if applied > 0.0:
+			applied_any = true
+			if absf(applied - BANNER_TEST_PX) > 0.5:
+				problems2.append("reserved %.0f of the %.0f asked for — it is all or nothing" % [
+					applied, BANNER_TEST_PX])
+			if content_end > view.y - applied + 0.5:
+				problems2.append("content reaches %.0f but the banner starts at %.0f" % [
+					content_end, view.y - applied])
+		for p in problems2:
+			_fail("%s with a banner: %s" % [row[0], p])
+		print("  %-12s %11s %9.0f %11.0f %s" % [
+			row[0], "%.0fx%.0f" % [view.x, view.y], applied, content_end,
+			("ok" if problems2.is_empty() else "FAIL") + ("  (배너 미노출)" if applied == 0.0 else "")])
+
+	# 어디에서도 자리를 못 내면 이 검사는 아무것도 안 지킨 것이다 — 전부 0 을
+	# 돌려주는 구현도 위를 그대로 통과하기 때문이다.
+	if not applied_any:
+		_fail("no ratio could fit a %.0fpx banner — either the reserve never applies or the test height is unrealistic" % BANNER_TEST_PX)
+	s.call("set_banner_reserve", 0.0)
+	await process_frame
 
 	# 그리고 화면이 길수록 위쪽 덩어리가 따라 내려와야 한다. 남는 세로가 전부
 	# 리더보드 둘레로만 가면 제목과 카드는 위에 붙은 채 가운데만 휑해진다 —

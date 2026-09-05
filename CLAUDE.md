@@ -66,6 +66,7 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
@@ -334,6 +335,35 @@ record; changing it later means recreating all four. It was
 `export_filter` must stay `all_resources`. The game builds asset paths at
 runtime — flags, particles, tap sparkles — so nothing links them from a
 scene, and the scene-following export modes drop them silently.
+
+## The bottom banner slot
+
+An AdMob banner is an Android View laid **over** the Godot surface, not
+something drawn inside the viewport. It does not push anything; it covers
+whatever is under it. So the game reserves the space and the banner sits in
+the hole.
+
+`ModeSelectScreen.set_banner_reserve(px)` takes that height **in game
+pixels** and returns what it actually reserved. Two things follow from that
+signature:
+
+- **The caller must convert.** A plugin reports the banner in device pixels;
+  the viewport is pinned to 480 wide whatever the device is, so the value has
+  to be scaled by `480 / real screen width` before being passed in. Handing
+  over raw device pixels reserves the wrong amount on every phone but one.
+- **The return value is the decision.** It is all-or-nothing: reserving half
+  a banner is worse than reserving none, because the screen loses the space
+  *and* still gets covered. If the reserve would leave less than
+  `BANNER_MIN_GAP_PX` between blocks the screen refuses and returns 0, which
+  means "do not show a banner on this device" — not an error.
+
+Measured at 480 wide, the space available before blocks collide is 11px at
+16:9, 118px at 18:9 and 225px at 20:9. A 50dp banner is roughly 67 game px on
+a 1080-wide phone, so everything from 18:9 up takes it and 16:9 has never had
+the room. That is why the refusal path exists rather than being a bug.
+
+Nothing here shows a banner — there is no ads SDK in the project (see the
+audit in the git log). This is only the hole it will sit in.
 
 ## Gotchas
 
