@@ -1164,6 +1164,9 @@ func _layout() -> void:
 		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
 	var grow_budget: float = maxf(0.0,
 		(gap_now - view.y * CARD_GROW_MIN_GAP_FRAC) * 5.0)
+	# 늘리기 전 높이. 카드 안의 이름판·점수판·글자 크기가 이 값을 기준으로
+	# 잡히므로, 카드가 커져도 그것들은 안 부푼다 — _layout_card_contents 참고.
+	var card_base_h: float = card_h
 	var grow: float = minf(card_h * 2.0 * (CARD_HEIGHT_SCALE - 1.0), grow_budget)
 	if grow > 0.0:
 		card_h += grow * 0.5
@@ -1193,7 +1196,7 @@ func _layout() -> void:
 		var row: int = i / 2
 		_cards[i].position = Vector2(cards_left + col * (card_w + card_gap), y + row * (card_h + card_gap))
 		_cards[i].size = Vector2(card_w, card_h)
-		_layout_card_contents(i, card_w, card_h)
+		_layout_card_contents(i, card_w, card_h, card_base_h)
 	_select_overlay.position = Vector2.ZERO
 	_select_overlay.size = view
 	_select_overlay.queue_redraw()
@@ -1284,7 +1287,7 @@ func _layout() -> void:
 
 # Name across the top, character in the middle, best score along the bottom.
 # Positions are relative to the card, so they scale with the press animation.
-func _layout_card_contents(index: int, card_w: float, card_h: float) -> void:
+func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: float) -> void:
 	if index >= _card_art.size():
 		return
 	# Against the card's own art, not the button rect. The four cards sit at
@@ -1296,11 +1299,21 @@ func _layout_card_contents(index: int, card_w: float, card_h: float) -> void:
 	var art_w_total: float = bounds.size.x * card_w
 	var art_h_total: float = bounds.size.y * card_h
 
-	var inset: float = art_h_total * CARD_TEXT_INSET_FRAC
+	# 이름판·점수판·여백은 **늘리기 전** 높이로 잡는다. 늘어난 몫은 전부
+	# 캐릭터 자리로 간다.
+	#
+	# 전부 art_h_total 비율로 두었더니 카드를 세로로 키우는 순간 판과 글자까지
+	# 같이 부풀었다. 그중 점수판이 특히 나빴는데, 여백(inset)도 높이 비율이라
+	# 같이 커지면서 가로를 먹어 세로 22.8 -> 26.9, 가로 149.9 -> 147.1 이 됐다.
+	# 커진 것이 아니라 눌린 것이고, 그렇게 보였다.
+	var base_total: float = bounds.size.y * base_h
+	var inset: float = base_total * CARD_TEXT_INSET_FRAC
 	var inner_w: float = art_w_total - inset * 2.0
-	var name_h: float = art_h_total * CARD_NAME_HEIGHT_FRAC
-	var best_h: float = art_h_total * CARD_BEST_HEIGHT_FRAC
-	var art_h: float = art_h_total * CARD_ART_HEIGHT_FRAC
+	var name_h: float = base_total * CARD_NAME_HEIGHT_FRAC
+	var best_h: float = base_total * CARD_BEST_HEIGHT_FRAC
+	# 늘어난 높이는 여기로만 들어온다. 캐릭터는 정사각 스프라이트라 커져도
+	# 찌그러지지 않는 유일한 요소이기도 하다.
+	var art_h: float = base_total * CARD_ART_HEIGHT_FRAC + (art_h_total - base_total)
 
 	var name_size: int = _fit_card_name_size(inner_w * CARD_NAME_WIDTH_FRAC, name_h)
 	var outline_size: int = maxi(1, int(round(name_size * CARD_NAME_OUTLINE_FRAC)))
@@ -1328,7 +1341,12 @@ func _layout_card_contents(index: int, card_w: float, card_h: float) -> void:
 	# 칸은 정사각형이다 — 스프라이트 시트가 256x256 이라, 게임 쪽과 같은
 	# "칸 한 변" 개념으로 맞춰야 크기가 비교된다. 세로로 넘치는 몫은 투명
 	# 여백이라(유니콘 1.20 배면 칸이 art_h 를 넘는다) 이름/점수 판을 가리지 않는다.
-	var char_side: float = art_h * CARD_CHARACTER_SCALE[index]
+	# 캐릭터도 늘리기 전 높이 기준이다. 늘어난 만큼 키워 봤더니 20:9 에서
+	# 유니콘의 그림이 111 -> 145px 로 퍼지면서 왼쪽 위 초록 체크를 덮었다.
+	# 체크가 캐릭터를 가리면 안 된다는 조건이 카드마다 여유가 다른 조건이라,
+	# 캐릭터 크기를 화면 비율에 맡기면 어느 비율에서 깨지는지 알 수 없다.
+	# 늘어난 높이는 캐릭터 위아래 여백으로 간다.
+	var char_side: float = base_total * CARD_ART_HEIGHT_FRAC * CARD_CHARACTER_SCALE[index]
 	_card_art[index].size = Vector2(char_side, char_side)
 	_card_art[index].position = origin + Vector2(
 		inset + (inner_w - char_side) * 0.5,

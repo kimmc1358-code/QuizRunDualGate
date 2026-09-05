@@ -73,12 +73,9 @@ func _run() -> void:
 		return
 	# 실제 해상도로 배치시킨다. 헤드리스 뷰포트는 정사각형을 보고하므로 그대로
 	# 두면 카드가 화면보다 넓은 자리에 놓여 여백 검사가 거저 통과한다.
-	var view := Vector2(
+	var base := Vector2(
 		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
 		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
-	screen.size = view
-	screen.call("_layout")
-	await process_frame
 
 	var tex: Texture2D = screen.get("_check_texture")
 	if tex == null:
@@ -88,41 +85,91 @@ func _run() -> void:
 	var names: Array = screen.get("_card_name_plate")
 	var arts: Array = screen.get("_card_art")
 	var labels: Array = screen.get("_card_name")
-	print("check_mode_card_check: viewport %.0fx%.0f, %d cards" % [view.x, view.y, cards.size()])
-	print("")
-	print("  %-6s %-22s %-22s %-22s %s" % ["card", "check rect", "name plate", "character ink", "verdict"])
 
-	for i in range(cards.size()):
-		# 카드마다 골라 본다 — 체크는 고른 카드에만 붙고, 카드마다 이름 길이와
-		# 캐릭터 배율이 달라 여백이 같지 않다.
-		screen.call("_select", i, false)
+	# 기준 비율 하나로는 모자란다. CARD_HEIGHT_SCALE 이 남는 세로에서 카드를
+	# 늘리는데, 늘어난 몫은 전부 캐릭터에게 가므로 캐릭터만 커지고 체크는
+	# 그대로다. 16:9 는 늘어날 자리가 없어 아무 일도 안 일어나는 비율이라,
+	# 거기서만 재면 정작 캐릭터가 가장 큰 화면을 한 번도 안 보게 된다.
+	var heights: Array[float] = []
+	var plate_sizes: Array[Vector2] = []
+	var plate_widths: Array[Vector2] = []
+	for h in [base.y, base.x * 20.0 / 9.0]:
+		var view := Vector2(base.x, h)
+		screen.size = view
+		screen.call("_layout")
 		await process_frame
-		var card_rect: Rect2 = screen.call("_selected_card_rect")
-		var check: Rect2 = screen.call("_check_rect", i, card_rect)
-		var plate: Rect2 = screen.call("_drawn_rect", names[i])
-		var ink: Rect2 = _opaque_screen_rect(arts[i])
+		var card_h: float = cards[0].size.y
+		heights.append(card_h)
+		# 카드가 커질 때 안쪽 판까지 같이 부풀면 안 된다. 한 번 그렇게 됐는데,
+		# 점수판이 세로 22.8 -> 26.9 로 늘면서 가로는 149.9 -> 147.1 로 줄어
+		# 눌린 모양이 됐다. 크기 자체가 아니라 "비율이 달라졌는가"가 문제라,
+		# 두 비율에서 같은 값이 나오는지로 본다.
+		plate_sizes.append(Vector2(
+			screen.get("_card_name_plate")[0].size.y,
+			screen.get("_card_best_plate")[0].size.y))
+		plate_widths.append(Vector2(
+			screen.get("_card_name_plate")[0].size.x,
+			screen.get("_card_best_plate")[0].size.x))
+		print("")
+		print("check_mode_card_check: viewport %.0fx%.0f, %d cards, card %.0fx%.0f" % [
+			view.x, view.y, cards.size(), cards[0].size.x, card_h])
+		print("  %-6s %-22s %-22s %-22s %s" % ["card", "check rect", "name plate", "character ink", "verdict"])
 
-		var problems := []
-		if check.intersects(plate):
-			problems.append("covers the name plate")
-		if check.intersects(ink):
-			problems.append("covers the character")
-		# 카드 밖으로 나가면 옆 카드 위에 뜬다.
-		if not card_rect.encloses(check):
-			problems.append("hangs outside the card")
-		# 그리고 실제로 보이는 크기여야 한다. 0 에 가까우면 위의 검사가 전부
-		# 저절로 통과하므로, 이 체커가 아무것도 안 지키게 된다.
-		if check.size.x < card_rect.size.x * 0.10:
-			problems.append("is under 10%% of the card wide — too small to read, and too small for these checks to mean anything")
+		for i in range(cards.size()):
+			# 카드마다 골라 본다 — 체크는 고른 카드에만 붙고, 카드마다 이름
+			# 길이와 캐릭터 배율이 달라 여백이 같지 않다.
+			screen.call("_select", i, false)
+			await process_frame
+			var card_rect: Rect2 = screen.call("_selected_card_rect")
+			var check: Rect2 = screen.call("_check_rect", i, card_rect)
+			var plate: Rect2 = screen.call("_drawn_rect", names[i])
+			var ink: Rect2 = _opaque_screen_rect(arts[i])
 
-		if not problems.is_empty():
-			_fail("card %d (%s): the check %s" % [i, labels[i].text, ", ".join(problems)])
-		print("  %-6d %-22s %-22s %-22s %s" % [
-			i,
-			"%.0f,%.0f %.0fx%.0f" % [check.position.x, check.position.y, check.size.x, check.size.y],
-			"%.0f,%.0f %.0fx%.0f" % [plate.position.x, plate.position.y, plate.size.x, plate.size.y],
-			"%.0f,%.0f %.0fx%.0f" % [ink.position.x, ink.position.y, ink.size.x, ink.size.y],
-			"ok" if problems.is_empty() else "FAIL"])
+			var problems := []
+			if check.intersects(plate):
+				problems.append("covers the name plate")
+			if check.intersects(ink):
+				problems.append("covers the character")
+			# 카드 밖으로 나가면 옆 카드 위에 뜬다.
+			if not card_rect.encloses(check):
+				problems.append("hangs outside the card")
+			# 그리고 실제로 보이는 크기여야 한다. 0 에 가까우면 위의 검사가 전부
+			# 저절로 통과하므로, 이 체커가 아무것도 안 지키게 된다.
+			if check.size.x < card_rect.size.x * 0.10:
+				problems.append("is under 10%% of the card wide — too small to read, and too small for these checks to mean anything")
+
+			if not problems.is_empty():
+				_fail("%.0fx%.0f card %d (%s): the check %s" % [
+					view.x, view.y, i, labels[i].text, ", ".join(problems)])
+			print("  %-6d %-22s %-22s %-22s %s" % [
+				i,
+				"%.0f,%.0f %.0fx%.0f" % [check.position.x, check.position.y, check.size.x, check.size.y],
+				"%.0f,%.0f %.0fx%.0f" % [plate.position.x, plate.position.y, plate.size.x, plate.size.y],
+				"%.0f,%.0f %.0fx%.0f" % [ink.position.x, ink.position.y, ink.size.x, ink.size.y],
+				"ok" if problems.is_empty() else "FAIL"])
+
+	# 긴 화면에서 카드가 실제로 커졌어야 한다. 안 커졌다면 위의 두 바퀴는 같은
+	# 화면을 두 번 잰 것이고, 이 확장은 아무것도 안 지킨 셈이다.
+	if heights.size() < 2 or heights[1] <= heights[0] + 1.0:
+		_fail("the 20:9 card is %.1fpx tall against 16:9's %.1f — CARD_HEIGHT_SCALE is doing nothing, so this sweep measured the same screen twice" % [
+			heights[1] if heights.size() > 1 else 0.0, heights[0] if heights.size() > 0 else 0.0])
+	else:
+		print("")
+		print("  card height %.1f (16:9) -> %.1f (20:9), contents held at the 16:9 size" % [
+			heights[0], heights[1]])
+	if plate_sizes.size() == 2:
+		var dh: Vector2 = plate_sizes[1] - plate_sizes[0]
+		var dw: Vector2 = plate_widths[1] - plate_widths[0]
+		if absf(dh.x) > 0.5 or absf(dw.x) > 0.5:
+			_fail("the name plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
+				plate_widths[0].x, plate_sizes[0].x, plate_widths[1].x, plate_sizes[1].x])
+		if absf(dh.y) > 0.5 or absf(dw.y) > 0.5:
+			_fail("the BEST plate is %.1fx%.1f at 16:9 but %.1fx%.1f at 20:9 — it is riding the card height" % [
+				plate_widths[0].y, plate_sizes[0].y, plate_widths[1].y, plate_sizes[1].y])
+		print("  name plate %.1fx%.1f, BEST plate %.1fx%.1f — unchanged by the growth" % [
+			plate_widths[0].x, plate_sizes[0].x, plate_widths[0].y, plate_sizes[0].y])
+
+	var view := Vector2(base.x, base.x * 20.0 / 9.0)
 
 	# 고른 카드가 실제로 커지는가. 요청한 105% 가 그대로 걸려 있어야 한다.
 	print("")

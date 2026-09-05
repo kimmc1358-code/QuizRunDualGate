@@ -74,7 +74,7 @@ on failure.
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
-| `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, the selected card really is at `CARD_SELECTED_SCALE`, and the hidden card's blurb tracks its lock at every step of the unlock — with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
@@ -578,9 +578,20 @@ audit in the git log). This is only the hole it will sit in.
   16:9 phone, whose gap is already 1.9px, gets no growth at all and 18:9 gets
   part of it. That the cards are a different height on different phones is
   the same bargain every other block on this screen already makes.
-- **Only `check_gate_reach.gd` sweeps aspect ratios.** Every other checker
-  reads the one resolution out of `ProjectSettings` and therefore only ever
-  sees 16:9. The START overlap above was found by taking a screenshot, not
+
+  **The growth goes to padding, not to the contents.** Everything inside a
+  card — inset, name plate, BEST plate, fonts, character — is sized from the
+  *pre-growth* height, and only the space around the character absorbs the
+  extra. Both other ways were tried and both broke something visible: keying
+  the contents to the real height stretched the BEST plate to 26.9px tall
+  while the growing inset squeezed it to 147.1 wide, so it read as squashed
+  rather than bigger; and letting just the character take the extra spread
+  the unicorn's ink from 111 to 145px, where it ran under the green check.
+  Neither shows up at 16:9, which is why this checker now sweeps two ratios.
+- **Only `check_gate_reach.gd`, `check_mode_select_layout.gd` and
+  `check_mode_card_check.gd` sweep aspect ratios.** Every other checker reads
+  the one resolution out of `ProjectSettings` and therefore only ever sees
+  16:9. The START overlap above was found by taking a screenshot, not
   by a checker. Before trusting a green suite about anything layout-shaped,
   check whether the thing in question is actually measured at more than one
   ratio.
