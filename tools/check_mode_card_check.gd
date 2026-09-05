@@ -171,6 +171,40 @@ func _run() -> void:
 
 	var view := Vector2(base.x, base.x * 20.0 / 9.0)
 
+	# ---- 카드의 "BEST" 가 게임 화면의 BEST 와 같은 얼굴인가 ----
+	#
+	# 같은 것을 가리키는 두 자리인데 서로 다른 파일에 색이 적혀 있다. 화면 쪽이
+	# Main 을 참조할 수 없는 구조라 값이 두 벌 존재하고, 그러면 한쪽만 고치는
+	# 날이 온다 — 두 화면을 나란히 놓고 보는 일이 없으니 그날 아무도 모른다.
+	#
+	# 상수만 비교하면 부족하다. 색을 맞춰 놓고 라벨에 안 걸어 두면 상수는
+	# 통과하고 화면은 예전 색으로 남는다. 그래서 실제 라벨이 들고 있는 값을 본다.
+	print("")
+	var hud_fill: Color = main.get("BEST_LABEL_FILL")
+	var hud_outline: Color = main.get("SCORE_TEXT_OUTLINE")
+	var card_fill: Color = screen.get("CARD_BEST_COLOR")
+	var card_outline: Color = screen.get("CARD_BEST_OUTLINE")
+	if not card_fill.is_equal_approx(hud_fill):
+		_fail("the card's BEST is %s but the HUD's is %s — CARD_BEST_COLOR and BEST_LABEL_FILL have drifted" % [
+			card_fill, hud_fill])
+	if not card_outline.is_equal_approx(hud_outline):
+		_fail("the card's BEST outline is %s but the HUD's is %s — CARD_BEST_OUTLINE and SCORE_TEXT_OUTLINE have drifted" % [
+			card_outline, hud_outline])
+	var bests: Array = screen.get("_card_best")
+	for i in range(bests.size()):
+		var label: Label = bests[i]
+		var got_fill: Color = label.get_theme_color("font_color")
+		var got_outline: Color = label.get_theme_color("font_outline_color")
+		var ring: int = label.get_theme_constant("outline_size")
+		if not got_fill.is_equal_approx(hud_fill):
+			_fail("card %d's BEST label draws %s, not the HUD's %s" % [i, got_fill, hud_fill])
+		if not got_outline.is_equal_approx(hud_outline):
+			_fail("card %d's BEST label outlines in %s, not the HUD's %s" % [i, got_outline, hud_outline])
+		if ring < 1:
+			_fail("card %d's BEST label has outline_size %d — the outline colour is set but nothing draws it" % [i, ring])
+	print("  BEST label %s on %s outline, ring %dpx — same as the HUD" % [
+		card_fill, card_outline, bests[0].get_theme_constant("outline_size")])
+
 	# 고른 카드가 실제로 커지는가. 요청한 105% 가 그대로 걸려 있어야 한다.
 	print("")
 	screen.call("_select", 1, false)

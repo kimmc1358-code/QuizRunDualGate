@@ -81,7 +81,15 @@ const CARD_NAME_PLATE_PAD_FRAC := 0.32   # of the plate's height, at each end
 const CARD_BEST_PLATE_COLOR := Color(1.0, 1.0, 1.0, 0.92)
 const CARD_BEST_PLATE_RADIUS := 6
 const CARD_BEST_PLATE_WIDTH_FRAC := 0.86   # of the card's inner width
-const CARD_BEST_COLOR := Color(0.18, 0.26, 0.38, 1.0)
+# "BEST" 글자는 게임 화면 상단의 BEST 와 같은 노랑 + 검정 테두리다. 같은 것을
+# 가리키는 두 자리라 같아 보여야 한다 — 예전에는 여기만 남색 민글자였다.
+#
+# 값은 Main.gd 의 BEST_LABEL_FILL / SCORE_TEXT_OUTLINE 과 같아야 하고,
+# tools/check_score_format.gd 가 두 값이 갈라지지 않았는지 본다. 여기서
+# Main 을 참조할 수는 없다 — 이 화면은 Main 을 모르는 쪽이다.
+const CARD_BEST_COLOR := Color(0.99, 0.80, 0.22, 1.0)
+const CARD_BEST_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
+const CARD_BEST_OUTLINE_FRAC := 0.16   # 글자 크기 대비 — 옆 숫자와 같은 굵기
 # The plate holds three things in a row — crown, the word BEST, the number —
 # centred as a group. The number is styled like the card titles rather than
 # like the word beside it, so the score is what the eye lands on.
@@ -777,6 +785,7 @@ func _build() -> void:
 		_card_crown.append(crown)
 
 		var best_label := _add_card_text(row, "BEST", CARD_BEST_COLOR)
+		best_label.add_theme_color_override("font_outline_color", CARD_BEST_OUTLINE)
 		if _font_bold != null:
 			best_label.add_theme_font_override("font", _font_bold)
 		_card_best.append(best_label)
@@ -1359,6 +1368,8 @@ func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: flo
 	_card_best_plate[index].size = Vector2(plate_w, best_h)
 	var score_size: int = int(round(best_h * 0.62))
 	_card_best[index].add_theme_font_size_override("font_size", score_size)
+	_card_best[index].add_theme_constant_override(
+		"outline_size", int(round(score_size * CARD_BEST_OUTLINE_FRAC)))
 	_card_score[index].add_theme_font_size_override("font_size", score_size)
 	_card_score[index].add_theme_constant_override(
 		"outline_size", int(round(score_size * CARD_SCORE_OUTLINE_FRAC)))
