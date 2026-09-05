@@ -13,7 +13,12 @@ quiz prompt. Four visual concepts share the mechanic — `SKY`, `JUNGLE`,
 `OCEAN`, `DREAM` — picked on the mode-select screen.
 
 Three quizzes exist: flag (SKY), math (JUNGLE), Stroop colour (OCEAN).
-`DREAM` is the MIX mode and rolls all three, one per gate. Which quiz a gate
+`DREAM` is the MIX mode and rolls all three, one per gate. It is **hidden
+until earned**: `HIDDEN_UNLOCK_GATES` (10) gates passed in each of the other
+three, counted cumulatively across runs and persisted per mode. Cumulative
+rather than per-run because the whole game is hard mode — the gate is meant
+to ask "have you met all three quizzes", not "are you good". A debug build
+ignores the lock, so the real refusal only shows in a release export. Which quiz a gate
 asks is therefore a property of the **gate**, carried in `gate.quiz_kind`,
 not of `current_mode` — two gates on screen at once can be different kinds,
 and the draw code has to know which is which long after the roll. Anything
@@ -68,8 +73,9 @@ on failure.
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
-| `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
-| `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
+| `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
+| `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, the selected card really is at `CARD_SELECTED_SCALE`, and the hidden card's blurb tracks its lock at every step of the unlock — with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
@@ -120,6 +126,12 @@ what is actually on screen:
 RenderingServer.frame_post_draw` is the whole trick; without that await you
 save the previous frame. `capture_score_display.gd` is the worked example —
 it sets a score, redraws, and shoots, once per digit count.
+
+`capture_mode_select.gd` is the other one, and it shoots four aspect ratios
+plus the hidden card in both of its states. That screen divides its leftover
+height between blocks, so one ratio proves nothing about the others; and the
+hidden card's blurb changes length with its lock, which is exactly where the
+explain bar would clip.
 
 Use this for anything where the question is "does it look right", and reach
 for it before mocking a composite up separately. A hand-built preview of the
@@ -557,6 +569,15 @@ audit in the git log). This is only the hole it will sit in.
   and covers their BEST scores. Left alone deliberately while the game is
   being tested on phones. Reproduce with
   `DisplayServer.window_set_size(Vector2i(480, 640))` before the scene loads.
+- **The mode-select screen has no spare height, so a taller card is paid for
+  out of the gaps.** It was tempting to grow the cards into space the layout
+  was not using; there is none. Leftover height goes entirely into the five
+  inter-block gaps and never reaches the `MAX_GAP_FRAC` cap (49px against a
+  62px cap even at 21:9), so nothing is idle. `CARD_HEIGHT_SCALE` therefore
+  takes from the gaps and stops at `CARD_GROW_MIN_GAP_FRAC` — which means a
+  16:9 phone, whose gap is already 1.9px, gets no growth at all and 18:9 gets
+  part of it. That the cards are a different height on different phones is
+  the same bargain every other block on this screen already makes.
 - **Only `check_gate_reach.gd` sweeps aspect ratios.** Every other checker
   reads the one resolution out of `ProjectSettings` and therefore only ever
   sees 16:9. The START overlap above was found by taking a screenshot, not

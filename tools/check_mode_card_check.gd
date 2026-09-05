@@ -156,21 +156,32 @@ func _run() -> void:
 	if hidden_card < 0:
 		_fail("no card maps to MODE_HIDDEN")
 	else:
-		var was: bool = screen.get("hidden_mode_open")
-		var locked_text: String = screen.get("CARD_EXPLAIN")[hidden_card]
 		var open_text: String = screen.get("CARD_EXPLAIN_HIDDEN_OPEN")
-		if locked_text == open_text:
-			_fail("the locked and open blurbs are the same string — one of the two states is unlabelled")
-		for open in [true, false]:
-			screen.set("hidden_mode_open", open)
+		var required: int = screen.get("hidden_modes_required")
+		var gates: int = screen.get("hidden_gates_needed")
+		# 진행도를 실제로 넘겨 가며 본다. hidden_mode_open 을 직접 뒤집으면
+		# 잠금만 바뀌고 진행도는 그대로라, 화면이 두 값을 함께 쓰는지 —
+		# set_hidden_progress 가 둘을 같은 자리에서 정하는지 — 를 못 본다.
+		for cleared in range(required + 1):
+			screen.call("set_hidden_progress", cleared, required, gates)
 			screen.call("_select", hidden_card, false)
 			await process_frame
 			var shown: String = screen.get("_explain_label").text
-			var want_text: String = open_text if open else locked_text
+			var unlocked: bool = cleared >= required
+			var want_text: String = open_text if unlocked \
+				else screen.call("_hidden_locked_text", cleared)
 			if shown != want_text:
-				_fail("hidden_mode_open = %s shows \"%s\", want \"%s\"" % [open, shown, want_text])
-			print("  hidden_mode_open %-5s -> \"%s\"" % [open, shown])
-		screen.set("hidden_mode_open", was)
+				_fail("%d/%d cleared shows \"%s\", want \"%s\"" % [
+					cleared, required, shown, want_text])
+			if screen.get("hidden_mode_open") != unlocked:
+				_fail("%d/%d cleared left hidden_mode_open = %s" % [
+					cleared, required, screen.get("hidden_mode_open")])
+			print("  %d/%d -> open=%-5s \"%s\"" % [
+				cleared, required, screen.get("hidden_mode_open"), shown])
+		# 잠금 문구와 해금 문구가 같으면 두 상태 중 하나는 안내가 없는 것이다.
+		if screen.call("_hidden_locked_text", 0) == open_text:
+			_fail("the locked and open blurbs are the same string — one of the two states is unlabelled")
+		screen.call("set_hidden_progress", 0, required, gates)
 		# 그리고 나갈 수 있는 문구가 전부 설명 바 안에 들어가야 한다. 글자
 		# 크기는 _fit_explain_size 가 _explain_candidates() 를 훑어 한 번에
 		# 정하므로, 거기서 빠진 문구는 크기 계산에 반영되지 않고 출시 때
@@ -179,8 +190,13 @@ func _run() -> void:
 		# 그 목록을 여기서 다시 부르면 안 된다 — 처음에 그렇게 썼더니,
 		# _explain_candidates() 에서 문구를 빼는 순간 피팅과 검사가 같이 눈을
 		# 감아 통과했다. 검사할 문구는 상수에서 직접 모은다.
-		var must_fit: Array = screen.get("CARD_EXPLAIN").duplicate()
+		var must_fit: Array = []
+		for text in screen.get("CARD_EXPLAIN"):
+			if str(text) != "":
+				must_fit.append(text)
 		must_fit.append(open_text)
+		for cleared in range(required + 1):
+			must_fit.append(screen.call("_hidden_locked_text", cleared))
 		var label: Label = screen.get("_explain_label")
 		var font: Font = label.get_theme_font("font")
 		var fs: int = label.get_theme_font_size("font_size")

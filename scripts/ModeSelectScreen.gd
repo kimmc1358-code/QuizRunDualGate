@@ -116,23 +116,32 @@ const CARD_EXPLAIN := [
 	"Find the flag that matches the country!",
 	"Solve the math problem and find the answer!",
 	"Choose the COLOR, not the word!",
-	"Clear all 3 modes to unlock a hidden mode!",
+	"",   # 히든 모드는 잠금 상태에 따라 두 문장이다 — 아래 두 상수를 볼 것
 ]
 const CARD_EXPLAIN_HIDDEN_OPEN := "All three quizzes, one after another!"
+# 잠겼을 때. 조건과 함께 어디까지 왔는지도 보인다 — 조건만 적으면 이미 두
+# 모드를 채운 사람과 하나도 안 한 사람에게 같은 문장이 나가고, 얼마나 남았는지
+# 알 방법이 게임 안에 없다. 인자는 (게이트 수, 채운 모드, 필요한 모드).
+const CARD_EXPLAIN_HIDDEN_LOCKED := "Pass %d gates in every mode to unlock!  %d/%d"
 
-## 히든 모드(MIX)를 지금 열어 둘지.
+## 히든 모드(MIX)가 열려 있는지. Main 이 저장된 진행도를 보고 정해서
+## set_hidden_progress 로 넘긴다 — 이 화면은 세이브 파일을 모른다.
 ##
-## 출시 때 false 로 되돌린다. 그러면 _on_start_pressed 의 조건에
-## OS.is_debug_build() 만 남아 예전 그대로가 된다 — 개발 중에는 열리고
-## 배포본에서는 잠긴다. 지금 true 인 것은 지인 테스트 배포에서 MIX 를 실제로
-## 돌려 보기 위해서다.
+## 기본값이 false 인 것이 맞다. 진행도가 아직 안 넘어온 순간(부팅 중 한두
+## 프레임)에 열린 것으로 그렸다가 잠기면, 열렸던 것이 도로 잠긴 것처럼 보인다.
 ##
 ## 카드 설명문도 이 값을 따라간다. 둘을 따로 두면 반드시 어긋난다: 잠긴 채로
 ## "세 퀴즈가 번갈아 나온다"고 적으면 눌러도 안 되는 카드를 광고하는 꼴이고,
-## 열린 채로 "3개 모드를 깨면 열린다"고 적으면 이미 열린 것을 못 연 것처럼
+## 열린 채로 "게이트를 더 지나면 열린다"고 적으면 이미 열린 것을 못 연 것처럼
 ## 안내한다. tools/check_mode_card_check.gd 가 두 상태 모두에서 짝이 맞는지
 ## 본다.
-@export var hidden_mode_open: bool = true
+@export var hidden_mode_open: bool = false
+# 잠금 안내에 들어가는 숫자. Main 의 HIDDEN_UNLOCK_GATES 와 모드 수가 그대로
+# 넘어온다 — 여기에 같은 값을 또 적어 두면 한쪽만 고쳤을 때 안내문이 거짓말을
+# 한다.
+var hidden_gates_needed: int = 10
+var hidden_modes_cleared: int = 0
+var hidden_modes_required: int = 3
 # The explain bar's ends are round, and their radius is a large fraction of
 # its height. Nine-slice cannot shorten a shape like that: it draws corners
 # at native size, so the caps would either overlap or, stretched, turn into
@@ -299,6 +308,19 @@ const TOP_ICON_MARGIN_X_FRAC := 0.030 # of screen width
 const TOP_ICON_MARGIN_Y_FRAC := 0.022 # of screen height
 const CARDS_WIDTH_FRAC := 0.84
 const CARD_GAP_FRAC := 0.030      # of screen width, between the two columns
+# 카드는 아트가 그려진 비율보다 세로로 늘려 그린다. 폭과 카드 사이 간격은
+# 그대로다.
+#
+# 늘어난 몫은 블록 사이 간격에서 나온다 — 이 화면에 놀고 있는 세로는 없다.
+# 남는 높이는 전부 간격으로 가고 MAX_GAP_FRAC 상한에도 안 닿기 때문에(21:9
+# 에서도 49px 대 상한 62px), "안 쓰는 자리를 가져온다"는 방법은 한 픽셀도 못
+# 얻는다. 재 봤다.
+#
+# 그래서 간격을 줄여 가며 늘리되, CARD_GROW_MIN_GAP_FRAC 밑으로는 안 내려간다.
+# 화면이 짧을수록 덜 늘어나고, 16:9 는 원래 간격이 1.9px 뿐이라 그대로다 —
+# 거기서 억지로 늘리면 제목과 카드가 서로 파고든다.
+const CARD_HEIGHT_SCALE := 1.18
+const CARD_GROW_MIN_GAP_FRAC := 0.014   # of screen height
 # The explain bar takes its width from the cards rather than a fraction of
 # its own, so its ends line up exactly with the outer edges of the left and
 # right columns however the cards are sized.
@@ -686,7 +708,12 @@ func _build() -> void:
 		var card := TextureButton.new()
 		card.texture_normal = card_textures[slot] if slot < card_textures.size() else null
 		card.ignore_texture_size = true
-		card.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+		# 칸을 아트 비율보다 세로로 늘리므로(CARD_HEIGHT_SCALE) 아트도 같이
+		# 늘어나야 한다. KEEP_ASPECT_CENTERED 로 두면 그림은 예전 크기 그대로
+		# 가운데 뜨고 눌리는 범위만 커져서, 카드가 커진 것이 아니라 빈 데를
+		# 눌러도 반응하는 것이 된다. _layout_card_contents 도 아트가 칸을 꽉
+		# 채운다고 보고 이름판·점수판을 놓는다.
+		card.stretch_mode = TextureButton.STRETCH_SCALE
 		card.focus_mode = Control.FOCUS_NONE
 		_use_smooth_filter(card)
 		card.pressed.connect(_on_card_pressed.bind(i))
@@ -1129,6 +1156,20 @@ func _layout() -> void:
 			_banner_applied = banner_reserve_px
 	bottom += _banner_applied
 
+	# ---- 카드 세로 늘리기 ----
+	# 배너 판정이 끝난 뒤다. 배너는 카드보다 우선이라, 배너를 받아들인 화면에서는
+	# 그만큼 덜 늘어난다 — 순서를 뒤집으면 늘어난 카드가 배너 자리를 먹고 배너가
+	# 거절당한다.
+	var gap_now: float = clampf(
+		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
+	var grow_budget: float = maxf(0.0,
+		(gap_now - view.y * CARD_GROW_MIN_GAP_FRAC) * 5.0)
+	var grow: float = minf(card_h * 2.0 * (CARD_HEIGHT_SCALE - 1.0), grow_budget)
+	if grow > 0.0:
+		card_h += grow * 0.5
+		cards_h += grow
+		content_h += grow
+
 	var gap: float = clampf(
 		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
 
@@ -1371,17 +1412,32 @@ func _fit_card_name_size(max_width: float, max_height: float) -> int:
 func _explain_text(index: int) -> String:
 	if index < 0 or index >= CARD_EXPLAIN.size():
 		return ""
-	if CARD_MODES[index] == MODE_HIDDEN and hidden_mode_open:
+	if CARD_MODES[index] != MODE_HIDDEN:
+		return CARD_EXPLAIN[index]
+	if hidden_mode_open:
 		return CARD_EXPLAIN_HIDDEN_OPEN
-	return CARD_EXPLAIN[index]
+	return _hidden_locked_text(hidden_modes_cleared)
 
 
-# 나갈 수 있는 모든 문구. 지금 안 쓰는 쪽까지 재야 한다 — hidden_mode_open 을
-# 뒤집으면 그 문구가 곧바로 이 자리에 들어오는데, 그때 글자 크기를 다시 잡을
-# 계기가 없어서 출시 빌드에서만 문장이 잘린다.
+func _hidden_locked_text(cleared: int) -> String:
+	return CARD_EXPLAIN_HIDDEN_LOCKED % [
+		hidden_gates_needed, cleared, hidden_modes_required]
+
+
+# 나갈 수 있는 모든 문구. 지금 안 쓰는 쪽까지 재야 한다 — 해금되는 순간 다른
+# 문구가 곧바로 이 자리에 들어오는데, 그때 글자 크기를 다시 잡을 계기가 없어서
+# 그 한 판에서만 문장이 잘린다.
+#
+# 잠금 안내는 진행도가 박혀 있으므로 0/3 부터 전부 재야 한다. 자릿수가 같아
+# 폭도 같을 것 같지만, 폰트가 고정폭이 아니라 실제로 다르다.
 func _explain_candidates() -> Array:
-	var out: Array = CARD_EXPLAIN.duplicate()
+	var out: Array = []
+	for i in range(CARD_MODES.size()):
+		if CARD_MODES[i] != MODE_HIDDEN and i < CARD_EXPLAIN.size():
+			out.append(CARD_EXPLAIN[i])
 	out.append(CARD_EXPLAIN_HIDDEN_OPEN)
+	for n in range(hidden_modes_required + 1):
+		out.append(_hidden_locked_text(n))
 	return out
 
 
@@ -1696,6 +1752,23 @@ func set_best_scores(values: PackedInt32Array) -> void:
 		_card_score[i].text = ScoreFormat.compact(value)
 
 
+## 히든 모드 해금 진행도. Main 이 저장된 값에서 뽑아 넘긴다.
+##
+## 잠금 여부를 따로 받지 않고 여기서 계산한다. 진행도와 잠금을 둘 다 받으면
+## 서로 어긋난 조합("3/3 인데 잠김")을 넘길 수 있게 되는데, 그런 상태는 화면을
+## 봐도 어느 쪽이 틀렸는지 알 수 없다.
+func set_hidden_progress(cleared: int, required: int, gates_needed: int) -> void:
+	hidden_modes_required = maxi(1, required)
+	hidden_modes_cleared = clampi(cleared, 0, hidden_modes_required)
+	hidden_gates_needed = maxi(1, gates_needed)
+	hidden_mode_open = hidden_modes_cleared >= hidden_modes_required
+	# 글자 크기는 나갈 수 있는 문구 전체에서 한 번에 정해지고, 그 목록이 방금
+	# 바뀌었다. 다시 배치해야 새 문구가 잘리지 않는다.
+	_layout()
+	if _explain_label != null:
+		_explain_label.text = _explain_text(selected_index)
+
+
 func _on_card_pressed(index: int) -> void:
 	# The cue fires on every tap, including one on the already-selected card:
 	# it is feedback for the press, not for the selection changing.
@@ -1736,15 +1809,16 @@ func _on_start_pressed() -> void:
 	# Started before the mode is handed over: emitting swaps the screen and
 	# crossfades the music, and the cue should be underway before that.
 	_play(_sfx_start)
-	# The fourth slot is the hidden mode. It is always reachable while
-	# developing — from the editor or a debug export — and refused in a
-	# release build, where it is meant to read as locked.
+	# The fourth slot is the hidden mode. It opens once every other mode has
+	# been played far enough — Main owns that record and hands the answer over
+	# through set_hidden_progress.
 	#
-	# hidden_mode_open 이 그 잠금을 지금만 풀어 둔다. 지인 테스트 배포는
-	# 릴리스 빌드라 이것이 없으면 MIX 카드가 눌리기만 하고 아무 일도 일어나지
-	# 않는다 — 미구현이 아니라 고장으로 읽힌다.
+	# 디버그 빌드에서는 조건과 상관없이 열린다. 매번 30 게이트를 지나야 MIX 를
+	# 한 번 볼 수 있으면 그 모드를 손볼 때마다 그 값을 치러야 한다. 릴리스
+	# 빌드에는 이 예외가 없으므로 실제 잠김은 릴리스로 내보내 눌러 봐야 한다.
 	if mode == MODE_HIDDEN and not hidden_mode_open and not OS.is_debug_build():
-		print("[미구현] 히든 모드")
+		print("[잠김] 히든 모드 — %d/%d 모드에서 %d 게이트씩" % [
+			hidden_modes_cleared, hidden_modes_required, hidden_gates_needed])
 		return
 	start_pressed.emit(mode)
 

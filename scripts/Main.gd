@@ -2168,6 +2168,21 @@ const SAVE_KEY_BEST_LEGACY := "best_score"
 # 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
 const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 # ============================================================
+# 히든 모드(MIX) 해금.
+#
+# 단일 세 모드에서 각각 이만큼의 게이트를 통과하면 열린다. 판마다 새로 세는
+# 것이 아니라 설치 후 누적이다 — 이 게임은 전부 하드 모드라, 한 판에 10 게이트를
+# 요구하면 잘하는 사람에게만 열리는 조건이 된다. 해금은 실력 시험이 아니라
+# "세 퀴즈를 다 겪어 봤는가"를 묻는 것이고, 그 답은 누적으로 나온다.
+#
+# 세는 값은 문턱에서 멈춘다. 더 세어 봐야 쓸 데가 없고, 멈추면 해금된 뒤로는
+# 저장 파일이 더 이상 바뀌지 않는다.
+const HIDDEN_UNLOCK_GATES := 10
+const SAVE_KEY_GATES_PREFIX := "gates_cleared_"
+# 해금 대상이 아닌 모드. 자기 자신을 조건에 넣을 수는 없다.
+const HIDDEN_MODE := Mode.DREAM
+# ============================================================
+# ============================================================
 # 전면광고 노출 판단.
 #
 # 여기에는 광고를 띄우는 코드가 없다 — 프로젝트에 광고 SDK 자체가 없다(git log
@@ -2436,6 +2451,9 @@ var player_display_name: String = ""
 var best_scores := PackedInt32Array()
 # 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — leaderboard_score 참고.
 var leaderboard_bests := PackedInt32Array()
+# 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
+# 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
+var mode_gates_cleared := PackedInt32Array()
 var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
@@ -4933,6 +4951,11 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 
 	if passed:
 		gates_passed += 1
+		# 히든 모드 해금용 누적. 문턱에서 멈추므로 열린 뒤로는 값이 안 변하고,
+		# 저장도 더 이상 일어나지 않는다.
+		if current_mode < mode_gates_cleared.size() \
+				and mode_gates_cleared[current_mode] < HIDDEN_UNLOCK_GATES:
+			mode_gates_cleared[current_mode] += 1
 		combo += 1
 		# combo is zeroed by any miss, so the run's peak has to be kept
 		# separately — the game-over popup reports the peak, not what was
@@ -5728,11 +5751,46 @@ func _best_for(mode: int) -> int:
 	return best_scores[mode]
 
 
+# ---- 히든 모드(MIX) 해금 ----
+
+# 해금 조건을 채운 단일 모드의 수. 카드 설명문의 "n/3" 이 이 값이다.
+func hidden_modes_cleared() -> int:
+	var n := 0
+	for mode in range(Mode.size()):
+		if mode == HIDDEN_MODE or mode >= mode_gates_cleared.size():
+			continue
+		if mode_gates_cleared[mode] >= HIDDEN_UNLOCK_GATES:
+			n += 1
+	return n
+
+
+# 조건에 걸리는 모드의 수 — 히든 모드 자신은 뺀다. 모드가 늘어나면 조건도 같이
+# 늘어난다.
+func hidden_modes_required() -> int:
+	return maxi(1, Mode.size() - 1)
+
+
+func hidden_mode_unlocked() -> bool:
+	return hidden_modes_cleared() >= hidden_modes_required()
+
+
+# 모드 선택 화면에 지금 진행도를 넘긴다. 잠금과 설명문을 화면이 같은 값에서
+# 함께 뽑게 하려는 것이다 — 둘을 따로 넘기면 "열렸는데 잠겼다고 안내"하는
+# 상태가 만들어질 수 있고, 그건 화면만 봐서는 틀렸다고 알기 어렵다.
+func _push_hidden_progress() -> void:
+	if mode_select_panel == null:
+		return
+	mode_select_panel.set_hidden_progress(
+		hidden_modes_cleared(), hidden_modes_required(), HIDDEN_UNLOCK_GATES)
+
+
 func _load_best_score() -> void:
 	best_scores.resize(Mode.size())
 	best_scores.fill(0)
 	leaderboard_bests.resize(Mode.size())
 	leaderboard_bests.fill(0)
+	mode_gates_cleared.resize(Mode.size())
+	mode_gates_cleared.fill(0)
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
@@ -5741,6 +5799,8 @@ func _load_best_score() -> void:
 			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
 		leaderboard_bests[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), 0))
+		mode_gates_cleared[mode] = clampi(int(cfg.get_value(
+			SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), 0)), 0, HIDDEN_UNLOCK_GATES)
 	# 예전 저장본에는 모드 구분 없는 기록 하나뿐이다. 어느 모드에서 낸
 	# 점수인지 알 길이 없으므로, 처음 모드(SKY)의 기록으로 옮긴다. 버리는
 	# 것보다는 낫고, 여러 모드에 복사하면 없던 기록이 생긴다.
@@ -5755,6 +5815,7 @@ func _save_best_score(mode: int) -> void:
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), best_scores[mode])
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), leaderboard_bests[mode])
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), mode_gates_cleared[mode])
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])
@@ -6118,6 +6179,13 @@ func _reset_game() -> void:
 	# 핸들러마다 넣으면 나중에 다섯 번째 경로가 생겼을 때 조용히 안 세어진다.
 	if run_active:
 		_ad_note_run_left()
+		# 해금 진행도도 여기서 저장한다. _finish_run 에 두면 일시정지에서
+		# HOME 으로 빠져나간 판의 게이트가 사라져, 열 만큼 지났는데 안 열리는
+		# 일이 생긴다 — 최고 점수와 달리 이건 "잘해야 얻는 것"이 아니라서
+		# 경로에 따라 없어지면 고장으로 읽힌다.
+		if gates_passed > 0:
+			_save_best_score(current_mode)
+			_push_hidden_progress()
 		run_active = false
 	var view_size := get_viewport_rect().size
 	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
@@ -6662,6 +6730,9 @@ func _set_state(new_state: int) -> void:
 	# 기록을 갈아치웠을 수 있다.
 	if state == State.MODE_SELECT:
 		mode_select_panel.set_best_scores(best_scores)
+		# 같은 이유로 해금 진행도도 여기서 다시 넘긴다 — 방금 끝난 판이 마지막
+		# 한 모드를 채웠을 수 있다.
+		_push_hidden_progress()
 
 
 # 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
