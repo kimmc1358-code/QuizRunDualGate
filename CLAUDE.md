@@ -159,6 +159,10 @@ RenderingServer.frame_post_draw` is the whole trick; without that await you
 save the previous frame. `capture_score_display.gd` is the worked example —
 it sets a score, redraws, and shoots, once per digit count.
 
+`capture_combo.gd` freezes the clock and writes a combo count straight in,
+because tier 4 needs 76 consecutive gates and its colour animates — a value
+you cannot reach by playing and a colour one frame cannot show.
+
 `capture_mode_select.gd` is the other one, and it shoots four aspect ratios
 plus the hidden card in both of its states. That screen divides its leftover
 height between blocks, so one ratio proves nothing about the others; and the
