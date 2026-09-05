@@ -917,14 +917,17 @@ const GATE_PANEL_SCALE := 1.0
 # Fredoka (SIL OFL, see assets/fonts/Fredoka_LICENSE.txt) — a rounded
 # geometric sans that matches the painted SCORE/QUIZ/BEST labels in the HUD
 # art. Replaces Mulmaru, which is a Korean face whose Latin glyphs were only
-# a secondary concern; nothing the game actually renders needs Hangul (the
-# quiz targets are English country names and arithmetic).
+# a secondary concern.
+#
+# That reasoning has since flipped once: the UI and the quiz content are
+# translated now, so the game does render Hangul, which Fredoka has none of.
+# It comes from a fallback face instead — the whole arrangement lives in
+# scripts/AppFont.gd, and every screen takes its font from there.
 #
 # It is a variable font with a wght axis (300-700, default 300 — too light
 # for a HUD, so both weights below are set explicitly). The axis has to be
 # keyed by its integer OpenType tag, not the string "wght": a string key is
 # silently ignored and you get the 300 default back.
-const COMBO_FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const TEXT_FONT_WEIGHT := 600      # quiz text, combo popups, flag codes
 const SCORE_FONT_WEIGHT := 700     # the score/best digits, which want more punch
 const COMBO_TIER_SIZE := 25
@@ -2644,9 +2647,8 @@ func _ready() -> void:
 
 # 글꼴만 먼저. 로고 화면의 크레딧이 이걸 쓴다.
 func _setup_fonts() -> void:
-	var base_font: Font = ThemeDB.fallback_font
-	if ResourceLoader.exists(COMBO_FONT_PATH):
-		base_font = load(COMBO_FONT_PATH)
+	# 한글 fallback 까지 붙은 한 벌을 받는다 — scripts/AppFont.gd 참고.
+	var base_font: Font = AppFont.base()
 	# Real weight axis rather than the faux-bold this used to need: Mulmaru
 	# shipped a single weight, Fredoka carries 300-700.
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")

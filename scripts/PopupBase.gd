@@ -153,7 +153,6 @@ const CANCEL_ON_BORDER := Vector2(0.45, 0.0)
 const CANCEL_X_COLOR := Color(0.055, 0.180, 0.435, 1.0)  # 네이비
 const CANCEL_X_ARM_FRAC := 0.19        # 지름 대비 X 팔 길이(중심에서)
 const CANCEL_X_WIDTH_FRAC := 0.095     # 지름 대비 선 굵기
-const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
 
@@ -238,7 +237,7 @@ func _ready() -> void:
 	# 팝업 안 전체에 걸린다.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var base: Font = load(FONT_PATH) if ResourceLoader.exists(FONT_PATH) else ThemeDB.fallback_font
+	var base: Font = AppFont.base()
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)

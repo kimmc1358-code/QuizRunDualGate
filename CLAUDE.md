@@ -81,13 +81,20 @@ matching. Translating at the source would tie that logic to the locale for no
 gain. So each is one `tr()` at the draw site, plus the width measurement that
 sizes the gate labels.
 
-No Korean font is bundled. Fredoka has no Hangul, and the glyphs come from
-the platform's fallback — which works but is a plain gothic against Fredoka's
-rounded Latin, and looks like whatever the device happens to have. Dropping a
-rounded OFL Korean face (Jua, say) in `assets/fonts/` and setting it as
-Fredoka's `fallbacks` would fix both. Anything that measures text — the
-explain bar, card names, tutorial captions — refits per locale already, so
-changing the font moves those numbers and the fit checks are what to re-run.
+`scripts/AppFont.gd` is where the fonts are decided, and every screen takes
+its base font from there. Fredoka has no Hangul, so a Korean face is attached
+as its `fallbacks` — one chain on one base font, because the weights are
+`FontVariation`s over it and they look glyphs up through `base_font`.
+
+The Korean face is **Cafe24 Ssurround**, and it is not in the repo: drop the
+file in `assets/fonts/` (any of the names `AppFont.KOREAN_CANDIDATES` lists,
+so the download needs no renaming) along with its licence text, the way
+Fredoka carries `Fredoka_LICENSE.txt`. Without it the game still runs and
+Hangul still renders — from whatever the device provides, which is a plain
+gothic beside Fredoka's rounded Latin and differs per phone. Boot says so once.
+
+Changing that font moves every text measurement, so the fit checks — the
+explain bar, card names, tutorial captions — are what to re-run afterwards.
 
 ## Verifying changes
 

@@ -19,7 +19,6 @@ extends Control
 
 signal finished
 
-const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
 
@@ -71,7 +70,7 @@ var _font_heavy: Font
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var base: Font = load(FONT_PATH) if ResourceLoader.exists(FONT_PATH) else ThemeDB.fallback_font
+	var base: Font = AppFont.base()
 	var wght: int = TextServerManager.get_primary_interface().name_to_tag("weight")
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)

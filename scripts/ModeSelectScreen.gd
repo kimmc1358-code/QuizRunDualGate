@@ -355,7 +355,6 @@ const SFX_START_FILE := "start_main.wav"
 const SFX_CREAM_FILE := "button_cream.wav"
 
 # The START art is a blank plate, so the word is drawn on top of it.
-const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const START_LABEL := "START"
 const START_LABEL_HEIGHT_FRAC := 0.44   # of the button's height
 const START_LABEL_COLOR := Color(1.0, 1.0, 1.0, 1.0)
@@ -520,9 +519,7 @@ func _ready() -> void:
 # OpenType tag rather than the string "wght" — a string key is silently
 # ignored, which is the same trap Main.gd documents.
 func _load_fonts() -> void:
-	if not ResourceLoader.exists(FONT_PATH):
-		return
-	var base: Font = load(FONT_PATH)
+	var base: Font = AppFont.base()
 	var wght: int = TextServerManager.get_primary_interface().name_to_tag("wght")
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)
@@ -867,8 +864,7 @@ func _build() -> void:
 	_explain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_explain_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_explain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists(FONT_PATH):
-		_explain_label.add_theme_font_override("font", _font_bold if _font_bold != null else load(FONT_PATH))
+	_explain_label.add_theme_font_override("font", _font_bold if _font_bold != null else AppFont.base())
 	_explain_label.add_theme_color_override("font_color", EXPLAIN_TEXT_COLOR)
 	_explain.add_child(_explain_label)
 
@@ -924,8 +920,7 @@ func _build() -> void:
 	_start_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_start_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_start_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists(FONT_PATH):
-		_start_label.add_theme_font_override("font", _font_heavy if _font_heavy != null else load(FONT_PATH))
+	_start_label.add_theme_font_override("font", _font_heavy if _font_heavy != null else AppFont.base())
 	_start_label.add_theme_color_override("font_color", START_LABEL_COLOR)
 	_start_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
 	_start.add_child(_start_label)
@@ -934,8 +929,7 @@ func _build() -> void:
 	_remove_ads.text = REMOVE_ADS_TEXT
 	_remove_ads.flat = true
 	_remove_ads.focus_mode = Control.FOCUS_NONE
-	if ResourceLoader.exists(FONT_PATH):
-		_remove_ads.add_theme_font_override("font", load(FONT_PATH))
+	_remove_ads.add_theme_font_override("font", AppFont.base())
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		_remove_ads.add_theme_color_override(state, REMOVE_ADS_COLOR)
 	_remove_ads.pressed.connect(_on_unimplemented.bind("Remove Ads"))
@@ -960,8 +954,7 @@ func _add_card_text(card: Control, text: String, color: Color) -> Label:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if ResourceLoader.exists(FONT_PATH):
-		label.add_theme_font_override("font", load(FONT_PATH))
+	label.add_theme_font_override("font", AppFont.base())
 	label.add_theme_color_override("font_color", color)
 	card.add_child(label)
 	return label
