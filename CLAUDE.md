@@ -96,9 +96,11 @@ If the file goes missing the game still runs and Hangul still renders — from
 whatever the device provides, which is a plain gothic beside Fredoka and
 differs per phone. Boot says so once.
 
-**The licence text is not in the repo yet.** Fredoka carries
-`Fredoka_LICENSE.txt` beside it; Cafe24 Ssurround should too before this
-ships, since the font is redistributed inside the APK.
+Both font licences live in `licenses/`, behind a `.gdignore` like `store/`.
+They are redistribution terms, not something the game opens, and Cafe24's
+arrives as a 1.9MB PDF — larger than the font it covers. Keeping licences out
+of `assets/` is the rule here: put the paperwork in `licenses/`, and only
+what the game loads under `assets/`.
 
 Changing that font moves every text measurement, so the fit checks — the
 explain bar, card names, tutorial captions — are what to re-run afterwards.
