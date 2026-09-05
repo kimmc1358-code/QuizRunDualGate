@@ -193,16 +193,28 @@ green circle. Check what a sheet's alpha really is before assuming a slicer
 can band it.
 
 `tools/build_app_icon.ps1` produces the launcher icons from a character
-sprite, and the sizes are not interchangeable. An **adaptive** icon is two
-432x432 layers the launcher composites and then masks to whatever shape it
-wants, and only the middle 66% survives that mask — art that fills the canvas
-gets its edges eaten on a circular launcher, so the character is fitted to a
-264px safe circle. The **legacy** 192 is those two layers flattened. The
-**Play Store** 512 must be 32-bit PNG with no transparency and square
-corners, since Google rounds it itself; it lives in `store/` behind a
-`.gdignore`, because it is a listing asset and there is no reason to ship it
-inside the APK. Pass `-Character dragon|shark|unicorn` to rebuild from a
-different mode's sprite.
+sprite, and the three outputs differ by **who crops them**. An **adaptive**
+icon is two 432x432 layers the launcher composites and then masks to whatever
+shape it likes, and only the middle 66% survives that mask — art that fills
+the canvas gets its edges eaten on a circular launcher, so the character is
+fitted to 86% of a 264px safe circle. The **legacy** 192 and the **Play
+Store** 512 are never masked, so they get their own composite at
+`$FlatFill` (0.80 of the whole square) rather than being sized off the
+adaptive canvas: built that way the character came out at 52% of the frame
+and the store icon read as small and weak next to other listings. The store
+file must be 32-bit PNG with no transparency and square corners, since Google
+rounds it itself; it lives in `store/` behind a `.gdignore`, because it is a
+listing asset and there is no reason to ship it inside the APK.
+
+The source is the in-game motion sheet, so `-Pose fly -Frame N` picks a cell
+of that grid (`-Pose happy|sad` takes the single-frame faces instead).
+Default is the bird's frame 2, the wings-up pose — chosen by rendering all
+four as finished icons and looking at them at 48px, where the other three
+read as a ball with a beak. Enlarging goes through an **integer
+nearest-neighbour step before the final resample**: these are pixel art, and
+a straight 1.7x bicubic turns every hard pixel edge into a gradient. Pass
+`-Character dragon|shark|unicorn` to rebuild from a different mode's sprite,
+and `-OutRoot <dir>` to write candidates somewhere other than the repo.
 
 The exception is an **animation strip** — the character sheets and the boost
 burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
