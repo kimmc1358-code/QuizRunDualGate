@@ -20,6 +20,7 @@ signal privacy_pressed
 signal terms_pressed
 signal sfx_volume_changed(value: float)
 signal music_volume_changed(value: float)
+signal boost_side_changed(on_left: bool)
 
 # 2172px 짜리 원본을 그대로 GPU 밉맵에 맡겨 줄이면 테두리에 계단이 남는다.
 # _load_icon_from 은 알파를 곱한 채 Lanczos 로 미리 줄이고 여백까지 둘러 주므로
@@ -98,10 +99,26 @@ const VERSION_TEXT := "Version 1.0.0"
 const VERSION_SIZE_FRAC := 0.044       # 판 너비 대비
 const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
 
+# 가속 버튼을 어느 쪽 아래 구석에 둘지. 같은 자리를 두고 "편하다"와 "너무
+# 불편하다"로 갈린다는 피드백이 있어서 고를 수 있게 했다.
+#
+# 두 칸 다 같은 금색 아트로 만들고, 고르지 않은 쪽을 흐리게 해서 상태를
+# 보인다. 아트를 서로 바꿔 끼우는 것보다 한 줄이면 되고, 음소거 버튼이 이미
+# 같은 방식으로 꺼짐을 표시한다.
+const BOOST_ROW_LABEL := "BOOST"
+const BOOST_OPTION_TEXTS := ["LEFT", "RIGHT"]
+const BOOST_ROW_HEIGHT_FRAC := 0.105    # 판 너비 대비
+const BOOST_OPTION_GAP_FRAC := 0.022    # 판 너비 대비 — 두 칸 사이
+const BOOST_OPTION_DIM := 0.45          # 고르지 않은 쪽의 불투명도
+
 var _title: TextureRect
 var _sliders: Control
 var _sfx_slider: HSlider
 var _music_slider: HSlider
+var _boost_row: Control          # "BOOST" 이름표 + LEFT/RIGHT 두 칸
+var _boost_left: Button
+var _boost_right: Button
+var _boost_on_left := false
 var _divider_top: Control
 var _divider_account: Control    # 계정 줄과 광고 제거 사이
 var _divider_bottom: Control
@@ -147,6 +164,22 @@ func _build_content() -> void:
 	_music_slider = _make_slider()
 	_music_slider.value_changed.connect(func(v: float): music_volume_changed.emit(v))
 	_sliders.add_child(_music_slider)
+
+	_boost_row = Control.new()
+	_boost_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_boost_row.draw.connect(_draw_boost_row)
+	add_child(_boost_row)
+	_boost_left = _make_button(GOLD_FILE, GOLD_CORNER, BOOST_OPTION_TEXTS[0], null, true)
+	_boost_right = _make_button(GOLD_FILE, GOLD_CORNER, BOOST_OPTION_TEXTS[1], null, true)
+	for i in range(2):
+		var b: Button = _boost_left if i == 0 else _boost_right
+		var want_left: bool = i == 0
+		b.pressed.connect(func() -> void:
+			if _boost_on_left == want_left:
+				return
+			set_boost_side(want_left)
+			boost_side_changed.emit(want_left))
+		add_child(b)
 
 	_divider_top = _make_divider()
 	_divider_account = _make_divider()
@@ -248,10 +281,12 @@ func _layout_content(inner: Rect2) -> void:
 	# 따로 정한 간격(광고 제거 버튼 위아래 + 약관 줄 사이 + 약관-버전)을 뺀
 	# 나머지를, 남은 간격 다섯이 고르게 나눈다: 슬라이더 사이 / 슬라이더-점선 /
 	# 점선-계정 / 계정-점선 / 점선-첫 약관.
-	var used: float = slider_h * 2.0 + divider_h * 3.0 + account_h + remove_h \
+	var boost_row_h: float = pw * BOOST_ROW_HEIGHT_FRAC
+	var used: float = slider_h * 2.0 + boost_row_h + divider_h * 3.0 + account_h + remove_h \
 		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap \
 		+ remove_gap * 2.0
-	var gap: float = maxf(6.0, (bottom - top - used) / 5.0)
+	# 간격 하나가 늘었다 — 슬라이더 뒤에 가속 버튼 줄이 붙으면서.
+	var gap: float = maxf(6.0, (bottom - top - used) / 6.0)
 
 	var y := top
 	_sliders.position = Vector2(inner_x, y)
@@ -269,6 +304,19 @@ func _layout_content(inner: Rect2) -> void:
 		s.size = Vector2(maxf(10.0, track_w - knob_pad * 2.0), SLIDER_KNOB_SIZE)
 	_sliders.queue_redraw()
 	y += slider_h * 2.0 + gap + gap
+
+	# 가속 버튼 줄. 이름표는 슬라이더와 같은 칸에 세우고(track_x), 두 칸은
+	# 트랙이 차지하던 폭을 반씩 나눠 쓴다 — 그래야 SFX/MUSIC 과 세로선이 맞는다.
+	_boost_row.position = Vector2(inner_x, y)
+	_boost_row.size = Vector2(inner_w, boost_row_h)
+	_boost_row.queue_redraw()
+	var opt_gap: float = pw * BOOST_OPTION_GAP_FRAC
+	var opt_w: float = (track_w - opt_gap) * 0.5
+	for i in range(2):
+		var b: Button = _boost_left if i == 0 else _boost_right
+		_place(b, inner_x + track_x + i * (opt_w + opt_gap), y, opt_w, boost_row_h,
+			0.0, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	y += boost_row_h + gap
 
 	_divider_top.position = Vector2(inner_x, y)
 	_divider_top.size = Vector2(inner_w, divider_h)
@@ -343,6 +391,23 @@ func _draw_sliders() -> void:
 		[["SFX", _sfx_icon], ["MUSIC", _music_icon]],
 		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
 		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
+
+
+# 슬라이더와 같은 이름표 그리기를 한 줄짜리로 재사용한다 — 아이콘이 없으니
+# 글자만 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
+func _draw_boost_row() -> void:
+	_draw_slider_labels(_boost_row, [[BOOST_ROW_LABEL, null]],
+		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _boost_row.size.y, 0.0)
+
+
+## 어느 쪽이 켜져 있는지 표시만 바꾼다 — 신호는 보내지 않는다. Main 이 저장된
+## 값을 넣어 줄 때와, 사용자가 눌렀을 때 둘 다 여기를 지난다.
+func set_boost_side(on_left: bool) -> void:
+	_boost_on_left = on_left
+	if _boost_left != null:
+		_boost_left.modulate.a = 1.0 if on_left else BOOST_OPTION_DIM
+	if _boost_right != null:
+		_boost_right.modulate.a = BOOST_OPTION_DIM if on_left else 1.0
 
 
 # 동그란 프로필 자리 + 상태 글자. 그림이 아직 없으면 사람 모양 자리표시를 그린다.

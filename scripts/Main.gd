@@ -692,8 +692,18 @@ const MODE_BOOST_BURST_HEAD_DROP := [0.12, 0.20, 0.09, 0.12]
 @export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
 @export_group("")  # closes "Boost Burst"
 
-const BOOST_BUTTON_SIZE := 92.0        # diameter, px
-const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's right/bottom edges
+const BOOST_BUTTON_SIZE := 110.0       # diameter, px — 92 read small on a phone
+const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's bottom and its chosen side
+
+# 어느 쪽 아래 구석에 둘지. 오른손잡이 기준으로 오른쪽이 기본이고, 설정에서
+# 왼쪽으로 옮길 수 있다 — 같은 자리를 두고 "편하다"와 "너무 불편하다"로
+# 갈린다는 피드백이 있었다.
+#
+# 왼쪽에 두면 버튼이 캐릭터가 나는 세로줄(PLAYER_X 130 언저리)과 화면 맨
+# 아래에서 겹친다. 캐릭터가 거기까지 내려간 순간은 이미 바닥에 부딪혀 죽기
+# 직전이라 실제로 가리는 시간은 거의 없고, 버튼도 반투명이다.
+const SAVE_KEY_BOOST_LEFT := "boost_button_left"
+var boost_button_on_left: bool = false
 # Painted per-mode art, like pause/mute — this replaced a code-drawn chip
 # (StyleBoxFlat circle + the word "BOOST") once the art existed. The four
 # icons are the same round badge in each mode's colours, cut off one sheet
@@ -2170,6 +2180,8 @@ const SAVE_KEY_BEST_LEGACY := "best_score"
 # 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
 const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 const SAVE_SECTION_AUDIO := "audio"
+# 조작 설정. 볼륨과 같은 파일을 쓰되 오디오와 섞지 않는다.
+const SAVE_SECTION_CONTROLS := "controls"
 const SAVE_KEY_SFX := "sfx_volume"
 const SAVE_KEY_MUSIC := "music_volume"
 
@@ -2593,6 +2605,7 @@ func _boot_load() -> void:
 	best_fill_material = best_fill_canvas.material
 	_load_best_score()
 	_load_audio_settings()
+	_load_control_settings()
 	_load_flags_data()
 	# The four HUD pieces are all per-mode now and get loaded in _apply_mode;
 	# only the parts that never change per mode are set up here.
@@ -2710,6 +2723,7 @@ func _boot_load() -> void:
 	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
 	settings_popup.music_volume_changed.connect(set_music_volume)
+	settings_popup.boost_side_changed.connect(set_boost_button_on_left)
 	settings_popup.login_pressed.connect(_on_login_pressed)
 	settings_popup.logout_pressed.connect(_on_logout_pressed)
 	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
@@ -5848,6 +5862,7 @@ func _on_restart_pressed() -> void:
 # 메인 화면 오른쪽 위 톱니바퀴. 지금 볼륨을 넣어 열어 준다.
 func _open_settings() -> void:
 	settings_popup.set_volumes(sfx_volume, music_volume)
+	settings_popup.set_boost_side(boost_button_on_left)
 	# 프로필 사진과 닉네임은 인증이 붙으면 여기로 들어온다.
 	settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
 	settings_popup.visible = true
@@ -6188,6 +6203,31 @@ func _load_audio_settings() -> void:
 		music_volume = clampf(float(cfg.get_value(SAVE_SECTION_AUDIO, SAVE_KEY_MUSIC, music_volume)), 0.0, 1.0)
 	_apply_bus_volume(BUS_SFX, sfx_volume)
 	_apply_bus_volume(BUS_MUSIC, music_volume)
+
+
+# 조작 설정. 볼륨과 같은 파일을 쓰지만 오디오가 아니므로 따로 둔다.
+func _load_control_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		boost_button_on_left = bool(cfg.get_value(
+			SAVE_SECTION_CONTROLS, SAVE_KEY_BOOST_LEFT, boost_button_on_left))
+
+
+func _save_control_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_CONTROLS, SAVE_KEY_BOOST_LEFT, boost_button_on_left)
+	cfg.save(SAVE_PATH)
+
+
+# 설정 팝업에서 좌/우를 고를 때. 바로 옮겨 보여야 고른 것이 무엇인지 알 수
+# 있으므로, 저장과 함께 그 자리에서 다시 배치한다.
+func set_boost_button_on_left(on_left: bool) -> void:
+	if boost_button_on_left == on_left:
+		return
+	boost_button_on_left = on_left
+	_save_control_settings()
+	_layout_hud_buttons()
 
 
 # 최고 점수와 같은 파일을 쓰므로, 먼저 읽어 들여 다른 값을 지우지 않는다.
@@ -6666,12 +6706,13 @@ func _layout_hud_buttons() -> void:
 	mute_button.set_deferred("size", size)
 	mute_button.set_deferred("position", Vector2(view_size.x - HUD_ROW_SIDE_MARGIN - size.x, top))
 	mute_button.set_deferred("pivot_offset", size * 0.5)
-	# Bottom-right corner, sized off its own constant rather than the HUD
-	# row's scale — it belongs to the play area, not to the top bar.
+	# Bottom corner, sized off its own constant rather than the HUD row's
+	# scale — it belongs to the play area, not to the top bar. Which corner is
+	# the player's choice (see boost_button_on_left).
 	var boost_size := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
 	boost_button.set_deferred("size", boost_size)
 	boost_button.set_deferred("position", Vector2(
-		view_size.x - BOOST_BUTTON_MARGIN - boost_size.x,
+		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - boost_size.x,
 		view_size.y - BOOST_BUTTON_MARGIN - boost_size.y))
 	boost_button.set_deferred("pivot_offset", boost_size * 0.5)
 
