@@ -65,7 +65,7 @@ on failure.
 
 | Script | Guards | Re-run when |
 |---|---|---|
-| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_mode_card_check.gd` | the selected mode card's green check clears the name plate, the character's ink and the card's own edge on **all four** cards, is big enough to read, and the selected card really is at `CARD_SELECTED_SCALE` | `CARD_CHECK_*`, `CARD_SELECTED_SCALE`, the card name plate/character layout, `CARD_NAMES`, or `CARD_CHARACTER_SCALE` change |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
@@ -329,6 +329,19 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
   free, because the whole world scrolls faster while the rhythm and the
   reachable range stay exactly where they were (130/600 and 200/900 are the
   same 4.5-second gate).
+- **The device's screen height is not the play field.** The stretch mode is
+  `canvas_items` + `expand`, so width is pinned at 480 and only height grows
+  to fit the phone: a 21:9 device runs a 480x1120 viewport, not 480x854. The
+  hole (124px of ring art), the hitbox, gravity and the seconds a gate takes
+  to arrive are all fixed, so letting gates spread over the taller viewport
+  put the same hole in a bigger field — 18.0% of it at 16:9, 12.9% at 21:9,
+  with 18% more travel per gate. Nothing became unreachable (`up_reach` is
+  absolute physics) but the game was measurably harder on a long phone, and
+  it took a user playing on one to notice. `_gate_field_top`/`_bottom` cap
+  the field at the reference height and centre it; `max_travel` is a
+  fraction of the *reference* viewport height, not `view_size.y`. Character
+  clamping and the death line deliberately still use the real screen — see
+  the comment on `_gate_field_top` for why an invisible floor is worse.
 - Anything set against the world's scroll rate is set against `GATE_SPEED`
   **in the same breath**, and stops being true when it changes. The one that
   bites is `PARTICLE_DRIFT_X_RATIO`: DREAM's petals are only perceived as

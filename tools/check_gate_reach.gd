@@ -90,9 +90,26 @@ func _run() -> void:
 	seed(seed_value)
 
 	# 헤드리스 뷰포트는 정사각형을 보고하므로 실제 해상도를 설정에서 읽는다.
-	var view := Vector2(
-		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
-		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+	var base_w := float(ProjectSettings.get_setting("display/window/size/viewport_width"))
+	var base_h := float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+
+	# 기준 해상도 하나만 보면 안 된다. 스트레치가 "expand" 라 가로는 480 으로
+	# 고정되고 세로만 기기에 맞춰 늘어나므로, 실제 기기에서의 판 높이는
+	# 프로젝트 설정에 적힌 854 가 아니다. 이 체커는 오랫동안 16:9 만 보면서
+	# 통과하고 있었고, 그동안 21:9 에서는 구멍이 화면의 12.9% 로 작아지고
+	# 게이트당 이동이 18% 늘어나 있었다.
+	var ratios := [
+		["16:9", 16.0 / 9.0], ["18:9", 2.0], ["19.5:9", 19.5 / 9.0],
+		["20:9", 20.0 / 9.0], ["21:9", 21.0 / 9.0],
+	]
+	var views: Array[Vector2] = []
+	for r in ratios:
+		views.append(Vector2(base_w, base_w * float(r[1])))
+	# 기준 해상도가 스윕 안에 들어 있어야 한다. 세로가 기준 854 와 다르면
+	# 위 목록이 프로젝트 설정과 어긋난 것이다.
+	if absf(views[0].y - base_h) > 2.0:
+		_fail("the first ratio gives %.0f px but the project is %.0f — the sweep drifted from project.godot" % [views[0].y, base_h])
+	var view: Vector2 = views[0]
 
 	# 최악의 시간: 부스트를 스폰부터 판정까지 계속 붙잡고 있는 경우. 게이트는
 	# 직전 게이트가 판정되는 그 프레임에 생성되므로(_update_playing), 이게
@@ -159,6 +176,110 @@ func _run() -> void:
 					names[mode], phase + 1, up_here, down_here, can_climb, can_fall, bad])
 			print("  %-7s phase %d   worst up %3.0f / down %3.0f px   %s" % [
 				names[mode], phase + 1, up_here, down_here, "ok" if bad == "" else "FAIL"])
+
+	# ---- 화면 비율 스윕 ----
+	#
+	# 위 표는 기준 해상도 하나만 본 것이다. 실제 기기는 세로가 더 길고, 그러면
+	# 게이트가 놓이는 판도 같이 길어졌었다 — _gate_field_top 이 그걸 기준
+	# 높이로 묶는다. 여기서는 그 묶임이 실제로 걸리는지, 그리고 어떤 비율에서도
+	# 도달 불가능한 배치가 안 나오는지 본다.
+	#
+	# 배치는 어느 퀴즈를 내든 같으므로(_spawn_gate 의 "quiz-agnostic" 주석)
+	# 여기서는 모드 하나로 페이즈만 훑는다. 모드별 확인은 위 표가 한다.
+	print("")
+	print("  %-9s %7s %9s %10s %9s %10s %s" % ["ratio", "height", "spread", "hole/spread", "worst up", "worst down", ""])
+	main.call("_apply_mode", 0)
+	main.set("current_mode", 0)
+	var hole: float = main.call("_gate_ring_inner_zone_height")
+	var spans: Array[float] = []
+	var hole_fracs: Array[float] = []
+	# 페이즈별로도 나눠 둔다. max_move_ratio 상한은 페이즈 1~2 에서만 실제로
+	# 걸리므로, 전 페이즈를 한 숫자로 뭉치면 그 상한이 기기별로 달라져도
+	# 최댓값은 그대로라 아무것도 안 보인다.
+	var phase_worsts: Array = []
+	for i in range(views.size()):
+		var v: Vector2 = views[i]
+		# 비율마다 같은 시드로 다시 시작한다. 그러지 않으면 300 회 중 최댓값이라는
+		# 통계가 비율끼리 20-30px 씩 그냥 흔들려서, 진짜 차이와 구분이 안 된다.
+		# 난수열을 맞춰 두면 남는 차이는 오직 판의 기하 때문이다.
+		seed(seed_value)
+		var ft: float = main.call("_gate_field_top", v)
+		var fb: float = main.call("_gate_field_bottom", v)
+		var up_here := 0.0
+		var down_here := 0.0
+		# 판의 크기는 헬퍼가 아니라 실제로 생성된 구멍에서 잰다. 처음에는
+		# _gate_field_top/_bottom 을 그대로 읽었는데, 그러면 _spawn_gate 가
+		# 그 함수를 쓰지 않아도 헬퍼는 여전히 묶인 값을 돌려주므로 검사가
+		# 통과한다 — 실제로 배치를 화면 전체로 되돌려 놓고 시험해 보니
+		# 그대로 초록불이었다.
+		var lo := INF
+		var hi := -INF
+		var per_phase: Array[float] = []
+		for passed in phase_probe:
+			main.set("gates_passed", passed)
+			main.set("last_zone_center", (ft + fb) * 0.5)
+			main.set("last_quiz_key", "")
+			var phase_worst := 0.0
+			for n in range(SPAWNS_PER_PHASE):
+				var before: float = main.get("last_zone_center")
+				main.get("gates").clear()
+				main.call("_spawn_gate", v)
+				var g: Dictionary = main.get("gates")[0]
+				for key in ["top_zone_top", "top_zone_bottom", "bottom_zone_top", "bottom_zone_bottom"]:
+					lo = minf(lo, float(g[key]))
+					hi = maxf(hi, float(g[key]))
+				var d: float = main.get("last_zone_center") - before
+				phase_worst = maxf(phase_worst, absf(d))
+				if d < 0.0:
+					up_here = maxf(up_here, -d)
+				else:
+					down_here = maxf(down_here, d)
+			per_phase.append(phase_worst)
+		phase_worsts.append(per_phase)
+		var fh: float = hi - lo
+		spans.append(fh)
+		hole_fracs.append(hole / fh)
+		var bad := ""
+		if up_here > can_climb + EPS:
+			bad = "UP-UNREACHABLE"
+		elif down_here > can_fall + EPS:
+			bad = "DOWN-UNREACHABLE"
+		if bad != "":
+			_fail("%s (%.0f px tall): %.0f up / %.0f down against %.0f / %.0f possible — %s" % [
+				ratios[i][0], v.y, up_here, down_here, can_climb, can_fall, bad])
+		worst_up = maxf(worst_up, up_here)
+		worst_down = maxf(worst_down, down_here)
+		print("  %-9s %7.0f %9.0f %8.1f%% %9.0f %9.0f %s" % [
+			ratios[i][0], v.y, fh, hole_fracs[i] * 100.0, up_here, down_here,
+			"ok" if bad == "" else "FAIL"])
+
+	# 그리고 판이 정말로 기기와 무관해야 한다. 위의 도달 검사만으로는 부족하다:
+	# 판이 길어져도 up_reach 가 절대값이라 상승 쪽은 계속 통과하고, 어려워지는
+	# 것은 "같은 구멍이 더 넓은 판에 흩어진다"는 쪽이라 도달 가능성으로는 전혀
+	# 잡히지 않는다. 실제로 이 체커는 그 상태로 오래 통과하고 있었다.
+	var fh_min: float = spans.min()
+	var fh_max: float = spans.max()
+	if fh_max - fh_min > 4.0:
+		_fail("gates spread over %.0f..%.0f px depending on the device — the same hole then reads %.1f%% of the field on one phone and %.1f%% on another" % [
+			fh_min, fh_max, hole / fh_min * 100.0, hole / fh_max * 100.0])
+	else:
+		print("  gates spread over %.0f px on every ratio, hole is %.1f%% of that" % [fh_max, hole / fh_max * 100.0])
+
+	# 그리고 페이즈별로도 같아야 한다. 위의 spread 는 전 페이즈를 합친 것이라,
+	# max_move_ratio 상한이 기기 화면 높이를 따라가더라도(그러면 페이즈 1~2 만
+	# 느슨해진다) 합친 최댓값은 판이 묶여 있는 한 그대로다. 실제로 그 되돌림을
+	# 시험해 보니 spread 검사만으로는 통과했다.
+	for p in range(phase_probe.size()):
+		var lo_p := INF
+		var hi_p := -INF
+		for i in range(phase_worsts.size()):
+			lo_p = minf(lo_p, float(phase_worsts[i][p]))
+			hi_p = maxf(hi_p, float(phase_worsts[i][p]))
+		if hi_p - lo_p > 2.0:
+			_fail("phase %d's worst swing runs %.0f..%.0f px across ratios — the placement cap is following the device's screen height" % [
+				p + 1, lo_p, hi_p])
+		else:
+			print("  phase %d worst swing %.0f px (spread %.0f across ratios)" % [p + 1, hi_p, hi_p - lo_p])
 
 	print("")
 	print("  worst over everything: up %.0f of %.0f possible (%.0f%% margin), down %.0f of %.0f (%.0f%%)" % [

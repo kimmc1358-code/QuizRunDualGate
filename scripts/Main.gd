@@ -3404,12 +3404,58 @@ func _gate_zone_bottom(view_size: Vector2) -> float:
 	return view_size.y
 
 
+# ---- 게이트가 놓이는 판 ----
+#
+# 스트레치가 "expand" 라 가로 480 은 고정되고 세로만 기기에 맞춰 늘어난다
+# (project.godot). 그런데 늘어나지 않는 것들이 있다: 구멍 높이(링 아트 124px),
+# 캐릭터 히트박스(50px), 중력·플랩·낙하속도, 그리고 게이트가 도착하는 데
+# 걸리는 시간(가로가 안 변하니까). 그래서 화면이 길수록 같은 크기의 구멍이
+# 더 넓은 판에 흩어지고, 같은 시간에 더 멀리 움직여야 한다.
+#
+# 실측(480 폭 기준): 게이트 존이 16:9 에서 689px, 21:9 에서 956px 이 되고,
+# 구멍이 차지하는 비율이 18.0% 에서 12.9% 로 떨어진다. 게이트당 평균 이동은
+# 175 -> 206px. 물리적으로 불가능해지지는 않지만(up_reach 는 절대값이라
+# 화면과 무관하게 잡아 준다) 난이도는 확실히 올라간다.
+#
+# 그래서 게이트가 놓이는 판은 기준 해상도에서 HUD 아래에 남는 높이로 묶고,
+# 남는 세로는 위아래로 반씩 나눠 판을 가운데 둔다. 화면은 배경이 그대로 다
+# 채우므로 레터박스는 생기지 않는다.
+#
+# 캐릭터의 이동 한계와 죽는 선은 여기서 건드리지 않는다 — 그대로 화면
+# 기준이다(_update_playing). 판을 따라 죽는 선까지 올리면 긴 기기에서 배경이
+# 보이는 허공에 안 보이는 바닥이 생기고, 플레이어에게는 그게 버그로 읽힌다.
+# 남는 차이는 "위에서 떨어져 바닥에 닿기까지의 거리"뿐인데, 이 게임은 오답도
+# 즉사라 거기까지 떨어지려면 그 전에 게이트에서 이미 죽는다.
+var _gate_field_cap: float = -1.0
+
+
+# 기준 해상도에서 HUD 아래에 남는 높이. 판은 어떤 기기에서도 이걸 넘지 않는다.
+func _gate_field_height_cap() -> float:
+	if _gate_field_cap < 0.0:
+		var base := Vector2(
+			float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+			float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+		_gate_field_cap = base.y - _gate_zone_top(base)
+	return _gate_field_cap
+
+
+func _gate_field_top(view_size: Vector2) -> float:
+	var top: float = _gate_zone_top(view_size)
+	var available: float = _gate_zone_bottom(view_size) - top
+	return top + maxf(0.0, available - _gate_field_height_cap()) * 0.5
+
+
+func _gate_field_bottom(view_size: Vector2) -> float:
+	var available: float = _gate_zone_bottom(view_size) - _gate_zone_top(view_size)
+	return _gate_field_top(view_size) + minf(available, _gate_field_height_cap())
+
+
 func _gate_wall_center_y(view_size: Vector2) -> float:
 	# The center wall (and the top/bottom lane split) is centered within the
-	# gate zone, not the raw screen — otherwise shrinking the top of the
-	# zone for the HUD/quiz box would silently steal space from the top
+	# gate field, not the raw screen — otherwise shrinking the top of the
+	# field for the HUD/quiz box would silently steal space from the top
 	# lane only, making the two lanes uneven.
-	return (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	return (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 
 
 func _gate_ring_inner_zone_height() -> float:
@@ -4004,8 +4050,9 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# allowed spawn band here so the zone itself never rolls close enough
 	# to need that: frame and zone always land in exactly the same place,
 	# and the frame can never render above _gate_zone_top.
-	var gate_zone_top := _gate_zone_top(view_size)
-	var gate_zone_bottom := _gate_zone_bottom(view_size)
+	# 화면이 아니라 판이다 — _gate_field_top 의 주석을 볼 것.
+	var gate_zone_top := _gate_field_top(view_size)
+	var gate_zone_bottom := _gate_field_bottom(view_size)
 	var top_lane_band_top: float = gate_zone_top + max(0.0, _gate_frame_top_overhang() - zone_height * 0.5)
 	var bottom_lane_band_bottom: float = gate_zone_bottom - max(0.0, _gate_frame_bottom_overhang() - zone_height * 0.5)
 
@@ -4032,7 +4079,10 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# a fraction of full screen height so "top then straight to bottom"
 	# extremes can't roll even when the physics would technically allow it.
 	var move_ratio: float = max_move_ratio_early if phase_index < 2 else max_move_ratio_late
-	var max_travel: float = move_ratio * view_size.y
+	# 기준 해상도의 화면 높이로 잰다. 실제 화면 높이를 쓰면 긴 기기에서 상한이
+	# 같이 커져 배치가 벌어지고, 판 높이를 쓰면 반대로 기준 기기의 난이도가
+	# 지금보다 낮아진다. 기준값으로 고정해야 모든 기기가 16:9 와 같아진다.
+	var max_travel: float = move_ratio * float(ProjectSettings.get_setting("display/window/size/viewport_height"))
 	up_reach = min(up_reach, max_travel)
 	down_reach = min(down_reach, max_travel)
 
@@ -5702,7 +5752,7 @@ func _on_revive_continue() -> void:
 	revive_panel.visible = false
 	var view_size := get_viewport_rect().size
 	gates.clear()
-	player_y = (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
 	last_zone_center = player_y
 	flash_time = 0.0
@@ -6013,7 +6063,7 @@ func _start_countdown() -> void:
 
 func _reset_game() -> void:
 	var view_size := get_viewport_rect().size
-	player_y = (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
 	score = 0
 	combo = 0
