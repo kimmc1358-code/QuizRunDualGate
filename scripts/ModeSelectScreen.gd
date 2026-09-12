@@ -16,6 +16,8 @@ extends Control
 signal start_pressed(mode: int)
 signal login_pressed
 signal settings_pressed
+# 고른 카드의 모드를 실어 보낸다 — 어느 순위표를 열지는 그 모드가 정한다.
+signal leaderboard_pressed(mode: int)
 
 # Mirrors Main.gd's Mode enum. The mode-select sheet's quadrants are read in
 # reading order, so top-left is SKY and the fourth is the hidden slot.
@@ -897,7 +899,7 @@ func _build() -> void:
 	add_child(_setting)
 
 	_leaderboard = _make_button(_load_art(LEADERBOARD_FILE))
-	_leaderboard.pressed.connect(_on_unimplemented.bind("리더보드"))
+	_leaderboard.pressed.connect(func(): _play(_sfx_cream); leaderboard_pressed.emit(CARD_MODES[selected_index]))
 	add_child(_leaderboard)
 	# The plate does not fill its texture — there is transparent padding around
 	# it — so the icon is placed against the art's measured bounds rather than

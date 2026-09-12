@@ -4,7 +4,7 @@ extends PopupBase
 ##
 ## 판 위로 SETTINGS 아트가 걸터앉고, 판 안은 점선으로 세 칸이다:
 ##   소리 조절(SFX / MUSIC) — 일시정지 팝업과 같은 슬라이더를 쓴다
-##   계정         — 동그란 자리 + 상태 글자 + LOGIN 크림 버튼
+##   계정         — 동그란 자리 + 상태 글자 + LOGIN 크림 버튼(로그인 전에만)
 ##   약관         — Privacy Policy / Terms of Service, 밑줄 + 오른쪽 ">"
 ##
 ## 닫기 버튼은 따로 두지 않았다. 판 바깥을 누르면 닫힌다 — 설정은 되돌릴 것이
@@ -12,7 +12,6 @@ extends PopupBase
 
 signal close_pressed
 signal login_pressed
-signal logout_pressed
 signal remove_ads_pressed
 signal contact_pressed
 signal about_pressed
@@ -50,7 +49,6 @@ const ACCOUNT_TEXT_MIN_SIZE := 11
 const LOGGED_OUT_TEXT := "Not logged in"
 const LOGGED_IN_FORMAT := "Logged in as %s"
 const LOGIN_TEXT := "LOGIN"
-const LOGOUT_TEXT := "LOGOUT"
 const LOGIN_WIDTH_FRAC := 0.26           # 판 너비 대비
 const ACCOUNT_BUTTON_GAP_FRAC := 0.030   # 판 너비 대비 — 글자와 버튼 사이
 const LOGIN_HEIGHT_FRAC := 0.122         # 판 너비 대비
@@ -227,8 +225,8 @@ func _build_content() -> void:
 	# 210x66, 모서리 22 로 50px 버튼 안에 넉넉히 들어온다.
 	_login = _make_button(CREAM_FILE, CREAM_CORNER, tr(LOGIN_TEXT), null, false,
 		CREAM_GRADIENT, LOGIN_TEXTURE_WIDTH)
-	# 같은 버튼이 상태에 따라 로그인/로그아웃 둘 다 맡는다.
-	_login.pressed.connect(func(): (logout_pressed if _logged_in else login_pressed).emit())
+	# 로그인 전용이다. 로그인하면 버튼이 사라진다 — set_account 참고.
+	_login.pressed.connect(func(): login_pressed.emit())
 	add_child(_login)
 
 	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, tr(REMOVE_ADS_TEXT),
@@ -398,7 +396,9 @@ func _layout_content(inner: Rect2) -> void:
 	var login_w: float = pw * LOGIN_WIDTH_FRAC
 	var login_h: float = pw * LOGIN_HEIGHT_FRAC
 	_account.position = Vector2(inner_x, y)
-	_account.size = Vector2(inner_w - login_w - pw * ACCOUNT_BUTTON_GAP_FRAC, account_h)
+	# 로그인한 뒤에는 버튼이 없으므로 그 자리까지 이름에 준다.
+	var account_w: float = inner_w if _logged_in else inner_w - login_w - pw * ACCOUNT_BUTTON_GAP_FRAC
+	_account.size = Vector2(account_w, account_h)
 	_account.queue_redraw()
 	_place(_login, inner_x + inner_w - login_w, y + (account_h - login_h) * 0.5, login_w, login_h)
 	y += account_h + gap
@@ -442,17 +442,17 @@ func set_volumes(sfx: float, music: float) -> void:
 
 
 ## 계정 줄의 내용. 로그인하면 동그라미가 프로필 사진으로, 글자가
-## "Logged in as [닉네임]"으로, 버튼이 LOGOUT 으로 바뀐다.
+## "Logged in as [닉네임]"으로 바뀌고 LOGIN 버튼은 사라진다 — 로그아웃은 없다.
 ## 아직 인증이 붙지 않아 기본은 "로그인 안 됨"이다.
 func set_account(avatar: Texture2D, display_name: String, logged_in: bool) -> void:
 	_avatar = avatar
 	_logged_in = logged_in
 	_account_text = (tr(LOGGED_IN_FORMAT) % display_name) if logged_in else tr(LOGGED_OUT_TEXT)
 	if _login != null:
-		var caption: Label = _login.get_node_or_null("Caption")
-		if caption != null:
-			caption.text = tr(LOGOUT_TEXT) if logged_in else tr(LOGIN_TEXT)
-		# 글자 길이가 바뀌었으니 버튼 안쪽 배치를 다시 맞춘다.
+		# 로그인하면 버튼을 치운다. 로그아웃이 없기 때문이다 — Play 게임즈 v2 는
+		# 그런 기능을 두지 않았고, 계정을 끊는 것은 Play 게임즈 앱의 몫이다.
+		# 눌러도 아무 일이 없는 LOGOUT 을 남기느니 비워 두고 그 자리를 이름에 준다.
+		_login.visible = not logged_in
 		_layout()
 	if _account != null:
 		_account.queue_redraw()

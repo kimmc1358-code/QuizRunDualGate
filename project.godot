@@ -16,6 +16,10 @@ run/main_scene="res://scenes/Main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 config/icon="res://icon.svg"
 
+[autoload]
+
+GodotPlayGameServices="*uid://d2ta1cc037lyj"
+
 [display]
 
 window/size/viewport_width=480
@@ -25,6 +29,10 @@ window/stretch/aspect="expand"
 window/handheld/orientation=1
 window/size/window_width_override.editor=480
 window/size/window_height_override.editor=1067
+
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/GodotPlayGameServices/plugin.cfg")
 
 [internationalization]
 

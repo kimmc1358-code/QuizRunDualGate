@@ -180,6 +180,7 @@ on failure.
 | `check_gameover_bgm.gd` | the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
 | `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
+| `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; a sign-in that completes while the game over popup is open flips it to LEADERBOARD on the spot; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score, and for a revived run the pre-revive score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, `GameOverPopup.set_logged_in`, or `debug_fake_sign_in` |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
@@ -548,7 +549,9 @@ the preset on another machine has to reproduce them exactly.
 | Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back 432 |
 | Export filter | `all_resources` |
 | Excluded | `assets/references/*`, `tools/*` |
-| Gradle build | off (no plugins yet) |
+| Gradle build | **on** — the Play Games plugin needs it; the Android build template lives in the gitignored `/android/` |
+| Play Games plugin | `addons/GodotPlayGameServices/` — godot-play-game-services v3.4.0 |
+| Play Games Game ID | `554024495812` (preset option `godot_play_game_services/game_id`) |
 
 The game answers to three different names and they are not meant to match.
 The **launcher label** is the one under the icon on the home screen, where
@@ -594,6 +597,89 @@ To confirm the inheritance after a build:
 ```bash
 aapt dump badging build/QuizRunDualGate.apk | head -1
 ```
+
+## Login
+
+Sign-in is **Google Play Games Services v2**, through the
+`godot-play-game-services` plugin (godot-sdk-integrations, v3.x). The game talks
+only to `scripts/PlayGames.gd`; nothing else names the plugin.
+
+The wrapper exists for the PC. Every plugin call returns silently when the
+Android singleton is missing, and its result signal never arrives — so wired
+straight in, a sign-in press in the editor or a headless checker waits forever.
+`PlayGames` records "unavailable" and answers a press with `sign_in_finished
+(false)` at once. It also loads the plugin's scripts by path and reads the
+player object's fields instead of naming its classes, so a missing `addons/`
+folder cannot stop the game from parsing.
+
+**There is no sign-out, and there cannot be.** Play Games v2 removed it; neither
+the plugin's GDScript nor its Kotlin side has one. The account follows the
+device's Play Games profile and is dropped from the Play Games app. So the
+settings popup's LOGIN button disappears once signed in and the account row
+takes its width — a LOGOUT that did nothing would read as a bug. The mode
+select's person icon signs in when signed out and opens settings when signed
+in, for the same reason.
+
+The profile photo arrives **after** the name. The plugin downloads it to
+`user://` and emits `image_stored(path)`; the player object already carries that
+path. `PlayGames` loads it if the file is there and otherwise waits for the
+signal with that exact path — another player's image landing is not ours.
+
+**To see the signed-in screens on PC**, tick `debug_fake_sign_in` on Main. It
+signs in as "Test Player" with no photo, only when the plugin is unavailable,
+so a real device ignores it. It is the same `@export` trap as the other two
+debug switches, and `check_play_games.gd` fails while it is on.
+
+### Leaderboards
+
+One per mode, IDs in `MODE_LEADERBOARD_ID` (indexed by `Mode`, like every
+other per-mode table). They are public — they ship inside the app — so they
+live in code, not in the preset.
+
+What goes up is **the stored per-mode best** (`leaderboard_bests`), not the
+run's score, at the end of every run and once at the moment sign-in
+completes. Play Games keeps only the higher score, so resending costs
+nothing, and it buys two things: a submission lost offline heals on the next
+run end, and records made before signing in reach the board — which is what
+makes the game over popup's "your best is on the leaderboard" true. The best
+itself is built from `leaderboard_score`, the pre-revive score, so a revived
+run cannot lift its board entry with the points the ad bought.
+
+The game over LEADERBOARD opens the board of the run that just ended; the
+mode select's opens the selected card's. Pressed while signed out, the mode
+select signs in first and opens the board only if that succeeds.
+
+### Where it stands
+
+Installed on 2026-09-12: v3.4.0 from the release's `addons.zip` (sha256
+`3a1af78f…265edd`), vendored whole in `addons/GodotPlayGameServices/` with its
+MIT licence. `project.godot` registers the plugin's autoload and enables it;
+the preset has gradle on and the Game ID. The autoload is inert on PC —
+`PlayGames` only calls `initialize()` on Android.
+
+The first gradle debug build was checked with `aapt`: the manifest carries
+`com.google.android.gms.games.APP_ID`, the string behind it is
+`554024495812`, and the plugin's classes and the Play Games SDK are in the
+dex. **Sign-in has not yet been tried on a device.**
+
+The gradle APK is 154MB against the old export's 95MB, and it is not the
+assets: those are still deflated (65.7MB). Gradle stores `libgodot_android.so`
+**uncompressed** (77.5MB), so Android can map it straight from the APK instead
+of extracting a copy — a bigger download for a similar installed size.
+
+Credentials: an Android OAuth client named "QuizRun Debug" holds the debug
+keystore's SHA-1 (`androiddebugkey` in Godot's `keystores/debug.keystore`,
+`B4:2D:28:6A:EC:19:C7:92:FD:96:F2:4C:FD:87:A1:A8:94:1E:A1:45` — confirmed by
+reading the signature off a built APK, not just the keystore). Play Console
+offered `B4:41:DC:…` instead; that matches neither keystore on the dev
+machine and is most likely Google's app signing key, which signs builds
+installed through Play. It needs its own credential before internal
+testing, and a release upload key would need a third. While Play Games
+Services is unpublished, only listed tester accounts can sign in.
+
+The first gradle export printed `[ DONE ]` and then hung on exit with
+"Scan thread aborted" — the APK was complete. If it happens again, check the
+APK's timestamp and end the process rather than waiting on it.
 
 ## Ad policy
 

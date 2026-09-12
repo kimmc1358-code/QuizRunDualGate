@@ -2484,13 +2484,28 @@ var happy_flap_elapsed: float = -1.0  # -1 = inactive; set to 0 on every gate pa
 var sad_face_texture: Texture2D
 var ready_texture: Texture2D
 var start_texture: Texture2D
-# No sign-in exists yet. The game-over popup branches on this, so it lives
-# here as an export rather than a bare false — it can be flipped in the
-# inspector to see the logged-in variants once they are built.
-# 인증이 붙기 전까지의 자리표시 — 설정 팝업의 계정 줄이 이걸 읽는다.
+# 모드마다 순위표 하나. Play Console 이 준 ID 이고, 어차피 앱 안에 그대로 실려
+# 나가는 공개 값이다(비밀이 아니다). 인덱스가 곧 Mode 값이다.
+const MODE_LEADERBOARD_ID := [
+	"CgkIxNW7848QEAIQAQ",  # SKY
+	"CgkIxNW7848QEAIQAg",  # JUNGLE
+	"CgkIxNW7848QEAIQAw",  # OCEAN
+	"CgkIxNW7848QEAIQBA",  # DREAM (MIX)
+]
+# 로그인 상태. PlayGames(scripts/PlayGames.gd)가 정하고 _on_play_games_changed
+# 가 여기로 옮겨 적는다 — 게임오버·부활·설정 팝업이 이 셋을 읽는다.
 var player_avatar: Texture2D = null
 var player_display_name: String = ""
-@export var player_logged_in: bool = false
+var player_logged_in: bool = false
+var play_games: PlayGames
+# 에디터에서 로그인한 화면을 보는 길. PC 에서는 진짜 로그인이 안 되므로 이것
+# 말고는 볼 방법이 없다. 켜면 "Test Player" 로 로그인된 채로 시작한다.
+#
+# 플러그인이 있는 기기에서는 아무 일도 안 한다 — 진짜 결과가 있는 곳에서 가짜를
+# 덮어쓸 이유가 없다. 그래도 debug_force_hidden_locked 와 같은 @export 함정은
+# 그대로라(인스펙터에서 켜면 Main.tscn 에 저장된다), check_play_games.gd 가
+# 켜진 채로 두면 실패한다.
+@export var debug_fake_sign_in: bool = false
 # 모드별 최고 점수. 인덱스가 곧 Mode 값이다. _ready에서 불러오고, 기록을
 # 갈아치울 때만 저장한다.
 var best_scores := PackedInt32Array()
@@ -2857,13 +2872,14 @@ func _boot_load() -> void:
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
 	mode_select_panel.settings_pressed.connect(_open_settings)
+	mode_select_panel.login_pressed.connect(_on_mode_select_login_pressed)
+	mode_select_panel.leaderboard_pressed.connect(_on_mode_select_leaderboard_pressed)
 	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
 	settings_popup.music_volume_changed.connect(set_music_volume)
 	settings_popup.boost_side_changed.connect(set_boost_button_on_left)
 	settings_popup.language_changed.connect(set_language_korean)
 	settings_popup.login_pressed.connect(_on_login_pressed)
-	settings_popup.logout_pressed.connect(_on_logout_pressed)
 	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
 	settings_popup.terms_pressed.connect(_on_terms_pressed)
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
@@ -2878,6 +2894,14 @@ func _boot_load() -> void:
 	gameover_popup.leaderboard_pressed.connect(_on_gameover_leaderboard_pressed)
 	gameover_popup.share_pressed.connect(_on_gameover_share_pressed)
 	gameover_popup.home_pressed.connect(_on_pause_home_pressed)
+	# 로그인. 팝업이 다 지어지고 신호가 이어진 뒤라야 결과를 받아 줄 곳이 있다.
+	play_games = PlayGames.new()
+	play_games.name = "PlayGames"
+	add_child(play_games)
+	play_games.state_changed.connect(_on_play_games_changed)
+	play_games.start()
+	if debug_fake_sign_in and OS.is_debug_build() and not play_games.available:
+		play_games.fake_sign_in("Test Player")
 	pause_button.pressed.connect(_on_pause_pressed)
 	# 팝업이 자기 버튼을 들고 있고, 눌린 결과만 신호로 알려 준다.
 	pause_panel.resume_pressed.connect(_on_resume_pressed)
@@ -6020,6 +6044,10 @@ func _finish_run() -> void:
 		leaderboard_bests[current_mode] = leaderboard_score
 	if is_new_record or leaderboard_score > 0:
 		_save_best_score(current_mode)
+	# 로그인해 있으면 이 모드의 순위표 기록을 올린다. 이번 판 점수가 아니라
+	# 쌓아 둔 최고 기록을 보낸다 — Play 게임즈는 높은 쪽만 남기므로 손해가 없고,
+	# 전에 오프라인이라 못 올린 기록이 있으면 여기서 따라 올라간다.
+	_submit_leaderboard(current_mode)
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
 	# 네 가지 조합(신기록 여부 x 로그인 여부)을 팝업이 스스로 갈래 친다.
@@ -6053,11 +6081,11 @@ func _on_gameover_play_again_pressed() -> void:
 
 
 func _on_gameover_login_pressed() -> void:
-	push_warning("game over: login not wired up yet")
+	_sign_in()
 
 
 func _on_gameover_leaderboard_pressed() -> void:
-	push_warning("game over: leaderboard not wired up yet")
+	_show_leaderboard(current_mode)
 
 
 func _on_gameover_share_pressed() -> void:
@@ -6089,17 +6117,86 @@ func _open_settings() -> void:
 	settings_popup.set_volumes(sfx_volume, music_volume)
 	settings_popup.set_boost_side(boost_button_on_left)
 	settings_popup.set_language(TranslationServer.get_locale().begins_with(LOCALE_KO))
-	# 프로필 사진과 닉네임은 인증이 붙으면 여기로 들어온다.
+	# 프로필 사진과 닉네임은 PlayGames 가 채운다 — _on_play_games_changed 참고.
 	settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
 	settings_popup.visible = true
 
 
 func _on_login_pressed() -> void:
-	push_warning("설정: 로그인 아직 연결 안 됨")
+	_sign_in()
 
 
-func _on_logout_pressed() -> void:
-	push_warning("설정: 로그아웃 아직 연결 안 됨")
+# 메인 화면 왼쪽 위 사람 모양. 로그인 전에는 로그인하고, 로그인한 뒤에는 설정을
+# 연다 — 거기 계정 줄에 누구로 들어가 있는지가 나온다. 로그인된 채로 눌렀는데
+# 아무 일도 안 일어나면 고장처럼 보인다.
+func _on_mode_select_login_pressed() -> void:
+	if player_logged_in:
+		_open_settings()
+	else:
+		_sign_in()
+
+
+# 로그인 버튼 셋(설정 / 게임오버 / 메인 화면)이 모두 여기로 온다.
+func _sign_in() -> void:
+	if play_games != null:
+		play_games.sign_in()
+
+
+# PlayGames 가 바뀌었다고 알려 오면 상태를 옮겨 적고, 지금 떠 있는 화면에 바로
+# 반영한다. 로그인 창은 게임오버 팝업의 버튼에서도 뜨므로, 결과가 돌아올 때
+# 그 팝업이 떠 있을 수 있다 — 그때 LOGIN WITH GOOGLE 이 그대로 남아 있으면
+# 로그인이 안 된 것처럼 보인다.
+func _on_play_games_changed() -> void:
+	var was_logged_in := player_logged_in
+	player_logged_in = play_games.signed_in
+	player_display_name = play_games.display_name
+	player_avatar = play_games.avatar
+	if settings_popup != null:
+		settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
+	if gameover_popup != null and gameover_popup.visible:
+		gameover_popup.set_logged_in(player_logged_in)
+	if revive_panel != null and revive_panel.visible:
+		revive_panel.set_leaderboard_score(leaderboard_score, player_logged_in)
+	# 막 로그인했다면 로그인하기 전에 낸 기록까지 올린다. 게임오버 팝업이
+	# "최고 기록이 순위표에 있습니다" 라고 말하는 것이 이것 덕에 참이 된다.
+	# 로그인 한 번에 이 함수는 여러 번 불리므로(인증, 이름, 사진) 넘어가는
+	# 순간에만 한다.
+	if player_logged_in and not was_logged_in:
+		for mode in range(Mode.size()):
+			_submit_leaderboard(mode)
+
+
+# 쌓아 둔 그 모드의 순위표 기록을 올린다. 로그인 전이거나 기록이 없으면 PlayGames
+# 가 알아서 넘어간다.
+func _submit_leaderboard(mode: int) -> void:
+	if play_games == null or mode < 0 or mode >= MODE_LEADERBOARD_ID.size():
+		return
+	play_games.submit_score(MODE_LEADERBOARD_ID[mode], leaderboard_bests[mode])
+
+
+func _show_leaderboard(mode: int) -> void:
+	if play_games == null or mode < 0 or mode >= MODE_LEADERBOARD_ID.size():
+		return
+	play_games.show_leaderboard(MODE_LEADERBOARD_ID[mode])
+
+
+# 메인 화면의 LEADERBOARD. 고른 카드의 모드 순위표를 연다. 로그인 전이면 로그인
+# 부터 하고, 성공하면 이어서 연다 — 로그인만 되고 아무것도 안 열리면 버튼이
+# 한 번 헛돈 것처럼 보인다. 창이 이미 떠 있으면 기다리는 쪽을 또 걸지 않는다 —
+# 연타한 만큼 순위표가 겹쳐 뜬다.
+func _on_mode_select_leaderboard_pressed(mode: int) -> void:
+	if player_logged_in:
+		_show_leaderboard(mode)
+		return
+	if play_games == null or play_games.busy:
+		return
+	play_games.sign_in_finished.connect(_on_signed_in_for_leaderboard.bind(mode), CONNECT_ONE_SHOT)
+	play_games.sign_in()
+
+
+func _on_signed_in_for_leaderboard(ok: bool, mode: int) -> void:
+	if ok:
+		_show_leaderboard(mode)
 
 
 # 세 링크는 앱 밖으로 나간다. 주소는 scripts/ExternalLinks.gd 한 곳에 있고,

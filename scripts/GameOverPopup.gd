@@ -402,13 +402,31 @@ func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
 	_leaderboard_score = leaderboard_score
 	# 순위표에 남은 점수가 최종 점수보다 낮다면 광고를 보고 이어 뛴 판이다.
 	_revived = leaderboard_score < score
-	# 왼쪽 크림 버튼은 로그인 여부로 얼굴을 바꾼다. 글자 길이가 달라지므로
-	# _layout()이 크기를 다시 재도록 그 전에 갈아끼운다.
-	var caption: Label = _google_button.get_node("Caption")
-	caption.text = tr(LEADERBOARD_TEXT) if logged_in else GOOGLE_TEXT
-	var icon: TextureRect = _google_button.get_node("Icon")
-	icon.texture = _trophy_icon if logged_in else _google_icon
+	_apply_login_face()
 	_layout()
+
+
+## 떠 있는 동안 로그인이 끝났을 때 Main 이 부른다. 이 팝업의 LOGIN WITH GOOGLE
+## 로 로그인하면 결과가 팝업이 떠 있는 채로 돌아온다. set_result 는 판의 결과
+## 전부를 다시 넣는 함수라 로그인 하나 때문에 부를 것이 아니고, 바뀌는 것은
+## 로그인에 걸린 두 곳 — 왼쪽 크림 버튼과 안내 상자 — 뿐이다.
+func set_logged_in(logged_in: bool) -> void:
+	if _logged_in == logged_in:
+		return
+	_logged_in = logged_in
+	_apply_login_face()
+	_layout()
+	if _login_box != null:
+		_login_box.queue_redraw()
+
+
+# 왼쪽 크림 버튼은 로그인 여부로 얼굴을 바꾼다. 글자 길이가 달라지므로
+# 부르는 쪽이 이어서 _layout()을 불러 크기를 다시 재게 한다.
+func _apply_login_face() -> void:
+	var caption: Label = _google_button.get_node("Caption")
+	caption.text = tr(LEADERBOARD_TEXT) if _logged_in else GOOGLE_TEXT
+	var icon: TextureRect = _google_button.get_node("Icon")
+	icon.texture = _trophy_icon if _logged_in else _google_icon
 
 
 # 위에서부터: 리본줄 → 로그인 상자 → 점수 → 콤보 상자 → PLAY AGAIN →
