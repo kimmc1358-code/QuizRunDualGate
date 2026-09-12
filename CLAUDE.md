@@ -395,6 +395,25 @@ far the drawing reaches from the centre against the 132px safe radius, and
 warns once it passes it by a pixel or more. The committed ring's gem tips sit
 exactly on the safe circle; the extra half pixel is anti-aliased fringe.
 
+The build also writes the **monochrome layer** that Android 13+ uses for
+themed icons, and `icon.png`, the project icon. Both were Godot's logo until
+2026-09-12. With `launcher_icons/adaptive_monochrome_432x432` unset, the
+export fills that layer with Godot's own, so a phone with themed icons on
+showed a Godot robot on the home screen — found only by pulling the layer out
+of a built APK, since nothing about the colour icon hints at it. The
+monochrome keeps the ring but shrinks the bird (`$MonoCharacterFill` 0.42
+against the colour icon's 0.56). A silhouette drops the red, the eye and the
+beak, and at full size the bird fills the ring's hole, so the two melted into
+one egg shape with a hairline through it; with sky between them the ring
+reads as a ring. Four variants were compared tinted like a themed launcher —
+the full-size bird with a 6px or a 14px gap, the small bird, the bird alone.
+None reads as clearly as the colour icon; this is the one where the gate
+survives.
+The preset key points at it and, like every preset value, is recorded in the
+release identity table. `icon.png` (256px, from the store composite) replaced
+the default `icon.svg` as `application/config/icon`; it is the editor's
+project-list icon and the desktop window icon, not the phone's.
+
 The source is the in-game motion sheet, so `-Pose fly -Frame N` picks a cell
 of that grid (`-Pose happy|sad` takes the single-frame faces instead).
 Default is the bird's frame 2, the wings-up pose — chosen by rendering all
@@ -566,7 +585,7 @@ the preset on another machine has to reproduce them exactly.
 |---|---|
 | Package name | `com.janiju.quizrundualgate` |
 | Launcher label (`package/name`) | `QuizRun` |
-| Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back 432 |
+| Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back/monochrome 432 |
 | Export filter | `all_resources` |
 | Excluded | `assets/references/*`, `tools/*` |
 | Gradle build | **on** — the Play Games plugin needs it; the Android build template lives in the gitignored `/android/` |

@@ -40,6 +40,26 @@
     the character: about half the size it had alone. -NoGate builds the old
     character-only icon.
 
+    MONOCHROME LAYER. Android 13+ "themed icons" replace the icon with a
+    single-colour silhouette tinted to the wallpaper, taken from a third
+    adaptive layer. Left unset, Godot fills that layer with its own logo, so
+    a themed launcher showed a Godot robot until this was added. It keeps the
+    ring but uses a smaller character than the colour icon
+    ($MonoCharacterFill 0.42 against 0.56). A silhouette loses what makes
+    the bird a bird - the red, the eye, the beak - and at the colour icon's
+    size it fills the ring's hole, so the two melted into one egg shape
+    with a hairline through it. With sky between them the ring reads as a
+    ring again. A gap of $MonoGap px is still cut where they overlap, the
+    front half of the ring into the character and the character into the
+    back half. Four variants were compared tinted like a themed launcher
+    (full-size bird with a 6px or 14px gap, the small bird, the bird
+    alone); none reads as clearly as the colour icon, and this one is the
+    only one where the gate is still recognisable.
+
+    PROJECT ICON. icon.png at the project root is application/config/icon:
+    the editor's project-list icon and the desktop window icon, 256px from
+    the store composite. Left alone it was Godot's default logo.
+
     The character is trimmed to its own opaque bounds first. The sprites sit
     in a 256x256 cell with a lot of empty space, and centring the cell rather
     than the drawing leaves the icon looking off-centre and small.
@@ -106,6 +126,9 @@ param(
     [switch]$NoGate,
     [double]$GateFill = 1.00,
     [double]$GatedCharacterFill = 0.56,
+    [double]$MonoCharacterFill = 0.42,
+    [int]$MonoGap = 6,
+    [switch]$MonoNoGate,
     [string]$OutRoot = '',
     [switch]$Measure
 )
@@ -280,38 +303,140 @@ if (-not $NoGate) {
     Write-Host ("gate    {0}  ring {1}x{2}, centred {3},{4}; hole centre {5},{6}" -f $Gates[$Character], $ringW, $ringH, $ringCX, $ringCY, $HoleX, $HoleY)
 }
 
-# Foreground for one canvas. $unit is the safe circle for the adaptive layer
-# and Store * Safe / Viewport for the flat pair, so both hold the same picture.
-function New-Foreground([int]$size, [double]$unit) {
-    $out = New-Transparent $size
-    $g = [System.Drawing.Graphics]::FromImage($out)
-    $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
-    if ($NoGate) {
+# Where each piece goes on one canvas, with the pieces already scaled. $unit
+# is the safe circle for the adaptive layer and Store * Safe / Viewport for
+# the flat pair, so both hold the same picture. The foreground stacks the
+# pieces; the monochrome layer needs them apart. One function places them for
+# both, so the two layers cannot drift out of register.
+function Get-Placement([int]$size, [double]$unit, [double]$charFill, [bool]$gate) {
+    if (-not $gate) {
         $maxDim = if ($size -eq $Adaptive) { $Safe * $CharacterFill } else { $FlatWork * $FlatFill }
         $s = $maxDim / [Math]::Max($trimW, $trimH)
         $w = [int][Math]::Round($trimW * $s); $h = [int][Math]::Round($trimH * $s)
-        $c = New-Scaled $charTrim $w $h
-        $g.DrawImage($c, [int](($size - $w) / 2), [int](($size - $h) / 2), $w, $h)
-        $c.Dispose()
-    } else {
-        # The ring is centred by its own bounds; the character by the hole.
-        $k = ($GateFill * $unit) / [Math]::Max($ringW, $ringH)
-        $cs = [int][Math]::Round($ringFront.Width * $k)
-        $back = New-Scaled $ringBack $cs $cs
-        $front = New-Scaled $ringFront $cs $cs
-        $ox = [int][Math]::Round($size / 2.0 - $ringCX * $k)
-        $oy = [int][Math]::Round($size / 2.0 - $ringCY * $k)
-        $s = ($GatedCharacterFill * $unit) / [Math]::Max($trimW, $trimH)
-        $w = [int][Math]::Round($trimW * $s); $h = [int][Math]::Round($trimH * $s)
-        $c = New-Scaled $charTrim $w $h
-        $hx = $ox + $HoleX * $k
-        $hy = $oy + $HoleY * $k
-        $g.DrawImage($back, $ox, $oy, $cs, $cs)
-        $g.DrawImage($c, [int][Math]::Round($hx - $w / 2.0), [int][Math]::Round($hy - $h / 2.0), $w, $h)
-        $g.DrawImage($front, $ox, $oy, $cs, $cs)
-        $back.Dispose(); $front.Dispose(); $c.Dispose()
+        return @{ gate = $false; char = (New-Scaled $charTrim $w $h); w = $w; h = $h;
+            cx = [int](($size - $w) / 2); cy = [int](($size - $h) / 2) }
+    }
+    # The ring is centred by its own bounds; the character by the hole.
+    $k = ($GateFill * $unit) / [Math]::Max($ringW, $ringH)
+    $cs = [int][Math]::Round($ringFront.Width * $k)
+    $ox = [int][Math]::Round($size / 2.0 - $ringCX * $k)
+    $oy = [int][Math]::Round($size / 2.0 - $ringCY * $k)
+    $s = ($charFill * $unit) / [Math]::Max($trimW, $trimH)
+    $w = [int][Math]::Round($trimW * $s); $h = [int][Math]::Round($trimH * $s)
+    $hx = $ox + $HoleX * $k
+    $hy = $oy + $HoleY * $k
+    return @{ gate = $true;
+        back = (New-Scaled $ringBack $cs $cs); front = (New-Scaled $ringFront $cs $cs);
+        ox = $ox; oy = $oy; cs = $cs;
+        char = (New-Scaled $charTrim $w $h); w = $w; h = $h;
+        cx = [int][Math]::Round($hx - $w / 2.0); cy = [int][Math]::Round($hy - $h / 2.0) }
+}
+
+function Remove-Placement($p) {
+    $p.char.Dispose()
+    if ($p.gate) { $p.back.Dispose(); $p.front.Dispose() }
+}
+
+function New-Foreground([int]$size, [double]$unit) {
+    $p = Get-Placement $size $unit $GatedCharacterFill (-not $NoGate)
+    $out = New-Transparent $size
+    $g = [System.Drawing.Graphics]::FromImage($out)
+    $g.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceOver
+    if ($p.gate) { $g.DrawImage($p.back, $p.ox, $p.oy, $p.cs, $p.cs) }
+    $g.DrawImage($p.char, $p.cx, $p.cy, $p.w, $p.h)
+    if ($p.gate) { $g.DrawImage($p.front, $p.ox, $p.oy, $p.cs, $p.cs) }
+    $g.Dispose()
+    Remove-Placement $p
+    return $out
+}
+
+# ---- monochrome layer ----
+# Gap between overlapping pieces, in pixels of the 432 canvas. A launcher
+# shows the 288px viewport at 48px, so 6px lands at about one pixel there —
+# any thinner and the pieces fuse at the size most people see the icon.
+# The gap itself is the -MonoGap parameter.
+
+function New-Placed([int]$size, $img, [int]$x, [int]$y, [int]$w, [int]$h) {
+    $c = New-Transparent $size
+    $g = [System.Drawing.Graphics]::FromImage($c)
+    $g.DrawImage($img, $x, $y, $w, $h)
+    $g.Dispose()
+    return $c
+}
+
+# The piece grown outward by $r px: drawn again at every offset on rings
+# 1..$r, which for a silhouette is a dilation.
+function New-Dilated([int]$size, $img, [int]$x, [int]$y, [int]$w, [int]$h, [int]$r) {
+    $c = New-Transparent $size
+    $g = [System.Drawing.Graphics]::FromImage($c)
+    $g.DrawImage($img, $x, $y, $w, $h)
+    for ($rr = 1; $rr -le $r; $rr++) {
+        $n = 8 * $rr
+        for ($i = 0; $i -lt $n; $i++) {
+            $a = 2.0 * [Math]::PI * $i / $n
+            $dx = [int][Math]::Round([Math]::Cos($a) * $rr)
+            $dy = [int][Math]::Round([Math]::Sin($a) * $rr)
+            $g.DrawImage($img, $x + $dx, $y + $dy, $w, $h)
+        }
     }
     $g.Dispose()
+    return $c
+}
+
+function Get-Alpha([System.Drawing.Bitmap]$bmp) {
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $bmp.Width, $bmp.Height)
+    $data = $bmp.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, $PA)
+    $bytes = New-Object byte[] ($data.Stride * $bmp.Height)
+    [System.Runtime.InteropServices.Marshal]::Copy($data.Scan0, $bytes, 0, $bytes.Length)
+    $bmp.UnlockBits($data)
+    $n = $bmp.Width * $bmp.Height
+    $alpha = New-Object byte[] $n
+    for ($i = 0; $i -lt $n; $i++) { $alpha[$i] = $bytes[$i * 4 + 3] }
+    return ,$alpha
+}
+
+function New-Monochrome([int]$size, [double]$unit) {
+    $fill = if ($MonoCharacterFill -gt 0) { $MonoCharacterFill } else { $GatedCharacterFill }
+    $p = Get-Placement $size $unit $fill ((-not $NoGate) -and (-not $MonoNoGate))
+    $n = $size * $size
+    $mono = New-Object byte[] $n
+    $charC = New-Placed $size $p.char $p.cx $p.cy $p.w $p.h
+    $aChar = Get-Alpha $charC
+    $charC.Dispose()
+    if (-not $p.gate) {
+        $mono = $aChar
+    } else {
+        $frontC = New-Placed $size $p.front $p.ox $p.oy $p.cs $p.cs
+        $backC = New-Placed $size $p.back $p.ox $p.oy $p.cs $p.cs
+        $frontD = New-Dilated $size $p.front $p.ox $p.oy $p.cs $p.cs $MonoGap
+        $charD = New-Dilated $size $p.char $p.cx $p.cy $p.w $p.h $MonoGap
+        $aFront = Get-Alpha $frontC; $aBack = Get-Alpha $backC
+        $dFront = Get-Alpha $frontD; $dChar = Get-Alpha $charD
+        $frontC.Dispose(); $backC.Dispose(); $frontD.Dispose(); $charD.Dispose()
+        for ($i = 0; $i -lt $n; $i++) {
+            # Front ring whole; character minus a gap round the front ring;
+            # back ring minus a gap round the character.
+            $m = [int]$aFront[$i]
+            $c = [int]([int]$aChar[$i] * (255 - [int]$dFront[$i]) / 255)
+            $b = [int]([int]$aBack[$i] * (255 - [int]$dChar[$i]) / 255)
+            if ($c -gt $m) { $m = $c }
+            if ($b -gt $m) { $m = $b }
+            $mono[$i] = [byte]$m
+        }
+    }
+    Remove-Placement $p
+    # White, premultiplied: blue = green = red = alpha. Only the alpha matters,
+    # since the launcher tints the layer, but white keeps it visible in a viewer.
+    $out = New-Object System.Drawing.Bitmap($size, $size, $PA)
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $size, $size)
+    $data = $out.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::WriteOnly, $PA)
+    $bytes = New-Object byte[] ($n * 4)
+    for ($i = 0; $i -lt $n; $i++) {
+        $v = $mono[$i]; $j = $i * 4
+        $bytes[$j] = $v; $bytes[$j + 1] = $v; $bytes[$j + 2] = $v; $bytes[$j + 3] = $v
+    }
+    [System.Runtime.InteropServices.Marshal]::Copy($bytes, 0, $data.Scan0, $bytes.Length)
+    $out.UnlockBits($data)
     return $out
 }
 
@@ -361,6 +486,11 @@ Write-Host ("wrote {0}" -f $bgPath)
 $fgPath = [System.IO.Path]::Combine($outDir, 'icon_foreground_432.png')
 $fg.Save($fgPath, [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Host ("wrote {0}" -f $fgPath)
+$mono = New-Monochrome $Adaptive $Safe
+$monoPath = [System.IO.Path]::Combine($outDir, 'icon_monochrome_432.png')
+$mono.Save($monoPath, [System.Drawing.Imaging.ImageFormat]::Png)
+Write-Host ("wrote {0}" -f $monoPath)
+$mono.Dispose()
 $fg.Dispose(); $bg.Dispose()
 
 # ---- flat composites: legacy and store ----
@@ -404,6 +534,15 @@ Set-Opaque $storeBmp
 $storePath = [System.IO.Path]::Combine($storeDir, 'play_store_icon_512.png')
 $storeBmp.Save($storePath, [System.Drawing.Imaging.ImageFormat]::Png)
 Write-Host ("wrote {0}  (스토어 등록용 — APK 에는 안 들어간다)" -f $storePath)
+
+# 프로젝트 아이콘(application/config/icon). 에디터 프로젝트 목록과 PC 창
+# 아이콘에 쓰인다 — 폰 아이콘은 위의 런처 아이콘이다.
+$projBmp = New-Downscale $flat 256
+Set-Opaque $projBmp
+$projPath = [System.IO.Path]::Combine($dest, 'icon.png')
+$projBmp.Save($projPath, [System.Drawing.Imaging.ImageFormat]::Png)
+Write-Host ("wrote {0}" -f $projPath)
+$projBmp.Dispose()
 
 $storeBmp.Dispose()
 if ($Store -ne $FlatWork) { $flat.Dispose() }
