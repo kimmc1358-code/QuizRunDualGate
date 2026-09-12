@@ -184,9 +184,9 @@ on failure.
 | `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
 | `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; a sign-in that completes while the game over popup is open flips it to LEADERBOARD on the spot; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score, and for a revived run the pre-revive score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, `GameOverPopup.set_logged_in`, or `debug_fake_sign_in` |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
+| `check_ocean_prompt.gd` | for every Stroop colour word, in both languages, at 16:9 and 20:9: the question-and-word row fits the quiz box's writing area, the question is at least `OCEAN_PROMPT_READABLE_PX` (17px at the 480 reference width), and the word keeps its full size — the question takes empty space, never the word's; it used to come out at 13px with most of the box empty, and a check for overflow alone passes even at 0.90, because the layout shrinks the word to fit | `OCEAN_PROMPT_SIZE_RATIO`, `OCEAN_PROMPT_READABLE_PX`, `OCEAN_PROMPT_GAP_FRAC`, `_ocean_quiz_layout`, any `QUIZ_TEXT_*` constant, the quiz box art, the font, or a colour word's translation |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
-| `check_ocean_prompt.gd` | for every Stroop colour word, in both languages, at 16:9 and 20:9: the question-and-word row fits the quiz box's writing area, the question is at least `OCEAN_PROMPT_READABLE_PX` (17px at the 480 reference width), and the word keeps its full size — the question takes empty space, never the word's; it used to come out at 13px with most of the box empty, and a check for overflow alone passes even at 0.90, because the layout shrinks the word to fit | `OCEAN_PROMPT_SIZE_RATIO`, `OCEAN_PROMPT_READABLE_PX`, `OCEAN_PROMPT_GAP_FRAC`, `_ocean_quiz_layout`, any `QUIZ_TEXT_*` constant, the quiz box art, the font, or a colour word's translation |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
@@ -257,10 +257,10 @@ mode select, settings, revive, game over and about screens in both languages,
 and drives the language switch through `Main` rather than the popup so the
 rebuild path is the one being photographed.
 
-`capture_mode_select.gd` is the other one, and it shoots four aspect ratios
-plus the hidden card in both of its states. That screen divides its leftover
 `capture_ocean_quiz.gd` shoots the Stroop quiz box in Korean and English with each language's widest colour word, full screen and cropped to the box, because whether 19px *reads* on that art is not something a px count answers.
 
+`capture_mode_select.gd` is the other one, and it shoots four aspect ratios
+plus the hidden card in both of its states. That screen divides its leftover
 height between blocks, so one ratio proves nothing about the others; and the
 hidden card's blurb changes length with its lock, which is exactly where the
 explain bar would clip.
@@ -692,6 +692,17 @@ run cannot lift its board entry with the points the ad bought.
 The game over LEADERBOARD opens the board of the run that just ended; the
 mode select's opens the selected card's. Pressed while signed out, the mode
 select signs in first and opens the board only if that succeeds.
+
+Each board's **name and icon live in the Play Console**, not here — the game
+knows only the IDs, so renaming a board or swapping its icon needs no code
+change and no new build. The icons are
+`store/leaderboard/leaderboard_<mode>_512.png`, built by `build_app_icon.ps1
+-NoGate` from each mode's character alone on that mode card's colours
+(`-TopRgb` / `-BottomRgb`, from `CARD_FILL_TOP`/`BOTTOM` × 255), so the four
+tell apart in one list; the store composite is the file taken. The owner
+chose character-only over the app icon's gate composition. The dragon is
+`-Frame 0`, its wings-up pose (the default frame 2 has the wings swept down
+under the body); the other three keep the default frame.
 
 ### Where it stands
 

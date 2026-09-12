@@ -108,6 +108,11 @@
     Write under this directory instead of the repo, keeping the same
     subpaths. For trying candidates without touching what is committed.
 
+.PARAMETER TopRgb
+    "r,g,b" for the top of the background gradient instead of the game's
+    sky. -BottomRgb is the bottom stop. Used for the per-mode leaderboard
+    icons, which take each mode card's colours.
+
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File tools/build_app_icon.ps1 -Measure
 
@@ -130,6 +135,8 @@ param(
     [int]$MonoGap = 6,
     [switch]$MonoNoGate,
     [string]$OutRoot = '',
+    [string]$TopRgb = '',
+    [string]$BottomRgb = '',
     [switch]$Measure
 )
 
@@ -178,6 +185,16 @@ $FlatWork = $Store
 # washes out at icon size, so this stops at the mid tone.
 $TopColor = [System.Drawing.Color]::FromArgb(255, 5, 110, 253)
 $BottomColor = [System.Drawing.Color]::FromArgb(255, 94, 202, 252)
+# -TopRgb / -BottomRgb "r,g,b" swap the gradient, for the per-mode leaderboard
+# icons: four of them sit in one list, and the mode cards' own colours
+# (CARD_FILL_TOP/BOTTOM in ModeSelectScreen.gd) tell them apart at a glance.
+function ConvertTo-Color([string]$rgb) {
+    $c = $rgb.Split(',') | ForEach-Object { [int]$_.Trim() }
+    if ($c.Count -ne 3) { throw "expected r,g,b but got '$rgb'" }
+    return [System.Drawing.Color]::FromArgb(255, $c[0], $c[1], $c[2])
+}
+if ($TopRgb) { $TopColor = ConvertTo-Color $TopRgb }
+if ($BottomRgb) { $BottomColor = ConvertTo-Color $BottomRgb }
 
 $repo = Split-Path -Parent $PSScriptRoot
 $info = $Sources[$Character]
