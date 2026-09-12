@@ -375,6 +375,26 @@ file must be 32-bit PNG with no transparency and square corners, since Google
 rounds it itself; it lives in `store/` behind a `.gdignore`, because it is a
 listing asset and there is no reason to ship it inside the APK.
 
+**The icon shows the character flying through its mode's gate**, the game's
+signature. It uses the game's own depth trick: the ring is two halves
+(`fit_gate_ring.ps1` cuts them), the right one drawn behind the character and
+the left one in front, so the character reads as inside the ring rather than
+pasted over it. The layout was chosen on 2026-09-12 from three candidates
+rendered at launcher sizes under circle and rounded-square masks: the ring
+filling the safe circle with the character in its hole (`$GateFill` 1.00,
+`$GatedCharacterFill` 0.56 — the committed one), a larger character bursting
+out of a smaller ring, and the ring blown up into the icon's rim. The price is
+the character, at about half the size it had alone; the rim version looked
+best at 192 and worst at 48, where its gold-and-white edge crowded the bird.
+
+With the gate, the legacy and store icons are the same composition scaled by
+`Store / Viewport` (the whole square standing in for the launcher's 72dp
+viewport), so the store icon matches what a phone shows. The 86% and
+`$FlatFill` figures above now describe `-NoGate` only. Every build prints how
+far the drawing reaches from the centre against the 132px safe radius, and
+warns once it passes it by a pixel or more. The committed ring's gem tips sit
+exactly on the safe circle; the extra half pixel is anti-aliased fringe.
+
 The source is the in-game motion sheet, so `-Pose fly -Frame N` picks a cell
 of that grid (`-Pose happy|sad` takes the single-frame faces instead).
 Default is the bird's frame 2, the wings-up pose — chosen by rendering all
