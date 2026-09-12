@@ -222,8 +222,11 @@ const CARD_CHECK_MARGIN_FRAC := 0.015   # of the card art's width, in from the c
 # 표시가 있다"까지만 말하고, 왜 못 들어가는지는 눌러서 설명 바를 읽어야 알 수
 # 있었다. 덮으면 못 들어간다는 것 자체가 그림으로 읽힌다.
 #
-# 위에서부터 자물쇠 그림, LOCKED, 그리고 더 짙은 판에 얹은 한 줄. 셋을 한
-# 덩어리로 묶어 카드 세로 한가운데에 놓는다.
+# 안에는 자물쇠 하나만 두고, 이름판과 점수판 사이를 통째로 채운다. 자물쇠
+# 아래에 LOCKED 와 더 짙은 판에 얹은 "Unlock to play!" 가 있었는데 걷어 냈다
+# — 잠겼다는 말은 자물쇠가 이미 하고 있어서, 글자 두 줄이 자물쇠를 자리의
+# 54% 로 눌러 두는 값을 못 했다. 여는 조건은 이제 카드를 누르면 나오는 설명
+# 바에만 있다.
 const CARD_LOCK_FILE := "res://assets/ui_assets/popup/locked.png"
 # 아직 locked.png 가 없을 때 쓸 그림. 조용히 대신 쓰지 않고 경고를 남긴다 —
 # 자물쇠가 "그럴듯하게 다른 그림"으로 나와 있으면 빠진 줄 모른다.
@@ -244,26 +247,9 @@ const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.70)
 # 배율은 모서리 반지름과 같은 식으로 구한다(_card_corner_radius).
 const CARD_LOCK_VEIL_BORDER_NATIVE := 14.0
 # 그려지는 크기에 맞춰 굽는다 — CARD_LOCK_FILE 을 읽는 곳의 설명을 볼 것.
-const CARD_LOCK_BAKE_H := 72
-const CARD_LOCK_ICON_HEIGHT_FRAC := 0.54   # 덮개가 쓸 수 있는 자리 높이 대비
+const CARD_LOCK_BAKE_H := 112
 const CARD_LOCK_ICON_MAX_WIDTH_FRAC := 0.52  # 카드 너비 대비 — 가로로 넓은 그림 대비
-const CARD_LOCK_TEXT := "LOCKED"
-const CARD_LOCK_TEXT_SIZE_FRAC := 0.155    # 자리 높이 대비
-const CARD_LOCK_TEXT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
-const CARD_LOCK_TEXT_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
-const CARD_LOCK_TEXT_OUTLINE_FRAC := 0.20  # 글자 크기 대비
-const CARD_LOCK_ICON_GAP_FRAC := 0.028     # 자리 높이 대비 — 자물쇠와 LOCKED 사이
-# 아래 한 줄. 자물쇠·LOCKED 는 "잠겼다"를, 이 줄은 "그래서 어떻게 하라"를
-# 말하므로 판을 한 겹 더 깔아 따로 읽히게 한다.
-const CARD_LOCK_HINT := "Unlock to play!"
-const CARD_LOCK_HINT_GAP_FRAC := 0.042     # 자리 높이 대비 — LOCKED 와 판 사이
-const CARD_LOCK_HINT_SIZE_FRAC := 0.105    # 자리 높이 대비
-const CARD_LOCK_HINT_COLOR := Color(0.74, 0.76, 0.80, 1.0)   # 회색
-const CARD_LOCK_HINT_BG := Color(0.0, 0.0, 0.0, 0.55)        # 덮개보다 짙게
-const CARD_LOCK_HINT_RADIUS := 6
-const CARD_LOCK_HINT_PAD_X_FRAC := 0.055   # 카드 너비 대비, 글자 양옆
-const CARD_LOCK_HINT_PAD_Y_FRAC := 0.025   # 자리 높이 대비, 글자 위아래
-# 이름판·점수판에서 띄울 여백. 0 이면 덩어리가 두 판에 딱 붙는다.
+# 이름판·점수판에서 띄울 여백. 0 이면 자물쇠가 두 판에 딱 붙는다.
 const CARD_LOCK_BODY_INSET_FRAC := 0.030   # 카드 높이 대비, 위아래 각각
 
 # START gets the same halo treatment as the selected card. Its plate is a
@@ -761,10 +747,12 @@ func _build() -> void:
 	# _load_trimmed 로 읽는다. 자물쇠 아트는 1240px 캔버스에 그림이 가운데만
 	# 차지하고 있어서, 캔버스째 40px 로 줄이면 요청한 크기보다 한참 작게 보인다.
 	# 잘라 내고 미리 구운 뒤 ink_frac 로 되돌리는 것이 왕관과 같은 길이다.
-	# 굽는 높이를 그려지는 크기(비율에 따라 대략 40~60px)에 맞춘다. 기본값
-	# 128 로 구우면 1240 -> 128 -> 45 로 두 번 줄어들고, 자물쇠의 가는 갈색
-	# 외곽선이 그 두 번째 축소에서 계단으로 남는다. 한 번에 줄여 두면 그리는
-	# 쪽은 거의 등배라 가장자리가 부드럽다.
+	# 굽는 높이를 그려지는 크기에 맞춘다. 자물쇠는 이름판과 점수판 사이를
+	# 채우므로 비율에 따라 77px(16:9) ~ 108px(20:9) 로 그려지고, 21:9 가 조금
+	# 더 크다 — 그래서 가장 큰 쪽에 맞춰 112. 모자라게 구우면 늘려 그리면서
+	# 가는 갈색 외곽선이 뭉개지고, 한참 크게 구우면(1240 -> 128 -> 45 였던
+	# 때처럼) 두 번째 축소에서 외곽선이 계단으로 남는다. 16:9 에서 0.69 배로
+	# 줄이는 정도는 밉맵이 받아 낸다.
 	if ResourceLoader.exists(CARD_LOCK_FILE):
 		_lock_texture = _load_trimmed(CARD_LOCK_FILE, CARD_LOCK_BAKE_H)
 	else:
@@ -1752,8 +1740,7 @@ func _draw_selection() -> void:
 				_check_texture, _check_rect(selected_index, rect), false)
 
 
-# 잠긴 카드 위에 덮개와 그 안의 세 조각을 그린다. 자리는 전부 _lock_layout 이
-# 정한다.
+# 잠긴 카드 위에 덮개와 자물쇠를 그린다. 자물쇠 자리는 _lock_layout 이 정한다.
 func _draw_card_lock(card_rect: Rect2) -> void:
 	var index: int = CARD_MODES.find(MODE_HIDDEN)
 	var veil := StyleBoxFlat.new()
@@ -1763,36 +1750,9 @@ func _draw_card_lock(card_rect: Rect2) -> void:
 	veil.anti_aliasing = true
 	_select_overlay.draw_style_box(veil, _lock_veil_rect(index, card_rect))
 
-	var parts: Dictionary = _lock_layout(index, card_rect)
 	if _lock_texture != null:
-		_select_overlay.draw_texture_rect(_lock_texture, parts["icon"], false)
-
-	# LOCKED — 흰 글자에 검은 테두리. draw_string 은 베이스라인을 받으므로
-	# 상자 위끝에 ascent 를 더해 내려놓는다.
-	var title: Rect2 = parts["title"]
-	var tf: Font = parts["title_font"]
-	var ts: int = parts["title_size"]
-	var baseline := Vector2(title.position.x, title.position.y + tf.get_ascent(ts))
-	var ring: int = maxi(1, int(round(ts * CARD_LOCK_TEXT_OUTLINE_FRAC)))
-	_select_overlay.draw_string_outline(tf, baseline, CARD_LOCK_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER, title.size.x, ts, ring, CARD_LOCK_TEXT_OUTLINE)
-	_select_overlay.draw_string(tf, baseline, CARD_LOCK_TEXT,
-		HORIZONTAL_ALIGNMENT_CENTER, title.size.x, ts, CARD_LOCK_TEXT_COLOR)
-
-	# 그 아래 짙은 판 위의 한 줄.
-	var hint: Rect2 = parts["hint"]
-	var hf: Font = parts["hint_font"]
-	var hs: int = parts["hint_size"]
-	var box := StyleBoxFlat.new()
-	box.bg_color = CARD_LOCK_HINT_BG
-	box.set_corner_radius_all(CARD_LOCK_HINT_RADIUS)
-	box.anti_aliasing = true
-	_select_overlay.draw_style_box(box, hint)
-	var hint_pad_y: float = float(parts["hint_pad_y"])
-	_select_overlay.draw_string(hf,
-		Vector2(hint.position.x, hint.position.y + hint_pad_y + hf.get_ascent(hs)),
-		CARD_LOCK_HINT, HORIZONTAL_ALIGNMENT_CENTER, hint.size.x, hs,
-		CARD_LOCK_HINT_COLOR)
+		_select_overlay.draw_texture_rect(
+			_lock_texture, _lock_layout(index, card_rect)["icon"], false)
 
 
 # 자식은 부모의 scale 로 그려지지만 size 는 로컬 그대로다. 그린 자리를 보려면
@@ -1854,14 +1814,16 @@ func _lock_draw_rect() -> Rect2:
 	return _card_rect(index)
 
 
-# 덮개 안의 세 조각이 놓일 자리. 그리는 쪽과 체커가 같은 답을 봐야 하므로
+# 덮개 안의 자물쇠가 놓일 자리. 그리는 쪽과 체커가 같은 답을 봐야 하므로
 # 계산은 여기 한 번만 있다.
 #
-# 셋을 한 덩어리로 묶어 카드 세로 한가운데에 놓는다. 각각을 카드 비율로 따로
-# 잡으면 카드 높이가 바뀔 때(CARD_HEIGHT_SCALE) 덩어리가 위아래로 흔들린다.
+# "icon" 은 텍스처를 그릴 사각형이고, "ink" 는 그중 실제 그림이 있는 부분이다.
+# _load_trimmed 가 가장자리 흐림용으로 두른 투명 여백 때문에 둘이 다르다 —
+# 그림을 자리에 꽉 채우면 여백은 두 판 위로 삐져나가지만 보이는 것은 없으므로,
+# 판에 닿는지는 ink 로 재야 한다.
 func _lock_layout(index: int, card_rect: Rect2) -> Dictionary:
 	var w: float = card_rect.size.x
-	# 덩어리가 앉을 자리는 카드 전체가 아니라 이름판 아래 ~ 점수판 위다.
+	# 자물쇠가 앉을 자리는 카드 전체가 아니라 이름판 아래 ~ 점수판 위다.
 	# 카드 한가운데에 놓았더니 안내판이 BEST 판에 걸터앉았다 — 덮개가 깔려
 	# 있어 가리는 것으로는 안 잡히지만, 두 판이 맞닿아 있으면 실수로 보인다.
 	var body_top: float = card_rect.position.y
@@ -1875,70 +1837,33 @@ func _lock_layout(index: int, card_rect: Rect2) -> Dictionary:
 	body_bottom -= inset
 	var room: float = maxf(1.0, body_bottom - body_top)
 
-	# 크기는 전부 이 자리(room) 기준이다. 카드 높이 기준으로 잡으면 카드가
-	# 길어질 때 자리보다 덩어리가 더 빨리 커진다 — 이름판과 점수판은 카드가
+	# 이 자리 높이를 통째로 자물쇠에 준다. 카드 높이 기준으로 잡으면 카드가
+	# 길어질 때 자리보다 자물쇠가 더 빨리 커진다 — 이름판과 점수판은 카드가
 	# 늘어나도 그대로이므로(_layout_card_contents) 자리는 카드만큼 안 늘어난다.
-	# CARD_LOCK_ICON_HEIGHT_FRAC 은 "눈에 보이는 자물쇠" 기준이다. _load_trimmed
-	# 가 가장자리 흐림용으로 두른 투명 여백만큼 상자를 키워 그려야 요청한 크기가
-	# 실제로 나온다 — 왕관과 같은 방식(ink_frac).
+	# 위아래 숨 쉴 틈은 CARD_LOCK_BODY_INSET_FRAC 이 이미 두었다.
+	#
+	# 채우는 것은 "눈에 보이는 자물쇠"다. 투명 여백만큼 상자를 키워 그려야
+	# 요청한 크기가 실제로 나온다 — 왕관과 같은 방식(ink_frac).
 	var ink := Vector2.ONE
 	var ratio := 1.0
 	if _lock_texture != null and _lock_texture.get_height() > 0:
 		ink = _lock_texture.get_meta("ink_frac", Vector2.ONE)
 		ratio = float(_lock_texture.get_width()) / float(_lock_texture.get_height())
-	var icon_h: float = room * CARD_LOCK_ICON_HEIGHT_FRAC / maxf(ink.y, 0.01)
+	var icon_h: float = room / maxf(ink.y, 0.01)
 	var icon_w: float = icon_h * ratio
 	var max_w: float = w * CARD_LOCK_ICON_MAX_WIDTH_FRAC / maxf(ink.x, 0.01)
 	if icon_w > max_w:
 		icon_h *= max_w / icon_w
 		icon_w = max_w
 
-	var title_font: Font = _font_heavy if _font_heavy != null else ThemeDB.fallback_font
-	var hint_font: Font = _font_bold if _font_bold != null else ThemeDB.fallback_font
-	var title_size: int = maxi(1, int(round(room * CARD_LOCK_TEXT_SIZE_FRAC)))
-	var hint_size: int = maxi(1, int(round(room * CARD_LOCK_HINT_SIZE_FRAC)))
-	var gap1: float = room * CARD_LOCK_ICON_GAP_FRAC
-	var gap2: float = room * CARD_LOCK_HINT_GAP_FRAC
-	var pad := Vector2(w * CARD_LOCK_HINT_PAD_X_FRAC, room * CARD_LOCK_HINT_PAD_Y_FRAC)
-
-	var title_h: float = title_font.get_height(title_size)
-	var hint_box := Vector2(
-		minf(w, hint_font.get_string_size(
-			CARD_LOCK_HINT, HORIZONTAL_ALIGNMENT_LEFT, -1, hint_size).x + pad.x * 2.0),
-		hint_font.get_height(hint_size) + pad.y * 2.0)
-	var total: float = icon_h + gap1 + title_h + gap2 + hint_box.y
-
-	# 그래도 넘치면 덩어리째 줄인다. 글꼴이 바뀌거나 문구가 길어지면 위의
-	# 비율만으로는 장담할 수 없고, 넘칠 때 잘리는 대신 작아지는 편이 낫다.
-	if total > room:
-		var k: float = room / total
-		icon_h *= k
-		icon_w *= k
-		gap1 *= k
-		gap2 *= k
-		title_size = maxi(1, int(round(title_size * k)))
-		hint_size = maxi(1, int(round(hint_size * k)))
-		pad *= k
-		title_h = title_font.get_height(title_size)
-		hint_box = Vector2(
-			minf(w, hint_font.get_string_size(
-				CARD_LOCK_HINT, HORIZONTAL_ALIGNMENT_LEFT, -1, hint_size).x + pad.x * 2.0),
-			hint_font.get_height(hint_size) + pad.y * 2.0)
-		total = icon_h + gap1 + title_h + gap2 + hint_box.y
-
-	var y: float = body_top + (room - total) * 0.5
-	var cx: float = card_rect.position.x + w * 0.5
-
-	var icon := Rect2(Vector2(cx - icon_w * 0.5, y), Vector2(icon_w, icon_h))
-	y += icon_h + gap1
-	var title := Rect2(Vector2(card_rect.position.x, y), Vector2(w, title_h))
-	y += title_h + gap2
-	var hint := Rect2(Vector2(cx - hint_box.x * 0.5, y), hint_box)
+	var center := Vector2(card_rect.position.x + w * 0.5, body_top + room * 0.5)
+	var icon_size := Vector2(icon_w, icon_h)
+	# 여백은 _load_trimmed 가 사방에 같은 폭으로 두른다(짝수 맞춤으로 오른쪽·
+	# 아래에 한 텍셀이 더 붙을 수 있을 뿐이다). 그래서 그림은 상자 한가운데다.
+	var ink_size := icon_size * ink
 	return {
-		"icon": icon, "title": title, "hint": hint,
-		"title_size": title_size, "hint_size": hint_size,
-		"title_font": title_font, "hint_font": hint_font,
-		"hint_pad_y": pad.y,
+		"icon": Rect2(center - icon_size * 0.5, icon_size),
+		"ink": Rect2(center - ink_size * 0.5, ink_size),
 	}
 
 

@@ -20,6 +20,10 @@ extends SceneTree
 # 자리는 화면의 _check_rect() 를 그대로 부른다. 여기에 계산을 복사해 두면
 # 배치를 옮겨도 체커는 옛 자리를 검사하며 통과한다.
 
+# 잠긴 카드의 자물쇠가 이름판과 점수판 사이 높이의 몇 % 이상을 채워야 하는가.
+# 위아래로 CARD_LOCK_BODY_INSET_FRAC 만큼 비워 두므로 100% 는 안 나온다.
+const LOCK_FILL_MIN := 0.80
+
 var fails := 0
 
 
@@ -267,10 +271,14 @@ func _run() -> void:
 	# ---- 잠긴 히든 카드의 덮개 ----
 	#
 	# 덮개는 카드를 통째로 가리므로 "무엇을 가리는가"는 볼 것이 없다. 대신
-	# 안에 든 세 조각(자물쇠·LOCKED·안내판)이 카드 밖으로 새지 않는지, 서로
-	# 겹치지 않는지, 그리고 읽을 수 있는 크기인지를 본다 — 셋을 한 덩어리로
-	# 세로 가운데에 놓는 계산이라, 카드 높이가 비율마다 다른 이 화면에서는
-	# 한 비율만 재면 다른 비율에서 넘치는 것을 못 본다.
+	# 안의 자물쇠가 이름판과 점수판 사이를 채우는지를 본다 — 카드 밖으로 새지
+	# 않고, 두 판에 닿지 않고, 그러면서 그 사이를 거의 다 쓰는가. 그 사이의
+	# 높이는 카드 높이를 따라 비율마다 달라서, 한 비율만 재면 다른 비율에서
+	# 넘치는 것을 못 본다.
+	#
+	# "거의 다 쓰는가"가 빠지면 나머지 검사는 자물쇠가 작을수록 저절로
+	# 통과한다. LOCKED 와 안내판을 걷어 낸 자리를 자물쇠가 가져가는 것이 이
+	# 모양의 전부라, 그게 풀리는 것을 잡는 검사다.
 	#
 	# 그리고 잠겼을 때만 떠야 한다. 늘 떠 있으면 해금해도 잠긴 것처럼 보이는데,
 	# 스크린샷으로는 "덮개가 있다"로 똑같이 보인다.
@@ -291,59 +299,38 @@ func _run() -> void:
 					_fail("잠긴 상태인데 덮개가 안 나온다")
 					continue
 				var parts: Dictionary = screen.call("_lock_layout", hidden_card, lock_card)
-				var icon: Rect2 = parts["icon"]
-				var title: Rect2 = parts["title"]
-				var hint: Rect2 = parts["hint"]
+				# 보이는 그림으로 잰다. 그릴 사각형("icon")은 투명 여백까지 품고
+				# 있어 자리를 꽉 채우면 두 판 위로 삐져나가는데, 거기엔 아무것도
+				# 안 보인다.
+				var ink: Rect2 = parts["ink"]
 				var probs := []
 				# 카드 안에 있는 것만으로는 부족하다 — 이름판과 점수판 사이에
 				# 들어가야 한다. 카드 한가운데에 놓았을 때 안내판이 BEST 판에
 				# 맞닿았고, 덮개 때문에 "가린다"로는 안 잡혔다.
 				var np: Rect2 = screen.call("_drawn_rect", names[hidden_card])
 				var bp: Rect2 = screen.call("_drawn_rect", screen.get("_card_best_plate")[hidden_card])
-				for entry in [["icon", icon], ["LOCKED", title], ["hint box", hint]]:
-					if not lock_card.encloses(entry[1]):
-						probs.append("%s spills outside the card" % entry[0])
-					if entry[1].intersects(np):
-						probs.append("%s touches the name plate" % entry[0])
-					if entry[1].intersects(bp):
-						probs.append("%s touches the BEST plate" % entry[0])
-				if icon.intersects(title):
-					probs.append("the icon runs into LOCKED")
-				if title.intersects(hint):
-					probs.append("LOCKED runs into the hint box")
-				if title.position.y < icon.end.y:
-					probs.append("LOCKED is not below the icon")
-				if hint.position.y < title.end.y:
-					probs.append("the hint box is not below LOCKED")
-				# 읽을 수 있는 크기인가. 0 에 가까우면 위의 검사가 전부 저절로
-				# 통과하므로 이 검사가 아무것도 안 지키게 된다.
-				if icon.size.y < lock_card.size.y * 0.12:
-					probs.append("the icon is under 12%% of the card tall")
-				if int(parts["title_size"]) < 8:
-					probs.append("LOCKED is under 8px")
-				if int(parts["hint_size"]) < 7:
-					probs.append("the hint is under 7px")
-				# 안내 글자가 자기 판을 넘지 않는가.
-				var hf: Font = parts["hint_font"]
-				var text_w: float = hf.get_string_size(
-					screen.get("CARD_LOCK_HINT"), HORIZONTAL_ALIGNMENT_LEFT, -1,
-					int(parts["hint_size"])).x
-				if text_w > hint.size.x + 0.5:
-					probs.append("\"%s\" is %.0fpx but its plate is %.0f" % [
-						screen.get("CARD_LOCK_HINT"), text_w, hint.size.x])
+				var gap_h: float = bp.position.y - np.end.y
+				if not lock_card.encloses(ink):
+					probs.append("the lock spills outside the card")
+				if ink.intersects(np):
+					probs.append("the lock touches the name plate")
+				if ink.intersects(bp):
+					probs.append("the lock touches the BEST plate")
+				if ink.size.y < gap_h * LOCK_FILL_MIN:
+					probs.append("the lock is %.0fpx tall in a %.0fpx gap between the plates — under %.0f%%" % [
+						ink.size.y, gap_h, LOCK_FILL_MIN * 100.0])
 				if pick == hidden_card:
 					var check2: Rect2 = screen.call("_check_rect", hidden_card,
 						screen.call("_selected_card_rect"))
-					if check2.intersects(icon) or check2.intersects(title) or check2.intersects(hint):
-						probs.append("the selection check lands on the lock panel")
+					if check2.intersects(ink):
+						probs.append("the selection check lands on the lock")
 				if not probs.is_empty():
 					_fail("%.0fx%.0f lock panel (%s): %s" % [
 						base.x, h2, "selected" if pick == hidden_card else "unselected",
 						", ".join(probs)])
-				print("  %.0fx%.0f lock %-10s icon %.0fx%.0f  LOCKED %dpx  hint %.0fx%.0f @%dpx  %s" % [
+				print("  %.0fx%.0f lock %-10s ink %.0fx%.0f in a %.0fpx gap (%.0f%%)  %s" % [
 					base.x, h2, "selected" if pick == hidden_card else "unselected",
-					icon.size.x, icon.size.y, int(parts["title_size"]),
-					hint.size.x, hint.size.y, int(parts["hint_size"]),
+					ink.size.x, ink.size.y, gap_h, ink.size.y / gap_h * 100.0,
 					"ok" if probs.is_empty() else "FAIL"])
 
 		# 덮개가 흰 테두리 안쪽에서 딱 멈추는가.
