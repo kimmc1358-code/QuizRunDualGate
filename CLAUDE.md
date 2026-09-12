@@ -605,6 +605,9 @@ the preset on another machine has to reproduce them exactly.
 | AdMob app ID | `addons/AdmobPlugin/android_export.cfg`, **not** the preset — Google's test app ID in both slots until release |
 | Play Billing plugin | `addons/GodotGooglePlayBilling/` — godot-sdk-integrations/godot-google-play-billing 3.3.0 (sha256 `20d75623…b18568`); gradle pulls `billing-ktx` 9.1.0 |
 | In-app product | `remove_ads`, one-time, non-consumable — `Store.REMOVE_ADS_PRODUCT_ID`; must exist and be active in Play Console, and cannot be renamed once created |
+| Export format | **AAB** (`gradle_build/export_format=1`) — Play accepts nothing else. The editor holds the preset in memory, so set it there too or an editor save puts APK back |
+| Upload key | `C:\Users\user\keys\quizrun-upload.jks`, alias `quizrun`, PKCS12 — **outside the repo**, backed up separately. Its path and password live in `.godot/export_credentials.cfg` (gitignored), not in the preset. SHA-1 `5B:10:59:…` |
+| App signing key | Held by Google (Play App Signing). SHA-1 `B4:41:DC:…`, read off the Play-installed APK — see *Where it stands* |
 
 The game answers to three different names and they are not meant to match.
 The **launcher label** is the one under the icon on the home screen, where
@@ -642,8 +645,9 @@ reporting an already-fixed bug against the wrong number.
 `version/code` is the exception and cannot be derived from anything. It is an
 integer, it lives only in the (gitignored) preset, and **Google rejects an
 upload whose code is not higher than the last one** — so it goes up by one
-per upload, independently of the version string. It is at 1 and has never
-been uploaded.
+per upload, independently of the version string. It is at 1, and 1 has been
+used: the first AAB went to internal testing on 2026-09-13, so the next upload
+must be 2.
 
 To confirm the inheritance after a build:
 
@@ -724,7 +728,15 @@ the preset has gradle on and the Game ID. The autoload is inert on PC —
 The first gradle debug build was checked with `aapt`: the manifest carries
 `com.google.android.gms.games.APP_ID`, the string behind it is
 `554024495812`, and the plugin's classes and the Play Games SDK are in the
-dex. **Sign-in has not yet been tried on a device.**
+dex. Sign-in and leaderboard submission were confirmed on a phone on 2026-09-13,
+both from a debug build installed over adb and from the internal-testing build
+installed through Play. On that phone, after it switched from the debug-signed
+build to the Play-signed one with the same account, sign-in and showing a board
+worked but every **submit** failed with `26502: CLIENT_RECONNECT_REQUIRED` —
+the plugin only reports a bool, and the cause is in the `LeaderboardsProxy`
+lines of logcat. It cleared after the owner wiped Google Play services' cache
+(cache only, not data) and some time had passed since the new credential was
+added; which of the two did it is not known.
 
 The gradle APK is 154MB against the old export's 95MB, and it is not the
 assets: those are still deflated (65.7MB). Gradle stores `libgodot_android.so`
@@ -734,11 +746,51 @@ of extracting a copy — a bigger download for a similar installed size.
 Credentials: an Android OAuth client named "QuizRun Debug" holds the debug
 keystore's SHA-1 (`androiddebugkey` in Godot's `keystores/debug.keystore`,
 `B4:2D:28:6A:EC:19:C7:92:FD:96:F2:4C:FD:87:A1:A8:94:1E:A1:45` — confirmed by
-reading the signature off a built APK, not just the keystore). Play Console
-offered `B4:41:DC:…` instead; that matches neither keystore on the dev
-machine and is most likely Google's app signing key, which signs builds
-installed through Play. It needs its own credential before internal
-testing, and a release upload key would need a third. While Play Games
+reading the signature off a built APK, not just the keystore). Two more Android clients cover builds that do not carry the debug key:
+"QuizRun Play Signing" for Google's **app signing key**
+(`B4:41:DC:7E:A4:30:86:A3:06:F4:D8:03:5B:F3:04:AC:5A:D6:A1:E7`, which signs
+everything installed from Play) and "QuizRun Upload" for the **upload key**
+(`5B:10:59:0E:66:89:A1:A2:6E:05:E7:CF:1F:2F:AD:1B:DC:C2:2B:8C`).
+
+**Take the app signing SHA-1 from the installed app, not from a console
+page.** After the first upload, Play Console's app-integrity page listed
+`3C:ED:A7:A2:22:37:6F:2B:51:BC:63:91:7D:3E:78:60:F3:9C:8C:D5` as the app
+signing key, and a client was registered with it. The build installed through
+the internal testing track's opt-in link then failed sign-in with
+`DEVELOPER_ERROR`, and the Play Games log printed the certificate it actually
+saw: `B4:41:DC:…`, the value Play Console had offered for the credential
+before anything was uploaded. Pulling `base.apk` off the phone and reading it
+with `apksigner verify --print-certs` agreed (signer "CN=Android,
+O=Google Inc."). A full `apksigner verify -v` shows a single signer under the
+v3 scheme only — no v3.1 block and no rotation lineage (`apksigner lineage`
+finds none) — so this is not a key upgrade serving a newer key to newer
+devices. Why the console page shows a different key is not understood; both keep an OAuth client, since an extra one costs nothing and a
+missing one blocks every sign-in. The upload key's SHA-1 was read off the
+signed AAB and matched the console.
+
+`B4:41:DC:…` appears nowhere in Play Console any more, so this file, the
+"QuizRun Play Signing B4" OAuth client and any Play-delivered APK are the
+places it can be recovered from. To read it off the phone again:
+
+```bash
+adb shell pm path com.janiju.quizrundualgate
+```
+
+```bash
+adb pull <the base.apk path printed above> base.apk
+```
+
+```bash
+apksigner verify -v --print-certs base.apk
+```
+
+Play Console's App bundle explorer can also hand out a "signed universal
+APK" for any uploaded version; running the same `apksigner` on it shows the
+key Play signs that release with, without a phone. Done for version 1 on
+2026-09-13: one v3 signer, `B4:41:DC:…`, no lineage — the same as the phone.
+That settles which key Play signs with; `3C:ED:A7:…` signs nothing found so
+far. A `DEVELOPER_ERROR` in
+logcat prints the certificate Play Games saw, too. While Play Games
 Services is unpublished, only listed tester accounts can sign in.
 
 The first gradle export printed `[ DONE ]` and then hung on exit with
