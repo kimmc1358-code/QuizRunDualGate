@@ -202,8 +202,15 @@ func _acknowledge_if_needed(purchase: Dictionary) -> void:
 
 func _on_acknowledged(response: Dictionary) -> void:
 	var code := int(response.get("response_code", -1))
-	if code != RESPONSE_OK:
-		push_warning("store: acknowledging the purchase failed (%d) — retried on the next purchase query" % code)
+	if code == RESPONSE_OK:
+		print("[결제] 구매 확인 완료")
+		return
+	# 실패하면 조금 뒤 내역을 다시 묻는다 — 확인 안 된 구매가 다시 오고, 그때
+	# 또 확인한다. 앱을 다시 켜거나 돌아올 때만 기다리면, 켜 둔 채로 사흘이
+	# 지날 수도 있다. 첫 테스트 구매가 SERVICE_UNAVAILABLE(2) 로 실패했다.
+	push_warning("store: acknowledging the purchase failed (%d) — asking again in %ds" % [code, int(RETRY_SECONDS)])
+	if is_inside_tree():
+		get_tree().create_timer(RETRY_SECONDS).timeout.connect(refresh, CONNECT_ONE_SHOT)
 
 
 func _is_remove_ads(purchase: Dictionary) -> bool:
