@@ -1924,7 +1924,15 @@ const OCEAN_PROMPT_INK := "What COLOR is this word?"
 # Question box layout. The prompt is static and read once; the stimulus is
 # what gets re-read every single gate, so the prompt is deliberately the
 # smaller of the two and the pair is centred in the writing area as a group.
-const OCEAN_PROMPT_SIZE_RATIO := 0.46      # prompt font size, as a fraction of the stimulus's
+# 0.46 once, and "이 글자는 무슨 색?" came out at 13px — reported as too small to
+# read. Width was never the limit: at 480 wide the row filled 71% of the box in
+# English and 42% in Korean, so the question was small only because of this
+# ratio. Measured with the widest word, YELLOW: 0.60 gives a 17px question and
+# an 83% row, 0.66 gives 19px and 89%, 0.72 gives 21px and 95%. The word stays
+# 29px in all of them. 0.66 is the largest that still leaves the English row
+# room before the word would start shrinking to fit.
+const OCEAN_PROMPT_SIZE_RATIO := 0.66      # prompt font size, as a fraction of the stimulus's
+const OCEAN_PROMPT_READABLE_PX := 17      # question floor at the 480px reference width - see check_ocean_prompt.gd
 const OCEAN_PROMPT_GAP_FRAC := 0.022       # of box width — prompt -> stimulus gap
 const OCEAN_STIMULUS_MIN_FONT_FRAC := 0.034  # of box width — floor when the pair has to shrink to fit
 const OCEAN_PROMPT_MIN_FONT := 9
@@ -7467,6 +7475,34 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 		style.set_corner_radius_all(int(QUIZ_BOX_CORNER_RADIUS))
 		ci.draw_style_box(style, rect)
 
+	# 보여 주는 글자만 번역한다. OCEAN_COLOR_NAMES 는 문제를 만들고 정답을
+	# 맞춰 보는 데 쓰이는 이름표라 영어 그대로 둔다 — 그려지는 자리에서만
+	# 옮겨야 로직이 언어에 안 묶인다.
+	var word: String = tr(OCEAN_COLOR_NAMES[g.ocean_word_index])
+	var ink_color: Color = OCEAN_COLOR_RGB[g.ocean_answer_index]
+	var lay: Dictionary = _ocean_quiz_layout(rect, word)
+	var center_y: float = lay.center_y
+	var word_size: int = lay.word_size
+	var cursor_x: float = lay.left
+	_draw_ocean_text(ci, tr(OCEAN_PROMPT_INK), cursor_x, center_y, lay.prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
+	cursor_x += lay.prompt_width + lay.gap
+
+	# The answer is the INK. Outlined because a YELLOW or WHITE word would
+	# otherwise wash out against the cream box art; the same outline goes on
+	# every colour so it never becomes a hint.
+	var outline_px: float = maxf(OCEAN_INK_OUTLINE_MIN_PX, word_size * ocean_ink_outline_ratio)
+	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, outline_px)
+
+
+# Stroop 문제 상자의 배치 — 두 글자 크기, 줄이 시작하는 x, 쓸 수 있는 폭.
+# 그리는 함수에서 떼어 낸 것은 tools/check_ocean_prompt.gd 가 화면이 그리는
+# 바로 그 숫자를 재게 하려고서다(_boost_pop_layout 과 같은 이유).
+#
+# 줄은 [질문][색 단어] 한 줄이다. 둘은 같이 줄어들고, 질문은 늘 단어의
+# OCEAN_PROMPT_SIZE_RATIO 배라 단어보다 작다 — 단어는 매 게이트 다시 읽고,
+# 질문은 한 번 읽고 만다.
+func _ocean_quiz_layout(rect: Rect2, word: String) -> Dictionary:
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 	# Blank writing area inside the box art, right of the painted "QUIZ"
 	# label — the same one the flag/math text is centred in.
 	var pad: float = rect.size.x * QUIZ_TEXT_SIDE_PAD_FRAC
@@ -7475,15 +7511,7 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	var area_width: float = area_right - area_left
 	var center_y: float = rect.position.y + rect.size.y * QUIZ_TEXT_CENTER_Y_FRAC
 
-	# 보여 주는 글자만 번역한다. OCEAN_COLOR_NAMES 는 문제를 만들고 정답을
-	# 맞춰 보는 데 쓰이는 이름표라 영어 그대로 둔다 — 그려지는 자리에서만
-	# 옮겨야 로직이 언어에 안 묶인다.
-	var word: String = tr(OCEAN_COLOR_NAMES[g.ocean_word_index])
-	var ink_color: Color = OCEAN_COLOR_RGB[g.ocean_answer_index]
-	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
-
 	# Shrink the pair together until the row fits the writing area. The
-	# prompt is static and read once, the word is re-read every gate, so the
 	# prompt stays the smaller of the two at every size (see
 	# OCEAN_PROMPT_SIZE_RATIO). Bounded by the floor, so this always ends.
 	var word_size: int = int(round(rect.size.x * QUIZ_TEXT_MAX_FONT_FRAC))
@@ -7499,16 +7527,12 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 		if prompt_width + gap + word_width <= area_width or word_size <= min_word_size:
 			break
 		word_size -= 1
-
-	var cursor_x: float = (area_left + area_right) * 0.5 - (prompt_width + gap + word_width) * 0.5
-	_draw_ocean_text(ci, tr(OCEAN_PROMPT_INK), cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
-	cursor_x += prompt_width + gap
-
-	# The answer is the INK. Outlined because a YELLOW or WHITE word would
-	# otherwise wash out against the cream box art; the same outline goes on
-	# every colour so it never becomes a hint.
-	var outline_px: float = maxf(OCEAN_INK_OUTLINE_MIN_PX, word_size * ocean_ink_outline_ratio)
-	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, outline_px)
+	return {
+		"prompt_size": prompt_size, "word_size": word_size,
+		"prompt_width": prompt_width, "word_width": word_width, "gap": gap,
+		"left": (area_left + area_right) * 0.5 - (prompt_width + gap + word_width) * 0.5,
+		"area_left": area_left, "area_right": area_right, "center_y": center_y,
+	}
 
 
 func _draw() -> void:

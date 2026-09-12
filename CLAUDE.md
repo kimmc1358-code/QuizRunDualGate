@@ -184,6 +184,7 @@ on failure.
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
+| `check_ocean_prompt.gd` | for every Stroop colour word, in both languages, at 16:9 and 20:9: the question-and-word row fits the quiz box's writing area, the question is at least `OCEAN_PROMPT_READABLE_PX` (17px at the 480 reference width), and the word keeps its full size — the question takes empty space, never the word's; it used to come out at 13px with most of the box empty, and a check for overflow alone passes even at 0.90, because the layout shrinks the word to fit | `OCEAN_PROMPT_SIZE_RATIO`, `OCEAN_PROMPT_READABLE_PX`, `OCEAN_PROMPT_GAP_FRAC`, `_ocean_quiz_layout`, any `QUIZ_TEXT_*` constant, the quiz box art, the font, or a colour word's translation |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
 | `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
@@ -256,6 +257,8 @@ rebuild path is the one being photographed.
 
 `capture_mode_select.gd` is the other one, and it shoots four aspect ratios
 plus the hidden card in both of its states. That screen divides its leftover
+`capture_ocean_quiz.gd` shoots the Stroop quiz box in Korean and English with each language's widest colour word, full screen and cropped to the box, because whether 19px *reads* on that art is not something a px count answers.
+
 height between blocks, so one ratio proves nothing about the others; and the
 hidden card's blurb changes length with its lock, which is exactly where the
 explain bar would clip.
