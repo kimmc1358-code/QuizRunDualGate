@@ -18,6 +18,7 @@ signal login_pressed
 signal settings_pressed
 # 고른 카드의 모드를 실어 보낸다 — 어느 순위표를 열지는 그 모드가 정한다.
 signal leaderboard_pressed(mode: int)
+signal remove_ads_pressed
 
 # Mirrors Main.gd's Mode enum. The mode-select sheet's quadrants are read in
 # reading order, so top-left is SKY and the fourth is the hidden slot.
@@ -392,8 +393,8 @@ const CARD_GROW_MIN_GAP_FRAC := 0.014   # of screen height
 const LEADERBOARD_WIDTH_FRAC := 0.52
 const START_WIDTH_FRAC := 0.72
 
-# Ad removal — the text is a placeholder for a purchase that does not exist
-# yet, so it logs like the leaderboard does. Underlined to read as a link
+# Ad removal — emits remove_ads_pressed, and Main opens the Play purchase sheet
+# (Store). Hidden once bought (set_ads_removed). Underlined to read as a link
 # rather than as a caption; Label has no underline, so it is drawn.
 const REMOVE_ADS_TEXT := "Remove Ads"
 const REMOVE_ADS_FONT_FRAC := 0.022    # of screen height
@@ -457,6 +458,7 @@ var _sfx_cream: AudioStreamPlayer
 var _start_label: Label
 var _remove_ads: Button
 var _remove_ads_rule: Control
+var _ads_removed: bool = false
 var _card_characters: Array = []   # one Array[Texture2D] of flight frames per slot
 var _card_art: Array[TextureRect] = []
 var _card_name: Array[Label] = []
@@ -943,7 +945,9 @@ func _build() -> void:
 	_remove_ads.add_theme_font_override("font", AppFont.base())
 	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		_remove_ads.add_theme_color_override(state, REMOVE_ADS_COLOR)
-	_remove_ads.pressed.connect(_on_unimplemented.bind("Remove Ads"))
+	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
+	# 산 사람에게는 이 줄이 할 일이 없다. 언어를 바꿔 다시 지어도 따르도록 여기서 건다.
+	_remove_ads.visible = not _ads_removed
 	add_child(_remove_ads)
 	# Its own child so the rule sits under the text and moves with it.
 	_remove_ads_rule = Control.new()
@@ -2016,8 +2020,11 @@ func _on_start_pressed() -> void:
 	start_pressed.emit(mode)
 
 
-func _on_unimplemented(what: String) -> void:
-	print("[미구현] ", what)
+## 광고 제거를 샀는가. 샀으면 아래의 "광고 제거" 줄을 숨긴다.
+func set_ads_removed(removed: bool) -> void:
+	_ads_removed = removed
+	if _remove_ads != null:
+		_remove_ads.visible = not removed
 
 
 ## 하단에 비워 둘 배너 높이(게임 픽셀)를 정하고 다시 배치한다.

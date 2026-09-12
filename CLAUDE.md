@@ -171,7 +171,8 @@ on failure.
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
-| `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS` |
+| `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID; `android_export.cfg` exists, has all three keys, and while testing holds `is_real = false` with Google's test app ID in both slots; the node `Ads.make_admob_node` builds has `is_real` off, every real unit field empty and Google's demo units in the debug ones; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
+| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_update_banner`, or `set_banner_reserve` |
 | `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
@@ -183,8 +184,10 @@ on failure.
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
 | `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
 | `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; a sign-in that completes while the game over popup is open flips it to LEADERBOARD on the spot; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score, and for a revived run the pre-revive score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, `GameOverPopup.set_logged_in`, or `debug_fake_sign_in` |
+| `check_store.gd` | with a fake BillingClient feeding Google Play's answers: the constants `Store` copied from the plugin's enums still match it; on PC the store is unavailable and the button grants nothing; on connect it asks for the product and the purchases, and will not open the sheet before the product details arrive; cancelled and pending purchases grant nothing; a completed one is **acknowledged** (or Google refunds it after three days) and removes the ads, and the save remembers it; afterwards no interstitial fires and its counter is untouched, the banner's space is given back, the revive continues with no rewarded ad, settings shows a disabled ADS REMOVED, mode select hides its line and the revive button reads CONTINUE with no ad icon; a relaunch reads it back, a failed query changes nothing, an unacknowledged purchase found by a query is acknowledged again, a purchase gone from the query (a refund) brings the ads, the banner and the line back, and "already owned" asks again | `Store.gd`, `REMOVE_ADS_PRODUCT_ID`, `_on_remove_ads_pressed`/`_on_store_ownership`/`_apply_ads_removed`, any `ads_removed` branch in Main, `SettingsPopup.set_ads_removed`, `RevivePopup.set_ad_free`, `ModeSelectScreen.set_ads_removed`, or an update of the billing plugin |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
 | `check_ocean_prompt.gd` | for every Stroop colour word, in both languages, at 16:9 and 20:9: the question-and-word row fits the quiz box's writing area, the question is at least `OCEAN_PROMPT_READABLE_PX` (17px at the 480 reference width), and the word keeps its full size — the question takes empty space, never the word's; it used to come out at 13px with most of the box empty, and a check for overflow alone passes even at 0.90, because the layout shrinks the word to fit | `OCEAN_PROMPT_SIZE_RATIO`, `OCEAN_PROMPT_READABLE_PX`, `OCEAN_PROMPT_GAP_FRAC`, `_ocean_quiz_layout`, any `QUIZ_TEXT_*` constant, the quiz box art, the font, or a colour word's translation |
+| `check_share.gd` | the share card, in both languages, all four modes, scores from 0 to the int maximum, record or not: every piece sits inside the white frame and the stack never overlaps; the score, label, footer and mode plate fit `CONTENT_WIDTH` — the score shrinks to fit but stops at `SCORE_MIN_SIZE`, so shrinking is no proof that it fits; the logo and character actually loaded; the share text carries the grouped score, the translated mode name and the store link with no `{placeholder}` left; and on PC a SHARE press opens nothing and leaves the button free | `ShareCard`'s layout constants or `card_layout`, the fonts, `CARD_NAMES` or their translations, `SHARE_TEXT`/`FOOTER_TEXT`, `ScoreFormat.grouped`, `ExternalLinks.STORE_URL`, or `_on_gameover_share_pressed` |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
@@ -256,6 +259,8 @@ gate drawn with the Stroop code path. `capture_language_toggle.gd` shoots the
 mode select, settings, revive, game over and about screens in both languages,
 and drives the language switch through `Main` rather than the popup so the
 rebuild path is the one being photographed.
+
+`capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
 
 `capture_ocean_quiz.gd` shoots the Stroop quiz box in Korean and English with each language's widest colour word, full screen and cropped to the box, because whether 19px *reads* on that art is not something a px count answers.
 
@@ -593,9 +598,13 @@ the preset on another machine has to reproduce them exactly.
 | Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back/monochrome 432 |
 | Export filter | `all_resources` |
 | Excluded | `assets/references/*`, `tools/*` |
-| Gradle build | **on** — the Play Games plugin needs it; the Android build template lives in the gitignored `/android/` |
+| Gradle build | **on** — the Play Games and AdMob plugins need it; the Android build template lives in the gitignored `/android/` |
 | Play Games plugin | `addons/GodotPlayGameServices/` — godot-play-game-services v3.4.0 |
 | Play Games Game ID | `554024495812` (preset option `godot_play_game_services/game_id`) |
+| AdMob plugin | `addons/AdmobPlugin/` + `addons/GMPShared/` — godot-sdk-integrations/godot-admob v7.0 (`AdmobPlugin-Android-v7.0.zip`, sha256 `ce38b75a…93aee8`); gradle pulls `play-services-ads` 24.9.0 at build time |
+| AdMob app ID | `addons/AdmobPlugin/android_export.cfg`, **not** the preset — Google's test app ID in both slots until release |
+| Play Billing plugin | `addons/GodotGooglePlayBilling/` — godot-sdk-integrations/godot-google-play-billing 3.3.0 (sha256 `20d75623…b18568`); gradle pulls `billing-ktx` 9.1.0 |
+| In-app product | `remove_ads`, one-time, non-consumable — `Store.REMOVE_ADS_PRODUCT_ID`; must exist and be active in Play Console, and cannot be renamed once created |
 
 The game answers to three different names and they are not meant to match.
 The **launcher label** is the one under the icon on the home screen, where
@@ -736,14 +745,50 @@ The first gradle export printed `[ DONE ]` and then hung on exit with
 "Scan thread aborted" — the APK was complete. If it happens again, check the
 APK's timestamp and end the process rather than waiting on it.
 
+## Share
+
+The game over SHARE sends an image card and a line of text through
+Android's share sheet. `ShareCard.gd` draws the card — 1080x1350, on the
+mode card's colours, with the logo, the mode name, the happy face, `SCORE`
+or `NEW BEST!`, the grouped score and "Can you beat me?" — into an
+off-screen SubViewport, and `ShareSheet.gd` hands it to Android. It is a
+drawn card rather than a screenshot because the game over popup would carry
+PLAY AGAIN and HOME buttons the recipient cannot press. Its colours, mode
+names and logo path are read from `ModeSelectScreen`, not copied.
+
+**There is no plugin.** Godot 4.4 and later reach Android from GDScript:
+`Engine.get_singleton("AndroidRuntime").getActivity()`, and
+`JavaClassWrapper.wrap()`, where a constructor is called by the class's own
+name (`Intent.Intent(...)`). The image goes out through the FileProvider the
+Godot library already declares — authority `<package>.fileprovider`, with
+`files-path "/"` among its paths — so a file saved under `user://` can be
+shared without touching our manifest. Both facts were read out of the
+godot-lib AAR. The chooser is built as an `ACTION_CHOOSER` intent rather
+than with `Intent.createChooser`, whose title parameter is a `CharSequence`
+that a GDScript String is not guaranteed to match.
+
+**It has not been tried on a device.** JNI overload resolution for
+`putExtra(String, Uri)` is the step most likely to need attention; any
+failure is logged as a warning carrying the Java exception.
+
+On PC there is no share sheet: the card is saved to
+`user://share/quizrun_score.png` and its path printed, which is also the way
+to look at one. A headless run has no renderer, so `render()` returns null
+there rather than waiting forever on `frame_post_draw` — `check_share.gd`
+hung on exactly that before the guard existed.
+
+The share text ends with `ExternalLinks.STORE_URL`, which is derived from the
+package name and will not resolve until the store listing is public.
+
 ## Ad policy
 
-The agreed strategy, and what of it exists in code. **No ads SDK is in the
-project** — this is the decision layer only, and it is testable without one.
+The agreed strategy, and what of it exists in code. The ads themselves come
+from the AdMob plugin through `scripts/Ads.gd` (see *How ads reach the
+screen* below); the decision layer described here is testable without it.
 
 | | Rule | Built? |
 |---|---|---|
-| Rewarded | Opt-in on the revive popup, once per run. The run's leaderboard entry is frozen at the pre-revive score; the personal best still takes the full score | Yes — `revive_offered`, and `leaderboard_score` captured on the first death only |
+| Rewarded | Opt-in on the revive popup, once per run. The run's leaderboard entry is frozen at the pre-revive score; the personal best still takes the full score | Yes — `revive_offered`, and `leaderboard_score` captured on the first death only; shown through `Ads.show_rewarded` |
 
 Continuing after the ad resumes the run, it does not restart it: `score`,
 `gates_passed` and `max_combo` all survive, and because the phase is derived
@@ -758,8 +803,8 @@ Carrying the combo through the revive was raised and **declined**. It is the
 one thing an ad would buy back that is worth real points rather than time,
 and the run did miss the gate. Do not "fix" it — the checker asserts the
 reset, so changing it means changing that assertion on purpose.
-| Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, no ad shown |
-| Banner | Mode-select bottom only, never in gameplay | Slot only — see below |
+| Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, shown through `Ads.show_interstitial` |
+| Banner | Mode-select bottom only, never in gameplay | Yes — and only where the screen can make room; see below |
 | App-open | Not used | n/a |
 
 Three things about the interstitial counter are deliberate and each was
@@ -815,9 +860,102 @@ Filling `LIVE_*` early is safe; the accessors ignore those values entirely
 while either lock is on. What is not safe is flipping the flag to "just check
 something".
 
-Nothing in the project shows an ad yet. `AdIds` is reachable from exactly one
-place — the unit ID printed by `_ad_try_interstitial` — so that the lock's
-state is visible in a log rather than only in a checker.
+`AdIds` is read in two places: `Ads.make_admob_node`, which fills the plugin's
+unit fields, and the unit ID printed by `_ad_try_interstitial`, so that the
+lock's state is visible in a log rather than only in a checker.
+
+### How ads reach the screen
+
+`scripts/Ads.gd` wraps the godot-admob plugin the way `PlayGames.gd` wraps
+Play Games: the game calls only `Ads`, the plugin's scripts are loaded by path,
+and on PC — where the plugin's calls log an error and emit nothing —
+`available` stays false and every request is answered "no ad" at once. It
+builds the plugin's `Admob` node in code rather than keeping one in a scene.
+
+**Three walls keep a live ad out of a test build**, and `check_ad_ids.gd`
+checks each:
+
+1. The **app ID** in the manifest comes from
+   `addons/AdmobPlugin/android_export.cfg`: `is_real = false` and Google's test
+   app ID in both `[Debug]` and `[Release]`. If that file is missing or a key is
+   absent the plugin silently falls back to searching the project's scenes for
+   an `Admob` node and using its Inspector values — so the checker also fails
+   on any scene that contains one.
+2. The **unit IDs** are set by `Ads.make_admob_node` before the node enters
+   the tree, because the plugin picks its units in `_ready`: `is_real` follows
+   `AdIds.use_test_ads()`, the debug fields get Google's demo units, and the
+   real fields get `AdIds.LIVE_*` only when live — empty today. An `is_real`
+   switched on by mistake finds nothing to load.
+3. `AdIds`' own two locks, above.
+
+Releasing therefore means changing all three on purpose: `FORCE_TEST_ADS`,
+the `LIVE_*` values, and `is_real` plus `[Release]` in the cfg.
+
+What each format does:
+
+- **Rewarded** — the revive popup's button shows it, and the run continues
+  only once the ad was watched to the end. Closed early, the popup stays.
+  No ad ready, or an ad that fails to show, counts as no ad and the run
+  continues free. That was the owner's call: the player did nothing wrong,
+  the revive is once per run, and its leaderboard score is frozen regardless.
+- **Interstitial** — shown at the existing decision point. While it is up,
+  `ad_hold_countdown` stops the READY/START clock; otherwise the run would start
+  behind the ad. The counter resets when the ad closes, not when it is asked
+  for; with nothing loaded it stays due and the next exit tries again. On PC
+  the old "count it as shown" path remains, because `check_ad_policy.gd`
+  measures the policy there.
+- **Banner** — loaded once, its device-pixel height converted by
+  `480 / device width` and passed to `set_banner_reserve`, and shown only on
+  mode select and only when the reserve came back non-zero. 16:9 phones get no
+  banner.
+- Game audio is muted on the Master bus while a full-screen ad is up.
+
+A failed load retries after 30 seconds. **None of this has run on a device
+yet** — `check_ads_wiring.gd` drives it with a fake plugin, which proves the
+wiring and nothing about the SDK. UMP consent, which EEA users need, is not
+wired.
+
+## Remove ads
+
+A one-time purchase, `remove_ads`, sold from settings (REMOVE ADS) and from
+the line under START on mode select. `scripts/Store.gd` wraps the Play Billing
+plugin the same way `Ads.gd` and `PlayGames.gd` wrap theirs: on PC it is
+unavailable and `buy()` answers false at once.
+
+Owning it removes the banner (and gives its space back to the mode-select
+layout), stops interstitials without touching their counter, and makes the
+revive button continue with no rewarded ad — the owner's call: someone who
+paid should never be shown an ad, and the revive stays once per run with its
+leaderboard score frozen regardless. Settings keeps the button but disabled,
+reading ADS REMOVED; mode select hides its line; the revive button reads
+CONTINUE without the ad icon. The two popups change by being rebuilt, the
+same path a language change takes.
+
+**Google Play decides who owns it.** `Store` asks for the purchases on
+connecting and every time the app comes back to the foreground, and
+`ownership_changed` carries the answer. The last answer is also saved in
+`[ads] removed`, so a buyer sees no banner in the first seconds after launch or
+while offline. A purchase that disappears from a successful query — a refund —
+brings the ads back; a query that **fails** changes nothing, because losing
+the connection must not take away what someone paid for.
+
+Two rules of the Billing library shape the code:
+
+- A one-time purchase must be **acknowledged**, or Google refunds it three
+  days later. `Store` acknowledges on the purchase and again whenever a query
+  finds it unacknowledged, so a failed acknowledgement heals on the next
+  launch.
+- The purchase sheet cannot open before the product details have been
+  queried. `buy()` re-asks and returns false until they have arrived.
+
+A **pending** purchase (paid later, at a shop counter for instance) grants
+nothing until it arrives again as purchased.
+
+**Purchases only work for a build that exists on Play.** Until a build with
+the billing plugin has been uploaded to a testing track, the product is
+created and active, and the phone's account is a licence tester, the product
+query fails and the button does nothing visible (it logs why). The flow has
+been driven only by `check_store.gd` with a fake client.
 
 ## The bottom banner slot
 
@@ -845,8 +983,9 @@ Measured at 480 wide, the space available before blocks collide is 11px at
 a 1080-wide phone, so everything from 18:9 up takes it and 16:9 has never had
 the room. That is why the refusal path exists rather than being a bug.
 
-Nothing here shows a banner — there is no ads SDK in the project (see the
-audit in the git log). This is only the hole it will sit in.
+`Ads` fills this hole: `Main._apply_banner_height` converts the banner's height
+and shows it only when the reserve came back non-zero (see *How ads reach the
+screen*).
 
 ## Gotchas
 

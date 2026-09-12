@@ -28,6 +28,11 @@ const CONTACT_EMAIL := "janiju.studio@gmail.com"
 ## 넣어 둔다.
 const CONTACT_SUBJECT := "QuizRun: Dual Gate - Feedback"
 
+## Play 스토어 페이지. 공유 문구 끝에 붙는다(ShareCard.share_text). 패키지
+## 이름으로 정해지는 주소라 지금 적어 둘 수 있지만, 스토어에 공개되기 전까지는
+## 받는 사람이 눌러도 "찾을 수 없음"이 뜬다.
+const STORE_URL := "https://play.google.com/store/apps/details?id=com.janiju.quizrundualgate"
+
 
 ## 채워져 있는가. 공백만 있는 값도 비어 있는 것으로 본다 — 주소를 지우다 만
 ## 상태로 커밋되면 눌렀을 때 브라우저가 빈 탭을 여는 쪽이 더 헷갈린다.

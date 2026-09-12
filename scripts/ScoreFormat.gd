@@ -8,9 +8,23 @@ extends RefCounted
 ## 들어와도 다섯 글자를 넘기지 않는다는 것이 유일한 계약이고,
 ## tools/check_score_format.gd 가 int32 전 구간에서 그걸 확인한다.
 ##
-## 넓은 자리 — 게임오버 팝업 — 는 이걸 쓰지 않는다. 거기는 PopupBase._group()
-## 으로 콤마 넣은 전체 숫자를 그대로 보여준다("1,250"). 줄여 쓰는 것은 자리가
-## 없을 때의 타협이지 더 나은 표기가 아니므로, 자리가 있으면 안 줄인다.
+## 넓은 자리 — 게임오버 팝업, 공유 카드와 공유 문구 — 는 이걸 쓰지 않는다.
+## 거기는 grouped() 로 콤마 넣은 전체 숫자를 그대로 보여준다("1,250"). 줄여
+## 쓰는 것은 자리가 없을 때의 타협이지 더 나은 표기가 아니므로, 자리가 있으면
+## 안 줄인다.
+
+
+## 콤마 넣은 전체 숫자. 게임오버 팝업(PopupBase._group)과 공유 카드가 같이
+## 쓴다 — 팝업에 있던 것을 여기로 옮겼다. 팝업과 공유 카드가 같은 판의 점수를
+## 다른 모양으로 쓰면 받는 사람이 보는 숫자와 내가 본 숫자가 달라 보인다.
+static func grouped(value: int) -> String:
+	var digits := str(absi(value))
+	var out := ""
+	for i in range(digits.length()):
+		if i > 0 and (digits.length() - i) % 3 == 0:
+			out += ","
+		out += digits[i]
+	return ("-" if value < 0 else "") + out
 
 ## 다섯 글자 안에 들어가는 표기.
 ##

@@ -45,6 +45,10 @@ const SCORE_GAP_FRAC := 0.45      # 라벨 크기 대비 라벨-숫자 간격
 const WIDE_FRAC := 0.86           # 판 너비 대비
 
 const AD_BUTTON_TEXT := "WATCH AD TO CONTINUE"
+# 광고 제거를 산 사람에게는 같은 버튼이 광고 없이 이어 준다. 광고 아이콘도
+# 뗀다 — 광고가 없는데 광고 그림이 붙어 있으면 산 것이 안 먹힌 것처럼 보인다.
+const FREE_CONTINUE_TEXT := "CONTINUE"
+var _ad_free: bool = false
 # 아이콘이 들어갈 자리를 감안해 다른 팝업의 주 버튼보다 조금 두툼하게 잡는다.
 #
 # 0.185 였다가 낮췄다. 실측하면 392x138 로 가로:세로가 2.84:1 이었는데,
@@ -152,7 +156,9 @@ func _build_content() -> void:
 	_score_row.draw.connect(_draw_score_row)
 	add_child(_score_row)
 
-	_ad_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(AD_BUTTON_TEXT), _load_popup_icon(POPUP_ICON_AD), true)
+	var ad_text: String = tr(FREE_CONTINUE_TEXT) if _ad_free else tr(AD_BUTTON_TEXT)
+	var ad_icon: Texture2D = null if _ad_free else _load_popup_icon(POPUP_ICON_AD)
+	_ad_button = _make_button(GOLD_FILE, GOLD_CORNER, ad_text, ad_icon, true)
 	_ad_button.pressed.connect(func(): watch_ad_pressed.emit())
 	add_child(_ad_button)
 
@@ -421,6 +427,14 @@ func _draw_score_row() -> void:
 
 
 ## 지금까지 번 점수. 팝업을 띄우기 전에 Main 이 넣어 준다.
+## 광고 제거를 샀는가. 버튼 글자와 아이콘이 바뀌므로 지어져 있으면 다시 짓는다.
+func set_ad_free(free: bool) -> void:
+	if free == _ad_free:
+		return
+	_ad_free = free
+	rebuild()
+
+
 func set_score(value: int) -> void:
 	_score = value
 	if _score_row != null:

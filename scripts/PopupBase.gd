@@ -748,13 +748,7 @@ func _strip_white_background(img: Image) -> void:
 ## 1234 -> "1,234". 점수는 자릿수가 커질 수 있어, 쉼표가 있어야 한눈에
 ## 읽힌다. 팝업 여럿이 같은 숫자를 보여주므로 여기 둔다.
 func _group(value: int) -> String:
-	var digits := str(absi(value))
-	var out := ""
-	for i in range(digits.length()):
-		if i > 0 and (digits.length() - i) % 3 == 0:
-			out += ","
-		out += digits[i]
-	return ("-" if value < 0 else "") + out
+	return ScoreFormat.grouped(value)
 
 
 # 그림이 실제로 차지하는 사각형.

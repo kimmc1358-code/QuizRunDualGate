@@ -36,6 +36,7 @@ const UI_SCRIPTS := [
 	"res://scripts/AboutPopup.gd",
 	"res://scripts/ModeSelectScreen.gd",
 	"res://scripts/TutorialOverlay.gd",
+	"res://scripts/ShareCard.gd",
 ]
 const ALL_SCRIPTS_DIR := "res://scripts"
 
@@ -180,7 +181,10 @@ func _string_consts(lines: PackedStringArray) -> Dictionary:
 					break
 				continue
 			var v: String = parts[i].c_unescape()
-			if v != "":
+			# 리소스 경로는 이름과 상관없이 글자가 아니다. 이름 접미사
+			# (NOT_TEXT_SUFFIX)로는 `const MSS := preload("res://...")` 같은
+			# 스크립트 참조를 가릴 수 없다.
+			if v != "" and not v.begins_with("res://"):
 				values.append(v)
 		if not values.is_empty():
 			out[name] = values

@@ -58,6 +58,9 @@ const LOGIN_TEXTURE_WIDTH := 105         # 9-slice 텍스처 폭 — _build_cont
 # 광고 제거 — 계정 줄 바로 아래의 골드 버튼. primary=true 면 흰 글자에
 # 네이비 테두리가 붙는다(RESUME/PLAY AGAIN 과 같은 꾸밈).
 const REMOVE_ADS_TEXT := "REMOVE ADS"
+# 산 뒤에 같은 자리에 남는 글자. 버튼을 치우면 판의 줄 배치가 달라지고, 산
+# 사람에게는 무엇을 샀는지 보이는 편이 낫다.
+const ADS_REMOVED_TEXT := "ADS REMOVED"
 const REMOVE_ADS_ICON := "res://assets/ui_assets/popup/icon_noads.png"
 # 아이콘 텍스처는 그릴 크기보다 넉넉히 구워 둔다 — 작게 구워 놓고 늘리면
 # 가장자리가 뭉갠다. _load_icon_from 이 둘레에 투명 여백까지 둘러 주므로
@@ -139,6 +142,7 @@ var _divider_bottom: Control
 var _account: Control
 var _login: Button
 var _remove_ads: Button
+var _ads_removed: bool = false
 var _links: Array[Button] = []
 var _sfx_icon: Texture2D
 var _music_icon: Texture2D
@@ -229,9 +233,14 @@ func _build_content() -> void:
 	_login.pressed.connect(func(): login_pressed.emit())
 	add_child(_login)
 
-	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, tr(REMOVE_ADS_TEXT),
+	var remove_text: String = tr(ADS_REMOVED_TEXT) if _ads_removed else tr(REMOVE_ADS_TEXT)
+	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, remove_text,
 		_load_icon_from(REMOVE_ADS_ICON, Vector2i(1, 1), 0, REMOVE_ADS_ICON_HEIGHT),
 		true, Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
+	# 산 뒤에는 눌리지 않고 흐리게. 다시 눌러 봐야 "이미 샀다"는 말밖에 없다.
+	_remove_ads.disabled = _ads_removed
+	if _ads_removed:
+		_remove_ads.modulate = Color(1.0, 1.0, 1.0, 0.7)
 	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
 	add_child(_remove_ads)
 
@@ -481,6 +490,15 @@ func _draw_boost_row() -> void:
 ## 값을 넣어 줄 때와, 사용자가 눌렀을 때 둘 다 여기를 지난다.
 ## Main 이 저장된 값을 넣어 준다. 토글만 맞추고 신호는 안 쏜다 — 쏘면
 ## 값을 되돌리는 것이 다시 바꾸라는 요청으로 돌아온다.
+## 광고 제거를 샀는가. 버튼의 글자가 바뀌므로 지어져 있으면 다시 짓는다 —
+## 언어를 바꿀 때와 같은 길이다(PopupBase.rebuild).
+func set_ads_removed(removed: bool) -> void:
+	if removed == _ads_removed:
+		return
+	_ads_removed = removed
+	rebuild()
+
+
 func set_language(korean: bool) -> void:
 	_korean = korean
 	if _language_toggle != null:

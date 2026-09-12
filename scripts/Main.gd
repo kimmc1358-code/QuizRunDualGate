@@ -2262,6 +2262,10 @@ const HIDDEN_MODE := Mode.DREAM
 const SAVE_SECTION_ADS := "ads"
 const SAVE_KEY_GAMES_PLAYED := "games_played"
 const SAVE_KEY_RESTARTS_SINCE_AD := "restarts_since_ad"
+# 광고 제거를 샀는가. 판정은 Google Play 가 하지만(Store), 켤 때마다 답을
+# 기다리면 산 사람도 첫 몇 초는 배너를 보고, 오프라인이면 계속 본다. 마지막
+# 답을 여기 적어 두고 켜자마자 따른다.
+const SAVE_KEY_ADS_REMOVED := "removed"
 
 const SAVE_SECTION_AUDIO := "audio"
 # 조작 설정. 볼륨과 같은 파일을 쓰되 오디오와 섞지 않는다.
@@ -2506,6 +2510,29 @@ var player_avatar: Texture2D = null
 var player_display_name: String = ""
 var player_logged_in: bool = false
 var play_games: PlayGames
+# 공유. 카드는 user:// 에 덮어쓴다 — 한 번에 한 장만 나가므로 쌓아 둘 까닭이
+# 없고, 안드로이드에서는 앱 내부 저장소라 FileProvider 가 넘길 수 있는 곳이다
+# (ShareSheet 참고).
+const SHARE_IMAGE_PATH := "user://share/quizrun_score.png"
+var share_card: ShareCard
+var share_busy: bool = false
+# 게임오버 때 정해지는 "이번 판이 신기록인가". 판이 끝난 뒤에는 best_scores 가
+# 이미 이번 점수로 바뀌어 있어 다시 계산할 수 없다(_finish_run).
+var last_run_new_record: bool = false
+# 광고. Ads 가 AdMob 을 감싼다 — PC 에서는 available 이 false 다.
+var ads: Ads
+# 전면광고가 떠 있는 동안 카운트다운을 붙잡는다. 광고 뒤에서 READY -> START 가
+# 흘러가 버리면, 광고를 닫았을 때 판이 이미 시작돼 있다.
+var ad_hold_countdown: bool = false
+# 모드 선택 화면이 배너 자리를 실제로 비워 주었는가(set_banner_reserve). 16:9
+# 처럼 자리가 없는 화면은 거절하고, 그러면 배너를 띄우지 않는다.
+var banner_reserved: bool = false
+# 마지막으로 받은 배너 크기(기기 폭, 기기 높이). 광고 제거가 환불로 풀렸을 때
+# 배너 자리를 다시 비우려면 필요하다 — 배너는 한 번만 불러온다.
+var _banner_device_size := Vector2.ZERO
+# 광고 제거. Store 가 Google Play 결제를 감싼다 — PC 에서는 available 이 false 다.
+var store: Store
+var ads_removed: bool = false
 # 에디터에서 로그인한 화면을 보는 길. PC 에서는 진짜 로그인이 안 되므로 이것
 # 말고는 볼 방법이 없다. 켜면 "Test Player" 로 로그인된 채로 시작한다.
 #
@@ -2882,6 +2909,7 @@ func _boot_load() -> void:
 	mode_select_panel.settings_pressed.connect(_open_settings)
 	mode_select_panel.login_pressed.connect(_on_mode_select_login_pressed)
 	mode_select_panel.leaderboard_pressed.connect(_on_mode_select_leaderboard_pressed)
+	mode_select_panel.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
 	settings_popup.music_volume_changed.connect(set_music_volume)
@@ -2910,6 +2938,26 @@ func _boot_load() -> void:
 	play_games.start()
 	if debug_fake_sign_in and OS.is_debug_build() and not play_games.available:
 		play_games.fake_sign_in("Test Player")
+	# 게임오버의 SHARE 가 보낼 점수 카드를 그리는 곳. 트리에 있어야 SubViewport
+	# 가 그려진다.
+	share_card = ShareCard.new()
+	share_card.name = "ShareCard"
+	add_child(share_card)
+	# 광고. PC 에서는 아무것도 띄우지 않고 available 만 false 로 남는다.
+	ads = Ads.new()
+	ads.name = "Ads"
+	add_child(ads)
+	ads.fullscreen_changed.connect(_on_ads_fullscreen)
+	ads.banner_ready.connect(_on_banner_ready)
+	ads.start()
+	# 광고 제거 결제. 저장해 둔 답을 먼저 화면에 걸고, Google Play 의 답이 오면
+	# 그걸 따른다(_on_store_ownership).
+	store = Store.new()
+	store.name = "Store"
+	add_child(store)
+	store.ownership_changed.connect(_on_store_ownership)
+	_apply_ads_removed()
+	store.start()
 	pause_button.pressed.connect(_on_pause_pressed)
 	# 팝업이 자기 버튼을 들고 있고, 눌린 결과만 신호로 알려 준다.
 	pause_panel.resume_pressed.connect(_on_resume_pressed)
@@ -2918,7 +2966,7 @@ func _boot_load() -> void:
 	pause_panel.sfx_volume_changed.connect(set_sfx_volume)
 	pause_panel.music_volume_changed.connect(set_music_volume)
 	pause_panel.boost_side_changed.connect(set_boost_button_on_left)
-	revive_panel.watch_ad_pressed.connect(_on_revive_continue)
+	revive_panel.watch_ad_pressed.connect(_on_revive_watch_ad)
 	revive_panel.decline_pressed.connect(_on_revive_decline)
 	mute_button.pressed.connect(_on_mute_pressed)
 	# pivot_offset is set in _layout_hud_buttons instead — it resizes the
@@ -4017,6 +4065,9 @@ func _process(delta: float) -> void:
 
 
 func _update_countdown(delta: float) -> void:
+	# 전면광고가 떠 있는 동안에는 시계를 세우지 않는다(ad_hold_countdown).
+	if ad_hold_countdown:
+		return
 	countdown_timer -= delta
 	if countdown_timer > 0.0:
 		return
@@ -6035,6 +6086,68 @@ func _on_revive_decline() -> void:
 	_finish_run()
 
 
+# 부활 팝업의 광고 보기. 띄울 광고가 없으면(아직 못 불러옴, 인터넷 없음, PC)
+# 그냥 이어 준다 — 플레이어 탓이 아닌데 기회를 빼앗을 까닭이 없고, 부활은 판에
+# 한 번뿐인 데다 순위표 점수는 이미 부활 전으로 묶였다(_game_over).
+func _on_revive_watch_ad() -> void:
+	# 광고 제거를 산 사람은 광고 없이 곧장 이어 간다(주인이 정한 규칙).
+	if ads_removed:
+		_on_revive_continue()
+		return
+	if ads == null or not ads.show_rewarded(_on_revive_ad_finished):
+		_on_revive_continue()
+
+
+# 광고가 닫힌 뒤. 끝까지 보지 않고 닫았으면 팝업에 남는다 — 다시 누르거나
+# 거절할 수 있다. 띄우려다 실패한 것은 광고가 없던 것과 같게 친다.
+func _on_revive_ad_finished(result: int) -> void:
+	if result == Ads.Reward.SKIPPED:
+		return
+	_on_revive_continue()
+
+
+# 전면광고가 닫혔을 때. 실제로 보였을 때만 카운터를 비운다 — 띄우려다 실패했는데
+# 비우면 다음 광고까지 또 다섯 판을 기다리게 된다.
+func _on_interstitial_finished(shown: bool) -> void:
+	ad_hold_countdown = false
+	if shown:
+		note_interstitial_shown()
+
+
+# 전체 화면 광고가 떠 있는 동안 게임 소리를 끈다. 광고에도 소리가 있어 BGM 과
+# 겹친다. Master 음소거는 게임이 달리 쓰는 곳이 없어 설정의 음량과 부딪치지 않는다.
+func _on_ads_fullscreen(showing: bool) -> void:
+	AudioServer.set_bus_mute(0, showing)
+
+
+# 배너가 준비되면 그 높이만큼 모드 선택 화면의 아래를 비운다. 플러그인은 기기
+# 픽셀로 주고 뷰포트는 폭 480 으로 고정이라, 화면 폭 비율로 바꿔서 넘긴다.
+func _on_banner_ready(height_device_px: float) -> void:
+	_apply_banner_height(height_device_px, float(DisplayServer.window_get_size().x))
+
+
+# 기기 폭을 따로 받는 것은 체커 때문이다 — 헤드리스의 창 크기는 폰이 아니다.
+func _apply_banner_height(height_device_px: float, device_width_px: float) -> void:
+	_banner_device_size = Vector2(device_width_px, height_device_px)
+	if ads_removed:
+		# 광고를 없앤 사람에게 배너 자리를 비워 둘 까닭이 없다.
+		banner_reserved = false
+		mode_select_panel.set_banner_reserve(0.0)
+		_update_banner()
+		return
+	var game_px: float = height_device_px * get_viewport_rect().size.x / maxf(device_width_px, 1.0)
+	banner_reserved = float(mode_select_panel.set_banner_reserve(game_px)) > 0.0
+	if not banner_reserved:
+		print("[광고] 배너 %.0f px 을 비울 자리가 없는 화면이라 배너를 띄우지 않는다" % game_px)
+	_update_banner()
+
+
+# 배너는 모드 선택 화면에만. 게임 중과 스플래시에는 숨긴다.
+func _update_banner() -> void:
+	if ads != null:
+		ads.set_banner_visible(banner_reserved and state == State.MODE_SELECT and not ads_removed)
+
+
 func _finish_run() -> void:
 	state = State.GAMEOVER
 	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
@@ -6042,6 +6155,7 @@ func _finish_run() -> void:
 	# updated — the popup shows a different face for a new best, and once
 	# best_score has been overwritten the two are indistinguishable.
 	var is_new_record: bool = score > _best_for(current_mode)
+	last_run_new_record = is_new_record
 	var previous_best: int = _best_for(current_mode)
 	# Only write on an actual improvement, so a run that doesn't beat the
 	# record costs no disk access at all.
@@ -6096,8 +6210,30 @@ func _on_gameover_leaderboard_pressed() -> void:
 	_show_leaderboard(current_mode)
 
 
+## 방금 끝난 판의 점수 카드를 그려 저장하고, 문구와 함께 공유 창을 연다.
+##
+## 카드를 그리는 데 한 프레임이 걸리므로 그 사이 두 번 눌러도 한 번만 간다.
+## PC 에는 공유 창이 없어서 카드만 저장하고 경로를 남긴다 — 카드가 어떻게
+## 나오는지 볼 수는 있다.
 func _on_gameover_share_pressed() -> void:
-	push_warning("game over: share not wired up yet")
+	if share_busy or share_card == null:
+		return
+	share_busy = true
+	var img: Image = await share_card.render(current_mode, score, last_run_new_record,
+		happy_face_texture)
+	share_busy = false
+	if img == null or img.is_empty():
+		push_warning("share: the card rendered empty — no renderer?")
+		return
+	DirAccess.make_dir_recursive_absolute(SHARE_IMAGE_PATH.get_base_dir())
+	var err := img.save_png(SHARE_IMAGE_PATH)
+	if err != OK:
+		push_warning("share: could not save %s (error %d)" % [SHARE_IMAGE_PATH, err])
+		return
+	var absolute: String = ProjectSettings.globalize_path(SHARE_IMAGE_PATH)
+	if not ShareSheet.share_image(absolute,
+			share_card.share_text(current_mode, score), share_card.chooser_title()):
+		print("share: no share sheet here — the card is at %s" % absolute)
 
 
 func _on_play_pressed() -> void:
@@ -6234,8 +6370,35 @@ func _on_about_pressed() -> void:
 	about_popup.visible = true
 
 
+# 설정의 REMOVE ADS 와 모드 선택 화면 아래의 "광고 제거" 줄. 결과는 결제 창이
+# 닫힌 뒤 Store 가 ownership_changed 로 알려 온다.
 func _on_remove_ads_pressed() -> void:
-	push_warning("설정: 광고 제거 결제 아직 연결 안 됨")
+	if ads_removed:
+		return
+	if store == null or not store.buy():
+		print("[결제] 지금은 결제 창을 열 수 없다 — PC 이거나, 스토어 연결·상품 조회 전이다")
+
+
+# Google Play 의 답. 저장해 둔 것과 다를 때만 바꾼다 — 사서 생기거나, 환불로
+# 없어지거나.
+func _on_store_ownership(owned: bool) -> void:
+	if owned == ads_removed:
+		return
+	ads_removed = owned
+	_save_ad_state()
+	print("[결제] 광고 제거 %s" % ("적용" if owned else "해제 (환불되었거나 내역에 없다)"))
+	_apply_ads_removed()
+
+
+# 광고 제거 여부를 화면 곳곳에 건다. 배너는 자리까지 돌려준다.
+func _apply_ads_removed() -> void:
+	settings_popup.set_ads_removed(ads_removed)
+	mode_select_panel.set_ads_removed(ads_removed)
+	revive_panel.set_ad_free(ads_removed)
+	if _banner_device_size.y > 0.0:
+		_apply_banner_height(_banner_device_size.y, _banner_device_size.x)
+	else:
+		_update_banner()
 
 
 func _on_mode_selected(mode: int) -> void:
@@ -6669,17 +6832,29 @@ func note_interstitial_shown() -> void:
 	_save_ad_state()
 
 
-# 지금은 SDK 가 없으므로 "띄웠다" 치고 카운터만 비운다. 플러그인이 붙으면 이
-# 함수 안에서 광고를 요청하고, note_interstitial_shown 은 광고가 닫힌 뒤
-# 콜백에서 부르도록 옮기면 된다.
+# 전면광고를 띄울 차례인지 보고, 차례면 띄운다. 띄웠으면(또는 띄운 것으로
+# 쳤으면) true.
+#
+# 광고 모듈이 없는 곳(PC, 헤드리스)에서는 예전처럼 "띄웠다" 치고 카운터만
+# 비운다 — 이 판단 층을 check_ad_policy.gd 가 PC 에서 잰다. 기기에서는 준비된
+# 광고가 있을 때만 띄우고, 카운터는 광고가 닫힌 뒤(_on_interstitial_finished)
+# 비운다. 준비된 것이 없으면 그대로 두어 다음 기회에 다시 시도한다.
 func _ad_try_interstitial() -> bool:
+	# 광고 제거를 샀으면 전면광고는 없다. 카운터도 건드리지 않는다.
+	if ads_removed:
+		return false
 	if not should_show_interstitial():
 		return false
-	# 단위 ID 를 같이 찍는다. SDK 가 붙기 전까지 AdIds 가 실제로 불리는 곳은
-	# 여기뿐이라, 이 줄이 없으면 잠금장치가 걸려 있는지 로그로 알 수 없다.
+	# 단위 ID 를 같이 찍어 잠금장치가 걸려 있는지 로그로 보이게 한다.
 	print("[광고] 전면광고 노출 지점 (누적 %d판, 마지막 광고 이후 %d판) unit=%s" % [
 		games_played_total, restarts_since_interstitial, AdIds.interstitial_id()])
-	note_interstitial_shown()
+	if ads == null or not ads.available:
+		note_interstitial_shown()
+		return true
+	if not ads.show_interstitial(_on_interstitial_finished):
+		print("[광고] 준비된 전면광고가 없어 다음 기회로 미룬다")
+		return false
+	ad_hold_countdown = true
 	return true
 
 
@@ -6690,6 +6865,7 @@ func _load_ad_state() -> void:
 			SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total))
 		restarts_since_interstitial = int(cfg.get_value(
 			SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial))
+		ads_removed = bool(cfg.get_value(SAVE_SECTION_ADS, SAVE_KEY_ADS_REMOVED, ads_removed))
 
 
 func _save_ad_state() -> void:
@@ -6697,6 +6873,7 @@ func _save_ad_state() -> void:
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
 	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total)
 	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial)
+	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_ADS_REMOVED, ads_removed)
 	cfg.save(SAVE_PATH)
 
 
@@ -7134,6 +7311,7 @@ func _apply_screen_visibility() -> void:
 		splash_char_layer.visible = state == State.SPLASH
 	_update_mute_button_visibility()
 	mode_select_panel.visible = state == State.MODE_SELECT
+	_update_banner()
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
 	# 띄우는 쪽은 _finish_run(어느 갈래인지 아는 쪽)이라, 여기서는 끄기만 한다.
