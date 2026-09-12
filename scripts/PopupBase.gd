@@ -46,7 +46,10 @@ const CREAM_CORNER := 202
 # 동작만 하므로, 한쪽만 넣어도 된다.
 const BUTTON_SOUND_DIR := "res://assets/audio/"
 const BUTTON_SOUND_EXTENSIONS := [".ogg", ".wav"]
-const GOLD_SOUND_NAME := "button_gold"
+# 금색 버튼은 팝업의 주 버튼 넷뿐이다 — RESUME, PLAY AGAIN, WATCH AD TO
+# CONTINUE, REMOVE ADS. 메인 화면의 START 는 이 길을 안 지나고
+# ModeSelectScreen 이 제 소리(start_main.wav)를 따로 낸다.
+const GOLD_SOUND_NAME := "goldbutton_sound"
 const CREAM_SOUND_NAME := "button_cream"
 # 일시정지 팝업의 SFX 슬라이더가 이 소리도 함께 조절하도록 같은 버스에 태운다.
 const BUTTON_SOUND_BUS := "SFX"
@@ -95,7 +98,7 @@ const BUTTON_TEXT_FIT_H := 0.80
 #                버튼에는 이쪽을 우선 쓴다.
 const ICON_SHEET := "res://assets/ui_assets/main/icon_sheet.png"
 const ICON_GRID := Vector2i(5, 3)
-const ICON_PLAY := 0
+const ICON_PLAY := 0            # 지금 쓰는 곳은 없다 — 시트의 목차라 자리를 지운다
 const ICON_RESTART := 1
 const ICON_HOME := 2
 const ICON_SPEAKER := 5
@@ -153,7 +156,6 @@ const CANCEL_ON_BORDER := Vector2(0.45, 0.0)
 const CANCEL_X_COLOR := Color(0.055, 0.180, 0.435, 1.0)  # 네이비
 const CANCEL_X_ARM_FRAC := 0.19        # 지름 대비 X 팔 길이(중심에서)
 const CANCEL_X_WIDTH_FRAC := 0.095     # 지름 대비 선 굵기
-const FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
 
@@ -230,6 +232,22 @@ func ensure_built() -> void:
 	_ready()
 
 
+## 처음부터 다시 짓는다. 언어가 바뀌었을 때 Main 이 부른다 — 글자는 지을 때
+## tr() 을 거쳐 굳고 글자 크기도 그때 맞춰지므로, 로케일만 바꿔서는 이미
+## 만들어진 것들이 옛 언어로 남는다.
+func rebuild() -> void:
+	if not _built:
+		return
+	var was_visible := visible
+	for child in get_children():
+		remove_child(child)
+		child.queue_free()
+	_built = false
+	ensure_built()
+	visible = was_visible
+	_layout()
+
+
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP  # 팝업 뒤로 탭이 새지 않게
 	# 프로젝트 기본 필터가 Nearest다(project.godot의 default_texture_filter=0).
@@ -238,7 +256,7 @@ func _ready() -> void:
 	# 팝업 안 전체에 걸린다.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	var base: Font = load(FONT_PATH) if ResourceLoader.exists(FONT_PATH) else ThemeDB.fallback_font
+	var base: Font = AppFont.base()
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)
@@ -262,7 +280,10 @@ func _ready() -> void:
 	add_child(_panel)
 
 	_build_content()
-	resized.connect(_layout)
+	# rebuild() 가 이 함수를 다시 지나므로 이미 걸려 있을 수 있다. 그냥
+	# 걸면 Godot 이 중복 연결로 오류를 낸다.
+	if not resized.is_connected(_layout):
+		resized.connect(_layout)
 	_layout()
 
 
@@ -1058,6 +1079,94 @@ func _slider_label_column(font_size: int, texts: Array) -> float:
 	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
 
 
+# 아이콘 없이 칸을 통째로 쓰는 이름표(BOOST/LANGUAGE)용 — 슬라이더와 같은
+# 칸을 나눠 쓰므로 둘 다 재서 넓은 쪽을 골라야 한다. 슬라이더 쪽만 재면
+# 이름표가 트랙 밑으로 파고든다: "LANGUAGE" 가 "MUSIC" 보다 길다.
+func _row_label_column(font_size: int, texts: Array) -> float:
+	var w := 0.0
+	for text in texts:
+		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+	return w + font_size * 0.5
+
+
+# ---- 두 갈래 토글 ----
+#
+# 알약 모양 트랙 위를 손잡이가 좌우로 옮겨 다니고, 두 칸에 각각 이름이 적힌다.
+# 지금 쓰는 곳은 가속 버튼의 좌/우 하나뿐이지만, 설정 팝업과 일시정지 팝업
+# 둘 다에서 쓰므로 여기 둔다.
+#
+# 처음에는 금색 버튼(_make_button) 두 개로 만들었는데 테두리가 깨졌다.
+# GOLD_CORNER 가 88px 이고 나인패치는 모서리를 원본 크기로 그리므로, 버튼을
+# 176px 보다 좁게 만들면 좌우 모서리가 서로 파고든다. 트랙 절반 폭에 넣으려던
+# 것이라 어느 화면에서도 그보다 좁았다. 직접 그리면 그 제약이 아예 없다.
+#
+# 색은 슬라이더에서 그대로 가져온다 — 같은 줄에 나란히 서므로 트랙과 채움이
+# 같은 색이어야 한 벌로 읽힌다.
+const TOGGLE_HEIGHT := 40.0
+const TOGGLE_PAD := 4.0            # 트랙 안쪽, 손잡이 둘레의 여백
+const TOGGLE_LABEL_FRAC := 0.42    # 토글 높이 대비 글자 크기
+const TOGGLE_OFF_TEXT := Color(0.42, 0.40, 0.36, 1.0)
+
+
+## 두 갈래 토글 하나. `texts` 는 [왼쪽, 오른쪽] 이름이고, 값이 false 면 왼쪽이
+## 아니라 오른쪽이 켜진 것으로 본다 — 부르는 쪽의 bool 이 "왼쪽인가"가 아니라
+## 무엇이든 될 수 있게, 어느 칸이 켜졌는지는 인덱스로 다룬다.
+func _make_side_toggle(texts: Array, on_second: bool, on_change: Callable) -> Control:
+	var t := Control.new()
+	t.mouse_filter = Control.MOUSE_FILTER_STOP
+	t.set_meta("texts", texts)
+	t.set_meta("second", on_second)
+	t.draw.connect(_draw_side_toggle.bind(t))
+	t.gui_input.connect(func(e: InputEvent) -> void:
+		if e is InputEventMouseButton and e.pressed and e.button_index == MOUSE_BUTTON_LEFT:
+			var want_second: bool = e.position.x > t.size.x * 0.5
+			if want_second == bool(t.get_meta("second")):
+				return
+			_set_side_toggle(t, want_second)
+			on_change.call(want_second))
+	return t
+
+
+## 표시만 바꾼다 — 신호는 보내지 않는다. 저장된 값을 넣어 줄 때도 여기를 지난다.
+func _set_side_toggle(t: Control, on_second: bool) -> void:
+	if t == null:
+		return
+	t.set_meta("second", on_second)
+	t.queue_redraw()
+
+
+func _draw_side_toggle(t: Control) -> void:
+	var texts: Array = t.get_meta("texts", ["", ""])
+	var second: bool = bool(t.get_meta("second", false))
+	var h: float = t.size.y
+	var w: float = t.size.x
+	var r: float = h * 0.5
+	# 트랙.
+	t.draw_style_box(_pill(SLIDER_TRACK_COLOR, r), Rect2(Vector2.ZERO, Vector2(w, h)))
+	# 손잡이 — 켜진 칸을 덮는다.
+	var knob_w: float = (w - TOGGLE_PAD * 2.0) * 0.5
+	var knob_x: float = TOGGLE_PAD + (knob_w if second else 0.0)
+	t.draw_style_box(_pill(SLIDER_FILL_COLOR, (h - TOGGLE_PAD * 2.0) * 0.5),
+		Rect2(Vector2(knob_x, TOGGLE_PAD), Vector2(knob_w, h - TOGGLE_PAD * 2.0)))
+	# 이름 둘. 켜진 쪽은 진한 잉크, 꺼진 쪽은 흐리게.
+	var fs: int = maxi(9, int(round(h * TOGGLE_LABEL_FRAC)))
+	for i in range(2):
+		var text: String = str(texts[i]) if i < texts.size() else ""
+		var tw: float = _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var cx: float = TOGGLE_PAD + knob_w * (float(i) + 0.5)
+		var lit: bool = (i == 1) == second
+		t.draw_string(_font_bold, Vector2(cx - tw * 0.5, h * 0.5 + fs * 0.36),
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK if lit else TOGGLE_OFF_TEXT)
+
+
+func _pill(color: Color, radius: float) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = color
+	box.set_corner_radius_all(int(round(radius)))
+	box.anti_aliasing = true
+	return box
+
+
 # 판을 가로지르는 점선.
 func _draw_dotted_divider(ctrl: Control) -> void:
 	var w: float = ctrl.size.x
@@ -1143,7 +1252,12 @@ func _play_button_sound(button: Control) -> void:
 				path = candidate
 				break
 		if path == "":
-			_button_players[art] = null   # 파일이 없다 — 다시 찾지 않는다
+			# 한 번만 말하고 다시 찾지 않는다. 조용히 넘기면 버튼이 소리를
+			# 잃었을 때, 소리를 끈 것인지 파일이 없는 것인지 화면으로는 구별할
+			# 길이 없다.
+			push_warning("PopupBase: %s%s(%s) 가 없다 — 이 버튼은 소리 없이 눌린다" % [
+				BUTTON_SOUND_DIR, art, "/".join(BUTTON_SOUND_EXTENSIONS)])
+			_button_players[art] = null
 		else:
 			var player := AudioStreamPlayer.new()
 			player.stream = load(path)

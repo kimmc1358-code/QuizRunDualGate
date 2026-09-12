@@ -129,6 +129,13 @@ const BEST_PLATE_HEIGHT_FRAC := 0.105  # 판 높이 대비 — 안내 상자들�
 # 상자들과 구분이 안 되고, 한 줄짜리 정보에 비해 너무 크다.
 const BEST_PLATE_PAD := 30.0           # 내용 양옆 여백
 const BEST_PLATE_LABEL := "BEST"
+# 이 한 낱말만 노랑에 네이비 테두리다. 옆의 숫자와 같은 네이비로 두면 왕관과
+# 글자와 숫자가 한 덩어리 파란 줄로 뭉쳐 읽히는데, 정작 눈이 가야 하는 것은
+# 숫자다. HUD 와 모드 카드의 BEST 도 같은 노랑을 쓰고 있어 셋이 같은 것을
+# 가리킨다는 신호도 된다 — 그쪽 테두리는 검정이지만, 크림색 판 위에서는
+# 검정이 너무 무거워 판의 네이비를 쓴다.
+const BEST_PLATE_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)
+const BEST_PLATE_LABEL_OUTLINE_FRAC := 0.16   # 글자 크기 대비
 const BEST_PLATE_TEXT_FRAC := 0.075    # 판 너비 대비 — 라벨과 숫자 모두
 const BEST_PLATE_ICON_FRAC := 1.28     # 글자 크기 대비 왕관 높이
 const BEST_PLATE_ICON_GAP_FRAC := 0.40
@@ -262,6 +269,13 @@ func panel_texture_width() -> int:
 	return 470
 
 
+## 리본 위의 신기록 문구. 여섯 군데에서 쓰이는데 전부 같은 문자열이어야 한다 —
+## 글자를 하나씩 휘어 그리는 코드가 섞여 있어, 한 군데라도 다른 문자열을 재면
+## 글자 수와 그리는 자리가 어긋난다.
+func _best_label() -> String:
+	return tr(BEST_TEXT)
+
+
 func _build_content() -> void:
 	_ribbon = _load_icon_from(RIBBON_FILE, Vector2i(1, 1), 0, RIBBON_TEXTURE_HEIGHT)
 	_measure_ribbon_curve()
@@ -313,7 +327,7 @@ func _build_content() -> void:
 	_combo_box.draw.connect(_draw_combo_box)
 	add_child(_combo_box)
 
-	_play_button = _make_button(GOLD_FILE, GOLD_CORNER, PLAY_BUTTON_TEXT,
+	_play_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(PLAY_BUTTON_TEXT),
 		_load_popup_icon(POPUP_ICON_RESTART), true)
 	_play_button.pressed.connect(func(): play_again_pressed.emit())
 	add_child(_play_button)
@@ -323,12 +337,12 @@ func _build_content() -> void:
 	_google_button.pressed.connect(_on_google_button_pressed)
 	add_child(_google_button)
 
-	_share_button = _make_button(CREAM_FILE, CREAM_CORNER, SHARE_TEXT,
+	_share_button = _make_button(CREAM_FILE, CREAM_CORNER, tr(SHARE_TEXT),
 		_load_icon(ICON_SHARE), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
 	_share_button.pressed.connect(func(): share_pressed.emit())
 	add_child(_share_button)
 
-	_home_button = _make_button(CREAM_FILE, CREAM_CORNER, "HOME",
+	_home_button = _make_button(CREAM_FILE, CREAM_CORNER, tr("HOME"),
 		_load_icon(ICON_HOME), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
 	_home_button.pressed.connect(func(): home_pressed.emit())
 	add_child(_home_button)
@@ -391,7 +405,7 @@ func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
 	# 왼쪽 크림 버튼은 로그인 여부로 얼굴을 바꾼다. 글자 길이가 달라지므로
 	# _layout()이 크기를 다시 재도록 그 전에 갈아끼운다.
 	var caption: Label = _google_button.get_node("Caption")
-	caption.text = LEADERBOARD_TEXT if logged_in else GOOGLE_TEXT
+	caption.text = tr(LEADERBOARD_TEXT) if logged_in else GOOGLE_TEXT
 	var icon: TextureRect = _google_button.get_node("Icon")
 	icon.texture = _trophy_icon if logged_in else _google_icon
 	_layout()
@@ -487,7 +501,7 @@ func _layout_content(inner: Rect2) -> void:
 	var text_room: float = char_left - _trophy_rect.end.x - BEST_TEXT_SIDE_PAD * 2.0
 	_best_font = int(round(ribbon_h * BEST_TEXT_MAX_FRAC))
 	while _best_font > BEST_TEXT_MIN and _font_heavy.get_string_size(
-			BEST_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x > text_room:
+			_best_label(), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x > text_room:
 		_best_font -= 1
 	_top_row.queue_redraw()
 	y += top_row_h + gap
@@ -596,8 +610,7 @@ func _draw_best_plate() -> void:
 	# 바탕(_best_plate)은 9-slice 노드라 여기서는 내용만 그린다.
 	var fs := _best_plate_font
 	var value := _group(_best)
-	var label_w: float = _font_bold.get_string_size(
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var label_w: float = _best_label_width(fs)
 	var icon_h: float = fs * BEST_PLATE_ICON_FRAC
 	var icon_w := 0.0
 	var icon_gap := 0.0
@@ -614,17 +627,34 @@ func _draw_best_plate() -> void:
 		x += icon_w + icon_gap
 	# draw_string은 베이스라인 기준이라 대문자 높이의 절반만큼 내린다.
 	var baseline: float = centre_y + fs * 0.35
-	_top_row.draw_string(_font_bold, Vector2(x, baseline),
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+	var ring: int = _best_label_ring(fs)
+	# 테두리는 글자 양옆으로 번지므로 label_w 가 그 몫까지 품고 있다. 글자
+	# 자체는 그 안쪽에서 시작해야 왼쪽으로 치우치지 않는다 — 커서 x 는 건드리지
+	# 않는다. 숫자 자리가 그것을 기준으로 잡히기 때문이다.
+	var label_x: float = x + ring
+	_top_row.draw_string_outline(_font_bold, Vector2(label_x, baseline),
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, INK)
+	_top_row.draw_string(_font_bold, Vector2(label_x, baseline),
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
 	_top_row.draw_string(_font_heavy, Vector2(x + label_w + text_gap, baseline),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+
+
+# 테두리 두께. 재는 쪽과 그리는 쪽이 같은 값을 써야 한다.
+func _best_label_ring(fs: int) -> int:
+	return maxi(1, int(round(fs * BEST_PLATE_LABEL_OUTLINE_FRAC)))
+
+
+# "BEST" 가 차지하는 폭 — 테두리가 글자 양옆으로 번지는 몫까지.
+func _best_label_width(fs: int) -> float:
+	return _font_bold.get_string_size(
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + _best_label_ring(fs) * 2.0
 
 
 # 왕관 + BEST + 숫자를 합친 폭. 배지 크기를 정할 때와 그릴 때가 같은
 # 값을 써야 내용이 가운데에 정확히 선다.
 func _best_plate_group_width(fs: int) -> float:
-	var w: float = _font_bold.get_string_size(
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var w: float = _best_label_width(fs)
 	w += fs * 0.42
 	w += _font_heavy.get_string_size(
 		_group(_best), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
@@ -642,7 +672,7 @@ func _gap_line_text() -> String:
 		return ""
 	if float(_score) < float(_best) * GAP_LINE_MIN_RATIO:
 		return ""
-	return GAP_LINE_FORMAT % _group(_best - _score)
+	return tr(GAP_LINE_FORMAT) % _group(_best - _score)
 
 
 # NEW BEST!를 리본의 휨을 따라 한 자씩 얹는다.
@@ -654,18 +684,18 @@ func _draw_best_text() -> void:
 		return
 	var ci := _top_row.get_canvas_item()
 	var full_w: float = _font_heavy.get_string_size(
-		BEST_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
+		_best_label(), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
 	var start_x: float = _ribbon_rect.position.x + (_ribbon_rect.size.x - full_w) * 0.5
 	# 기울기를 잴 때 쓸 아주 작은 가로 간격.
 	var du: float = 1.0 / float(RIBBON_CURVE_SAMPLES - 1) * 0.5
 	var prev_w := 0.0
-	for i in range(BEST_TEXT.length()):
+	for i in range(_best_label().length()):
 		var next_w: float = _font_heavy.get_string_size(
-			BEST_TEXT.substr(0, i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
+			_best_label().substr(0, i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
 		var advance: float = next_w - prev_w
 		var cx: float = start_x + (prev_w + next_w) * 0.5
 		prev_w = next_w
-		if BEST_TEXT[i] == " ":
+		if _best_label()[i] == " ":
 			continue
 		var u: float = (cx - _ribbon_rect.position.x) / _ribbon_rect.size.x
 		# 띠 중심 + 대문자 높이의 절반 = 베이스라인. draw_char는 베이스라인
@@ -678,7 +708,7 @@ func _draw_best_text() -> void:
 		var angle: float = atan2(dy, dx)
 		_top_row.draw_set_transform_matrix(Transform2D(angle, baseline))
 		_font_heavy.draw_char(ci, Vector2(-advance * 0.5, 0.0),
-			BEST_TEXT.unicode_at(i), _best_font, INK)
+			_best_label().unicode_at(i), _best_font, INK)
 	_top_row.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
@@ -736,17 +766,17 @@ func _box_row_width(icon: Texture2D, text: String, font_size: int) -> float:
 func _draw_login_box() -> void:
 	var colour := LOGIN_BOX_COLOR
 	var icon := _lock
-	var text := LOGIN_BOX_TEXT
+	var text := tr(LOGIN_BOX_TEXT)
 	if _logged_in and _revived:
 		# 로그인 전에는 부활 여부를 말해 봐야 소용이 없다 — 애초에 올라갈
 		# 순위표가 없으니, 로그인 권유를 그대로 두는 편이 쓸모 있다.
 		colour = REVIVED_BOX_COLOR
 		icon = _info
-		text = REVIVED_BOX_FORMAT % _group(_leaderboard_score)
+		text = tr(REVIVED_BOX_FORMAT) % _group(_leaderboard_score)
 	elif _logged_in:
 		colour = SAVED_BOX_COLOR
 		icon = _check
-		text = SAVED_BOX_TEXT if _is_new_record else STANDING_BOX_TEXT
+		text = tr(SAVED_BOX_TEXT) if _is_new_record else tr(STANDING_BOX_TEXT)
 	_draw_box(_login_box, colour)
 	# 상태마다 문구 길이가 꽤 다르다("Saved to Leaderboard"는 스무 자,
 	# 부활 안내는 마흔 자가 넘는다). 상자에 들어올 때까지 글자를 줄인다.
@@ -771,7 +801,7 @@ func _on_google_button_pressed() -> void:
 # 상자의 오른쪽이 통째로 비어 보인다.
 func _draw_combo_box() -> void:
 	_draw_box(_combo_box, COMBO_BOX_COLOR)
-	_draw_box_row(_combo_box, _fire, COMBO_LABEL, _combo_font, BOX_PAD)
+	_draw_box_row(_combo_box, _fire, tr(COMBO_LABEL), _combo_font, BOX_PAD)
 	var value := "x%d" % _max_combo
 	var vw: float = _font_heavy.get_string_size(
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _combo_font).x
@@ -785,7 +815,7 @@ func _draw_combo_box() -> void:
 func _draw_score_row() -> void:
 	var extra := _gap_line_text()
 	var label_w: float = _font_bold.get_string_size(
-		SCORE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font).x
+		tr(SCORE_LABEL), HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font).x
 	var value := _group(_score)
 	var value_w: float = _font_heavy.get_string_size(
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font).x
@@ -797,7 +827,7 @@ func _draw_score_row() -> void:
 		top_h -= GAP_LINE_TOP + _gap_line_font * 1.25
 	var baseline: float = top_h * 0.5 + _score_value_font * 0.35
 	_score_row.draw_string(_font_bold, Vector2(x, baseline),
-		SCORE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font, INK)
+		tr(SCORE_LABEL), HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font, INK)
 	_score_row.draw_string(_font_heavy, Vector2(x + label_w + gap, baseline),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font, INK)
 	if extra == "":

@@ -10,7 +10,7 @@ extends Node2D
 @export_range(-500.0, -20.0, 1.0) var flap_velocity: float = -300.0
 @export_range(50.0, 1500.0, 10.0) var gravity: float = 1000.0
 @export_range(50.0, 1200.0, 10.0) var max_fall_speed: float = 300.0
-@export_range(80.0, 800.0, 10.0) var base_gate_spacing: float = 600.0
+@export_range(80.0, 1600.0, 10.0) var base_gate_spacing: float = 900.0
 
 # Caps how far apart (as a fraction of full screen height) two consecutive
 # gate targets can be — stops extreme "top then straight to bottom" rolls,
@@ -18,23 +18,84 @@ extends Node2D
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_early: float = 0.5   # Phase 1-2
 @export_range(0.1, 1.0, 0.01) var max_move_ratio_late: float = 0.65   # Phase 3-4
 
+## 배치가 "플레이어가 여기까지 올 수 있나"를 따질 때 가정하는 탭 간격(초).
+## 탭은 속도를 더하는 게 아니라 flap_velocity 로 덮어쓰므로, 간격 t 로 계속
+## 두드릴 때 유지되는 상승률은 |flap_velocity| - gravity*t/2 다 — 빨리 두드릴
+## 수록 빨라지고, 정점에서 치면(t = |flap|/gravity = 0.30) 가장 느리다:
+##   0.30 -> 150px/s  정점에서 톡톡, 가장 자연스러운 리듬
+##   0.25 -> 175px/s  기본값
+##   0.20 -> 200px/s
+##   0.15 -> 225px/s  거의 연타
+## 느긋하게 치는 사람도 통과할 수 있어야 하므로 느린 쪽에 가깝게 잡는다.
+## 낮출수록 게이트가 위아래로 과감하게 놓이고, 그만큼 빨리 두드려야 한다.
+@export_range(0.05, 0.5, 0.01) var reach_tap_interval: float = 0.25
+
+## 가속 보너스 판정. 게이트 통과 순간 보너스 바에 남아 있는 비율로 배율을 정하고,
+## 그 배율이 그대로 통과 점수에 곱해진다:
+##   Score += (SCORE_PER_COMBO × 콤보) × (1 + 가속배율)
+##
+##   남은 비율 >= best_threshold -> best_multiplier
+##   남은 비율 >= mid_threshold  -> mid_multiplier
+##   그 아래                     -> none_multiplier
+##
+## 기본값은 임의의 반올림 수치가 아니라 실제로 도달 가능한 구간에서 뽑았다.
+## 가속을 한 번도 안 쓰면 바는 7.3% 만 남고(게이트가 스폰되는 순간 항상 걸리는
+## 통과 가속 덕에 정확히 0 은 아니다), 비행 내내 붙잡고 있으면 57.3% 가 남는다.
+## 즉 채점축 전체가 7.3~57.3% 이고, 경계는 그 안에 있어야 의미가 생긴다.
+##   mid  0.12 — 무가속 바닥(7.3%)보다는 위, 0.15 초짜리 짧은 탭(15.7%)보다는
+##               아래. 조금이라도 의미 있게 쓰면 10점이 붙는다.
+##   best 0.48 — 비행의 약 3분의 2 이상을 붙잡고 있어야 닿는다(70% 홀드 =
+##               49.9%). 천장 57.3% 를 그대로 쓰면 한 프레임만 놓쳐도 떨어지므로
+##               조금 낮춰 잡았다.
+## tools/check_boost_bar_range.gd 가 이 수치를 다시 뽑아 검증한다 — 가속 배율,
+## GATE_SPEED, base_gate_spacing 중 하나라도 바꾸면 축이 통째로 움직이므로 그
+## 스크립트를 다시 돌려 경계를 옮겨야 한다.
+@export_range(0.0, 1.0, 0.01) var boost_bonus_mid_threshold: float = 0.12
+@export_range(0.0, 1.0, 0.01) var boost_bonus_best_threshold: float = 0.48
+## 배율 0 = 보너스 없음(기본 점수 그대로), 1.0 = 기본 점수의 두 배.
+@export_range(0.0, 5.0, 0.05) var boost_bonus_none_multiplier: float = 0.0
+@export_range(0.0, 5.0, 0.05) var boost_bonus_mid_multiplier: float = 0.5
+@export_range(0.0, 5.0, 0.05) var boost_bonus_best_multiplier: float = 1.0
+
 # Three planned game concepts sharing this same tap/gate mechanic, picked at
 # the mode-select screen (see State.MODE_SELECT/_apply_mode below): SKY (red
 # bird + sky gate, flag quiz), JUNGLE (green dragon + jungle gate, math quiz
 # — not built yet, flag quiz stands in), OCEAN (blue shark + ocean gate, quiz
-# type undecided — flag quiz stands in). ThemeMotion is the gate-pass
-# themed-object particle's motion (see the FX const block further down) —
-# it varies per concept the same way the character/gate art does.
+# type undecided — flag quiz stands in).
 enum Mode { SKY, JUNGLE, OCEAN, DREAM }
-enum ThemeMotion { SCATTER, FLUTTER, RISE_SWAY }
 
 # DREAM (unicorn + dream world, working title) is the newest concept and its
 # art is still being drawn. Every MODE_* array below therefore carries SKY's
 # entry in the DREAM slot: the mode boots, plays and is selectable today,
 # wearing the bird's costume, and each row gets swapped for real dream art as
-# it lands. Its quiz is the flag quiz, shared with SKY — see _spawn_gate,
-# where anything that is not JUNGLE or OCEAN falls through to it.
-# Search MODE_ to find every row that still needs replacing.
+# it lands. Search MODE_ to find every row that still needs replacing.
+#
+# Its QUIZ, though, is its own: DREAM is the MIX mode and rolls all three.
+
+# 어느 퀴즈를 내는가는 게이트의 성질이지 모드의 성질이 아니다.
+#
+# 세 단일 모드에서는 둘이 같은 말이었고, 그리는 쪽도 current_mode 를 보고
+# "이건 국기니까 그림, 이건 수학이니까 글자" 를 정했다. MIX 는 게이트마다
+# 다른 것을 물으므로 그 등식이 깨진다 — 이미 지나간 게이트를 그릴 때조차
+# 그 게이트가 무엇을 물었는지 알아야 하고, current_mode 는 그걸 모른다.
+# 그래서 종류는 게이트 딕셔너리에 실려 다닌다(gate.quiz_kind).
+enum QuizKind { FLAG, MATH, STROOP }
+
+# Mode 와 index-align. DREAM 자리의 값은 쓰이지 않는다 — 하나로 정해지지
+# 않는 것이 MIX 의 정의이고, _next_quiz_kind 가 거기서 갈래를 친다. 배열
+# 정렬을 깨지 않으려고 자리만 채워 둔 것으로, MODE_PARTICLE_COUNT[SKY] 의
+# 0 과 같은 규칙이다.
+const MODE_QUIZ_KIND := [QuizKind.FLAG, QuizKind.MATH, QuizKind.STROOP, QuizKind.FLAG]
+
+# MIX 가 뽑을 순서를 담는 주머니. 셋을 섞어 넣고 하나씩 꺼내며, 비면 다시
+# 섞어 채운다.
+#
+# randi() % 3 이 아닌 이유: 그러면 같은 퀴즈가 네 번 이어질 확률이 게이트마다
+# 1.2% 라, 한 판에 한 번쯤은 일어난다. 그 구간에서 MIX 는 섞이는 모드가
+# 아니라 고장난 모드로 보인다. 주머니는 세 게이트마다 셋이 정확히 한 번씩
+# 나오게 하면서, 주머니가 바뀌는 자리에서만 같은 것이 두 번 이어지도록
+# 둔다 — 두 번은 반갑고(머리를 한 번 덜 바꾼다) 세 번은 나올 수 없다.
+var mix_quiz_bag: Array[int] = []
 
 # ---- OCEAN mode: Stroop colour quiz (see the OCEAN_* const block and
 # _make_color_problem / _draw_ocean_quiz_box further down) ----
@@ -157,7 +218,17 @@ const HAPPY_POP_SCALE_PEAK := 1.12
 const HAPPY_POP_BOUNCE_HEIGHT := 8.0  # px, screen-space upward draw offset at the envelope's peak
 
 const GATE_WIDTH := 130.0
-const GATE_SPEED := 130.0  # halved for testing — was 260.0
+## 월드 스크롤 속도. 배경/파티클/스피드라인이 전부 이 값의 배수로 움직이므로
+## 이것 하나가 게임 전체의 체감 속도다. 130 은 "절반으로 줄여 테스트" 하던
+## 값이었고, 부스트를 안 쓰면 느리다는 지적을 받아 200 으로 올렸다.
+##
+## base_gate_spacing 과 짝이다: 게이트 하나에서 다음까지 걸리는 시간이
+## spacing / GATE_SPEED 이고, _spawn_gate 의 도달 가능 거리가 전부 거기서
+## 나온다. 속도만 올리고 간격을 그대로 두면 그 시간이 줄어 배치가 좁아지므로,
+## 둘은 비율을 유지한 채 같이 움직여야 한다 (130/600 -> 200/900, 4.62초 ->
+## 4.50초). 바꾸면 tools/check_boost_bar_range.gd 를 다시 돌릴 것 — 보너스
+## 채점축이 이 비율 위에 서 있다. PARTICLE_DRIFT_X_RATIO 도 마찬가지다.
+@export_range(60.0, 500.0, 5.0) var GATE_SPEED: float = 200.0
 # The center wall doubles as the fixed 30-40px buffer between the top and
 # bottom gates (see _gate_wall_center_y) — its own thickness IS that buffer,
 # so widening it here is the whole fix; nothing else needs to change.
@@ -192,7 +263,6 @@ const SMOOTH_WORLD_FILTER := true
 # them into the actual bounds gate spawning/clamping/drawing use.
 # ============================================================
 const HUD_BAR_HEIGHT := 100.0        # fallback-only: the plain bar drawn when the score box art is missing
-const HUD_SIDE_MARGIN := 12.0
 const HUD_BAR_COLOR := Color(1.0, 1.0, 1.0, 0.3)
 const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallback draw only)
 # Top HUD: one row of pause | score box | mute, with the quiz box directly
@@ -243,9 +313,16 @@ const HUD_BUTTON_Y_OFFSET := 0.0     # nudge both buttons down (+) or up (-) fro
 # 높아진(안쪽 면 정렬용 여백) 만큼 올려, 눈에 보이는 박스 크기는 그대로다.
 # The quiz TEXT does not grow with it; see QUIZ_TEXT_*_FONT_FRAC.
 const QUIZ_BOX_HEIGHT_STRETCH := 1.429
-# Canvas sizes the slicer produced — see tools/slice_hud_sheet_v5.gd, which
-# prints them. Used for layout maths and as the aspect fallback when a
-# texture is missing; the real texture's size wins when it is loaded.
+# 세 조각의 '그려질 비율'. 아트를 재서 나온 값이 아니라 정해 둔 값이고, 지금은
+# 어느 것도 실제 아트와 크기가 다르다 — 그래서 여기 적혀 있다.
+#
+# 원래는 hud_sheet_v5 를 자른 캔버스 크기였는데, 그 아트가 v3 조각들로 바뀌면서
+# 숫자만 남았다. 바꾸지 않은 것은 셋 다 아트 비율을 따르면 안 되는 자리이기
+# 때문이다 — 점수 박스와 퀴즈 박스는 9-slice 로 늘려 그리므로 원본 비율을
+# 따르면 각각 세 배, 1.6 배로 두꺼워진다(_score_box_rect / _quiz_box_rect 의
+# 주석 참고). 즉 이 셋은 측정값이 아니라 튜닝값이다.
+#
+# 아트가 없을 때의 대체 비율로도 쓰인다 — 실제 텍스처가 있으면 그쪽이 이긴다.
 const SCORE_BOX_SRC := Vector2(937.0, 135.0)
 const QUIZ_BOX_SRC := Vector2(1190.0, 117.0)
 const HUD_BUTTON_SRC := Vector2(117.0, 109.0)
@@ -294,7 +371,67 @@ const QUIZ_TEXT_MIN_FONT_FRAC := 0.030    # of box width — floor for very long
 # sits 0.355 em above the baseline. Centring on the cap band rather than on
 # the full ink box keeps strings with descenders from jumping upward.
 const QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC := 0.355
-const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's bottom edge, if ever wanted again
+# ============================================================
+# Boost bonus bar — the readout for the hold-to-accelerate button, sitting
+# in its own band between the quiz box and the gate zone.
+#
+# It is a clock, not a progress meter. On every gate spawn it fills to 100%
+# and drains at a FIXED rate over T_base — how long that gate takes to
+# reach the judge line at the base scroll rate, boost excluded. Holding
+# boost does not change the drain; it moves the gate to the player sooner,
+# so the bar still has something left when the pass is judged. That
+# leftover is the whole signal: remaining = 1 - T_actual / T_base.
+#
+# So MORE remaining means MORE boost, and the bands run that way: grey at
+# the empty end (never touched the button), gold at the full end (held it
+# for most of the flight). The reachable span is narrower than the track —
+# see the boost_bonus_* exports for the measured numbers and why the
+# thresholds sit where they do.
+#
+# The band is carved out of the gate zone (GATE_ZONE_TOP_BUFFER below,
+# previously 0.0), so the playable lane is that much shorter now.
+# ============================================================
+const BOOST_BAR_GAP := 5.0            # quiz box bottom edge -> bar top
+const BOOST_BAR_HEIGHT := 16.0        # was 10 — the track art carries a painted rim that mushed together any thinner
+const BOOST_BAR_BOTTOM_GAP := 5.0     # bar bottom -> gate zone top
+const BOOST_BAR_SIDE_MARGIN := 16.0   # inset from the quiz box's own left/right edges
+# Painted art, cut from assets/ui_assets/boost_bar_sheet.png by
+# tools/slice_boost_bar_sheet.ps1: an empty track plus one fill per tier,
+# grey/yellow/orange. Both are drawn through _draw_horizontal_slice, so the
+# rounded ends stay round at any width and only the middle stretches.
+const BOOST_BAR_TRACK_PATH := "res://assets/ui_assets/boost_bar/track.png"
+const BOOST_BAR_FILL_PATHS := [
+	"res://assets/ui_assets/boost_bar/fill_none.png",  # bonus 0 — 무채색
+	"res://assets/ui_assets/boost_bar/fill_mid.png",   # mid tier — 노랑
+	"res://assets/ui_assets/boost_bar/fill_best.png",  # best tier — 골드/주황
+]
+# The art's own proportions: the track is 142px tall on the sheet and the
+# fills 92px, so the rim is (142-92)/2 = 25px, or 0.176 of the track height.
+# Insetting the fill by that on every side is what seats it in the well
+# instead of covering the rim, at whatever height the bar is drawn.
+const BOOST_BAR_FILL_INSET_FRAC := 0.176
+# Kept for the judged-tier flash and the BOOST/TURBO popup, which both need
+# a colour rather than a texture. Named for the TIER they mean, not for where
+# they sit, so flipping a threshold cannot leave a colour saying the wrong
+# thing. Sampled from the fill art above.
+#
+# These ARE the tier palette — the popup builds its colours from them further
+# down, so the bar and the popup cannot drift into telling the same three
+# tiers in two different sets of colours. Changing one here means recolouring
+# the fill art to match; git has a slicer pass that did exactly that for a
+# cyan/orange-red scheme, reverted because yellow/orange read better.
+const BOOST_BAR_ZONE_NONE_COLOR := Color(0.66, 0.68, 0.72)
+const BOOST_BAR_ZONE_MID_COLOR := Color(0.98, 0.84, 0.27)
+const BOOST_BAR_ZONE_BEST_COLOR := Color(1.0, 0.60, 0.13)
+# Threshold ticks, drawn over the track. Dark rather than white now — the
+# track's well is cream, and a white line vanished into it.
+const BOOST_BAR_DIVIDER_COLOR := Color(0.09, 0.13, 0.28, 0.75)
+const BOOST_BAR_DIVIDER_WIDTH := 2.0
+const BOOST_BAR_FLASH_DURATION := 0.3   # highlight held after a pass is judged
+const BOOST_BAR_FLASH_ALPHA := 0.85
+# Was 0.0 — the quiz box sat flush on the gate zone. The boost bar needs a
+# band of its own, and this is it.
+const GATE_ZONE_TOP_BUFFER := BOOST_BAR_GAP + BOOST_BAR_HEIGHT + BOOST_BAR_BOTTOM_GAP
 
 # Gate-pass speed boost: on a successful pass, GATE_SPEED is briefly
 # multiplied up (all gates scroll faster for an instant, world-rush style)
@@ -307,6 +444,294 @@ const GATE_ZONE_TOP_BUFFER := 0.0    # extra gap beyond the quiz box's bottom ed
 const GATE_SPEED_BOOST_PEAK := 3.2       # multiplier on GATE_SPEED at the instant of passing
 const GATE_SPEED_BOOST_HOLD := 0.06      # seconds held at full peak before it starts decaying
 const GATE_SPEED_BOOST_DURATION := 0.5   # total seconds (including the hold) to ease back down to 1.0x
+
+# ============================================================
+# Hold-to-accelerate button (bottom-right).
+#
+# Sits alongside the tap-anywhere flap rather than replacing any part of
+# it: the button is a Control with the default STOP mouse filter, so Godot
+# marks a press on it as handled and _unhandled_input — where the flap
+# lives — never sees it. Nothing about the flap/gravity path changes.
+#
+# The multiplier stacks on top of the gate-pass jolt rather than replacing
+# it (see _gate_speed_multiplier), so passing a gate while holding still
+# gives its kick. Release is instant: the multiplier is read fresh every
+# frame off boost_button_held, there is no decay envelope.
+#
+# It speeds the WORLD (gates + trail), not the character's own physics —
+# player_y/player_vel/gravity/flap_velocity are untouched, which is what
+# keeps this from being a difficulty rebalance. The background parallax
+# also stays at base rate, matching how the gate-pass jolt already
+# behaves (see the GATE_SPEED comment on the parallax ratios).
+# ============================================================
+const BOOST_BUTTON_MULTIPLIER := 2.0   # world speed while held
+
+# ---- Speed feel while the button is down ----
+# Two layers:
+#   1. the background parallax speeds up (it did NOT before — the gate-pass
+#      jolt deliberately leaves the background alone, and that exclusion was
+#      inherited by the hold, which made a 2x world scroll past a still sky)
+#   2. the sparkle trail emits faster, so the streak behind the character
+#      thickens instead of just spacing out
+#
+# Layer 2 rides boost_visual_blend rather than the raw bool: the world
+# snapping back to 1x on release is the correct physics, but having the look
+# snap with it reads as a glitch. The blend eases OUT slower than it eases in
+# for the same reason.
+const BOOST_VISUAL_BLEND_IN := 0.10    # seconds to reach the full boost look
+const BOOST_VISUAL_BLEND_OUT := 0.20   # ...and to drop back out of it
+# How much of the hold's speed-up the background takes. 1.0 = exactly as
+# fast as the gates. Drop it if the far layers feel frantic; the gate-pass
+# jolt is still excluded either way, so only a sustained hold moves this.
+const BOOST_BG_SPEED_SHARE := 1.0
+const BOOST_TRAIL_INTERVAL_SCALE := 0.5  # trail emission interval multiplier at full blend
+
+# --- Boost speed lines: thin streaks sweeping right-to-left in a band at
+# the top and bottom of the play area, only while the button is held. Whole
+# feature = these consts + speed_line_texture/boost_speedlines +
+# _init_boost_speedlines/_update_boost_speedlines/_draw_boost_speedlines +
+# their call sites + assets/fx/speed_lines/. Delete those to remove it.
+#
+# Not to be confused with fx_speed_lines, which is the gate-pass flourish:
+# code-drawn rects that live 0.13s around the character. This is a
+# persistent field of painted streaks at the screen edges, and the two never
+# interact.
+#
+# The whole design problem is that it must add speed without adding
+# anything the player has to look past, so three separate things keep it out
+# of the way rather than one:
+#
+#   1. It draws immediately after the background, BEHIND every gate, the
+#      character and all gameplay FX. Nothing it does can obscure a gate,
+#      because a gate is painted over it.
+#   2. It is confined to two bands hugging the top and bottom of the gate
+#      zone, so the middle — where the lanes are read and the character
+#      flies — stays empty.
+#   3. Alpha tops out low and is multiplied by boost_visual_blend, so it
+#      fades in and out with the rest of the boost look and is simply not
+#      there the rest of the time.
+#
+# Speed is the point, so it is set against what else is moving rather than
+# picked: gates run at GATE_SPEED x BOOST_BUTTON_MULTIPLIER = 400px/s while
+# held, and the near background layer at 0.50 of GATE_SPEED = 100. These go
+# 900-1500, roughly 2.3-3.8x the gates. Anything near the gates' own rate
+# reads as more scenery instead of as speed, and the spread across the range
+# is what stops the band moving like one sheet.
+const BOOST_SPEEDLINE_TEXTURE_PATH := "res://assets/fx/speed_lines/speed_line_strip.png"
+const BOOST_SPEEDLINE_COUNT := 12          # split evenly between the two bands
+const BOOST_SPEEDLINE_SPEED_RANGE := Vector2(900.0, 1500.0)   # px/s, leftward
+const BOOST_SPEEDLINE_LENGTH_RANGE := Vector2(180.0, 360.0)
+const BOOST_SPEEDLINE_THICKNESS_RANGE := Vector2(12.0, 26.0)
+# Height of each band, measured in from the gate zone's own top and bottom
+# edges. 64 of the zone's ~666px leaves the middle 80% clear.
+const BOOST_SPEEDLINE_BAND_HEIGHT := 64.0
+# Per-streak variation on top of the mode's peak, so the band is not a set
+# of identical lines.
+const BOOST_SPEEDLINE_ALPHA_SCALE_RANGE := Vector2(0.45, 1.0)
+
+@export_group("Boost Speed Lines")
+# One white strip, tinted per mode at draw time — there is no coloured
+# variant of the art and there should not be, because a modulate is free and
+# four PNGs of the same streaks would have to be re-cut together forever.
+#
+# Exported rather than const so the palette is tunable in the Inspector
+# without a code edit; the alpha channel of each swatch is that mode's peak
+# strength, so one colour picker covers both hue and how loud it is.
+#
+# The RGB values are the requested theme colours. The alphas are not
+# arbitrary: a line only reads by differing in luma from what it crosses,
+# and the measured mean luma inside the two bands is JUNGLE 0.37,
+# OCEAN 0.53, SKY 0.68, DREAM 0.86. Solving each backwards for a common
+# ~15% luma shift gives the numbers below —
+#
+#   mode     line luma   band luma   alpha for 15%
+#   SKY        0.80        0.68        1.24  -> capped at 1.0 (12.1%)
+#   JUNGLE     0.81        0.37        0.34
+#   OCEAN      0.76        0.53        0.65
+#   DREAM      0.78        0.86        1.96  -> capped at 1.0 (7.7%)
+#
+# — so SKY and especially DREAM cannot reach it with these hues at all,
+# because a pale line on a pale backdrop has nowhere to go. They are pinned
+# at 1.0 and will read fainter than the other two. Darkening those two
+# swatches is what would fix it, and is an art-direction call rather than a
+# tuning one. boost_speedline_intensity below scales all four together.
+@export var boost_speedline_color_sky: Color = Color("a8d8f0", 1.0)
+@export var boost_speedline_color_jungle: Color = Color("c4e86b", 0.34)
+@export var boost_speedline_color_ocean: Color = Color("7fe0d8", 0.65)
+@export var boost_speedline_color_dream: Color = Color("d8b8f0", 1.0)
+# The "is the whole thing loud enough" knob, over all four at once. An
+# @export because a still frame cannot answer it — 900-1500px/s in the
+# corner of the eye reads far stronger in motion than it looks in a
+# screenshot, and only playing it settles which way this should go.
+@export_range(0.0, 2.5, 0.05) var boost_speedline_intensity: float = 1.0
+@export_group("")  # closes "Boost Speed Lines"
+
+# --- Boost burst: an exhaust plume fired out of the character's back, lit on
+# the press and burning for as long as the button is down. Whole feature =
+# these consts + boost_burst_frames/boost_burst_elapsed + _draw_boost_burst +
+# its call sites in _on_boost_pressed/_update_fx/_reset_game/_apply_mode/
+# _draw() + the art in assets/fx/boost_burst/. Delete those to remove it.
+#
+# It has a shape the hold flag alone does not: ignition, sustain, cutoff. So
+# it keeps its own clock rather than reading boost_visual_blend — a blend is
+# a single number easing between two values, with no way to say "play the
+# opening once, then hold this middle part". See _update_fx for how the
+# three parts are cut out of one 5-frame run.
+#
+# 5 frames on one row, 300x256 cells, one strip per mode. Sliced at runtime
+# by _slice_spritesheet like the character sheets rather than cut by a tool
+# into separate files: it is an animation strip, which is the same thing
+# those are, and the cell grid is regular. The strips themselves ARE built by
+# a tool (tools/build_boost_burst_strips.ps1) because this art arrived as
+# loose frames — that script also bakes the soft edge, since there is no
+# runtime blur here.
+#
+# The art replaced a symmetric ring, and it is directional: the flame's head
+# points right and its tail streams left, registered so the head holds still
+# while the tail lengthens. That is what dictates the two geometry rules
+# below and the draw order — see _draw_boost_burst.
+#
+# It stays STUCK TO THE CHARACTER for its whole run — there is no world
+# position and no drift. The ring before it did the opposite, staying where
+# it went off and sliding left with the world plus a recoil, so the
+# character flew out of its own blast; that suited a blast, but this is a
+# thruster, and a thruster that detaches from the thing it is thrusting
+# reads as debris. So the head is recomputed from the character every frame
+# (_boost_burst_head) instead of being stored at the press.
+const BOOST_BURST_DIR := "res://assets/fx/boost_burst/"
+const BOOST_BURST_FILE_PER_MODE := ["boost_effect_sky.png", "boost_effect_jungle.png", "boost_effect_ocean.png", "boost_effect_dream.png"]
+const BOOST_BURST_SHEET_GRID := Vector2i(5, 1)
+# Fraction of the animation after which it eases to nothing. Late, because
+# this art dissipates on its own — its last frame is already just scattered
+# embers, and that frame is 20% of a 5-frame run. Fading from any earlier
+# thins frame 4, which is still a full plume and still the thing being
+# looked at. (Was 0.55 for the 6-frame ring, whose tail was longer.)
+const BOOST_BURST_FADE_START := 0.8
+
+# Drawn WIDTH, as a multiple of PLAYER_VISUAL_SIZE.x, and deliberately NOT
+# of the character's own per-mode scale — that is what kept the same effect
+# a different size in each mode. Height follows from the cell's own aspect
+# (see _draw_boost_burst); a square rect would squash a 300x256 plume. The
+# art already grows and thins across its own frames, so nothing here
+# animates scale.
+#
+# Per-mode, though three of the four share a value. This was one shared
+# number on the reasoning that "how big the boost reads" should not depend
+# on the character — DREAM is the exception that broke it, for a reason in
+# the art rather than in taste: its v2 strip is cut on a 400x256 cell where
+# the others are 300x256, so at equal WIDTH its plume is drawn a quarter
+# shorter vertically. 0.92 buys that height back.
+#
+# How much the player sees also varies, since the plume runs from its head
+# backward and whatever sits under the body is hidden:
+#
+#   SKY 64px   JUNGLE 60px   OCEAN 68px   DREAM 77px (7px of it off screen)
+#
+# It has come down from 1.35 through 1.08, 0.95 and 0.88 to here. Those
+# figures move whenever MODE_BOOST_BURST_HEAD_OFFSET does, so recompute from
+# that rather than trusting a number in an older comment.
+const MODE_BOOST_BURST_SIZE_SCALE := [0.82, 0.82, 0.82, 0.92]
+# Where the plume's HEAD sits at the moment it fires, as a multiple of
+# PLAYER_VISUAL_SIZE.x measured forward from the character's centre.
+#
+# The head is what needs placing, not the centre: the tail grows backward
+# out of a head the art holds still, so anchoring the centre would slide the
+# whole thing forward as the plume lengthens.
+#
+# Two limits bound it, and which one binds depends on the character:
+#
+#   Forward, the head has to stay under the body, or the flame stops
+#   reading as coming from behind and becomes something the character is
+#   holding in its beak. Each mode's own width sets this, so the stop is
+#   different for each: PLAYER_X - 50*MODE_VISUAL_SIZE_SCALE, which is -0.46
+#   for SKY's narrow bird but -0.60 for DREAM's wide unicorn.
+#
+#   Backward, PLAYER_X is only 130, so there are just 130px of screen left
+#   of the character's centre for the plume's whole 82px.
+#
+# Per-mode because the characters are not the same shape — one shared value
+# put the flame through JUNGLE's wing and left OCEAN's too far forward. Same
+# parallel-array-by-Mode convention as MODE_DRAW_OFFSET_FLY.
+#
+#   SKY    -0.28  head at 102, 18px under the bird. Unchanged, it was right.
+#   JUNGLE -0.28  same; the dragon only needed moving down, not back.
+#   OCEAN  -0.36  head at 94, 14px under the shark.
+#   DREAM  -0.45  head at 85, and the tail hangs 7px off the left edge of
+#                 the screen — deliberate, the tail is the cheapest part to
+#                 lose. This one is placed against the unicorn's OWN rainbow
+#                 tail rather than its body box: that tail's opaque pixels
+#                 start at game x 74.7 and its first fifth runs to 96.3, so
+#                 85 drops the plume's star into the middle of it. -0.55 put
+#                 the star at 75, clear of the tail entirely, which read as
+#                 a separate object flying alongside.
+const MODE_BOOST_BURST_HEAD_OFFSET := [-0.28, -0.28, -0.36, -0.45]
+# How far BELOW the character's drawn centre the plume comes out, as a
+# multiple of PLAYER_VISUAL_SIZE.y. Centring it on the body put the flame
+# out of the middle of the character's back; it belongs at the tail.
+#
+# Measured where measuring works — same approach as MODE_DRAW_OFFSET_FLY.
+# For each mode's fly sheet, the vertical centroid of the opaque pixels in
+# the back quarter of the body, through (y - 128) * (100/256) *
+# MODE_VISUAL_SIZE_SCALE:
+#
+#   SKY bird 16.4px   OCEAN shark 8.7px   DREAM unicorn 13.1px
+#   JUNGLE dragon -3.4px — the measurement FAILS here, and narrowing the
+#   slice does not rescue it (0.8px at the back 10%, 6.5px at the back 5%).
+#   The dragon's whole rear silhouette is WING, which sits high, so any
+#   automatic read describes the wing and never finds the tail below it.
+#
+#   SKY    0.12  in the middle of its 12.9-16.4px readings.
+#   JUNGLE 0.20  set by eye off a capture, not measured, for the reason
+#                above — 0.12 put the flame straight through the wing.
+#   OCEAN  0.09  raised from 0.12 by eye, and it landed on the back-quarter
+#                reading (8.7px) — the shark's tail fin is high and narrow,
+#                so the wider slices describe it better than the tight ones.
+#   DREAM  0.12  readings 13.1-20.6px; left alone with the rest of DREAM's
+#                tuning until the new v2 art is judged.
+const MODE_BOOST_BURST_HEAD_DROP := [0.12, 0.20, 0.09, 0.12]
+@export_group("Boost Burst")
+# Whole animation, seconds. The one boost-burst value still shared by every
+# mode and still worth a slider — the geometry above went per-mode and into
+# consts, but timing is timing. 5 frames in 0.28s is ~18fps: slow enough
+# that each frame registers, fast enough that the plume is gone before the
+# next press. The frames are not evenly weighted (1 is a stub, 3 is the
+# peak), so stretching this reads as a stutter rather than a slower burn.
+@export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
+@export_group("")  # closes "Boost Burst"
+
+const BOOST_BUTTON_SIZE := 110.0       # diameter, px — 92 read small on a phone
+const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's bottom and its chosen side
+
+# 어느 쪽 아래 구석에 둘지. 오른손잡이 기준으로 오른쪽이 기본이고, 설정에서
+# 왼쪽으로 옮길 수 있다 — 같은 자리를 두고 "편하다"와 "너무 불편하다"로
+# 갈린다는 피드백이 있었다.
+#
+# 왼쪽에 두면 버튼이 캐릭터가 나는 세로줄(PLAYER_X 130 언저리)과 화면 맨
+# 아래에서 겹친다. 캐릭터가 거기까지 내려간 순간은 이미 바닥에 부딪혀 죽기
+# 직전이라 실제로 가리는 시간은 거의 없고, 버튼도 반투명이다.
+const SAVE_KEY_BOOST_LEFT := "boost_button_left"
+var boost_button_on_left: bool = false
+# Painted per-mode art, like pause/mute — this replaced a code-drawn chip
+# (StyleBoxFlat circle + the word "BOOST") once the art existed. The four
+# icons are the same round badge in each mode's colours, cut off one sheet
+# onto a shared square canvas so this one size constant covers all four.
+const MODE_BOOST_ICON_PATH := [
+	"res://assets/ui_assets/sky/boost_v1.png",
+	"res://assets/ui_assets/jungle/boost_v1.png",
+	"res://assets/ui_assets/ocean/boost_v1.png",
+	"res://assets/ui_assets/dream/boost_v1.png",
+]
+# 반투명하게 깐다. 게이트 구역이 화면 바닥까지 내려와서 새와 게이트가 이 버튼
+# 뒤를 지나가기 때문이다 — 불투명하면 오른쪽 아래 구석이 그냥 막힌 벽이 된다.
+#
+# 앞의 코드로 그리던 칩은 흰 글씨의 대비 때문에 0.55 가 하한이었지만, 이제는
+# 읽어야 할 글씨가 없고 그림 자체가 뭘 누르는지 말해 준다. 그래서 더 내려
+# 잡아도 되지만, 너무 옅으면 배경이 밝은 DREAM 에서 버튼이 사라진다 — 0.55 는
+# 그 둘 사이에서 네 모드 모두 형태가 남는 값이다.
+const BOOST_BUTTON_ALPHA := 0.55
+# 눌린 동안에는 거의 불투명해진다. 크기만 줄이는 pause/mute 와 달리 이 버튼은
+# 평소가 반투명이라, 진해지는 쪽이 눌렸다는 신호로 훨씬 잘 보인다.
+const BOOST_BUTTON_PRESSED_ALPHA := 0.92
 
 # Gate visual: the image's hollow center is the real passage and its
 # stonework is the obstacle, drawn centered on the precision zone (the
@@ -428,7 +853,6 @@ const COLOR_WALL := Color(0.059, 0.008, 0.31, 0.0)
 const COLOR_TEXT := Color(0.95, 0.95, 0.95)
 const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps HUD text legible over the light sky
 const COLOR_TEXT_DARK := Color(0.09, 0.12, 0.18, 1.0)  # for text drawn over the near-opaque white quiz box, where the light COLOR_TEXT would wash out
-const COLOR_ZONE := Color(0.55, 0.75, 0.95, 0.55)
 
 # Answer flag icon sits inside the gate's decorative frame, above its zone
 # — positioned GATE_FLAG_GAP_ABOVE_ZONE clear of the zone's top edge (see
@@ -500,14 +924,17 @@ const GATE_PANEL_SCALE := 1.0
 # Fredoka (SIL OFL, see assets/fonts/Fredoka_LICENSE.txt) — a rounded
 # geometric sans that matches the painted SCORE/QUIZ/BEST labels in the HUD
 # art. Replaces Mulmaru, which is a Korean face whose Latin glyphs were only
-# a secondary concern; nothing the game actually renders needs Hangul (the
-# quiz targets are English country names and arithmetic).
+# a secondary concern.
+#
+# That reasoning has since flipped once: the UI and the quiz content are
+# translated now, so the game does render Hangul, which Fredoka has none of.
+# It comes from a fallback face instead — the whole arrangement lives in
+# scripts/AppFont.gd, and every screen takes its font from there.
 #
 # It is a variable font with a wght axis (300-700, default 300 — too light
 # for a HUD, so both weights below are set explicitly). The axis has to be
 # keyed by its integer OpenType tag, not the string "wght": a string key is
 # silently ignored and you get the 300 default back.
-const COMBO_FONT_PATH := "res://assets/fonts/Fredoka.ttf"
 const TEXT_FONT_WEIGHT := 600      # quiz text, combo popups, flag codes
 const SCORE_FONT_WEIGHT := 700     # the score/best digits, which want more punch
 const COMBO_TIER_SIZE := 25
@@ -627,28 +1054,59 @@ const CLOUD_MID_FAR_SPEED_RATIO := 0.20     # fraction of GATE_SPEED
 const CLOUD_MID_Y_BAND := Vector2(0.20, 0.65)
 
 # ============================================================
-# Per-mode single-image scrolling background (see current_mode/_apply_mode/
-# _draw()). One painted scene per mode, scaled to fill the view height and
-# tiled horizontally. Falls back to the old mountains/sparkle/castle/
-# cloud_mid layers below for any mode without a dedicated image yet (empty
-# path here, or the file just doesn't exist on disk) — see bg_texture's
-# null-check in _draw()/_process().
+# Per-mode scrolling background (see current_mode/_apply_mode/_draw()). A
+# painted scene per mode, scaled to fill the view height and tiled
+# horizontally. Falls back to the old mountains/sparkle/castle/cloud_mid
+# layers below for any mode without a dedicated image yet (empty path here,
+# or the file just doesn't exist on disk) — see bg_texture's null-check in
+# _draw()/_process().
+#
+# Every mode is a pair now: a far painting plus a near cut-out, drawn over
+# it at a faster scroll for parallax depth. The single-image case is still
+# supported and costs nothing — leave a mode's MODE_BG_NEAR_TEXTURE_PATH row
+# empty and it falls back to drawing the far layer alone.
 # ============================================================
 const MODE_BG_TEXTURE_PATH := [
 	# _blur variants — a pre-blurred copy of the same art (no runtime blur
 	# shader in this custom-draw setup), so the background reads as soft/
 	# out-of-focus instead of competing for detail with the gate/character.
-	"res://assets/backgrounds/sky_world/background_single_blur.png",
-	"res://assets/backgrounds/jungle_world/background_single_blur.png",
-	"res://assets/backgrounds/ocean_world/background_single_blur.png",
-	# 드림의 블러는 다른 모드보다 훨씬 약하다. 이 그림은 처음부터 부드러운
-	# 파스텔이라(선명도 3.25 대 다른 모드 블러본 4.7~5.9) 세게 걸면 꽃
-	# 모양만 뭉개진다. 절반으로 줄였다가 되돌리는 정도만 걸었다.
-	"res://assets/backgrounds/dream_world/background_single_v2_blur.png",
+	# tools/blur_background.ps1 bakes these and records each file's sigma.
+	"res://assets/backgrounds/sky_world/background_far_blur.png",
+	"res://assets/backgrounds/jungle_world/background_far_blur.png",
+	"res://assets/backgrounds/ocean_world/background_far_blur.png",
+	# 드림의 블러는 다른 모드보다 훨씬 약하다(시그마 1.1). 이 그림은 처음부터
+	# 부드러운 파스텔이라 세게 걸면 꽃 모양만 뭉개진다.
+	"res://assets/backgrounds/dream_world/background_far_blur.png",
+]
+
+# Optional near layer, index-aligned to MODE_BG_TEXTURE_PATH. "" = this mode
+# has none. Drawn over its far layer at bg_near_speed_ratio, and still
+# behind everything gameplay — it is a backdrop, not something the bird can
+# pass behind.
+#
+# The art has to be a cut-out (mostly transparent), or it just hides the far
+# layer and the parallax buys nothing. tools/check_bg_layers.gd asserts
+# that.
+const MODE_BG_NEAR_TEXTURE_PATH := [
+	"res://assets/backgrounds/sky_world/background_near_blur.png",
+	"res://assets/backgrounds/jungle_world/background_near_blur.png",
+	"res://assets/backgrounds/ocean_world/background_near_blur.png",
+	"res://assets/backgrounds/dream_world/background_near_blur.png",
 ]
 
 @export_group("Sky Background")
-@export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.15  # fraction of GATE_SPEED
+@export_range(0.0, 2.0, 0.01) var bg_speed_ratio: float = 0.20  # fraction of GATE_SPEED
+# The near layer's own rate, for modes that have one. 2.5x the far layer is
+# what sells the depth — keep the spread if these are retuned, since it is
+# the RATIO between them the eye reads as distance, not either number.
+#
+# 0.50 is past what the old cloud parallax ever used (0.20/0.40), and 0.40
+# was flagged then as the ceiling before the backdrop starts to read as
+# racing the gates rather than sitting behind them — the gates travel at
+# 1.0. Raised anyway, on request, for a stronger sense of speed. If the
+# background ever starts pulling the eye off the gate, this pair is the
+# first thing to walk back.
+@export_range(0.0, 2.0, 0.01) var bg_near_speed_ratio: float = 0.50
 # Dims the background art so its own strong color/detail doesn't compete
 # with the gate/flag/character sitting on top of it — 1.0 = full original
 # brightness, lower recedes it further into the background.
@@ -666,26 +1124,124 @@ const MODE_BG_TEXTURE_PATH := [
 # everything else, and the same "pre-blur the PNG once" trick as the
 # backgrounds above (no runtime blur shader in this custom-draw setup).
 # ============================================================
+# All four modes' ambient art comes off one sheet,
+# assets/backgrounds/ambient_sheet.png, cut by tools/slice_ambient_sheet.ps1
+# — six rows: flowers and petals to DREAM, feathers to SKY, leaves to
+# JUNGLE, two rows of bubbles to OCEAN. DREAM has its own art now rather
+# than borrowing SKY's.
+#
+# The blur is baked into these files, not applied at runtime (this project
+# has no blur shader — same story as the backgrounds themselves). Re-cut the
+# sheet with a different -Sigma to change how soft they are.
 const MODE_PARTICLE_DIR := [
 	"res://assets/backgrounds/sky_world/particles/",
 	"res://assets/backgrounds/jungle_world/particles/",
 	"res://assets/backgrounds/ocean_world/particles/",
-	"res://assets/backgrounds/sky_world/particles/",  # DREAM — placeholder, reusing SKY art
+	"res://assets/backgrounds/dream_world/particles/",
 ]
-const MODE_PARTICLE_PREFIX := ["light", "leaf", "bubble", "light"]
-const MODE_PARTICLE_COUNT := [16, 24, 16, 16]  # light_01-16.png / leaf_01-24.png / bubble_01-16.png
+const MODE_PARTICLE_PREFIX := ["feather", "leaf", "bubble", "petal"]
+# Count 0 = that mode has no ambient layer. SKY is 0 on purpose: the sheet's
+# feathers did not suit the scene, so its row is skipped by the slicer too
+# (see $RowTargets in tools/slice_ambient_sheet.ps1) and no feather_NN.png
+# exists. Its prefix/dir entries are kept so the four arrays stay indexable
+# by Mode — put a count back and drop art in that folder to revive it.
+const MODE_PARTICLE_COUNT := [0, 6, 7, 10]  # the loader keeps whichever of _01.._NN actually exist
+
+# How each mode's ambient art travels. The art alone is not enough — a
+# feather that falls straight down like a leaf reads wrong, and a bubble has
+# to go the other way entirely.
+#   DRIFT_DIAGONAL — enters top-right, leaves bottom-left, swaying
+#   FALL           — enters top, leaves bottom, swaying
+#   RISE           — enters bottom, leaves top, swaying
+enum AmbientMotion { DRIFT_DIAGONAL, FALL, RISE }
+const MODE_PARTICLE_MOTION := [
+	AmbientMotion.DRIFT_DIAGONAL,  # SKY — feathers
+	AmbientMotion.FALL,            # JUNGLE — leaves
+	AmbientMotion.RISE,            # OCEAN — bubbles
+	AmbientMotion.DRIFT_DIAGONAL,  # DREAM — flowers and petals
+]
+# Sideways travel for DRIFT_DIAGONAL, as a multiple of the fall speed. The
+# drift is leftward, so the spawn band is widened past the right edge by the
+# same ratio in _make_ambient_particle — otherwise everything would enter
+# through the top and nothing through the right side.
+#
+# 이 값은 보이는 각도가 아니다. 화면 전체가 이미 왼쪽으로 흐르고 있어서,
+# 플레이어가 "이 물체 자신의 움직임"으로 읽는 것은 배경 대비 상대 운동뿐이다.
+#
+# 배경 스크롤(GATE_SPEED 200 기준): 원경 0.20 -> 40px/s, 근경 0.50 ->
+# 100px/s. 그래서 45°처럼 보이게 하려면 45°로 두면 안 된다 —
+#
+# 체감 각도 = atan((vx - 레이어속도) / 낙하속도), 낙하속도 35px/s.
+#
+#   비율   실제 vx   체감 각도(원경 대비 / 근경 대비)
+#   1.0     35.0        -8° / -62°
+#   2.0     70.0        41° / -41°
+#   2.85    99.8        60° /   0°
+#   3.5    122.5        67° /  33°
+#   3.86   135.1        70° /  45°
+#   4.5    157.5        73° /  59°
+#
+# 1.0(진짜 45°)에서 근경 대비 음수, 즉 꽃잎이 근경보다 느려서 오히려 오른쪽
+# 아래로 기울어 보인다. 이게 각도를 0.55 -> 1.0 으로 올려도 여전히 수직으로
+# 떨어져 보였던 이유다. 3.86 이면 근경 대비 45°, 원경 대비 70° 로 어느 쪽을
+# 기준으로 봐도 확실히 왼쪽 아래다.
+#
+# 표 한가운데의 2.85 가 GATE_SPEED 130 시절의 값이다. 그때는 근경 대비 45°
+# 였는데 배경만 빨라지자 정확히 0°, 즉 완전한 수직이 되었다 — 이 값이 배경
+# 속도에 얼마나 매달려 있는지를 그대로 보여주므로 표에 남겨 둔다.
+#
+# 배경 속도를 바꾸면(GATE_SPEED, bg_speed_ratio, bg_near_speed_ratio 중 어느
+# 하나라도) 이 값도 다시 잡아야 한다. 위 표는 그 계산을 되풀이하지 않도록
+# 남긴 것이다 — 배경이 0.15/0.40 이던 시절에는 같은 45°가 2.5 였고, 배경만
+# 올리고 이 값을 그대로 두면 근경 대비 33° 로 눕는다.
+#
+# 이 값은 모드가 아니라 모션의 각도다. 지금 이 모션을 쓰는 건 DREAM 뿐이지만
+# (SKY 는 MODE_PARTICLE_COUNT 가 0), 깃털이 되살아나도 같은 각도로 흐르는
+# 것이 맞다.
+const PARTICLE_DRIFT_X_RATIO := 3.86
+# DRIFT_DIAGONAL gets its own, much lazier flutter than FALL does, and this
+# is what actually makes the diagonal read.
+#
+# The sway is a sine on x, so its peak sideways speed is 2*PI*freq*amp. On
+# the shared FALL values (up to 0.9 Hz at 25px) that is ~141px/s — four
+# times the 35px/s the drift itself moves. The net travel was a clean 45
+# degrees all along, but every instant of it was dominated by the wobble, so
+# the eye tracked a petal falling straight down and shaking rather than one
+# crossing the screen. Plotting eight paths over 8s showed it: a 45 degree
+# envelope made of segments that are individually near-vertical.
+#
+# So the rule is that the flutter stays subordinate to the drift: at the top
+# of these ranges 2*PI*0.3*16 = 30px/s, just under the 35px/s drift, and at
+# the bottom 7.5px/s. One sway cycle now spans 117-234px of fall instead of
+# 39-88px — a long, lazy waver along the diagonal instead of a tight zigzag
+# that hides it.
+const PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE := Vector2(8.0, 16.0)
+const PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE := Vector2(0.15, 0.3)
+# Radians. Sprites are drawn upright on the sheet; a feather or leaf pinned
+# to one angle for its whole fall looks stamped on, so each gets a random
+# start angle and a slow tumble.
+const PARTICLE_SPIN_RANGE := Vector2(-0.5, 0.5)
+# Extra leftward push while the boost is held, px/s at full blend. Zero at
+# rest, so each mode keeps exactly the direction it was given — a bubble
+# still rises, a leaf still falls — and only gains the sideways rush on top
+# while the button is down. This is what sells "the world is streaming past"
+# for modes whose own motion is purely vertical and would otherwise just
+# fall or rise a bit faster.
+#
+# Rides boost_visual_blend rather than the raw multiplier so the sideways
+# drift eases in and out instead of the whole field jerking.
+const PARTICLE_BOOST_WIND_X := 150.0
 
 @export_group("Ambient Particles")
 @export_range(0, 40, 1) var particle_count: int = 8
 @export var particle_draw_size_range: Vector2 = Vector2(34.0, 58.0)  # final on-screen px, independent of the source image's own resolution
-@export_range(0.0, 1.0, 0.01) var particle_alpha_max: float = 0.8
-@export var particle_twinkle_duration_range: Vector2 = Vector2(1.5, 3.5)  # SKY only — one full fade in -> out cycle
-@export_range(5.0, 120.0, 1.0) var particle_fall_speed: float = 35.0      # JUNGLE only
-@export var particle_flutter_amplitude_range: Vector2 = Vector2(10.0, 25.0)  # JUNGLE only — side-to-side sway width
-@export var particle_flutter_freq_range: Vector2 = Vector2(0.4, 0.9)         # JUNGLE only — sway speed, Hz
-@export_range(5.0, 120.0, 1.0) var particle_rise_speed: float = 30.0      # OCEAN only
-@export var particle_sway_amplitude_range: Vector2 = Vector2(8.0, 18.0)   # OCEAN only
-@export var particle_sway_freq_range: Vector2 = Vector2(0.3, 0.7)         # OCEAN only
+@export_range(0.0, 1.0, 0.01) var particle_alpha_max: float = 0.5  # backdrop, not decoration — this plus the baked blur is what keeps them from competing with the gate
+@export_range(5.0, 120.0, 1.0) var particle_fall_speed: float = 35.0      # DRIFT_DIAGONAL + FALL — sky, jungle, dream
+@export var particle_flutter_amplitude_range: Vector2 = Vector2(10.0, 25.0)  # ...their side-to-side sway width
+@export var particle_flutter_freq_range: Vector2 = Vector2(0.4, 0.9)         # ...and its speed, Hz
+@export_range(5.0, 120.0, 1.0) var particle_rise_speed: float = 30.0      # RISE — ocean
+@export var particle_sway_amplitude_range: Vector2 = Vector2(8.0, 18.0)   # ...ocean's gentler bob
+@export var particle_sway_freq_range: Vector2 = Vector2(0.3, 0.7)
 
 @export_group("")  # closes "Ambient Particles" so every @export below lands back in the default Inspector category
 
@@ -732,48 +1288,50 @@ const FX_GATE_PUNCH_KEYFRAMES := [
 # _gate_glow_tint reads elapsed time against.
 const FX_GATE_TIMELINE_DURATION := 0.45
 
-# 3. Three-layer particle burst, all sourced from a per-concept FX sprite
-# sheet (pre-colored art, no runtime hue tinting): big/immediate, a themed
-# object (wings for sky, leaves for jungle, bubbles for ocean)/immediate,
-# then small/delayed. Each concept's folder holds the same fx_big_N /
-# fx_theme_N / fx_small_N filenames (small-particle COUNT varies per sheet —
-# sky 7, ocean 8, jungle 9 — _apply_mode's loader just loads however many
-# exist). Indexed by Mode, same convention as MODE_CHARACTER_DIR/MODE_GATE_DIR.
+# 3. Two-layer particle burst, all pre-colored art, no runtime hue
+# tinting: big sparks/immediate, then small sparks/delayed.
 #
-# Unlike character/gate art, the themed-object layer's MOTION also differs
-# per concept (wings scatter, leaves flutter, bubbles rise) — not just its
-# art — so MODE_FX_THEME_MOTION is swapped alongside MODE_FX_DIR.
-const MODE_FX_DIR := [
-	"res://assets/fx/sky/",
-	"res://assets/fx/jungle/",
-	"res://assets/fx/ocean/",
-	"res://assets/fx/sky/",  # DREAM — placeholder, reusing SKY art
+# Both layers share the one sparkle sheet the character trail draws from,
+# mixed per mode by FX_BURST_COLOR_WEIGHTS_PER_MODE — so a gate pass
+# throws the same starlight the character has been trailing, rather than a
+# second, unrelated set of particles. The old per-concept fx_big_N /
+# fx_small_N art under assets/fx/<concept>/ is no longer loaded at all.
+#
+# There used to be a third layer between the two: a themed object per
+# concept (wings for sky, leaves for jungle, bubbles for ocean) with its
+# own motion — scatter, flutter, rise-and-sway. Art and code were removed
+# together; `git show <commit>:scripts/Main.gd` has the whole thing if it
+# comes back.
+#
+# Colour mix for the two spark layers, drawn from the same four sparkle
+# rows the trail uses (see the shared-sparkle block further down). Weights
+# are relative and indexed to SPARKLE_COLOR_NAMES.
+#
+# The mode's own colour carries the burst and the other three are
+# sprinkled through it, so a pass reads as that mode celebrating rather
+# than a generic confetti cannon — at 7:1:1:1 that is ~70% the mode's
+# colour, ~10% each of the rest. DREAM has no colour of its own to
+# favour, being the rainbow already, so it weights all four the same.
+#
+# _apply_mode turns these into fx_burst_textures by repeating each
+# colour's sprites weight-many times, so the uniform pick inside
+# _spawn_spark_burst lands on this distribution with no extra logic.
+const FX_BURST_COLOR_WEIGHTS_PER_MODE := [
+	[7.0, 1.0, 1.0, 1.0],  # SKY — mostly gold
+	[1.0, 7.0, 1.0, 1.0],  # JUNGLE — mostly green
+	[1.0, 1.0, 7.0, 1.0],  # OCEAN — mostly blue
+	[1.0, 1.0, 1.0, 1.0],  # DREAM — even rainbow
 ]
-const MODE_FX_THEME_MOTION := [ThemeMotion.SCATTER, ThemeMotion.FLUTTER, ThemeMotion.RISE_SWAY, ThemeMotion.SCATTER]
-const FX_SMALL_PARTICLE_MAX_COUNT := 9  # highest count across all 3 concepts' sheets — _apply_mode's loader tries fx_small_1..N and keeps whichever exist
 const FX_SPARK_BURST_A_COUNT_RANGE := Vector2i(6, 9)        # big, at 0ms
-const FX_SPARK_BURST_A_SCALE_RANGE := Vector2(0.45, 0.75)
 const FX_SPARK_BURST_B_COUNT_RANGE := Vector2i(18, 26)      # small, delayed
-const FX_SPARK_BURST_B_SCALE_RANGE := Vector2(0.9, 1.4)
 const FX_SPARK_BURST_B_DELAY_RANGE := Vector2(0.04, 0.06)
-const FX_SPARK_THEME_COUNT_RANGE := Vector2i(5, 7)          # themed object, at 0ms alongside burst A
-const FX_SPARK_THEME_SCALE_RANGE := Vector2(0.7, 1.0)       # visible but not oversized — clarity comes from the hold-fraction/modulate below, not sheer size
-const FX_SPARK_THEME_SPEED_RANGE := Vector2(70.0, 140.0)    # SCATTER/FLUTTER only — RISE_SWAY uses FX_RISE_SPEED_RANGE instead
-const FX_SPARK_THEME_LIFETIME_RANGE := Vector2(0.55, 0.85)  # SCATTER/FLUTTER only — RISE_SWAY uses FX_RISE_LIFETIME_RANGE instead
-const FX_SPARK_THEME_SPAWN_RADIUS := 65.0  # starts just outside the character's silhouette (PLAYER_VISUAL_SIZE half ~50px + happy-pop bounce margin), so the themed object never spawns on top of the face
-const FX_SPARK_THEME_HOLD_FRACTION := 0.55  # stays at full opacity for this fraction of its lifetime, then fades — vs. sparks' immediate linear fade
-const FX_SPARK_THEME_MODULATE := Color(1.35, 1.3, 1.15, 1.0)  # warm overexpose so the themed object reads clearly through the sparkle clutter
-# FLUTTER (jungle leaves): burst outward like SCATTER, but tumbling + swaying.
-const FX_FLUTTER_ANGULAR_VELOCITY_RANGE := Vector2(-7.0, 7.0)  # rad/s, random sign
-const FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE := Vector2(8.0, 18.0)  # px, side-to-side sway perpendicular to travel direction
-const FX_FLUTTER_WOBBLE_FREQ_RANGE := Vector2(2.5, 4.5)        # Hz
-# RISE_SWAY (ocean bubbles): drift upward in a narrow cone instead of bursting
-# outward in every direction, gently swaying, much slower/longer-lived.
-const FX_RISE_CONE_HALF_ANGLE := 0.61  # ~35 degrees either side of straight up
-const FX_RISE_SPEED_RANGE := Vector2(35.0, 65.0)
-const FX_RISE_LIFETIME_RANGE := Vector2(0.9, 1.3)
-const FX_RISE_WOBBLE_AMPLITUDE_RANGE := Vector2(6.0, 14.0)
-const FX_RISE_WOBBLE_FREQ_RANGE := Vector2(1.5, 2.5)  # slower bob than the jungle flutter
+# Longest edge in px, NOT a multiplier. The sparkle sheet ships each shape
+# at its own resolution (107px to 270px on the longest edge), so a raw
+# multiplier would let the shape the RNG happened to pick decide how big
+# the particle came out. _spawn_spark_burst normalises by the texture's
+# longest edge instead.
+const FX_SPARK_BURST_A_SIZE_RANGE := Vector2(30.0, 62.0)
+const FX_SPARK_BURST_B_SIZE_RANGE := Vector2(13.0, 24.0)
 const FX_SPARK_LIFETIME_RANGE := Vector2(0.20, 0.42)
 const FX_SPARK_SPEED_RANGE := Vector2(70.0, 150.0)          # px/s, outward from gate center
 const FX_SPARK_RING_MARGIN := 18.0  # spawn ring sits this far outside the frame's own outer edge
@@ -788,8 +1346,15 @@ const FX_SPEED_LINE_CYAN := Color(0.75, 0.96, 1.0)
 const FX_SPEED_LINE_WHITE := Color(1.0, 1.0, 1.0)
 
 # ============================================================
-# Character trail — a few tiny particles shed behind the character,
-# marking the path it just flew.
+# Character trail — a stream of tiny sparkle stars shed behind the
+# character, marking the path it just flew, thickening into a burst on
+# every tap.
+#
+# One system, not two. An earlier pass ran a separate large "tap flare"
+# alongside this, and the two sparkle effects on the same input just read
+# as clutter. The tap is now the same particle as the trail, only more of
+# them and slightly larger — so a tap punctuates the trail instead of
+# competing with it.
 #
 # The thing that makes this work: PLAYER_X never moves, so a particle
 # parked at the character's tail would just pile into a vertical column.
@@ -798,52 +1363,172 @@ const FX_SPEED_LINE_WHITE := Color(1.0, 1.0, 1.0)
 # gate pass's speed boost stretches the trail out for free — see
 # _gate_speed_boost_multiplier.
 #
+# While the boost button is held this stops being a wake and becomes speed
+# lines instead — see the TRAIL_BOOST_STREAK_* block below.
+#
 # Deliberately sparse: the character is small and the quiz gate is what
 # the player actually has to read, so a steady plume would just dirty the
-# screen. The baseline holds 1-3 tiny particles alive at a time, and the
+# screen. The baseline holds 3-4 tiny particles alive at a time, and the
 # only time it thickens is the instant of a tap (see _spawn_trail_burst,
 # called from the flap handler) — which doubles as tactile feedback for
 # the input.
 #
-# Whole feature = these consts + trail_textures/trail_particles/
-# trail_spawn_timer + _update_bird_trail/_spawn_trail_particle/
-# _spawn_trail_burst/_draw_bird_trail + their four call sites. Delete
-# those to remove it.
+# Art comes from assets/fx/tap/, sliced off the one sparkle sheet by
+# tools/slice_tap_fx.ps1 — see TRAIL_COLORS_PER_MODE below for how the
+# colour is picked. Nothing is tinted at runtime.
+#
+# Whole feature = these consts + trail_texture_sets/trail_particles/
+# trail_spawn_timer/trail_color_cursor + _update_bird_trail/
+# _spawn_trail_particle/_spawn_trail_burst/_draw_bird_trail + their four
+# call sites. Delete those to remove it.
 # ============================================================
 const TRAIL_ENABLED_PER_MODE := [true, true, true, true]  # SKY, JUNGLE, OCEAN, DREAM
 const TRAIL_SPAWN_INTERVAL := 0.19           # seconds between baseline particles — with TRAIL_LIFETIME_RANGE this keeps ~3-4 alive
-const TRAIL_TAP_BURST_RANGE := Vector2i(4, 7)  # extra particles thrown off at the moment of a tap
-const TRAIL_TAP_BURST_SIZE_SCALE := 1.55       # burst particles are drawn larger than the baseline ones, so the tap reads as a puff and not just "more specks"
+const TRAIL_TAP_BURST_RANGE := Vector2i(5, 8)  # extra particles thrown off at the moment of a tap
+const TRAIL_TAP_BURST_SIZE_SCALE := 1.6        # burst particles are drawn larger than the baseline ones, so the tap reads as a puff and not just "more specks"
+const TRAIL_TAP_BURST_JITTER := 14.0           # px of scatter for burst particles only — wider than TRAIL_ORIGIN_JITTER so a tap spreads instead of stacking on the baseline's spawn point
 const TRAIL_ORIGIN_FRAC := Vector2(-0.30, 0.10)  # spawn point as a fraction of PLAYER_VISUAL_SIZE from the character's center
 const TRAIL_ORIGIN_JITTER := 6.0             # px of random scatter around that point
 const TRAIL_LIFETIME_RANGE := Vector2(0.50, 0.80)
-# Longest edge in px, per mode. Small on purpose (see the header), but not
-# uniform: SKY’s gold sparkles pop off blue sky at almost any size, while
-# JUNGLE and OCEAN are drawing their own colour on top of a background of
-# that same colour and need a little more mass to read at all.
-const TRAIL_SIZE_RANGE_PER_MODE := [Vector2(5.0, 10.0), Vector2(7.0, 13.0), Vector2(7.0, 13.0), Vector2(5.0, 10.0)]
+# Longest edge in px, per mode. Small on purpose (see the header).
+#
+# SKY, JUNGLE and OCEAN share one size. They used to differ — SKY ran
+# smaller on the theory that its gold sparkles popped off blue sky while
+# the other two were drawing their own colour onto a background of that
+# same colour — but that was written for the old per-mode art. Measured
+# against the sheet now in use, SKY’s gold on its sky (RGB distance ~191)
+# and JUNGLE’s green on its dark foliage (~184) are within noise of each
+# other, so there was nothing left for the split to express.
+#
+# DREAM is the one real exception, for two reasons that stack. Its
+# background is near-white (~(207,219,230), against SKY’s ~(135,187,225))
+# and every sparkle on the sheet is white-cored, so the core washes out
+# and only the thin coloured rim survives — the weakest pairing on the
+# board (~65). On top of that the unicorn is drawn at
+# MODE_VISUAL_SIZE_SCALE 1.20, so an identically-sized particle reads
+# smaller beside it.
+const TRAIL_SIZE_RANGE_PER_MODE := [Vector2(7.0, 13.0), Vector2(7.0, 13.0), Vector2(7.0, 13.0), Vector2(11.0, 19.0)]
 const TRAIL_DRIFT_Y_RANGE := Vector2(-10.0, 10.0)  # px/s of random vertical wander, on top of the per-mode drift below
 const TRAIL_INHERIT_VEL_Y := 0.08            # how much of player_vel each particle carries off
 const TRAIL_SHRINK := 0.45                   # fraction of its size a particle loses over its life
 const TRAIL_ALPHA := 1.0
 const TRAIL_OFFSCREEN_MARGIN := 20.0          # px past the left edge before a particle is dropped
-const TRAIL_SPIN_RANGE := Vector2(-1.6, 1.6) # radians/s
+# The art is 4-point stars, so orientation matters in a way it did not for
+# the round blobs this replaced: spawn near-upright and turn slowly, or a
+# particle this small just smears into a speck.
+const TRAIL_ROTATION_JITTER := 0.35          # radians either side of upright at spawn
+const TRAIL_SPIN_RANGE := Vector2(-0.9, 0.9) # radians/s
 # Per-mode vertical drift, px/s, negative = upward. OCEAN is the reason
 # this exists: bubbles that rise out of the spawn point while the world
 # pushes them left read as a shark actually swimming forward. SKY drifts
 # up a hair so sparkles hang; JUNGLE settles, like shaken-loose leaves.
 const TRAIL_DRIFT_Y_PER_MODE := [-4.0, 7.0, -26.0, -4.0]
-# Which fx_small_N.png each mode's trail draws from (see the contact sheets
-# in assets/fx/<mode>/). Every set's last few entries are solid squares —
-# fine as confetti inside a gate burst, but alone in a slow trail they just
-# read as blocks — so only the sparkle/blob shapes are listed. SKY pairs
-# its white-blue blob (4) with the gold sparkles (1, 3) as the "light
-# specks"; OCEAN takes its bubble blob (4) plus the water-blue sparkles.
-const TRAIL_TEXTURE_NUMBERS_PER_MODE := [
-	[4, 1, 3],
-	[4, 3, 5],
-	[4, 5, 1],
-	[4, 1, 3],  # DREAM — placeholder, reusing SKY art
+
+# --- Boost streak: while the button is held, the trail stops being a wake
+# that follows the character and becomes speed lines shooting straight back
+# from it.
+#
+# The baseline trail already rides the faster world during a boost, which
+# spaces the particles out — but spacing alone did not read as speed,
+# because three other things were still saying "wake". Each particle carries
+# a random +/-10px/s of vertical wander plus a slice of player_vel, so the
+# stream scattered; each one spawns with a random tilt and a slow spin, so
+# it read as tumbling debris; and the sprite stayed a symmetric 4-point
+# star, which has no direction in it at all. This block turns off all three
+# and stretches the star along its travel instead.
+#
+# Baked per particle at spawn from boost_visual_blend (see the "streak"
+# field), not read live: a particle launched during a boost should keep
+# streaking after the button comes up, the same way a thrown thing keeps
+# going. It also means the transition is per-particle rather than the whole
+# field snapping over at once.
+#
+# All four now. It shipped as SKY-only to see whether it suited the art
+# before committing the rest, and it does; the flags stay per-mode so one
+# can be pulled back out without touching anything else, the same way
+# TRAIL_ENABLED_PER_MODE is written.
+#
+# OCEAN is the one that changes most, and it is worth knowing why before
+# judging it. Its bubbles rise at -26px/s, the strongest drift of any mode,
+# so its idle trail scatters over 22.6px of height where SKY's covers 4.5.
+# A streak flattens all of them to about the same 1.2-1.9px, which means
+# OCEAN gives up the most character for it.
+#
+# DREAM draws the heaviest line: its particles are 11-19px against everyone
+# else's 7-13, so at boost_streak_stretch they are 52-77px long rather than
+# 32-58, and they overlap into something noticeably thicker. It also steps
+# through four colours, so its streak is a rainbow rather than one hue.
+const TRAIL_BOOST_STREAK_PER_MODE := [true, true, true, true]  # SKY, JUNGLE, OCEAN, DREAM
+# NOT given any extra speed of its own, which was the first thing tried and
+# is worth recording as a dead end. PLAYER_X is 130 on a 480-wide screen and
+# the spawn point sits 30px behind that, so a streak has 100px of room
+# before it is culled at the left edge — there is nowhere for a longer trail
+# to go. Measured (at the GATE_SPEED 130 of the time, so boosted 260px/s):
+# riding the boosted world alone keeps a particle
+# on screen 0.38s, and adding 200px/s of its own cut that to 0.26s, which
+# left FEWER alive at once and a shorter line, not a longer one. The world
+# scroll is already carrying them away from the character; what was missing
+# was direction in the sprite, below.
+# Squash across the direction of travel. Pairs with boost_streak_stretch
+# below: stretched along X and thinned on Y is the whole reason a symmetric
+# 4-point star can read as a speed line. Rotation and spin are killed to 0
+# in step with it — a stretched star that is also tilted and turning reads
+# as a spinning blade rather than a streak.
+const TRAIL_BOOST_STREAK_SQUASH := 0.38
+# Spawn scatter is redistributed rather than removed: collapsed on Y so the
+# particles share one line, widened on X so they populate its length
+# immediately instead of stacking on the spawn point and only spreading as
+# they travel.
+const TRAIL_BOOST_STREAK_Y_JITTER_SCALE := 0.18
+const TRAIL_BOOST_STREAK_X_JITTER := 26.0
+# Longer-lived — though during a boost this changes the FADE, not the
+# lifespan. Position culls a streak at 0.38s, well inside even the base
+# 0.5-0.8s lifetime, so what the scale actually buys is a slower alpha ramp:
+# the streak is still at ~0.87 alpha when it reaches the left edge instead
+# of ~0.66, which keeps the line even along its length rather than dimming
+# toward the tail. A speed line wants to be uniform.
+const TRAIL_BOOST_STREAK_LIFETIME_SCALE := 1.5
+
+@export_group("Boost Streak")
+# How far each particle is stretched along its travel. These are 7-13px
+# sparkles, so this is what decides whether the streak reads as a bold line
+# or a row of specks: at 4.5 a particle draws 32-59px long, comfortably
+# longer than the ~12px gap between spawns, so they overlap into something
+# continuous rather than dotted.
+@export_range(1.0, 8.0, 0.1) var boost_streak_stretch: float = 4.5
+# Emission multiplier while streaking, on top of the BOOST_TRAIL_INTERVAL_SCALE
+# every mode already gets. Density is the other half of "continuous": with
+# only 100px of room behind the character, a bolder streak has to come from
+# packing that space rather than extending it.
+@export_range(1.0, 4.0, 0.1) var boost_streak_density: float = 2.0
+@export_group("")  # closes "Boost Streak"
+# ---- Shared sparkle art ----
+# One sheet, assets/fx/fx_small_N.png, feeds BOTH the trail above and the
+# gate-pass burst below. Four rows, one per colour; six shapes across
+# (bare 4-point stars large/medium/small, then the same three ringed with
+# orbiting dots). tools/slice_tap_fx.ps1 cuts it into assets/fx/tap/.
+#
+# Nothing is tinted at runtime: each sparkle keeps a white-hot core inside
+# a coloured rim, and a modulate over white art would flatten exactly that.
+# Colour is therefore chosen by picking a different file, which is why
+# every colour is loaded for every mode (sparkle_texture_sets) and the
+# per-feature tables below only pick among them.
+const SPARKLE_DIR := "res://assets/fx/tap/"
+const SPARKLE_COLOR_NAMES := ["gold", "green", "blue", "pink"]  # row order on the sheet; every table below is indexed to match
+const SPARKLE_SPRITES_PER_COLOR := 6  # tap_<colour>_1..6.png; the loader keeps whichever exist
+
+# Trail colour per mode, matched to the character. Single-colour, so the
+# streak behind the character stays legible as one thing.
+#
+# DREAM lists all four rows instead of one, and _spawn_trail_particle steps
+# one colour per particle — carrying the cursor across spawns rather than
+# re-rolling, which would repeat colours — so the unicorn trails a rainbow
+# and its tap bursts come out multicoloured.
+const TRAIL_COLORS_PER_MODE := [
+	["gold"],                           # SKY — red bird
+	["green"],                          # JUNGLE — green dragon
+	["blue"],                           # OCEAN — blue shark
+	["gold", "green", "blue", "pink"],  # DREAM — unicorn, all four rows as a rainbow
 ]
 
 # 4. Bird visual stretch — sprite-draw scale only (draw_set_transform in
@@ -864,12 +1549,96 @@ const FX_STRETCH_KEYFRAMES := [        # envelope 0->1->0; peak lands ~65% in
 const FX_SHAKE_DURATION := 0.14
 const FX_SHAKE_PEAK_AMPLITUDE := 4.5   # px
 
-# Score pop — bigger and longer-lived so the +score reads clearly.
-const FX_SCORE_POP_DURATION := 0.7
-const FX_SCORE_POP_RISE := 34.0
-const FX_SCORE_POP_COLOR := Color(1.0, 0.93, 0.6)
-const FX_SCORE_POP_FONT_SIZE := 26
-const FX_SCORE_POP_OFFSET := Vector2(0.0, -18.0)
+const SCORE_PER_COMBO := 10           # gate score = SCORE_PER_COMBO x combo, before the boost multiplier
+
+# BOOST popup — fires only on a gate that actually earned a boost multiplier.
+#
+# Pinned beside the character at the moment of the pass — that is where the
+# player is already looking, which a screen corner is not. The anchor is
+# CAPTURED at the pass rather than tracked live, so the text stays where the
+# pass happened instead of riding the character's flapping for half a second.
+#
+# Because the anchor moves with the character, it can land anywhere in the
+# gate zone — including the top-right corner the combo readout owns. So the
+# layout checks the two rectangles and pushes this one below the combo block
+# when they would collide, rather than assuming they never meet.
+# tools/check_popup_overlap.gd drives the real layout function over the whole
+# height of the zone and fails on any intersection or off-screen text.
+#
+# One popup at a time, not a list: a second pass inside 0.45s restarts it.
+# 두 등급의 소리. 팝업이 뜨는 순간 하나만 난다 — 등급을 정하는 bool 하나가
+# 글자·크기·색·컨페티에 이어 소리까지 고르므로, 화면은 TURBO 인데 귀에는
+# BOOST 가 들리는 상태가 생길 수 없다.
+#
+# 부스트 버튼을 누를 때 나는 boost_start.wav 와는 다른 소리다. 그쪽은 "눌렀다",
+# 이쪽은 "게이트를 지날 때 바가 이만큼 남아 있었다" 로 서로 다른 사건이고,
+# 실제로 둘이 겹쳐 날 수 있다.
+const BOOST_POP_SOUND_MID := "res://assets/audio/boost_sound.mp3"
+const BOOST_POP_SOUND_BEST := "res://assets/audio/turbo_sound.mp3"
+const BOOST_POP_CHARACTER_OFFSET := Vector2(58.0, 0.0)  # from the character's centre; clears PLAYER_VISUAL_SIZE's 50px half-width
+const BOOST_POP_SCREEN_MARGIN := 14.0                   # never let the text reach a screen edge
+const BOOST_POP_COMBO_GAP := 10.0                       # clearance kept when pushed below the combo block
+const BOOST_POP_DURATION := 0.45               # spec calls for 0.4-0.5s
+const BOOST_POP_FONT_SIZE_BEST := 40
+const BOOST_POP_FONT_SIZE_MID := 27
+const BOOST_POP_RISE := 24.0                   # px, out and back over the popup's life
+# Text colours: the bar's own zone colours, so the gauge you watch fill and
+# the word you get for filling it say the same thing. Aliases rather than
+# literals — the palette lives at BOOST_BAR_ZONE_*_COLOR and this is a
+# second name for it, not a second copy.
+const BOOST_POP_COLOR_MID := BOOST_BAR_ZONE_MID_COLOR
+const BOOST_POP_COLOR_BEST := BOOST_BAR_ZONE_BEST_COLOR
+# The string redrawn on a ring at low alpha, which reads as a glow without
+# needing a shader or a second canvas. Both tiers glow now — the mid tier
+# just barely, enough to lift cyan off a bright sky without competing with
+# the tier above it.
+#
+# Cost is passes x characters draw calls per frame, so the best tier's 10
+# passes over "TURBO! +600" is 110. That is fine for one popup living 0.45s
+# and would not be if this ever drew more than one at a time.
+const BOOST_POP_GLOW_PASSES_MID := 6
+const BOOST_POP_GLOW_RADIUS_MID := 3.0
+const BOOST_POP_GLOW_ALPHA_MID := 0.10
+@export_group("Boost Popup Gradient")
+# Vertical gradient on the fill: lit from above, so the top of the letter is
+# brighter than its own colour and the bottom falls away. Multipliers on
+# boost_pop_color rather than a second pair of colours, so the per-tier
+# colour stays the one place the hue is decided — change that and the
+# gradient follows.
+#
+# The top is allowed past 1.0 on purpose. These are drawn over gameplay at
+# full alpha, so overexposing the crown is what makes it read as lit rather
+# than as a paler shade of the same paint; the same trick the gate ring's
+# flash uses.
+@export_range(1.0, 2.0, 0.01) var boost_pop_gradient_top: float = 1.30
+# The foot, and the one value here that took real captures to settle rather
+# than a composite. 0.52 read as dirty: at that depth TURBO's orange lands
+# near brown, which is a different colour rather than the same one in
+# shadow. 0.78 was still heavy on the actual sky background — a still made
+# on a dark card had flattered it. 0.96 goes the other way and the ramp
+# stops being visible at all.
+#
+# 0.88, chosen off six in-game screenshots at 0.78/0.88/0.96 across both
+# tiers. Bear in mind these are read over a bright backdrop at speed, which
+# is why the usable window is this narrow and this high.
+@export_range(0.2, 1.0, 0.01) var boost_pop_gradient_bottom: float = 0.88
+@export_group("")  # closes "Boost Popup Gradient"
+# How many bands the ramp is cut into. 14 over a 40px cap height is under
+# 3px a band, which is below where the eye starts resolving the steps; going
+# much higher just adds draw calls to a popup that already redraws itself
+# for glow and outline.
+const BOOST_POP_GRADIENT_STRIPS := 14
+const BOOST_POP_GLOW_PASSES_BEST := 10
+const BOOST_POP_GLOW_RADIUS_BEST := 8.0
+const BOOST_POP_GLOW_ALPHA_BEST := 0.34
+const BOOST_POP_BURST_COUNT_BEST := Vector2i(20, 26)
+const BOOST_POP_BURST_COUNT_MID := Vector2i(5, 7)
+const BOOST_POP_BURST_SIZE_RANGE := Vector2(15.0, 28.0)
+const BOOST_POP_BURST_RADIUS := 36.0           # tight ring around the text, not _spawn_spark_burst's gate-sized default
+const BOOST_POP_MIN_FONT_SIZE := 13            # floor for the shrink-to-fit; below this the text stops being readable anyway
+# _pop_scale's overshoot, hoisted so tools/check_popup_overlap.gd can size
+# both popups at their widest without duplicating the number.
+const POP_PEAK_SCALE := 1.22
 
 # 9. Audio hooks — each its own AudioStreamPlayer so they can overlap.
 # Whoosh is still an unfilled placeholder (drop a file at that path and it
@@ -920,6 +1689,13 @@ const MODE_BGM_NAME := [
 # that overlap possible.
 const BGM_CROSSFADE_TIME := 0.4
 const BGM_SILENT_DB := -40.0
+# 부활 제안과 게임오버 화면의 곡. 판이 끝나면 음악을 통째로 끊었었는데, 두
+# 팝업 모두 한참 들여다보는 화면이라 그 사이가 무음이었다.
+#
+# 둘이 같은 곡이고, 그래야 한다. 제안을 거절하면 부활 팝업이 곧바로 게임오버
+# 팝업으로 바뀌는데 곡이 다르면 거기서 한 번 끊긴다 — _play_bgm 은 같은
+# 경로면 아무 일도 안 하므로, 이름만 같으면 저절로 이어진다.
+const BGM_GAMEOVER_NAME := "gameover_bgm"
 # Countdown beat sounds — one played the instant the READY image appears,
 # the other the instant it swaps to START (see _start_countdown and
 # _update_countdown).
@@ -937,6 +1713,46 @@ const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 # doubles as the "audio is working" confirmation. Optional like the rest —
 # a missing file just means the transition stays silent.
 const FX_SOUND_SPLASH_START_PATH := "res://assets/audio/splash_start.wav"
+
+# 부스트 버튼을 누르고 있는 동안 계속 나는 소리. 다른 효과음과 달리 한 번
+# 울리고 끝나는 게 아니라 홀드와 길이를 같이 한다 — 누를 때 play, 뗄 때 stop.
+#
+# 그래서 이 하나만 루프를 켠다(_enable_stream_loop). 파일은 2.25초라 그보다
+# 오래 누르면 그냥 끊기기 때문이다. 홀드가 풀리는 길은 손을 떼는 것 말고도
+# 죽거나 일시정지해서 버튼이 숨는 경우가 있는데, 숨겨진 Button 은 button_up 을
+# 쏘지 않으므로 그쪽은 _process 에서 boost_button_held 와 함께 꺼 준다.
+const FX_SOUND_BOOST_PATH := "res://assets/audio/boost.wav"
+# 누르는 순간 한 번만 울리는 악센트. 위의 루프와 함께 나되 수명이 전혀 달라서
+# 플레이어를 따로 쓴다 — 한 플레이어는 한 스트림만 물고, 루프가 이미 물고
+# 있으니 같은 것으로는 겹쳐 낼 수 없다.
+#
+# 0.68초짜리 원샷이라 루프를 걸지 않는다. _enable_stream_loop 를 여기에도
+# 복사해 붙이면 점화음이 영원히 웅웅거린다 — check_boost_hold 가 그걸 본다.
+#
+# 파일 이름이 boost.wav 가 아닌 이유: 루프 쪽이 이미 그 이름을 쓰고 있고,
+# 덮어쓰면 홀드음이 조용히 0.68초짜리로 바뀐다.
+const FX_SOUND_BOOST_START_PATH := "res://assets/audio/boost_start.wav"
+# 원샷이 홀드음 옆에서 약하게 들려서 올린다. 감이 아니라 재서 정한 값이다 —
+# 두 파일의 피크는 사실상 같은데(-5.0 대 -5.1 dBFS) RMS 는 원샷이 5.2 dB
+# 낮다. 짧은 트랜지언트라 평균 에너지가 낮은 것이고, 귀는 피크가 아니라
+# 평균으로 크기를 판단하니 지속음 옆에서 묻힌다.
+#
+# 그 5.2 dB 를 다 메우지는 않는다. 원샷의 피크가 -5.1 이라 헤드룸이 5.1 dB
+# 뿐이고, +5 를 주면 이 클립 혼자 0 dBFS 를 친다. 홀드음도 -5 로 같이 울리는
+# 중이라 합이 넘칠 수 있다. +4 면 체감 크기는 거의 맞추면서 피크에 1 dB 를
+# 남긴다.
+#
+# 이보다 더 필요하면 이쪽을 올리는 것보다 홀드음을 낮추는 쪽이 맞다 — 위로는
+# 천장이 없지만 아래로는 여유가 있다.
+# 판이 도는 동안의 곡보다 낮게 깐다. 읽을 것이 있는 화면이고 게임오버 효과음이
+# 그 위에 울리므로, 같은 크기면 둘이 서로를 밟는다. 0 이 기본 크기이고 음수가
+# 작아지는 쪽이다(데시벨).
+@export_group("Music")
+@export_range(-30.0, 0.0, 0.5) var gameover_bgm_db: float = -9.0
+@export_group("")  # closes "Music"
+@export_group("Boost Audio")
+@export_range(-12.0, 12.0, 0.5) var boost_start_volume_db: float = 4.0
+@export_group("")  # closes "Boost Audio"
 
 
 # ---- Phase curve, shared by all three modes ----
@@ -1096,7 +1912,14 @@ const OCEAN_PHASE_HUE_BAND := [
 
 # Question box wording. A question about the COLOUR, never about the word,
 # which is the one thing the player has to keep straight.
-const OCEAN_PROMPT_INK := "Q. What COLOR is this word?"
+#
+# No "Q." in front. The box is already unmistakably the question — it is the
+# only text panel on screen and it never holds anything else — so the prefix
+# was two characters of nothing, and it cost real size: the prompt and the
+# stimulus shrink together to fit one row (see the loop in
+# _draw_ocean_quiz_box), so every character in the prompt takes width away
+# from the word the player actually has to read.
+const OCEAN_PROMPT_INK := "What COLOR is this word?"
 
 # Question box layout. The prompt is static and read once; the stimulus is
 # what gets re-read every single gate, so the prompt is deliberately the
@@ -1108,7 +1931,20 @@ const OCEAN_PROMPT_MIN_FONT := 9
 # The word is painted straight onto the cream quiz-box art, where a yellow or
 # white word would otherwise vanish. Every word gets the same dark outline —
 # uniformly, so the outline is never itself a hint.
-const OCEAN_INK_OUTLINE_PX := 2.0
+#
+# A FRACTION of the font size, not a pixel count. It was 2.0px flat, and
+# _draw_ocean_text stamps the word in all eight directions, so that is 2px of
+# ink pushed into every counter — the holes in R, O, e — from both sides at
+# once. The word shrinks to fit the row (down to
+# OCEAN_STIMULUS_MIN_FONT_FRAC), and at the small end 2px is a tenth of the
+# cap height, which is where PURPLE and ORANGE close up into blobs. Tying it
+# to the size keeps the weight constant instead of growing as the text
+# shrinks.
+@export_range(0.0, 0.12, 0.005) var ocean_ink_outline_ratio: float = 0.045
+# Floor, so the outline never disappears entirely at the smallest sizes —
+# below about a pixel it stops separating the word from the cream box, which
+# is the whole reason it is there.
+const OCEAN_INK_OUTLINE_MIN_PX := 1.0
 const OCEAN_INK_OUTLINE_COLOR := Color(0.09, 0.12, 0.18, 0.95)
 
 # Gate options. The names are up to six letters on a card built for a flag,
@@ -1140,8 +1976,8 @@ const FLAGS_DATA_PATH := "res://assets/flags/flags_data.json"
 enum State { MODE_SELECT, READY, COUNTDOWN, PLAYING, GAMEOVER, SPLASH, LOGO }
 
 # ============================================================
-# 로고 화면 — 부팅 직후, 스플래시보다 먼저. 검은 바탕에 로고와 크레딧만
-# 띄우고 페이드 인/유지/페이드 아웃 뒤 스스로 스플래시로 넘어간다.
+# 로고 화면 — 부팅 직후, 스플래시보다 먼저. 검은 바탕에 로고만 띄우고
+# 페이드 인/유지/페이드 아웃 뒤 스스로 스플래시로 넘어간다.
 # 아무 데나 누르면 바로 페이드 아웃으로 건너뛴다. 음악은 아직 틀지 않는다 —
 # 스플래시로 넘어갈 때 시작해야 로고가 조용히 뜬다.
 # ============================================================
@@ -1151,25 +1987,13 @@ const LOGO_FADE_IN := 0.45
 const LOGO_HOLD := 1.5
 const LOGO_FADE_OUT := 0.45
 const LOGO_WIDTH_FRAC := 0.78        # of view width
-# 로고와 글자를 한 덩어리로 묶어 화면 가운데에 놓는다.
+# 로고 한 장만 놓는다. 정중앙보다 살짝 위 — 화면 가운데에 정확히 두면 아래가
+# 비어 보인다.
+#
+# 예전에는 로고 아래에 "BETA VERSION"과 제작자 두 줄이 함께 붙어 한 덩어리로
+# 가운데 정렬됐다. 크레딧은 About 팝업에 이미 있고, 시작할 때마다 이름을
+# 지나쳐야 할 이유가 없다.
 const LOGO_BLOCK_CENTER_FRAC := 0.46  # of view height
-const LOGO_TO_BETA_GAP_FRAC := 0.055  # of view height
-const LOGO_BETA_TO_CREDIT_GAP_FRAC := 0.040
-const LOGO_CREDIT_LINE_GAP_FRAC := 0.028
-const LOGO_BETA_TEXT := "BETA VERSION"
-const LOGO_BETA_FONT_FRAC := 0.026    # of view height
-const LOGO_BETA_COLOR := Color(1.0, 0.84, 0.32, 1.0)
-const LOGO_CREDIT_FONT_FRAC := 0.019
-const LOGO_CREDIT_ROLE_COLOR := Color(0.62, 0.66, 0.74, 1.0)
-const LOGO_CREDIT_NAME_COLOR := Color(0.92, 0.94, 0.98, 1.0)
-const LOGO_CREDIT_DOT := "·"
-# 역할 칸을 가장 긴 역할에 맞춰 잡고 그 뒤에 점과 이름을 놓으므로, 글꼴이
-# 바뀌어도 두 줄의 점이 세로로 맞는다.
-const LOGO_CREDIT_GAP_FRAC := 0.030   # of view width — 역할|점|이름 사이 간격
-const LOGO_CREDITS := [
-	["Game Design & Development", "Kim Min Cheol"],
-	["Art & Design", "Kang Sol Ji"],
-]
 
 # ============================================================
 # Splash / title screen — the first thing shown on boot, before the mode
@@ -1293,10 +2117,14 @@ const COUNTDOWN_ART_OVERSAMPLE := 1.2
 
 # Top HUD art: score box (top-center, drawn — no interaction needed), quiz
 # box (directly under it, also drawn), pause (top-left) and mute (top-right)
-# as real Buttons. All four come out of one hand-authored sheet,
-# assets/ui_assets/hud_sheet_v5.png, cut by tools/slice_hud_sheet_v5.gd.
+# as real Buttons.
 #
-# The slicer is what makes the three modes interchangeable here: rather than
+# Pause / mute / quiz box come out of one hand-authored sheet,
+# assets/ui_assets/hud_sheet_v7.png, cut by tools/slice_hud_sheet_v7.gd into
+# the *_v3 pieces below. The score box no longer does — it borrows the gate's
+# flag panel art (see MODE_SCORE_BOX_PATH).
+#
+# The slicer is what makes the modes interchangeable here: rather than
 # cropping each mode to its own tight bounding box (which lands the writing
 # area somewhere different in every mode, because the frames differ in
 # thickness and the decorations — wings, leaves, coral — stick out by
@@ -1375,7 +2203,67 @@ const SAVE_KEY_BEST_PREFIX := "best_score_"
 const SAVE_KEY_BEST_LEGACY := "best_score"
 # 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
 const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
+# ============================================================
+# 히든 모드(MIX) 해금.
+#
+# 단일 세 모드에서 각각 이만큼의 게이트를 통과하면 열린다. 판마다 새로 세는
+# 것이 아니라 설치 후 누적이다 — 이 게임은 전부 하드 모드라, 한 판에 10 게이트를
+# 요구하면 잘하는 사람에게만 열리는 조건이 된다. 해금은 실력 시험이 아니라
+# "세 퀴즈를 다 겪어 봤는가"를 묻는 것이고, 그 답은 누적으로 나온다.
+#
+# 세는 값은 문턱에서 멈춘다. 더 세어 봐야 쓸 데가 없고, 멈추면 해금된 뒤로는
+# 저장 파일이 더 이상 바뀌지 않는다.
+const HIDDEN_UNLOCK_GATES := 10
+const SAVE_KEY_GATES_PREFIX := "gates_cleared_"
+# 튜토리얼을 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다 켤 때마다
+# 다시 돈다.
+const SAVE_KEY_TUTORIAL := "tutorial_seen"
+# 해금 대상이 아닌 모드. 자기 자신을 조건에 넣을 수는 없다.
+const HIDDEN_MODE := Mode.DREAM
+# ============================================================
+# ============================================================
+# 전면광고 노출 판단.
+#
+# 여기에는 광고를 띄우는 코드가 없다 — 프로젝트에 광고 SDK 자체가 없다(git log
+# 의 감사 참고). 판단만 하고, 플러그인이 붙으면 _ad_try_interstitial 안쪽만
+# 실제 호출로 바꾸면 된다. 그때 넘길 단위 ID 는 AdIds 가 정한다 — 실제 단위가
+# 테스트 빌드로 새어 나가지 못하게 막는 잠금장치가 거기 있다.
+#
+# 규칙:
+#   - 판을 떠날 때마다 하나씩 센다. "떠난다"는 게임오버 후 PLAY AGAIN /
+#     HOME 이든 일시정지의 RESTART / HOME 이든 같다 — 사용자에게는 전부 "한 판
+#     끝"이고, 한 경로만 빼두면 그게 다음 구멍이 된다.
+#   - 리워드 광고를 본 판은 세지 않는다. 안 그러면 부활 광고 직후 전면광고가
+#     붙어 30초 안에 광고 둘을 보게 된다.
+#   - 설치 후 처음 몇 판은 면제한다. 신규 사용자가 게임을 파악하기 전에 광고를
+#     보지 않게 하려는 것으로, 앱 오프닝 광고를 안 쓰는 것과 같은 이유다.
+#
+# 카운터는 저장된다. 세션에만 두면 4판 하고 앱을 껐다 켜는 것으로 광고를 계속
+# 피할 수 있고, 그보다 흔하게는 안드로이드가 메모리 압박으로 앱을 죽일 때마다
+# 사용자가 아무 짓도 안 했는데 카운터가 날아간다.
+#
+# 면제도 "실행마다"가 아니라 "설치 후 한 번"이다. 실행마다 주면 1판씩 하고 끄는
+# 것으로 영원히 광고를 안 보게 되어, 카운터를 저장한 의미가 없어진다.
+#
+# Whole feature = these consts + games_played_total/restarts_since_interstitial/
+# run_active + the _ad_* functions + the [ads] save section.
+@export_range(1, 20, 1) var interstitial_every_restarts: int = 5
+# 3 = 잠금 해제된 모드 수(FLAG/MATH/STROOP). 모드당 한 판씩 겪어 보라는 몫이다.
+@export_range(0, 20, 1) var interstitial_free_games: int = 3
+
+const SAVE_SECTION_ADS := "ads"
+const SAVE_KEY_GAMES_PLAYED := "games_played"
+const SAVE_KEY_RESTARTS_SINCE_AD := "restarts_since_ad"
+
 const SAVE_SECTION_AUDIO := "audio"
+# 조작 설정. 볼륨과 같은 파일을 쓰되 오디오와 섞지 않는다.
+const SAVE_SECTION_CONTROLS := "controls"
+# 언어. 저장이 없으면 기기 언어를 따른다 — 처음 켠 사람이 설정을 찾을 필요가
+# 없어야 한다. 한 번 고르고 나면 그 선택이 기기 언어보다 앞선다.
+const SAVE_SECTION_LOCALE := "locale"
+const SAVE_KEY_LANGUAGE := "language"
+const LOCALE_EN := "en"
+const LOCALE_KO := "ko"
 const SAVE_KEY_SFX := "sfx_volume"
 const SAVE_KEY_MUSIC := "music_volume"
 
@@ -1511,6 +2399,33 @@ var player_vel: float = 0.0
 # Gate-pass speed boost state (see GATE_SPEED_BOOST_PEAK/DURATION above).
 # -1 = inactive. Read by _update_playing's gate-scroll step only.
 var gate_speed_boost_elapsed: float = -1.0
+var boost_button_held: bool = false  # see the BOOST_BUTTON_* consts; read fresh each frame, so releasing is instant
+# 0..1 ease behind boost_button_held. The world speed itself is NOT eased —
+# it reads the bool directly, so release is instant — but the look is, so it
+# does not snap. See the speed-feel block above.
+var boost_visual_blend: float = 0.0
+# Boost burst (see the BOOST_BURST_* consts). -1 = not playing; the press
+# sets it to 0 and _update_fx runs it back to -1 at the end. Same
+# -1-means-idle convention the other one-shot FX timers here use.
+var boost_burst_frames: Array[Texture2D] = []
+var boost_burst_elapsed: float = -1.0
+# Boost bonus bar (see the BOOST_BAR_* consts). elapsed counts real seconds
+# since the current gate spawned and is deliberately NOT scaled by boost —
+# that is the entire mechanic.
+var boost_bar_elapsed: float = -1.0    # -1 = no gate in flight
+var boost_bar_duration: float = 0.0    # T_base for the gate in flight
+var boost_bar_flash_elapsed: float = -1.0
+var boost_bar_flash_color := Color.WHITE
+var boost_bar_track_texture: Texture2D            # see BOOST_BAR_TRACK_PATH
+var boost_bar_fill_textures: Array[Texture2D] = []  # index-aligned to BOOST_BAR_FILL_PATHS: none / mid / best
+# BOOST popup (see the BOOST_POP_* consts). Single instance — it is pinned
+# to a corner, so a list would only ever stack on itself.
+var boost_pop_elapsed: float = -1.0    # -1 = inactive
+var boost_pop_text := ""
+var boost_pop_color := Color.WHITE
+var boost_pop_font_size: int = 0
+var boost_pop_is_best: bool = false    # gates the glow pass
+var boost_pop_anchor := Vector2.ZERO   # captured beside the character at the instant of the pass
 
 var score: int = 0
 var combo: int = 0
@@ -1519,6 +2434,12 @@ var max_combo: int = 0   # highest combo reached this run — see the gate-pass 
 # 올라가지 않는다"고 약속하므로, 그 약속을 지키려면 끝까지 들고 가야 한다.
 # (개인 최고 기록은 "always saved"라고 했으니 부활 여부와 무관하게 쓴다.)
 var run_revived: bool = false
+# 판이 실제로 시작됐는가. _reset_game 은 첫 플레이에서도 불리므로, 이것 없이는
+# "떠난 판"과 "아직 없던 판"을 구분할 수 없다.
+var run_active: bool = false
+# 설치 후 누적 판 수(면제 판정용)와 마지막 전면광고 이후 떠난 판 수.
+var games_played_total: int = 0
+var restarts_since_interstitial: int = 0
 # 이 판에서 "첫 실수 전까지" 도달한 점수. 순위표에 올라가는 건 이 값이다.
 #
 # 광고를 보고 이어 뛰면 개인 최고 기록은 끝까지 간 점수로 갱신되지만,
@@ -1554,7 +2475,6 @@ var active_draw_offset_fly := Vector2.ZERO
 var active_draw_offset_happy := Vector2.ZERO
 var active_draw_offset_sad := Vector2.ZERO
 var active_visual_size_scale: float = 1.0
-var active_theme_motion: int = ThemeMotion.SCATTER
 
 var flap_frames: Array[Texture2D] = []
 var flap_frame_index: int = 0
@@ -1576,6 +2496,36 @@ var player_display_name: String = ""
 var best_scores := PackedInt32Array()
 # 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — leaderboard_score 참고.
 var leaderboard_bests := PackedInt32Array()
+# 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
+# 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
+var mode_gates_cleared := PackedInt32Array()
+# 튜토리얼을 봤는지. SAVE_KEY_TUTORIAL 참고.
+var tutorial_seen: bool = false
+# 튜토리얼이 도는 동안. 카운트다운 시계를 세우고, 평소 PLAYING 에서만 보이는
+# 가속 버튼을 보이게 하는 데 쓴다.
+var tutorial_active: bool = false
+## 잠긴 MIX 카드를 에디터에서 바로 보기 위한 스위치.
+##
+## 켜면 저장된 진행도와 상관없이 0/3 으로 보고하므로, 이미 해금한 기기에서도
+## 잠금 덮개가 그려진다. 해금 조건을 실제로 채우려면 서른 게이트를 지나야 하고,
+## 한 번 채우면 되돌릴 방법이 저장 파일을 손대는 것뿐이라 잠금 화면을 손볼
+## 때마다 그 값을 치르게 된다.
+##
+## 디버그 빌드에서만 듣는다. @export 라 인스펙터에서 켜면 Main.tscn 에 저장돼
+## 그대로 커밋될 수 있는데, 그러면 모두에게 영영 잠긴 채로 나간다 —
+## tools/check_hidden_unlock.gd 가 켜진 채로 커밋된 것을 잡는다.
+@export var debug_force_hidden_locked: bool = false
+## 튜토리얼을 다시 보기 위한 스위치. 켜면 이미 본 뒤에도 게임에 들어갈 때마다
+## 다시 돈다.
+##
+## 켜져 있는 동안은 "봤다"를 저장하지 않는다 — 확인하려고 켠 것이 이 기기의
+## 진짜 상태를 바꿔서는 안 되고, 껐을 때 원래대로 돌아와야 한다.
+##
+## debug_force_hidden_locked 와 같은 함정이 있다: @export 라 인스펙터에서 켜면
+## Main.tscn 에 저장되고, 그대로 커밋되면 모두가 매 판 튜토리얼을 본다 —
+## 게임은 멀쩡히 돌아가므로 눈치채기 어렵다. tools/check_tutorial.gd 가 켜진
+## 채로 커밋된 것을 잡는다.
+@export var debug_replay_tutorial: bool = false
 var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
@@ -1634,24 +2584,36 @@ var castle_cooldown_timer: float = 3.0  # short initial wait so the first castle
 var cloud_mid_textures: Array[Texture2D] = []
 var cloud_mid_list: Array = []  # fixed pool, each: {texture, x, y, scale, alpha, speed, flip, near}
 
-# Per-mode single-image background state — loaded in _apply_mode, see the const/export block above.
+# Per-mode background state — loaded in _apply_mode, see the const/export block above.
 var bg_texture: Texture2D
 var bg_scroll_x: float = 0.0  # ever-increasing distance scrolled; wrapped with fposmod at draw time
+# Optional near parallax layer. null for a mode with no MODE_BG_NEAR_TEXTURE_PATH
+# row; it keeps its own scroll distance because it travels at a different rate.
+var bg_near_texture: Texture2D
+var bg_near_scroll_x: float = 0.0
 
 # Ambient background particle state (see the const/export block above).
 var particle_textures: Array[Texture2D] = []
-var ambient_particle_list: Array = []  # fixed pool, each: {texture, base_x, y, size, wobble_amp, wobble_freq, phase, elapsed, duration}
+var ambient_particle_list: Array = []  # fixed pool, each: {texture, base_x, y, size, wobble_amp, wobble_freq, phase, elapsed, rotation, spin}
 
 # Gate-pass FX state (see the const block above for tunables).
-var fx_big_particle_textures: Array[Texture2D] = []
-var fx_theme_object_textures: Array[Texture2D] = []
-var fx_small_particle_textures: Array[Texture2D] = []
+var sparkle_texture_sets: Array = []  # ALL four colours, index-aligned to SPARKLE_COLOR_NAMES; each an Array[Texture2D] of that colour's shapes. Shared by the trail and the gate burst — see the shared-sparkle const block.
+var fx_burst_textures: Array[Texture2D] = []  # flat, pre-weighted pool for the two spark layers: each colour repeated per FX_BURST_COLOR_WEIGHTS_PER_MODE, so a uniform pick yields the mode's mix
 var fx_sparks: Array = []            # each: {pos, vel, scale, rotation, lifetime, elapsed, texture}
 var fx_speed_lines: Array = []       # each: {y_offset, length, elapsed, color}
-var trail_textures: Array[Texture2D] = []   # sparkle subset of the mode's fx_small set, see TRAIL_TEXTURE_NUMBERS
+
+# Boost speed lines (see the BOOST_SPEEDLINE_* consts). A fixed pool,
+# recycled in place off the right edge — no allocation per frame, same as
+# the ambient particle field. Kept moving even when not boosting, which
+# costs one multiply-add each and means the band is already scattered when
+# the button goes down instead of every streak entering from the edge at
+# once.
+var speed_line_texture: Texture2D
+var boost_speedlines: Array = []     # each: {x, y, length, thickness, speed, alpha}
+var trail_texture_sets: Array = []   # one Array[Texture2D] of sparkle shapes per colour in TRAIL_COLORS_PER_MODE — grouped, not flattened, so DREAM can step colour by colour
 var trail_particles: Array = []      # each: {pos, drift_y, size, rotation, spin, lifetime, elapsed, texture} — see the TRAIL_* consts
 var trail_spawn_timer: float = 0.0
-var fx_score_pops: Array = []        # each: {pos, elapsed}
+var trail_color_cursor: int = 0      # walks trail_texture_sets, carrying across spawns — what makes DREAM's trail and bursts rainbow
 var combo_display_punch_elapsed: float = 0.0  # time since the last pass — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
 var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
 var fx_impact_flashes: Array = []    # each: {pos, radius, elapsed}
@@ -1663,6 +2625,8 @@ var combo_glow_elapsed: float = -1.0   # -1 = inactive; screen-edge glow for com
 var combo_font: Font
 var fx_sound_whoosh: AudioStreamPlayer
 var fx_sound_chime: AudioStreamPlayer
+var fx_sound_boost_pop_mid: AudioStreamPlayer
+var fx_sound_boost_pop_best: AudioStreamPlayer
 var fx_sound_flap: AudioStreamPlayer
 # Two players so a track change can crossfade; bgm_active indexes whichever
 # is currently the audible one. See _play_bgm.
@@ -1674,12 +2638,16 @@ var fx_sound_countdown_ready: AudioStreamPlayer
 var fx_sound_countdown_start: AudioStreamPlayer
 var fx_sound_gameover: AudioStreamPlayer
 var fx_sound_splash_start: AudioStreamPlayer
+var fx_sound_boost: AudioStreamPlayer
+var fx_sound_boost_start: AudioStreamPlayer
+var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be killed
 
 @onready var mode_select_panel: Control = $UI/ModeSelectPanel
 @onready var ready_panel: Control = $UI/ReadyPanel
 @onready var gameover_popup: Control = $UI/GameOverPopupPanel
 @onready var settings_popup: Control = $UI/SettingsPopupPanel
 @onready var about_popup: Control = $UI/AboutPopupPanel
+@onready var tutorial_overlay: Control = $UI/TutorialOverlay
 @onready var gameover_panel: Control = $UI/GameOverPanel
 @onready var final_score_label: Label = $UI/GameOverPanel/FinalScoreLabel
 @onready var try_again_image: TextureRect = $UI/GameOverPanel/TryAgainImage
@@ -1687,6 +2655,7 @@ var fx_sound_splash_start: AudioStreamPlayer
 @onready var restart_button: Button = $UI/GameOverPanel/RestartButton
 @onready var pause_button: Button = $UI/PauseButton
 @onready var mute_button: Button = $UI/MuteButton
+@onready var boost_button: Button = $UI/BoostButton
 @onready var pause_panel: Control = $UI/PausePanel
 @onready var revive_panel: Control = $UI/RevivePanel
 
@@ -1719,9 +2688,8 @@ func _ready() -> void:
 
 # 글꼴만 먼저. 로고 화면의 크레딧이 이걸 쓴다.
 func _setup_fonts() -> void:
-	var base_font: Font = ThemeDB.fallback_font
-	if ResourceLoader.exists(COMBO_FONT_PATH):
-		base_font = load(COMBO_FONT_PATH)
+	# 한글 fallback 까지 붙은 한 벌을 받는다 — scripts/AppFont.gd 참고.
+	var base_font: Font = AppFont.base()
 	# Real weight axis rather than the faux-bold this used to need: Mulmaru
 	# shipped a single weight, Fredoka carries 300-700.
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
@@ -1731,11 +2699,15 @@ func _setup_fonts() -> void:
 
 # 부팅의 무거운 쪽. _ready 에서 곧바로, 또는 로고가 뜬 뒤에 불린다.
 func _boot_load() -> void:
+	# 무엇보다 먼저. 판들은 지어질 때 tr() 을 한 번 지나고 그 결과를 라벨과
+	# 맞춰 둔 글자 크기에 굳혀 버린다 — 다 지은 뒤에 로케일을 바꾸면 화면은
+	# 기기 언어 그대로 남는다.
+	_load_language()
 	# 팝업 셋과 모드 선택 화면은 씬의 자식이라 원래 Main 보다 먼저 _ready 가
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
 	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
-			mode_select_panel]:
+			tutorial_overlay, mode_select_panel]:
 		if panel != null and panel.has_method("ensure_built"):
 			panel.ensure_built()
 	# ...except the top HUD, whose painted frames are minified hard enough
@@ -1757,6 +2729,8 @@ func _boot_load() -> void:
 	best_fill_material = best_fill_canvas.material
 	_load_best_score()
 	_load_audio_settings()
+	_load_control_settings()
+	_load_ad_state()
 	_load_flags_data()
 	# The four HUD pieces are all per-mode now and get loaded in _apply_mode;
 	# only the parts that never change per mode are set up here.
@@ -1764,14 +2738,28 @@ func _boot_load() -> void:
 	pause_button.expand_icon = true
 	mute_button.text = ""
 	mute_button.expand_icon = true
+	boost_button.expand_icon = true
+	boost_button.modulate = Color(1.0, 1.0, 1.0, BOOST_BUTTON_ALPHA)
 	# flat=true 라도 Button 은 기본 테마 스타일박스의 content margin(사방 4px)을
 	# 그대로 써서 아이콘을 그 안쪽에 맞춘다. 57.5px 버튼이면 그림은 49.5px 밖에
 	# 안 되고, 그래서 옆의 스코어박스보다 눈에 띄게 작아 보였다. 여백 0 인
 	# 스타일박스를 씌워 아이콘이 버튼 사각형을 그대로 채우게 한다.
-	for b: Button in [pause_button, mute_button]:
+	#
+	# 부스트 버튼도 같은 이유로 함께 씌운다 — 예전에는 자기 StyleBoxFlat 로
+	# 둥근 칩을 그렸지만, 이제는 그림이 원판이라 배경 상자가 필요 없다.
+	for b: Button in [pause_button, mute_button, boost_button]:
 		var empty := StyleBoxEmpty.new()
 		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
 			b.add_theme_stylebox_override(slot, empty)
+	# Shared across every mode, so loaded once here rather than in _apply_mode.
+	if ResourceLoader.exists(BOOST_BAR_TRACK_PATH):
+		boost_bar_track_texture = load(BOOST_BAR_TRACK_PATH)
+	for path in BOOST_BAR_FILL_PATHS:
+		boost_bar_fill_textures.append(load(path) if ResourceLoader.exists(path) else null)
+	# STOP is the Button default, but it is the whole reason a press here
+	# does not also flap, so it is set explicitly rather than inherited.
+	boost_button.mouse_filter = Control.MOUSE_FILTER_STOP
+	boost_button.action_mode = BaseButton.ACTION_MODE_BUTTON_PRESS
 	_layout_hud_buttons()
 	for path in MOUNTAIN_TEXTURE_PATHS:
 		mountain_textures.append(load(path))
@@ -1779,10 +2767,15 @@ func _boot_load() -> void:
 		bg_sparkle_textures.append(load(path))
 	if ResourceLoader.exists(CASTLE_TEXTURE_PATH):
 		castle_texture = load(CASTLE_TEXTURE_PATH)
+	# Shared by every mode — the streaks are plain white and are tinted by
+	# nothing, so there is no per-mode variant to load in _apply_mode.
+	if ResourceLoader.exists(BOOST_SPEEDLINE_TEXTURE_PATH):
+		speed_line_texture = load(BOOST_SPEEDLINE_TEXTURE_PATH)
 	for path in CLOUD_MID_TEXTURE_PATHS:
 		cloud_mid_textures.append(load(path))
 	var view_size := get_viewport_rect().size
 	_init_mountains(view_size)
+	_init_boost_speedlines(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
@@ -1798,6 +2791,18 @@ func _boot_load() -> void:
 	fx_sound_chime.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_CHIME_PATH):
 		fx_sound_chime.stream = load(FX_SOUND_CHIME_PATH)
+	# 등급마다 플레이어를 따로 둔다. 한 플레이어에 스트림을 갈아 끼우면 앞
+	# 소리가 끊기는데, 두 게이트를 잇달아 지나면 등급이 바뀌면서 그렇게 된다.
+	fx_sound_boost_pop_mid = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_pop_mid)
+	fx_sound_boost_pop_mid.bus = BUS_SFX
+	if ResourceLoader.exists(BOOST_POP_SOUND_MID):
+		fx_sound_boost_pop_mid.stream = load(BOOST_POP_SOUND_MID)
+	fx_sound_boost_pop_best = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_pop_best)
+	fx_sound_boost_pop_best.bus = BUS_SFX
+	if ResourceLoader.exists(BOOST_POP_SOUND_BEST):
+		fx_sound_boost_pop_best.stream = load(BOOST_POP_SOUND_BEST)
 	fx_sound_flap = AudioStreamPlayer.new()
 	add_child(fx_sound_flap)
 	fx_sound_flap.bus = BUS_SFX
@@ -1832,6 +2837,22 @@ func _boot_load() -> void:
 	fx_sound_splash_start.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_SPLASH_START_PATH):
 		fx_sound_splash_start.stream = load(FX_SOUND_SPLASH_START_PATH)
+	fx_sound_boost = AudioStreamPlayer.new()
+	add_child(fx_sound_boost)
+	fx_sound_boost.bus = BUS_SFX
+	if ResourceLoader.exists(FX_SOUND_BOOST_PATH):
+		fx_sound_boost.stream = load(FX_SOUND_BOOST_PATH)
+		# 홀드는 클립(2.25초)보다 길어질 수 있으므로 이 소리만 이어 붙인다.
+		# BGM 과 같은 헬퍼를 쓴다 — .import 의 loop_mode 에 기대지 않는다.
+		_enable_stream_loop(fx_sound_boost.stream)
+	fx_sound_boost_start = AudioStreamPlayer.new()
+	add_child(fx_sound_boost_start)
+	fx_sound_boost_start.bus = BUS_SFX
+	if ResourceLoader.exists(FX_SOUND_BOOST_START_PATH):
+		# 루프를 걸지 않는다 — 원샷이다. 위 두 줄과 달리 여기에
+		# _enable_stream_loop 가 없는 것이 의도다.
+		fx_sound_boost_start.stream = load(FX_SOUND_BOOST_START_PATH)
+		fx_sound_boost_start.volume_db = boost_start_volume_db
 	# The mode picker builds its own UI (see ModeSelectScreen.gd) and reports
 	# back which mode START chose.
 	mode_select_panel.start_pressed.connect(_on_mode_selected)
@@ -1839,6 +2860,8 @@ func _boot_load() -> void:
 	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
 	settings_popup.music_volume_changed.connect(set_music_volume)
+	settings_popup.boost_side_changed.connect(set_boost_button_on_left)
+	settings_popup.language_changed.connect(set_language_korean)
 	settings_popup.login_pressed.connect(_on_login_pressed)
 	settings_popup.logout_pressed.connect(_on_logout_pressed)
 	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
@@ -1846,6 +2869,7 @@ func _boot_load() -> void:
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
 	settings_popup.about_pressed.connect(_on_about_pressed)
 	about_popup.close_pressed.connect(_on_about_closed)
+	tutorial_overlay.finished.connect(_on_tutorial_finished)
 	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	play_button.pressed.connect(_on_play_pressed)
 	restart_button.pressed.connect(_on_restart_pressed)
@@ -1861,6 +2885,7 @@ func _boot_load() -> void:
 	pause_panel.home_pressed.connect(_on_pause_home_pressed)
 	pause_panel.sfx_volume_changed.connect(set_sfx_volume)
 	pause_panel.music_volume_changed.connect(set_music_volume)
+	pause_panel.boost_side_changed.connect(set_boost_button_on_left)
 	revive_panel.watch_ad_pressed.connect(_on_revive_continue)
 	revive_panel.decline_pressed.connect(_on_revive_decline)
 	mute_button.pressed.connect(_on_mute_pressed)
@@ -1871,6 +2896,10 @@ func _boot_load() -> void:
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
 	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
 	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
+	boost_button.button_down.connect(_on_boost_pressed)
+	boost_button.button_up.connect(_on_boost_released)
+	boost_button.button_down.connect(_animate_button_press.bind(boost_button))
+	boost_button.button_up.connect(_animate_button_release.bind(boost_button))
 	splash_char_layer = Node2D.new()
 	splash_char_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	splash_char_layer.draw.connect(_draw_splash_characters)
@@ -2189,7 +3218,7 @@ func _init_mountains(view_size: Vector2) -> void:
 func _update_mountains(delta: float, view_size: Vector2) -> void:
 	var overlap_px: float = view_size.y * MOUNTAIN_HEIGHT_FRACTION * MOUNTAIN_SEGMENT_OVERLAP_FRAC
 	for seg in mountain_list:
-		seg.x -= MOUNTAIN_SPEED_RATIO * GATE_SPEED * delta
+		seg.x -= MOUNTAIN_SPEED_RATIO * GATE_SPEED * _boost_bg_multiplier() * delta
 	for seg in mountain_list:
 		if seg.x + seg.width_px < 0.0:
 			var max_right := 0.0
@@ -2234,7 +3263,7 @@ func _init_bg_sparkles(view_size: Vector2) -> void:
 func _update_bg_sparkles(delta: float, view_size: Vector2) -> void:
 	for s in bg_sparkles:
 		s.elapsed += delta
-		s.x -= BG_SPARKLE_SPEED_RATIO * GATE_SPEED * delta
+		s.x -= BG_SPARKLE_SPEED_RATIO * GATE_SPEED * _boost_bg_multiplier() * delta
 		if s.elapsed >= s.duration or s.x < -32.0:
 			# Recycled in place — same Dictionary object, fields overwritten,
 			# never freed/reallocated (see the pooling note above).
@@ -2270,7 +3299,7 @@ func _spawn_castle(view_size: Vector2) -> void:
 
 func _update_castle(delta: float, view_size: Vector2) -> void:
 	if castle_active:
-		castle_x -= CASTLE_SPEED_RATIO * GATE_SPEED * delta
+		castle_x -= CASTLE_SPEED_RATIO * GATE_SPEED * _boost_bg_multiplier() * delta
 		if castle_x + castle_height_px < 0.0:
 			castle_active = false
 			castle_cooldown_timer = randf_range(CASTLE_COOLDOWN_RANGE.x, CASTLE_COOLDOWN_RANGE.y)
@@ -2316,7 +3345,7 @@ func _init_cloud_mid(view_size: Vector2) -> void:
 
 func _update_cloud_mid(delta: float, view_size: Vector2) -> void:
 	for c in cloud_mid_list:
-		c.x -= c.speed * delta
+		c.x -= c.speed * _boost_bg_multiplier() * delta
 		var tex_w: float = c.texture.get_width() * c.scale
 		if c.x + tex_w < 0.0:
 			# Recycled in place, respawned past the right edge — never
@@ -2338,19 +3367,34 @@ func _draw_cloud_mid(near: bool) -> void:
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-# ---- Per-mode single-image background (see _apply_mode/_draw()) ----
-# One painted scene, scaled to exactly fill the view height and tiled
-# horizontally — same infinite-scroll technique as before, just a single
-# layer now instead of three.
+# ---- Per-mode background (see _apply_mode/_draw()) ----
+# A painted scene, scaled to exactly fill the view height and tiled
+# horizontally — the same infinite-scroll technique the old three-layer sky
+# used. Modes that declare a near cut-out get a second pass of it at a
+# faster rate, which is the whole of the parallax: one tiler, two
+# independent scroll distances.
 
 func _update_sky_background(delta: float) -> void:
-	bg_scroll_x += bg_speed_ratio * GATE_SPEED * delta
+	var world_speed: float = GATE_SPEED * _boost_bg_multiplier() * delta
+	bg_scroll_x += bg_speed_ratio * world_speed
+	# Advanced even with no near texture loaded. It costs one multiply-add,
+	# and it keeps the two distances from having to be reasoned about
+	# separately — _apply_mode zeroes both on every mode switch anyway.
+	bg_near_scroll_x += bg_near_speed_ratio * world_speed
 
 
 func _draw_sky_background(view_size: Vector2) -> void:
-	if bg_texture == null:
+	_draw_bg_layer(bg_texture, bg_scroll_x, view_size)
+	# Second, so its foliage and pillars frame what the far layer paints
+	# through its transparent middle. Both still draw behind the gate zone —
+	# see the call site in _draw().
+	_draw_bg_layer(bg_near_texture, bg_near_scroll_x, view_size)
+
+
+func _draw_bg_layer(tex: Texture2D, scroll_x: float, view_size: Vector2) -> void:
+	if tex == null:
 		return
-	var tex_size := Vector2(bg_texture.get_width(), bg_texture.get_height())
+	var tex_size := Vector2(tex.get_width(), tex.get_height())
 	if tex_size.y <= 0.0 or view_size.y <= 0.0:
 		return
 	var draw_scale: float = view_size.y / tex_size.y
@@ -2361,9 +3405,9 @@ func _draw_sky_background(view_size: Vector2) -> void:
 	if tile_w <= 1.0:
 		return
 	var tint := Color(bg_brightness, bg_brightness, bg_brightness, 1.0)
-	var x: float = -fposmod(bg_scroll_x, tile_w)
+	var x: float = -fposmod(scroll_x, tile_w)
 	while x < view_size.x:
-		draw_texture_rect(bg_texture, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
+		draw_texture_rect(tex, Rect2(Vector2(x, 0.0), Vector2(tile_w, view_size.y)), false, tint)
 		x += tile_w
 
 
@@ -2384,24 +3428,56 @@ func _make_ambient_particle(view_size: Vector2, stagger_start: bool) -> Dictiona
 		"wobble_freq": 0.0,
 		"phase": randf_range(0.0, TAU),
 		"elapsed": 0.0,
-		"duration": 1.0,
+		"rotation": randf_range(0.0, TAU),
+		"spin": randf_range(PARTICLE_SPIN_RANGE.x, PARTICLE_SPIN_RANGE.y),
 	}
-	match current_mode:
-		Mode.SKY:
-			d.y = view_size.y * randf_range(0.04, 0.32)  # upper sky, above the gate zone
-			d.duration = randf_range(particle_twinkle_duration_range.x, particle_twinkle_duration_range.y)
-			d.elapsed = randf_range(0.0, d.duration) if stagger_start else 0.0
-		Mode.JUNGLE:
-			# Staggered across the whole fall range on init so they don't all
-			# start clustered at the top; recycled particles start exactly at
-			# the top edge instead, same as every other pool in this file.
-			d.y = randf_range(-view_size.y * 0.3, view_size.y) if stagger_start else -size
-			d.wobble_amp = randf_range(particle_flutter_amplitude_range.x, particle_flutter_amplitude_range.y)
-			d.wobble_freq = randf_range(particle_flutter_freq_range.x, particle_flutter_freq_range.y)
-		Mode.OCEAN:
-			d.y = randf_range(0.0, view_size.y * 1.3) if stagger_start else view_size.y + size
-			d.wobble_amp = randf_range(particle_sway_amplitude_range.x, particle_sway_amplitude_range.y)
-			d.wobble_freq = randf_range(particle_sway_freq_range.x, particle_sway_freq_range.y)
+	var motion: int = MODE_PARTICLE_MOTION[current_mode]
+	var rising: bool = motion == AmbientMotion.RISE
+	if rising:
+		d.wobble_amp = randf_range(particle_sway_amplitude_range.x, particle_sway_amplitude_range.y)
+		d.wobble_freq = randf_range(particle_sway_freq_range.x, particle_sway_freq_range.y)
+	elif motion == AmbientMotion.DRIFT_DIAGONAL:
+		# Deliberately much lazier than FALL's — see the const block for why
+		# a lively flutter here hides the diagonal completely.
+		d.wobble_amp = randf_range(PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE.x, PARTICLE_DIAGONAL_FLUTTER_AMP_RANGE.y)
+		d.wobble_freq = randf_range(PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE.x, PARTICLE_DIAGONAL_FLUTTER_FREQ_RANGE.y)
+	else:
+		d.wobble_amp = randf_range(particle_flutter_amplitude_range.x, particle_flutter_amplitude_range.y)
+		d.wobble_freq = randf_range(particle_flutter_freq_range.x, particle_flutter_freq_range.y)
+
+	if stagger_start:
+		# Initial fill only: scatter over the whole screen so the field is
+		# already populated instead of raining in from one edge.
+		d.base_x = randf_range(0.0, view_size.x)
+		d.y = randf_range(0.0, view_size.y * 1.3) if rising else randf_range(-view_size.y * 0.3, view_size.y)
+		return d
+
+	# Which edge a recycled particle re-enters through.
+	#
+	# With purely vertical motion that is always the ceiling (or the floor).
+	# Add the boost's leftward wind and part of the flow now crosses the
+	# RIGHT edge instead — so some of them have to appear there.
+	#
+	# Without this the field visibly empties under a sustained boost: the
+	# pool is a fixed size (particle_count), every particle re-enters at the
+	# ceiling, and the wind sweeps each one off the left before it has
+	# crossed. All 8 end up spending their lives in the top-left corner.
+	# Splitting the spawn between the two inflow edges in proportion to how
+	# much flow actually crosses each keeps the screen populated at any
+	# boost level, and collapses back to "always the ceiling" at rest, where
+	# the sideways flow is zero.
+	var speed_y: float = (particle_rise_speed if rising else particle_fall_speed) * _boost_bg_multiplier()
+	var speed_x: float = PARTICLE_BOOST_WIND_X * boost_visual_blend
+	if motion == AmbientMotion.DRIFT_DIAGONAL:
+		speed_x += particle_fall_speed * PARTICLE_DRIFT_X_RATIO * _boost_bg_multiplier()
+	var flux_top: float = speed_y * view_size.x
+	var flux_side: float = speed_x * view_size.y
+	if flux_side > 0.0 and randf() < flux_side / (flux_side + flux_top):
+		d.base_x = view_size.x + size * 0.5
+		d.y = randf_range(0.0, view_size.y)
+	else:
+		d.base_x = randf_range(0.0, view_size.x)
+		d.y = view_size.y + size if rising else -size
 	return d
 
 
@@ -2414,26 +3490,37 @@ func _init_ambient_particles(view_size: Vector2) -> void:
 func _update_ambient_particles(delta: float, view_size: Vector2) -> void:
 	if particle_textures.is_empty():
 		return
+	# Travel rides the hold-to-accelerate boost like the rest of the backdrop
+	# — see _boost_bg_multiplier. The wobble phase and the spin deliberately
+	# do NOT: covering more ground at the same sway rate is what reads as
+	# speed, where scaling everything would just look fast-forwarded.
+	var boost: float = _boost_bg_multiplier()
+	var wind: float = PARTICLE_BOOST_WIND_X * boost_visual_blend
 	for p in ambient_particle_list:
 		p.elapsed += delta
-		match current_mode:
-			Mode.SKY:
-				if p.elapsed >= p.duration:
-					var fresh: Dictionary = _make_ambient_particle(view_size, false)
-					for key in fresh:
-						p[key] = fresh[key]
-			Mode.JUNGLE:
-				p.y += particle_fall_speed * delta
-				if p.y - p.size > view_size.y:
-					var fresh: Dictionary = _make_ambient_particle(view_size, false)
-					for key in fresh:
-						p[key] = fresh[key]
-			Mode.OCEAN:
-				p.y -= particle_rise_speed * delta
-				if p.y + p.size < 0.0:
-					var fresh: Dictionary = _make_ambient_particle(view_size, false)
-					for key in fresh:
-						p[key] = fresh[key]
+		p.rotation += p.spin * delta
+		# Applies to every motion, and is zero unless the button is down.
+		p.base_x -= wind * delta
+		var recycle := false
+		match MODE_PARTICLE_MOTION[current_mode]:
+			AmbientMotion.DRIFT_DIAGONAL:
+				p.y += particle_fall_speed * boost * delta
+				p.base_x -= particle_fall_speed * PARTICLE_DRIFT_X_RATIO * boost * delta
+				recycle = p.y - p.size > view_size.y
+			AmbientMotion.FALL:
+				p.y += particle_fall_speed * boost * delta
+				recycle = p.y - p.size > view_size.y
+			AmbientMotion.RISE:
+				p.y -= particle_rise_speed * boost * delta
+				recycle = p.y + p.size < 0.0
+		# Checked for every motion, not just the diagonal: the boost wind can
+		# carry anything off the left edge, whichever way it was heading.
+		if p.base_x + p.size < 0.0:
+			recycle = true
+		if recycle:
+			var fresh: Dictionary = _make_ambient_particle(view_size, false)
+			for key in fresh:
+				p[key] = fresh[key]
 
 
 func _draw_ambient_particles() -> void:
@@ -2446,16 +3533,13 @@ func _draw_ambient_particles() -> void:
 			continue
 		var draw_scale: float = p.size / max(tex_size.x, tex_size.y)
 		var size: Vector2 = tex_size * draw_scale
-		var x: float = p.base_x
-		var alpha: float = particle_alpha_max
-		if current_mode == Mode.SKY:
-			var t: float = p.elapsed / p.duration
-			alpha = particle_alpha_max * sin(PI * clampf(t, 0.0, 1.0))  # fade in -> peak -> fade out
-		else:
-			x += sin(p.elapsed * p.wobble_freq * TAU + p.phase) * p.wobble_amp
-		if alpha <= 0.001:
-			continue
-		draw_texture_rect(texture, Rect2(Vector2(x - size.x * 0.5, p.y - size.y * 0.5), size), false, Color(1.0, 1.0, 1.0, alpha))
+		# Sway is a draw-time offset, not part of base_x — so a diagonal
+		# drift stays a straight line the sway rides on rather than
+		# compounding into a random walk.
+		var x: float = p.base_x + sin(p.elapsed * p.wobble_freq * TAU + p.phase) * p.wobble_amp
+		draw_set_transform(Vector2(x, p.y), p.rotation, Vector2.ONE)
+		draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, particle_alpha_max))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _gate_zone_top(view_size: Vector2) -> float:
@@ -2474,12 +3558,58 @@ func _gate_zone_bottom(view_size: Vector2) -> float:
 	return view_size.y
 
 
+# ---- 게이트가 놓이는 판 ----
+#
+# 스트레치가 "expand" 라 가로 480 은 고정되고 세로만 기기에 맞춰 늘어난다
+# (project.godot). 그런데 늘어나지 않는 것들이 있다: 구멍 높이(링 아트 124px),
+# 캐릭터 히트박스(50px), 중력·플랩·낙하속도, 그리고 게이트가 도착하는 데
+# 걸리는 시간(가로가 안 변하니까). 그래서 화면이 길수록 같은 크기의 구멍이
+# 더 넓은 판에 흩어지고, 같은 시간에 더 멀리 움직여야 한다.
+#
+# 실측(480 폭 기준): 게이트 존이 16:9 에서 689px, 21:9 에서 956px 이 되고,
+# 구멍이 차지하는 비율이 18.0% 에서 12.9% 로 떨어진다. 게이트당 평균 이동은
+# 175 -> 206px. 물리적으로 불가능해지지는 않지만(up_reach 는 절대값이라
+# 화면과 무관하게 잡아 준다) 난이도는 확실히 올라간다.
+#
+# 그래서 게이트가 놓이는 판은 기준 해상도에서 HUD 아래에 남는 높이로 묶고,
+# 남는 세로는 위아래로 반씩 나눠 판을 가운데 둔다. 화면은 배경이 그대로 다
+# 채우므로 레터박스는 생기지 않는다.
+#
+# 캐릭터의 이동 한계와 죽는 선은 여기서 건드리지 않는다 — 그대로 화면
+# 기준이다(_update_playing). 판을 따라 죽는 선까지 올리면 긴 기기에서 배경이
+# 보이는 허공에 안 보이는 바닥이 생기고, 플레이어에게는 그게 버그로 읽힌다.
+# 남는 차이는 "위에서 떨어져 바닥에 닿기까지의 거리"뿐인데, 이 게임은 오답도
+# 즉사라 거기까지 떨어지려면 그 전에 게이트에서 이미 죽는다.
+var _gate_field_cap: float = -1.0
+
+
+# 기준 해상도에서 HUD 아래에 남는 높이. 판은 어떤 기기에서도 이걸 넘지 않는다.
+func _gate_field_height_cap() -> float:
+	if _gate_field_cap < 0.0:
+		var base := Vector2(
+			float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+			float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+		_gate_field_cap = base.y - _gate_zone_top(base)
+	return _gate_field_cap
+
+
+func _gate_field_top(view_size: Vector2) -> float:
+	var top: float = _gate_zone_top(view_size)
+	var available: float = _gate_zone_bottom(view_size) - top
+	return top + maxf(0.0, available - _gate_field_height_cap()) * 0.5
+
+
+func _gate_field_bottom(view_size: Vector2) -> float:
+	var available: float = _gate_zone_bottom(view_size) - _gate_zone_top(view_size)
+	return _gate_field_top(view_size) + minf(available, _gate_field_height_cap())
+
+
 func _gate_wall_center_y(view_size: Vector2) -> float:
 	# The center wall (and the top/bottom lane split) is centered within the
-	# gate zone, not the raw screen — otherwise shrinking the top of the
-	# zone for the HUD/quiz box would silently steal space from the top
+	# gate field, not the raw screen — otherwise shrinking the top of the
+	# field for the HUD/quiz box would silently steal space from the top
 	# lane only, making the two lanes uneven.
-	return (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	return (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 
 
 func _gate_ring_inner_zone_height() -> float:
@@ -2632,17 +3762,22 @@ func _draw_horizontal_slice(texture: Texture2D, rect: Rect2, cap: float, ci: Can
 			Rect2(cap, 0.0, tex_w - cap * 2.0, tex_h))
 
 
-func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
-	# JUNGLE draws its answer as plain number text instead of a flag texture
-	# — everything else about the box (panel, position, card fill) is shared.
-	# OCEAN takes the same text path for its colour NAME, and deliberately
-	# draws it in the shared dark ink on the shared cream card, with no trace
-	# of the colour it names: an option painted RED would let the player
-	# match the question by colour and never read a word, which is exactly
-	# the shortcut this quiz exists to close off. The name is the only way in.
-	var is_math: bool = current_mode == Mode.JUNGLE
-	var is_color_name: bool = current_mode == Mode.OCEAN
-	var is_text: bool = is_math or is_color_name
+func _draw_gate_answer_box(code: String, quiz_kind: int, gate_x: float, zone_top: float, zone_bottom: float, view_size: Vector2) -> void:
+	# A math gate draws its answer as plain number text instead of a flag
+	# texture — everything else about the box (panel, position, card fill) is
+	# shared. A Stroop gate takes the same text path for its colour NAME, and
+	# deliberately draws it in the shared dark ink on the shared cream card,
+	# with no trace of the colour it names: an option painted RED would let
+	# the player match the question by colour and never read a word, which is
+	# exactly the shortcut this quiz exists to close off. The name is the
+	# only way in.
+	#
+	# 모드가 아니라 게이트에게 묻는다. MIX 에서는 화면에 떠 있는 두 게이트가
+	# 서로 다른 종류일 수 있고, 그때 current_mode 를 보면 둘 다 같은 방식으로
+	# 그려진다 — 국기 게이트에 숫자를 그리거나, 수학 게이트에서 국기 텍스처를
+	# 찾다가 못 찾고 통째로 안 그린다.
+	var is_color_name: bool = quiz_kind == QuizKind.STROOP
+	var is_text: bool = quiz_kind != QuizKind.FLAG
 	var texture: Texture2D = null
 	if not is_text:
 		texture = flag_textures.get(code)
@@ -2699,7 +3834,7 @@ func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bo
 			font_size = _ocean_gate_font_size(icon_size, max_font_size)
 		else:
 			font_size = _fit_font_size(code, icon_size.x * 0.8, max_font_size, 16, combo_font)
-		_draw_centered_text(code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
+		_draw_centered_text(tr(code) if is_color_name else code, Vector2(center_x, center_y), font_size, COLOR_TEXT_DARK, Color(COLOR_TEXT_DARK.r, COLOR_TEXT_DARK.g, COLOR_TEXT_DARK.b, 0.0), combo_font)
 	else:
 		draw_texture_rect(texture, Rect2(icon_top_left, icon_size), false)
 
@@ -2711,13 +3846,14 @@ func _draw_gate_answer_box(code: String, gate_x: float, zone_top: float, zone_bo
 func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 	if ocean_gate_font_size > 0:
 		return ocean_gate_font_size
-	var widest: String = OCEAN_COLOR_NAMES[0]
+	var widest: String = tr(OCEAN_COLOR_NAMES[0])
 	var widest_width: float = 0.0
 	for name in OCEAN_COLOR_NAMES:
-		var w: float = combo_font.get_string_size(name, HORIZONTAL_ALIGNMENT_CENTER, -1, max_font_size).x
+		var shown: String = tr(name)
+		var w: float = combo_font.get_string_size(shown, HORIZONTAL_ALIGNMENT_CENTER, -1, max_font_size).x
 		if w > widest_width:
 			widest_width = w
-			widest = name
+			widest = shown
 	ocean_gate_font_size = _fit_font_size(widest, icon_size.x * OCEAN_GATE_FIT_WIDTH_FRAC, max_font_size, OCEAN_GATE_MIN_FONT, combo_font)
 	return ocean_gate_font_size
 
@@ -2797,11 +3933,40 @@ func _process(delta: float) -> void:
 		_update_bg_sparkles(delta, view_size)
 		_update_castle(delta, view_size)
 		_update_cloud_mid(delta, view_size)
+	# Runs on every screen and in both branches above — the pool is 12
+	# entries and only drawn while boosting, so keeping it moving costs
+	# nothing and means the band is already scattered when the button goes
+	# down rather than filling in from the right edge.
+	_update_boost_speedlines(delta, view_size)
 	pause_button.visible = state == State.PLAYING or state == State.COUNTDOWN
+	# Re-derived every frame rather than only on state changes: the revive
+	# popup opens without one (see _update_mute_button_visibility). LOGO and
+	# SPLASH return above, and _apply_screen_visibility covers those on entry.
+	_update_mute_button_visibility()
+	# Only while actually flying — during the countdown the world is not
+	# scrolling yet, and a paused run has a popup over this corner.
+	boost_button.visible = (state == State.PLAYING and not paused) or tutorial_active
+	if not boost_button.visible:
+		# A Button hidden mid-press never emits button_up, which would leave
+		# the world accelerated forever after dying with it held down. The
+		# release is re-derived here rather than trusted to the signal.
+		boost_button_held = false
+		# Same reason the alpha has to be put back by hand: without this the
+		# button would come back for the next run stuck at its pressed alpha.
+		# The press tween has to be killed first or it just repaints it.
+		if boost_alpha_tween != null and boost_alpha_tween.is_valid():
+			boost_alpha_tween.kill()
+		boost_button.modulate.a = BOOST_BUTTON_ALPHA
+		# ...and the same for the hold sound, which loops — dying or pausing
+		# with the button down would otherwise leave it droning forever.
+		if fx_sound_boost != null:
+			fx_sound_boost.stop()
 	if not paused:
 		if state == State.PLAYING:
 			_update_playing(delta)
-		elif state == State.COUNTDOWN:
+		elif state == State.COUNTDOWN and not tutorial_active:
+			# 튜토리얼이 도는 동안은 시계를 세워 둔다 — 안 그러면 설명을 읽는
+			# 중에 카운트다운이 끝나고 판이 시작된다.
 			_update_countdown(delta)
 		if flash_time > 0.0:
 			flash_time = max(0.0, flash_time - delta)
@@ -2848,6 +4013,26 @@ func _gate_speed_boost_multiplier() -> float:
 	return 1.0 + (GATE_SPEED_BOOST_PEAK - 1.0) * eased
 
 
+# What the world actually scrolls at: the gate-pass jolt above, times the
+# hold-to-accelerate button. Kept separate from _gate_speed_boost_multiplier
+# so that function still means just "the jolt" — the two stack, so passing a
+# gate while holding the button still delivers its kick on top.
+func _gate_speed_multiplier() -> float:
+	return _gate_speed_boost_multiplier() * _boost_hold_multiplier()
+
+
+# The hold on its own, without the gate-pass jolt — what the background
+# scrolls by. The jolt stays excluded from the background (a 3.2x flash on
+# the sky every pass reads as a stutter, not as speed); a sustained hold does
+# not, which is the whole point of BOOST_BG_SPEED_SHARE.
+func _boost_hold_multiplier() -> float:
+	return BOOST_BUTTON_MULTIPLIER if boost_button_held else 1.0
+
+
+func _boost_bg_multiplier() -> float:
+	return 1.0 + (_boost_hold_multiplier() - 1.0) * BOOST_BG_SPEED_SHARE
+
+
 func _update_playing(delta: float) -> void:
 	var view_size := get_viewport_rect().size
 
@@ -2869,7 +4054,11 @@ func _update_playing(delta: float) -> void:
 		gate_speed_boost_elapsed += delta
 		if gate_speed_boost_elapsed >= GATE_SPEED_BOOST_DURATION:
 			gate_speed_boost_elapsed = -1.0
-	var gate_speed: float = GATE_SPEED * _gate_speed_boost_multiplier()
+	# Plain delta, never scaled by _gate_speed_multiplier — the bar has to
+	# drain on the base clock for the leftover to mean anything.
+	if boost_bar_elapsed >= 0.0:
+		boost_bar_elapsed += delta
+	var gate_speed: float = GATE_SPEED * _gate_speed_multiplier()
 
 	for g in gates:
 		g.x -= gate_speed * delta
@@ -2891,6 +4080,22 @@ func _update_playing(delta: float) -> void:
 		_spawn_gate(view_size)
 
 
+# 이 게이트가 낼 퀴즈. 단일 모드는 늘 같은 답, MIX 는 주머니에서 하나.
+#
+# 난이도는 여기서 갈리지 않는다는 점이 중요하다. 세 생성기(_pick_flag_target /
+# _make_math_problem / _make_color_problem)가 전부 phase_index 를 받고, 그
+# phase_index 는 gates_passed 하나로만 정해지므로(_get_phase_index) MIX 도
+# 통과한 게이트 수에 따라 단일 모드와 똑같은 곡선을 탄다. 섞이는 것은 무엇을
+# 묻느냐이지 얼마나 어렵냐가 아니다.
+func _next_quiz_kind() -> int:
+	if current_mode != Mode.DREAM:
+		return MODE_QUIZ_KIND[current_mode]
+	if mix_quiz_bag.is_empty():
+		mix_quiz_bag = [QuizKind.FLAG, QuizKind.MATH, QuizKind.STROOP]
+		mix_quiz_bag.shuffle()
+	return mix_quiz_bag.pop_back()
+
+
 func _spawn_gate(view_size: Vector2) -> void:
 	var phase_index := _get_phase_index(gates_passed)
 
@@ -2903,12 +4108,21 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var target_code: String
 	var target_name: String
 	var other_code: String
-	# OCEAN only — the indices the question box needs to repaint this item
-	# (see _draw_ocean_quiz_box). Left at -1 for the other two modes, which
+	# Stroop only — the indices the question box needs to repaint this item
+	# (see _draw_ocean_quiz_box). Left at -1 for the other two kinds, which
 	# never read them.
 	var ocean_word_index: int = -1
 	var ocean_answer_index: int = -1
-	if current_mode == Mode.JUNGLE:
+	# 모드가 아니라 이 게이트가 무엇을 묻는지로 갈린다. 단일 모드에서는 늘
+	# 같은 답이 나오고, MIX 에서만 게이트마다 달라진다.
+	var quiz_kind: int = _next_quiz_kind()
+	# last_quiz_key 는 종류를 가리지 않는 한 칸이다. 이어지는 두 게이트가
+	# 다른 퀴즈면 키가 겹칠 일이 없어 재시도가 그냥 안 걸리고, 같은 퀴즈가
+	# 이어질 때만(주머니 경계) 원래대로 작동한다 — "연달아 같은 문제"를
+	# 막는 것이 목적이었으므로 그게 맞는 동작이다. 종류별로 따로 기억하면
+	# 국기-수학-국기 사이에서까지 재시도가 걸리는데, 그 둘은 사이에 다른
+	# 퀴즈가 끼어 있어 연달아 보이지 않는다.
+	if quiz_kind == QuizKind.MATH:
 		# Re-rolled if it repeats the previous gate's expression — see
 		# last_quiz_key. The decoy comes from the problem shape itself now,
 		# not from a generic offset (see the _make_*_problem block).
@@ -2929,7 +4143,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 		# depend on Inspector-tunable ranges, so this is the backstop.
 		if other_code == target_code:
 			other_code = str(problem.answer + 1)
-	elif current_mode == Mode.OCEAN:
+	elif quiz_kind == QuizKind.STROOP:
 		# Difficulty comes from how close the word's own colour and the
 		# answer colour sit on the hue circle — see OCEAN_PHASE_HUE_BAND.
 		# Re-rolled if the WORD repeats the previous gate's word: the same
@@ -2993,23 +4207,39 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# allowed spawn band here so the zone itself never rolls close enough
 	# to need that: frame and zone always land in exactly the same place,
 	# and the frame can never render above _gate_zone_top.
-	var gate_zone_top := _gate_zone_top(view_size)
-	var gate_zone_bottom := _gate_zone_bottom(view_size)
+	# 화면이 아니라 판이다 — _gate_field_top 의 주석을 볼 것.
+	var gate_zone_top := _gate_field_top(view_size)
+	var gate_zone_bottom := _gate_field_bottom(view_size)
 	var top_lane_band_top: float = gate_zone_top + max(0.0, _gate_frame_top_overhang() - zone_height * 0.5)
 	var bottom_lane_band_bottom: float = gate_zone_bottom - max(0.0, _gate_frame_bottom_overhang() - zone_height * 0.5)
 
 	# base_gate_spacing controls how far ahead of the judgement line a new
 	# gate spawns, which is exactly how long the player has to get from the
 	# last target into this one.
-	var available_time: float = base_gate_spacing / GATE_SPEED
-	var up_reach: float = available_time * absf(flap_velocity) * REACH_SAFETY_FACTOR
+	#
+	# 부스트를 계속 누르고 있는 최악을 가정한다. 게이트는 한참 앞에서 생성되고
+	# 플레이어는 그 뒤 아무 때나 부스트를 누를 수 있으므로, 안 누른 속도로
+	# 배치를 정하면 누르는 순간 그 배치가 도달 불가능해진다. 여기서
+	# BOOST_BUTTON_MULTIPLIER 를 빼먹고 있었고, 480x854 에서 실측하면 부스트
+	# 중 상승 가능 거리 294px 대 배치 상한 427px — 아무리 두드려도 못 닿는
+	# 윗레인 갈아타기가 실제로 나올 수 있었다.
+	var available_time: float = base_gate_spacing / (GATE_SPEED * BOOST_BUTTON_MULTIPLIER)
+	# flap_velocity 는 탭 한 번이 속도를 덮어쓰는 값, 즉 순간 속도지 유지되는
+	# 상승률이 아니다. 여기에 그대로 쓰는 것은 간격 0 의 무한 연타를 가정하는
+	# 것과 같았다 — 실제 유지 상승률은 reach_tap_interval 의 표를 볼 것.
+	# 내려가는 쪽은 max_fall_speed 가 정말로 유지되는 속도라 그대로 맞다.
+	var climb_rate: float = maxf(0.0, absf(flap_velocity) - gravity * reach_tap_interval * 0.5)
+	var up_reach: float = available_time * climb_rate * REACH_SAFETY_FACTOR
 	var down_reach: float = available_time * max_fall_speed * REACH_SAFETY_FACTOR
 
 	# On top of raw physics reachability, cap consecutive-target movement to
 	# a fraction of full screen height so "top then straight to bottom"
 	# extremes can't roll even when the physics would technically allow it.
 	var move_ratio: float = max_move_ratio_early if phase_index < 2 else max_move_ratio_late
-	var max_travel: float = move_ratio * view_size.y
+	# 기준 해상도의 화면 높이로 잰다. 실제 화면 높이를 쓰면 긴 기기에서 상한이
+	# 같이 커져 배치가 벌어지고, 판 높이를 쓰면 반대로 기준 기기의 난이도가
+	# 지금보다 낮아진다. 기준값으로 고정해야 모든 기기가 16:9 와 같아진다.
+	var max_travel: float = move_ratio * float(ProjectSettings.get_setting("display/window/size/viewport_height"))
 	up_reach = min(up_reach, max_travel)
 	down_reach = min(down_reach, max_travel)
 
@@ -3058,13 +4288,16 @@ func _spawn_gate(view_size: Vector2) -> void:
 		"top_zone_bottom": top_zone.y,
 		"bottom_zone_top": bottom_zone.x,
 		"bottom_zone_bottom": bottom_zone.y,
+		# 그리는 쪽이 나중에 이 게이트가 무엇을 물었는지 알아야 한다.
+		"quiz_kind": quiz_kind,
 	}
-	# OCEAN carries its Stroop item on the gate itself — the question box
-	# repaints the word from these every frame the gate is the pending one.
-	if current_mode == Mode.OCEAN:
+	# Stroop 게이트는 자기 문제를 스스로 들고 다닌다 — 질문 상자가 이 게이트가
+	# 대기 중인 동안 매 프레임 여기서 단어를 다시 칠한다.
+	if quiz_kind == QuizKind.STROOP:
 		gate["ocean_word_index"] = ocean_word_index
 		gate["ocean_answer_index"] = ocean_answer_index
 	gates.append(gate)
+	_start_boost_bar(gate)
 
 
 func _random_zone(band_top: float, band_bottom: float, zone_height: float) -> Vector2:
@@ -3492,6 +4725,322 @@ func _gate_judge_x(g: Dictionary) -> float:
 	return g.x + GATE_WIDTH * 0.5
 
 
+# ---- Boost bonus bar (see the BOOST_BAR_* consts) ----
+
+func _start_boost_bar(gate: Dictionary) -> void:
+	# T_base measured off the gate that was just spawned rather than off
+	# base_gate_spacing, so it stays correct if the spawn point or the judge
+	# offset ever moves — it is by definition the distance this gate still
+	# has to cover, at the base rate.
+	var distance: float = _gate_judge_x(gate) - PLAYER_X
+	boost_bar_duration = distance / GATE_SPEED if GATE_SPEED > 0.0 else 0.0
+	boost_bar_elapsed = 0.0
+
+
+func _boost_bar_remaining() -> float:
+	if boost_bar_elapsed < 0.0 or boost_bar_duration <= 0.0:
+		return 1.0
+	return clampf(1.0 - boost_bar_elapsed / boost_bar_duration, 0.0, 1.0)
+
+
+func _boost_bonus_multiplier(remaining: float) -> float:
+	if remaining >= boost_bonus_best_threshold:
+		return boost_bonus_best_multiplier
+	if remaining >= boost_bonus_mid_threshold:
+		return boost_bonus_mid_multiplier
+	return boost_bonus_none_multiplier
+
+
+func _boost_bar_fill_texture(remaining: float) -> Texture2D:
+	var index: int = 0
+	if remaining >= boost_bonus_best_threshold:
+		index = 2
+	elif remaining >= boost_bonus_mid_threshold:
+		index = 1
+	return boost_bar_fill_textures[index] if index < boost_bar_fill_textures.size() else null
+
+
+func _boost_bar_zone_color(remaining: float) -> Color:
+	if remaining >= boost_bonus_best_threshold:
+		return BOOST_BAR_ZONE_BEST_COLOR
+	if remaining >= boost_bonus_mid_threshold:
+		return BOOST_BAR_ZONE_MID_COLOR
+	return BOOST_BAR_ZONE_NONE_COLOR
+
+
+# The combo readout's worst-case footprint: widest of its two lines, at the
+# punch's peak scale, lifted by the punch's rise. Empty when nothing shows.
+func _combo_display_rect(view_size: Vector2) -> Rect2:
+	if combo <= 0:
+		return Rect2()
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var tier := _combo_tier(combo)
+	var number_size: int = int(round(COMBO_TIER_FONT_SIZES[tier] * POP_PEAK_SCALE))
+	var label_size: int = int(round(COMBO_TIER_FONT_SIZES[tier] * 0.55 * POP_PEAK_SCALE))
+	var number := font.get_string_size("x%d" % combo, HORIZONTAL_ALIGNMENT_LEFT, -1, number_size)
+	var label := font.get_string_size("COMBO!", HORIZONTAL_ALIGNMENT_LEFT, -1, label_size)
+	var widest: float = maxf(number.x, label.x)
+	var top: float = _gate_zone_top(view_size) + COMBO_DISPLAY_MARGIN.y - COMBO_TIER_RISE[tier]
+	return Rect2(
+		Vector2(view_size.x - COMBO_DISPLAY_MARGIN.x - widest, top),
+		Vector2(widest, number.y * 1.75 + label.y))
+
+
+# Resolves the popup's final geometry from its anchor and the string it has
+# to fit. Split out of _draw_boost_pop so tools/check_popup_overlap.gd can
+# drive the real thing instead of re-deriving a copy that could drift.
+func _boost_pop_layout(view_size: Vector2, text: String, is_best: bool, anchor: Vector2, font_scale: float) -> Dictionary:
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var nominal: int = BOOST_POP_FONT_SIZE_BEST if is_best else BOOST_POP_FONT_SIZE_MID
+	# Both tiers glow, so both reserve room for it — at 0.0 the mid tier's
+	# ring would be the thing that gets clipped at a screen edge.
+	var glow: float = BOOST_POP_GLOW_RADIUS_BEST if is_best else BOOST_POP_GLOW_RADIUS_MID
+	var edge_pad: float = BOOST_POP_SCREEN_MARGIN + glow
+	# Left-anchored beside the character, so its room is whatever lies
+	# between the anchor and the right edge — shrink to fit that.
+	var max_width: float = maxf(view_size.x - edge_pad - anchor.x, 0.0)
+	var font_size: int = _fit_font_size(text, max_width,
+		maxi(int(round(nominal * font_scale)), 1), BOOST_POP_MIN_FONT_SIZE, font)
+	var size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size)
+	var left: float = clampf(anchor.x, edge_pad, maxf(view_size.x - edge_pad - size.x, edge_pad))
+	var top: float = anchor.y - size.y * 0.5
+	# A pass taken high in the zone puts this straight over the combo
+	# readout's corner — drop below it rather than stack on it.
+	var combo_rect := _combo_display_rect(view_size)
+	if combo_rect.size.x > 0.0 \
+			and Rect2(Vector2(left - glow, top - glow), size + Vector2(glow, glow) * 2.0).intersects(combo_rect):
+		top = combo_rect.end.y + BOOST_POP_COMBO_GAP + glow
+	# Held inside the gate zone, not merely on-screen: a pass taken high in
+	# the lane would otherwise put the text up over the quiz box and the
+	# boost bar that sit in the band above it.
+	var zone_top: float = _gate_zone_top(view_size) + glow
+	var zone_bottom: float = _gate_zone_bottom(view_size) - BOOST_POP_SCREEN_MARGIN - size.y - glow
+	top = clampf(top, zone_top, maxf(zone_bottom, zone_top))
+	return {
+		"font": font,
+		"font_size": font_size,
+		"size": size,
+		"pos": Vector2(left, top),
+		"rect": Rect2(Vector2(left - glow, top - glow), size + Vector2(glow, glow) * 2.0),
+	}
+
+
+# The two tiers' wording. Its own function because tools/check_popup_overlap.gd
+# has to size the real strings, and it used to carry its own copy of this
+# format — a copy that would have gone on measuring "BOOST!!" after the
+# rename and quietly checked a string the game no longer draws.
+func _boost_pop_text(points: int, is_best: bool) -> String:
+	return ("TURBO! +%d" if is_best else "BOOST! +%d") % points
+
+
+func _spawn_boost_pop(points: int, remaining: float, view_size: Vector2) -> void:
+	boost_pop_is_best = remaining >= boost_bonus_best_threshold
+	# The tier decides the wording, the size, the colour and how much
+	# confetti — all from the one bool, so the two tiers can never drift into
+	# saying different things.
+	boost_pop_text = _boost_pop_text(points, boost_pop_is_best)
+	boost_pop_color = BOOST_POP_COLOR_BEST if boost_pop_is_best else BOOST_POP_COLOR_MID
+	boost_pop_font_size = BOOST_POP_FONT_SIZE_BEST if boost_pop_is_best else BOOST_POP_FONT_SIZE_MID
+	boost_pop_elapsed = 0.0
+	# Captured now, held for the popup's whole life — see the BOOST_POP_*
+	# header for why this does not track the character.
+	boost_pop_anchor = Vector2(PLAYER_X, player_y) + BOOST_POP_CHARACTER_OFFSET
+	_play_boost_pop_sound(boost_pop_is_best)
+	var count: Vector2i = BOOST_POP_BURST_COUNT_BEST if boost_pop_is_best else BOOST_POP_BURST_COUNT_MID
+	_spawn_spark_burst(boost_pop_anchor, count, BOOST_POP_BURST_SIZE_RANGE,
+		fx_burst_textures, FX_SPARK_SPEED_RANGE, FX_SPARK_LIFETIME_RANGE, BOOST_POP_BURST_RADIUS)
+
+
+# 등급에 맞는 소리 하나. 팝업을 띄우는 곳에서만 불린다 — 소리를 결정하는
+# 자리와 글자를 결정하는 자리가 같아야 둘이 어긋나지 않는다.
+#
+# 반대쪽을 멈추지 않는다. 두 게이트를 빠르게 이어 지나면 앞 소리의 꼬리 위로
+# 다음 소리가 얹히는데, 그게 실제로 일어난 일이다 — 끊으면 두 번 지난 것이
+# 한 번처럼 들린다.
+func _play_boost_pop_sound(is_best: bool) -> void:
+	var player: AudioStreamPlayer = fx_sound_boost_pop_best if is_best else fx_sound_boost_pop_mid
+	if player != null and player.stream != null:
+		player.play()
+
+
+# ---- Text as a texture, for the gradient fill (see _draw_boost_pop) ----
+#
+# draw_string paints one flat colour and there is no way to vary it down the
+# glyph: _draw() has no clip rect (only RenderingServer.canvas_item_set_clip,
+# which applies to the whole item) and this project has no shader pass. So
+# the string is assembled into a texture ONCE per (text, size), and the
+# gradient is then just that texture drawn as horizontal strips, each with
+# its own modulate.
+#
+# Built from the font's own glyph atlas rather than a SubViewport: a viewport
+# needs a frame to render, and this popup has to appear on the frame the gate
+# is passed. Assembling from the atlas is synchronous.
+#
+# Only valid because the font is not MSDF (multichannel_signed_distance_field
+# is false in Fredoka.ttf.import). An MSDF atlas is a distance field, not
+# coverage, and blitting it like this would produce garbage.
+var _text_texture_cache: Dictionary = {}   # "text|size" -> ImageTexture
+
+
+func _text_as_texture(font: Font, font_size: int, text: String) -> Texture2D:
+	var key: String = "%s|%d" % [text, font_size]
+	if _text_texture_cache.has(key):
+		return _text_texture_cache[key]
+	var rids: Array = font.get_rids()
+	if rids.is_empty() or text.is_empty():
+		return null
+	var rid: RID = rids[0]
+	var ts := TextServerManager.get_primary_interface()
+	var size_key := Vector2i(font_size, 0)
+	var ascent: float = font.get_ascent(font_size)
+	var height: int = int(ceil(ascent + font.get_descent(font_size)))
+	# One pass to measure, so the image is exactly as wide as the glyphs run.
+	var advance: float = 0.0
+	for i in text.length():
+		var gi: int = ts.font_get_glyph_index(rid, font_size, text.unicode_at(i), 0)
+		advance += ts.font_get_glyph_advance(rid, font_size, gi).x
+	var width: int = int(ceil(advance)) + 2   # a column either side for glyphs that overhang their advance
+	if width <= 0 or height <= 0:
+		return null
+
+	var dst := Image.create(width, height, false, Image.FORMAT_RGBA8)
+	dst.fill(Color(1.0, 1.0, 1.0, 0.0))
+	# The atlas carries coverage, not colour, and WHICH channel holds it
+	# depends on the format the TextServer chose — LA8 puts it in alpha and
+	# leaves luminance at 1.0 everywhere, L8 puts it in the single channel.
+	# Reading the wrong one is not subtly wrong: taking .r off an LA8 atlas
+	# returns 1.0 for every pixel and the "text" comes out a solid block.
+	# Converted once per atlas to white pixels carrying coverage as alpha,
+	# which is what the modulate then tints.
+	var atlas_cache: Dictionary = {}
+	var pen: float = 1.0
+	for i in text.length():
+		var gi: int = ts.font_get_glyph_index(rid, font_size, text.unicode_at(i), 0)
+		var tex_idx: int = ts.font_get_glyph_texture_idx(rid, size_key, gi)
+		# A glyph with no bitmap — a space, most obviously — reports texture
+		# index -1. It still has an advance, and skipping the whole iteration
+		# is what ate it: the popup rendered "TURBO!+600" with the space
+		# closed up, which only showed once the real string was captured
+		# rather than the bare word this was first tested on.
+		if tex_idx < 0:
+			pen += ts.font_get_glyph_advance(rid, font_size, gi).x
+			continue
+		if not atlas_cache.has(tex_idx):
+			var src: Image = ts.font_get_texture_image(rid, size_key, tex_idx)
+			if src == null:
+				pen += ts.font_get_glyph_advance(rid, font_size, gi).x
+				continue
+			var rgba := Image.create(src.get_width(), src.get_height(), false, Image.FORMAT_RGBA8)
+			var has_alpha: bool = src.detect_alpha() != Image.ALPHA_NONE
+			for y in range(src.get_height()):
+				for x in range(src.get_width()):
+					var px: Color = src.get_pixel(x, y)
+					var cov: float = px.a if has_alpha else px.r
+					rgba.set_pixel(x, y, Color(1.0, 1.0, 1.0, cov))
+			atlas_cache[tex_idx] = rgba
+		var uv: Rect2 = ts.font_get_glyph_uv_rect(rid, size_key, gi)
+		var off: Vector2 = ts.font_get_glyph_offset(rid, size_key, gi)
+		if uv.size.x > 0.0 and uv.size.y > 0.0:
+			# blend_rect, not blit_rect: neighbouring glyph boxes can overlap
+			# and a blit would stamp one's transparent margin over the other.
+			dst.blend_rect(atlas_cache[tex_idx], Rect2i(uv.position, uv.size),
+					Vector2i(int(round(pen + off.x)), int(round(ascent + off.y))))
+		pen += ts.font_get_glyph_advance(rid, font_size, gi).x
+
+	var tex := ImageTexture.create_from_image(dst)
+	_text_texture_cache[key] = tex
+	return tex
+
+
+func _draw_text_vgradient(tex: Texture2D, top_left: Vector2, top_col: Color, bottom_col: Color) -> void:
+	# One strip per band, each drawn from its own slice of the texture with
+	# the colour sampled at that height. BOOST_POP_GRADIENT_STRIPS is what
+	# decides whether it reads as a ramp or as bands.
+	var size: Vector2 = tex.get_size()
+	var strip_h: float = size.y / float(BOOST_POP_GRADIENT_STRIPS)
+	for i in range(BOOST_POP_GRADIENT_STRIPS):
+		var y0: float = i * strip_h
+		# Sampled at the strip's middle, so the ramp is centred on the band
+		# rather than starting a half-strip late.
+		var t: float = (i + 0.5) / float(BOOST_POP_GRADIENT_STRIPS)
+		var src := Rect2(0.0, y0, size.x, strip_h)
+		var dst := Rect2(top_left + Vector2(0.0, y0), Vector2(size.x, strip_h))
+		draw_texture_rect_region(tex, dst, src, top_col.lerp(bottom_col, t))
+
+
+func _draw_boost_pop(view_size: Vector2) -> void:
+	if boost_pop_elapsed < 0.0 or boost_pop_text.is_empty():
+		return
+	var t: float = clampf(boost_pop_elapsed / BOOST_POP_DURATION, 0.0, 1.0)
+	# Same overshoot-then-settle curve the combo punch and the countdown use,
+	# so all three popups move in one language.
+	var scale: float = _pop_scale(t)
+	# Cubic hold-then-drop rather than a linear fade: at 0.45s a linear fade
+	# is already visibly dimming while the text is still arriving.
+	var alpha: float = clampf(1.0 - pow(t, 3), 0.0, 1.0)
+	# Rise is applied to the anchor, not to the finished position, so the
+	# combo-collision test in _boost_pop_layout sees where it will actually be.
+	var anchor: Vector2 = boost_pop_anchor + Vector2(0.0, -BOOST_POP_RISE * sin(t * PI))
+	var layout := _boost_pop_layout(view_size, boost_pop_text, boost_pop_is_best, anchor, scale)
+	var font: Font = layout["font"]
+	var font_size: int = layout["font_size"]
+	# layout["pos"] is the text block's top-left; draw_string wants a baseline.
+	var draw_pos: Vector2 = layout["pos"] + Vector2(0.0, font.get_ascent(font_size))
+
+	# Both tiers glow; only how hard differs. The text redrawn on a ring at
+	# low alpha, which reads as a glow without needing a shader or a second
+	# canvas.
+	var passes: int = BOOST_POP_GLOW_PASSES_BEST if boost_pop_is_best else BOOST_POP_GLOW_PASSES_MID
+	var radius: float = BOOST_POP_GLOW_RADIUS_BEST if boost_pop_is_best else BOOST_POP_GLOW_RADIUS_MID
+	var glow := Color(boost_pop_color,
+		(BOOST_POP_GLOW_ALPHA_BEST if boost_pop_is_best else BOOST_POP_GLOW_ALPHA_MID) * alpha)
+	var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
+
+	# Glow, outline and fill all come off ONE assembled texture rather than
+	# the glow and outline using draw_string and only the fill using the
+	# texture. The two paths agree on glyph positions to about a pixel, and a
+	# pixel of drift between an outline and the letter it outlines is exactly
+	# the kind of thing that looks like a rendering bug. Sharing the texture
+	# makes them agree by construction.
+	var text_tex: Texture2D = _text_as_texture(font, font_size, boost_pop_text)
+	if text_tex == null:
+		# The assembly needs the font's glyph atlas; if anything about that
+		# fails, a flat popup is far better than none.
+		for i in range(passes):
+			var a: float = TAU * float(i) / float(passes)
+			draw_string(font, draw_pos + Vector2(cos(a), sin(a)) * radius, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, glow)
+		draw_string(font, draw_pos, boost_pop_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(boost_pop_color, alpha))
+		return
+
+	# draw_string takes a baseline; the texture's origin is its top-left.
+	var tex_pos: Vector2 = draw_pos - Vector2(0.0, font.get_ascent(font_size))
+	for i in range(passes):
+		var angle: float = TAU * float(i) / float(passes)
+		draw_texture_rect(text_tex, Rect2(tex_pos + Vector2(cos(angle), sin(angle)) * radius, text_tex.get_size()), false, glow)
+	for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
+		draw_texture_rect(text_tex, Rect2(tex_pos + offset, text_tex.get_size()), false, outline_col)
+	_draw_text_vgradient(text_tex, tex_pos,
+		Color(boost_pop_color * boost_pop_gradient_top, alpha),
+		Color(boost_pop_color * boost_pop_gradient_bottom, alpha))
+
+
+# 가속 버튼 자리. 버튼을 놓는 쪽과 튜토리얼이 밝히는 쪽이 같은 답을 봐야 해서
+# 함수로 둔다 — 노드의 현재 위치를 읽으면 화면 크기를 넣어 계산하는 쪽과
+# 어긋난다.
+func _boost_button_rect(view_size: Vector2) -> Rect2:
+	var s := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
+	return Rect2(Vector2(
+		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - s.x,
+		view_size.y - BOOST_BUTTON_MARGIN - s.y), s)
+
+
+func _boost_bar_rect(view_size: Vector2) -> Rect2:
+	var box := _quiz_box_rect(view_size)
+	return Rect2(
+		Vector2(box.position.x + BOOST_BAR_SIDE_MARGIN, box.end.y + BOOST_BAR_GAP),
+		Vector2(maxf(box.size.x - BOOST_BAR_SIDE_MARGIN * 2.0, 0.0), BOOST_BAR_HEIGHT))
+
+
 func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	g.resolved = true
 	var wall_center_y := _gate_wall_center_y(view_size)
@@ -3520,12 +5069,35 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 
 	if passed:
 		gates_passed += 1
+		# 히든 모드 해금용 누적. 문턱에서 멈추므로 열린 뒤로는 값이 안 변하고,
+		# 저장도 더 이상 일어나지 않는다.
+		if current_mode < mode_gates_cleared.size() \
+				and mode_gates_cleared[current_mode] < HIDDEN_UNLOCK_GATES:
+			mode_gates_cleared[current_mode] += 1
 		combo += 1
 		# combo is zeroed by any miss, so the run's peak has to be kept
 		# separately — the game-over popup reports the peak, not what was
 		# left standing at the end.
 		max_combo = maxi(max_combo, combo)
-		score += 10
+		# Read before _spawn_gate refills the bar for the next gate — that
+		# happens later in the same _update_playing pass, once this one is
+		# resolved.
+		var remaining: float = _boost_bar_remaining()
+		var boost_multiplier: float = _boost_bonus_multiplier(remaining)
+		# combo was incremented just above, so the first gate of a run scores
+		# SCORE_PER_COMBO x 1 — the multiplier is the only thing the boost
+		# bar adds on top.
+		var base_points: int = SCORE_PER_COMBO * combo
+		var gained: int = int(round(base_points * (1.0 + boost_multiplier)))
+		score += gained
+		boost_bar_flash_color = _boost_bar_zone_color(remaining)
+		boost_bar_flash_elapsed = 0.0
+		# What the popup reports: the difference the multiplier actually made
+		# on THIS gate, derived from the same two numbers that moved the
+		# score — never a fixed per-tier figure.
+		var bonus_points: int = gained - base_points
+		if bonus_points > 0:
+			_spawn_boost_pop(bonus_points, remaining, view_size)
 		flash_color = Color(0.3, 0.8, 0.4, 0.35)
 		flash_time = FLASH_DURATION
 		gate_speed_boost_elapsed = 0.0
@@ -3550,20 +5122,15 @@ func _play_gate_success_fx(g: Dictionary, in_top: bool) -> void:
 	var gate_center := Vector2(g.x + GATE_WIDTH * 0.5, (zone_top + zone_bottom) * 0.5)
 
 	# 0ms: impact flash + gate punch/crystal flash (driven by fx_flash_elapsed
-	# above, sampled in _draw()) + big spark burst + themed-object burst
-	# (wings/leaves/bubbles, motion per active_theme_motion) + both sound hooks.
+	# above, sampled in _draw()) + big spark burst + both sound hooks.
 	_spawn_impact_flash(gate_center)
-	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SCALE_RANGE, fx_big_particle_textures)
-	# Themed object bursts from a tight point at the gate's own center — see
-	# active_theme_motion for how each concept then moves from there.
-	_spawn_spark_burst(gate_center, FX_SPARK_THEME_COUNT_RANGE, FX_SPARK_THEME_SCALE_RANGE, fx_theme_object_textures, FX_SPARK_THEME_SPEED_RANGE, FX_SPARK_THEME_LIFETIME_RANGE, true, FX_SPARK_THEME_SPAWN_RADIUS)
+	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SIZE_RANGE, fx_burst_textures)
 	# 30-50ms: small spark burst + speed streaks, fired together once this
 	# pending entry's delay elapses (see _update_fx).
 	fx_pending_bursts.append({
 		"delay": randf_range(FX_SPARK_BURST_B_DELAY_RANGE.x, FX_SPARK_BURST_B_DELAY_RANGE.y),
 		"gate_center": gate_center,
 	})
-	_spawn_score_pop(gate_center)
 	fx_shake_elapsed = 0.0
 	fx_stretch_elapsed = 0.0
 	_play_gate_success_sound()
@@ -3578,76 +5145,47 @@ func _spawn_impact_flash(gate_center: Vector2) -> void:
 	})
 
 
-func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2, texture_pool: Array[Texture2D], speed_range: Vector2 = FX_SPARK_SPEED_RANGE, lifetime_range: Vector2 = FX_SPARK_LIFETIME_RANGE, is_theme: bool = false, spawn_radius_override: float = -1.0) -> void:
+func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2, texture_pool: Array[Texture2D], speed_range: Vector2 = FX_SPARK_SPEED_RANGE, lifetime_range: Vector2 = FX_SPARK_LIFETIME_RANGE, spawn_radius_override: float = -1.0) -> void:
 	if texture_pool.is_empty():
 		return
+	# Default ring sits outside the gate frame's own edge — right for a gate
+	# pass, far too wide for a burst around a line of text, which is what the
+	# override is for.
 	var ring_radius: float
 	if spawn_radius_override >= 0.0:
-		# Small burst-point spread around a fixed origin (e.g. the
-		# character's center) instead of the gate-frame-edge ring below.
 		ring_radius = spawn_radius_override
 	else:
 		var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
 		ring_radius = frame_outer_radius + FX_SPARK_RING_MARGIN
 	var strength: float = clampf(successFxIntensity, 0.0, 2.0)
 	var count: int = int(round(randi_range(count_range.x, count_range.y) * strength))
-	# RISE_SWAY (ocean bubbles) floats far slower/longer than a burst, so it
-	# overrides the caller's speed/lifetime range — SCATTER/FLUTTER use them
-	# as passed in (both are bursts, just with different tumble/sway).
-	var active_speed_range := speed_range
-	var active_lifetime_range := lifetime_range
-	if is_theme and active_theme_motion == ThemeMotion.RISE_SWAY:
-		active_speed_range = FX_RISE_SPEED_RANGE
-		active_lifetime_range = FX_RISE_LIFETIME_RANGE
 	for i in range(count):
-		var angle: float
-		if is_theme and active_theme_motion == ThemeMotion.RISE_SWAY:
-			# Mostly straight up (-Y), with a bit of spread either side —
-			# bubbles floating, not bursting outward in every direction.
-			angle = -PI * 0.5 + randf_range(-FX_RISE_CONE_HALF_ANGLE, FX_RISE_CONE_HALF_ANGLE)
-		else:
-			# Angled outward from gate_center (the zone center the bird just
-			# passed through), starting at the ring outside the frame's own
-			# edge — spreads toward the gate's outer boundary, not over the
-			# bird's face/body which sits back near gate_center itself.
-			angle = randf_range(0.0, TAU)
+		# Angled outward from gate_center (the zone center the bird just
+		# passed through), starting at the ring outside the frame's own
+		# edge — spreads toward the gate's outer boundary, not over the
+		# bird's face/body which sits back near gate_center itself.
+		var angle: float = randf_range(0.0, TAU)
 		var dir := Vector2(cos(angle), sin(angle))
 		var dist: float = ring_radius * randf_range(0.9, 1.15)
-		var speed: float = randf_range(active_speed_range.x, active_speed_range.y) * strength
+		var speed: float = randf_range(speed_range.x, speed_range.y) * strength
 		var texture: Texture2D = texture_pool[randi() % texture_pool.size()]
-		# Themed objects tumble/sway per active_theme_motion — SCATTER (sky wings)
-		# stays a rigid straight-line burst, FLUTTER (jungle leaves) tumbles
-		# and sways as it bursts outward, RISE_SWAY (ocean bubbles) only
-		# sways (no spin) as it drifts up. Plain sparks get zero here, so
-		# their motion/draw is unaffected.
-		var angular_velocity := 0.0
-		var wobble_amplitude := 0.0
-		var wobble_freq := 0.0
-		if is_theme:
-			match active_theme_motion:
-				ThemeMotion.FLUTTER:
-					angular_velocity = randf_range(FX_FLUTTER_ANGULAR_VELOCITY_RANGE.x, FX_FLUTTER_ANGULAR_VELOCITY_RANGE.y)
-					wobble_amplitude = randf_range(FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE.x, FX_FLUTTER_WOBBLE_AMPLITUDE_RANGE.y)
-					wobble_freq = randf_range(FX_FLUTTER_WOBBLE_FREQ_RANGE.x, FX_FLUTTER_WOBBLE_FREQ_RANGE.y)
-				ThemeMotion.RISE_SWAY:
-					wobble_amplitude = randf_range(FX_RISE_WOBBLE_AMPLITUDE_RANGE.x, FX_RISE_WOBBLE_AMPLITUDE_RANGE.y)
-					wobble_freq = randf_range(FX_RISE_WOBBLE_FREQ_RANGE.x, FX_RISE_WOBBLE_FREQ_RANGE.y)
-				ThemeMotion.SCATTER:
-					pass  # rigid straight-line burst — angular_velocity/wobble stay 0
-		var wobble_phase: float = randf_range(0.0, TAU)
+		# scale_range is a target size in px, not a multiplier: the sparkle
+		# sheet ships each shape at its own resolution, so normalise by the
+		# texture's longest edge or the shape the RNG picked would decide how
+		# big the particle came out. See FX_SPARK_BURST_A_SIZE_RANGE.
+		var longest: float = maxf(texture.get_width(), texture.get_height())
+		var spark_scale: float = randf_range(scale_range.x, scale_range.y)
+		spark_scale = spark_scale / longest if longest > 0.0 else 0.0
 		fx_sparks.append({
 			"pos": gate_center + dir * dist,
 			"vel": dir * speed,
-			"scale": randf_range(scale_range.x, scale_range.y) * clampf(strength, 0.3, 2.0),
-			"rotation": randf_range(0.0, TAU),
-			"lifetime": randf_range(active_lifetime_range.x, active_lifetime_range.y),
+			"scale": spark_scale * clampf(strength, 0.3, 2.0),
+			# Near-upright, like the trail: these are 4-point stars, and a
+			# fully random angle just smears them.
+			"rotation": randf_range(-TRAIL_ROTATION_JITTER, TRAIL_ROTATION_JITTER),
+			"lifetime": randf_range(lifetime_range.x, lifetime_range.y),
 			"elapsed": 0.0,
 			"texture": texture,
-			"is_theme": is_theme,
-			"angular_velocity": angular_velocity,
-			"wobble_amplitude": wobble_amplitude,
-			"wobble_freq": wobble_freq,
-			"wobble_phase": wobble_phase,
 		})
 
 
@@ -3662,13 +5200,6 @@ func _spawn_speed_lines() -> void:
 			"elapsed": 0.0,
 			"color": line_color,
 		})
-
-
-func _spawn_score_pop(gate_center: Vector2) -> void:
-	fx_score_pops.append({
-		"pos": gate_center + FX_SCORE_POP_OFFSET,
-		"elapsed": 0.0,
-	})
 
 
 func _combo_tier(combo_value: int) -> int:
@@ -3693,7 +5224,7 @@ func _spawn_combo_popup(view_size: Vector2) -> void:
 	var pos := _combo_display_pos(view_size)
 	var particle_count: int = COMBO_TIER_PARTICLE_COUNTS[tier]
 	if particle_count > 0:
-		_spawn_spark_burst(pos, Vector2i(particle_count, particle_count), FX_SPARK_BURST_A_SCALE_RANGE, fx_big_particle_textures)
+		_spawn_spark_burst(pos, Vector2i(particle_count, particle_count), FX_SPARK_BURST_A_SIZE_RANGE, fx_burst_textures)
 	if tier >= 2:
 		combo_shake_elapsed = 0.0
 	if tier >= 3:
@@ -3735,6 +5266,67 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 	var t: float = elapsed / FX_GATE_PUNCH_DURATION
 	var raw: float = _sample_keyframes(FX_GATE_PUNCH_KEYFRAMES, t)
 	return 1.0 + (raw - 1.0) * successFxIntensity
+
+
+
+# Where the plume's head sits right now. Derived from the character every
+# frame rather than stored at the press, which is the whole of what keeps
+# the plume attached — see the BOOST_BURST_* block.
+#
+# It matches the character's DRAWN centre, happy-bounce included, not the
+# bare player_y: the bounce is draw-time-only, and a plume that ignored it
+# would visibly unstick from the body for the length of every gate-pass
+# celebration.
+# Normalised time the held loop wraps back to: one frame in, so the ignition
+# stub is played once on the press and never again. Derived from the loaded
+# frame count rather than written as a fraction, so a re-cut strip with a
+# different number of frames still skips exactly one.
+func _boost_burst_sustain_start() -> float:
+	if boost_burst_frames.size() < 3:
+		# Nothing to loop between — no ignition frame to skip and no embers
+		# to hold back. Wrap the whole run rather than dividing by a size
+		# that would put the start past the end.
+		return 0.0
+	return 1.0 / float(boost_burst_frames.size())
+
+
+func _boost_burst_head() -> Vector2:
+	return Vector2(
+			PLAYER_X + PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_HEAD_OFFSET[current_mode],
+			player_y + _happy_pop_bounce_offset()
+					+ PLAYER_VISUAL_SIZE.y * MODE_BOOST_BURST_HEAD_DROP[current_mode])
+
+
+func _draw_boost_burst() -> void:
+	if boost_burst_elapsed < 0.0 or boost_burst_frames.is_empty():
+		return
+	# Floor of the normalised time, clamped: at exactly t = 1 the index would
+	# run one past the last frame.
+	var t: float = clampf(boost_burst_elapsed / maxf(boost_burst_duration, 0.001), 0.0, 0.9999)
+	var frame: Texture2D = boost_burst_frames[int(t * boost_burst_frames.size())]
+	if frame == null:
+		return
+	# Held at full until BOOST_BURST_FADE_START, then eased out, so the plume
+	# stays solid and only the dying end of it thins.
+	var alpha: float = 1.0
+	if t > BOOST_BURST_FADE_START:
+		alpha = 1.0 - (t - BOOST_BURST_FADE_START) / maxf(1.0 - BOOST_BURST_FADE_START, 0.001)
+	# Width is NOT scaled by active_visual_size_scale. The character sizes
+	# differ per mode (0.92 to 1.20) and letting the burst follow made the
+	# same effect a different size in each one; it is the boost's own art,
+	# not part of the body.
+	#
+	# Height comes off the frame rather than a const so a re-cut strip cannot
+	# silently start being squashed: the cells are 300x256 today, and a
+	# square rect would lose a seventh of the plume's length.
+	var frame_size: Vector2 = frame.get_size()
+	var width: float = PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_SIZE_SCALE[current_mode]
+	var size := Vector2(width, width * frame_size.y / maxf(frame_size.x, 1.0))
+	# The anchor is the HEAD, not the centre — see MODE_BOOST_BURST_HEAD_OFFSET for
+	# why — so the rect hangs left of it and centres vertically on it.
+	var head: Vector2 = _boost_burst_head()
+	draw_texture_rect(frame, Rect2(head - Vector2(size.x, size.y * 0.5), size), false,
+			Color(1.0, 1.0, 1.0, clampf(alpha, 0.0, 1.0)))
 
 
 func _gate_glow_tint(g: Dictionary, side: String) -> Color:
@@ -3795,7 +5387,6 @@ func _update_fx(delta: float) -> void:
 	for s in fx_sparks:
 		s.elapsed += delta
 		s.pos += s.vel * delta
-		s.rotation += s.angular_velocity * delta
 	fx_sparks = fx_sparks.filter(func(s): return s.elapsed < s.lifetime)
 
 	for l in fx_speed_lines:
@@ -3804,9 +5395,48 @@ func _update_fx(delta: float) -> void:
 
 	_update_bird_trail(delta)
 
-	for p in fx_score_pops:
-		p.elapsed += delta
-	fx_score_pops = fx_score_pops.filter(func(p): return p.elapsed < FX_SCORE_POP_DURATION)
+	if boost_bar_flash_elapsed >= 0.0:
+		boost_bar_flash_elapsed += delta
+		if boost_bar_flash_elapsed >= BOOST_BAR_FLASH_DURATION:
+			boost_bar_flash_elapsed = -1.0
+
+	if boost_pop_elapsed >= 0.0:
+		boost_pop_elapsed += delta
+		if boost_pop_elapsed >= BOOST_POP_DURATION:
+			boost_pop_elapsed = -1.0
+
+	# Runs from _update_fx, not _update_playing, so the look keeps easing out
+	# after a game over instead of freezing mid-stretch.
+	var blend_target: float = 1.0 if boost_button_held else 0.0
+	var blend_span: float = BOOST_VISUAL_BLEND_IN if boost_button_held else BOOST_VISUAL_BLEND_OUT
+	boost_visual_blend = move_toward(boost_visual_blend, blend_target, delta / maxf(blend_span, 0.001))
+	if boost_burst_elapsed >= 0.0:
+		# Only the clock. The plume is pinned to the character and its
+		# position is derived at draw time (_boost_burst_head), so there is
+		# nothing here to move.
+		boost_burst_elapsed += delta
+		var sustain_end: float = boost_burst_duration * BOOST_BURST_FADE_START
+		if boost_button_held and boost_burst_elapsed >= sustain_end:
+			# Held: wrap back into the SUSTAIN rather than to 0. The run's
+			# two ends are not loopable — frame 1 is an ignition stub and the
+			# last frame is scattered embers with no flame in it at all, so
+			# looping the whole thing would blink the plume out completely
+			# five times a second and strobe. Looping the middle burns
+			# continuously, which is what a held thruster should do, and
+			# matches the hold sound, which loops too (_enable_stream_loop).
+			#
+			# The overshoot is carried across the wrap instead of being
+			# dropped, so the cycle keeps real time rather than losing a
+			# sliver of a frame every lap.
+			var sustain_start: float = boost_burst_duration * _boost_burst_sustain_start()
+			var span: float = maxf(sustain_end - sustain_start, 0.001)
+			boost_burst_elapsed = sustain_start + fmod(boost_burst_elapsed - sustain_end, span)
+		elif boost_burst_elapsed >= boost_burst_duration:
+			# Released. The clock was left inside the sustain, so it runs on
+			# through the embers and the BOOST_BURST_FADE_START ease before
+			# stopping — the cutoff plays itself out instead of the flame
+			# vanishing on the frame the finger lifts.
+			boost_burst_elapsed = -1.0
 
 	if combo > 0:
 		combo_display_punch_elapsed += delta
@@ -3820,7 +5450,7 @@ func _update_fx(delta: float) -> void:
 	var fired: Array = fx_pending_bursts.filter(func(b): return b.delay <= 0.0)
 	fx_pending_bursts = fx_pending_bursts.filter(func(b): return b.delay > 0.0)
 	for b in fired:
-		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SCALE_RANGE, fx_small_particle_textures)
+		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SIZE_RANGE, fx_burst_textures)
 		_spawn_speed_lines()
 
 	if fx_stretch_elapsed >= 0.0:
@@ -3859,7 +5489,7 @@ func _update_fx(delta: float) -> void:
 func _update_bird_trail(delta: float) -> void:
 	# Runs from _update_fx, not _update_playing, so an existing trail keeps
 	# drifting and fading after a game over instead of freezing mid-air.
-	var world_dx: float = GATE_SPEED * _gate_speed_boost_multiplier() * delta
+	var world_dx: float = GATE_SPEED * _gate_speed_multiplier() * delta
 	for p in trail_particles:
 		p.elapsed += delta
 		p.pos.x -= world_dx          # rides the world, not the bird — see the TRAIL_* header
@@ -3869,44 +5499,78 @@ func _update_bird_trail(delta: float) -> void:
 
 	if not _trail_active():
 		return
-	# Flat baseline rate — the dynamics come from the tap burst, not from
-	# emission chasing the character's speed. See the header.
+	# Flat rate, deliberately: the tap's punctuation is the tap flare's job,
+	# and emission chasing the character's speed would just fight it. See
+	# the header.
 	trail_spawn_timer += delta
-	while trail_spawn_timer >= TRAIL_SPAWN_INTERVAL:
-		trail_spawn_timer -= TRAIL_SPAWN_INTERVAL
+	# Shortened while boosting so the streak behind the character thickens
+	# rather than just stretching out — the particles already ride the faster
+	# world, which spaces them further apart on its own.
+	var spawn_interval: float = TRAIL_SPAWN_INTERVAL * lerpf(1.0, BOOST_TRAIL_INTERVAL_SCALE, boost_visual_blend)
+	# Streak modes pack it tighter still — see boost_streak_density. Applied
+	# here rather than baked per particle because it governs emission, not the
+	# particle itself.
+	if TRAIL_BOOST_STREAK_PER_MODE[current_mode]:
+		spawn_interval /= lerpf(1.0, boost_streak_density, boost_visual_blend)
+	while trail_spawn_timer >= spawn_interval:
+		trail_spawn_timer -= spawn_interval
 		_spawn_trail_particle()
 
 
 func _trail_active() -> bool:
-	return state == State.PLAYING and TRAIL_ENABLED_PER_MODE[current_mode] and not trail_textures.is_empty()
+	return state == State.PLAYING and TRAIL_ENABLED_PER_MODE[current_mode] and not trail_texture_sets.is_empty()
 
 
 func _spawn_trail_burst() -> void:
 	# Fired on tap: a short puff on top of the baseline, so the input gets a
-	# visible kick without the trail ever becoming a steady stream.
+	# visible kick without the trail ever becoming a steady stream. Same
+	# particle as the baseline — see the TRAIL_* header for why the tap is
+	# not its own separate effect.
 	if not _trail_active():
 		return
 	for i in range(randi_range(TRAIL_TAP_BURST_RANGE.x, TRAIL_TAP_BURST_RANGE.y)):
-		_spawn_trail_particle(TRAIL_TAP_BURST_SIZE_SCALE)
+		_spawn_trail_particle(TRAIL_TAP_BURST_SIZE_SCALE, TRAIL_TAP_BURST_JITTER)
 
 
-func _spawn_trail_particle(size_scale: float = 1.0) -> void:
+func _spawn_trail_particle(size_scale: float = 1.0, jitter: float = TRAIL_ORIGIN_JITTER) -> void:
 	var size_range: Vector2 = TRAIL_SIZE_RANGE_PER_MODE[current_mode] * size_scale
+	# 0 = the usual tumbling wake, 1 = a speed line. Frozen here rather than
+	# read at draw time — see the TRAIL_BOOST_STREAK_* block.
+	var streak: float = boost_visual_blend if TRAIL_BOOST_STREAK_PER_MODE[current_mode] else 0.0
+	var jitter_x: float = lerpf(jitter, maxf(jitter, TRAIL_BOOST_STREAK_X_JITTER), streak)
+	var jitter_y: float = jitter * lerpf(1.0, TRAIL_BOOST_STREAK_Y_JITTER_SCALE, streak)
 	var origin := Vector2(
-		PLAYER_X + PLAYER_VISUAL_SIZE.x * TRAIL_ORIGIN_FRAC.x + randf_range(-TRAIL_ORIGIN_JITTER, TRAIL_ORIGIN_JITTER),
-		player_y + PLAYER_VISUAL_SIZE.y * TRAIL_ORIGIN_FRAC.y + randf_range(-TRAIL_ORIGIN_JITTER, TRAIL_ORIGIN_JITTER))
+		PLAYER_X + PLAYER_VISUAL_SIZE.x * TRAIL_ORIGIN_FRAC.x + randf_range(-jitter_x, jitter_x),
+		player_y + PLAYER_VISUAL_SIZE.y * TRAIL_ORIGIN_FRAC.y + randf_range(-jitter_y, jitter_y))
+	# One colour step per particle, and the cursor is never reset between
+	# spawns: that is what turns DREAM's four colours into a rainbow that
+	# keeps advancing, rather than a random pick that repeats itself. The
+	# three single-colour modes only ever hold one set, so the step is a
+	# no-op for them.
+	var color_set: Array = trail_texture_sets[trail_color_cursor % trail_texture_sets.size()]
+	trail_color_cursor += 1
+	# Per-mode drift (bubbles rise, leaves settle) plus a little of the
+	# character's own vertical motion, so a hard dive throws the trail
+	# downward instead of leaving it hanging level. A streak eases all of
+	# that to zero — vertical wander is exactly what stops a stream of
+	# particles reading as one line.
+	var drift_y: float = TRAIL_DRIFT_Y_PER_MODE[current_mode] + player_vel * TRAIL_INHERIT_VEL_Y \
+			+ randf_range(TRAIL_DRIFT_Y_RANGE.x, TRAIL_DRIFT_Y_RANGE.y)
 	trail_particles.append({
 		"pos": origin,
-		# Per-mode drift (bubbles rise, leaves settle) plus a little of the
-		# character's own vertical motion, so a hard dive throws the trail
-		# downward instead of leaving it hanging level.
-		"drift_y": TRAIL_DRIFT_Y_PER_MODE[current_mode] + player_vel * TRAIL_INHERIT_VEL_Y + randf_range(TRAIL_DRIFT_Y_RANGE.x, TRAIL_DRIFT_Y_RANGE.y),
+		"drift_y": lerpf(drift_y, 0.0, streak),
+		"streak": streak,
 		"size": randf_range(size_range.x, size_range.y),
-		"rotation": randf() * TAU,
-		"spin": randf_range(TRAIL_SPIN_RANGE.x, TRAIL_SPIN_RANGE.y),
-		"lifetime": randf_range(TRAIL_LIFETIME_RANGE.x, TRAIL_LIFETIME_RANGE.y),
+		# Near-upright rather than any angle: these are 4-point stars now,
+		# and a fully random spin reads as a smear at this size. A streak
+		# goes fully upright and stops turning, so the stretch below lands
+		# on the screen's own X axis.
+		"rotation": lerpf(randf_range(-TRAIL_ROTATION_JITTER, TRAIL_ROTATION_JITTER), 0.0, streak),
+		"spin": lerpf(randf_range(TRAIL_SPIN_RANGE.x, TRAIL_SPIN_RANGE.y), 0.0, streak),
+		"lifetime": randf_range(TRAIL_LIFETIME_RANGE.x, TRAIL_LIFETIME_RANGE.y) \
+				* lerpf(1.0, TRAIL_BOOST_STREAK_LIFETIME_SCALE, streak),
 		"elapsed": 0.0,
-		"texture": trail_textures[randi() % trail_textures.size()],
+		"texture": color_set[randi() % color_set.size()],
 	})
 
 
@@ -3928,7 +5592,16 @@ func _draw_bird_trail() -> void:
 			continue
 		var draw_scale: float = p.size * (1.0 - t * TRAIL_SHRINK) / max(tex_size.x, tex_size.y)
 		var size: Vector2 = tex_size * draw_scale
-		draw_set_transform(p.pos, p.rotation, Vector2.ONE)
+		# The one thing that actually gives a symmetric star a direction:
+		# stretched along travel and squashed across it. Applied through the
+		# transform, so it works with p.rotation — which a streak has already
+		# driven to 0, putting the stretch on the screen's X axis.
+		var stretch := Vector2.ONE
+		if p.streak > 0.0:
+			stretch = Vector2(
+				lerpf(1.0, boost_streak_stretch, p.streak),
+				lerpf(1.0, TRAIL_BOOST_STREAK_SQUASH, p.streak))
+		draw_set_transform(p.pos, p.rotation, stretch)
 		draw_texture_rect(texture, Rect2(-size * 0.5, size), false, Color(1.0, 1.0, 1.0, alpha))
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -3946,6 +5619,88 @@ func _draw_speed_lines() -> void:
 		draw_rect(rect, Color(c.r, c.g, c.b, c.a * alpha))
 
 
+# ---- Boost speed lines (see the BOOST_SPEEDLINE_* consts) ----
+
+func _boost_speedline_bands(view_size: Vector2) -> Array:
+	# [top_band_start_y, bottom_band_start_y]. Anchored to the gate zone, not
+	# the raw screen: above the zone is the HUD and the quiz box, and a
+	# streak up there would be running behind panels the player is reading.
+	var zone_top: float = _gate_zone_top(view_size)
+	return [zone_top, view_size.y - BOOST_SPEEDLINE_BAND_HEIGHT]
+
+
+func _make_boost_speedline(view_size: Vector2, index: int, scatter: bool) -> Dictionary:
+	var bands: Array = _boost_speedline_bands(view_size)
+	# Alternating rather than random, so neither band can come up empty —
+	# with only six a side, a coin flip leaves visible gaps often enough to
+	# notice.
+	var band_y: float = bands[index % 2]
+	var thickness: float = randf_range(BOOST_SPEEDLINE_THICKNESS_RANGE.x, BOOST_SPEEDLINE_THICKNESS_RANGE.y)
+	var length: float = randf_range(BOOST_SPEEDLINE_LENGTH_RANGE.x, BOOST_SPEEDLINE_LENGTH_RANGE.y)
+	return {
+		# Scattered across the width on the initial fill, entering from off
+		# the right edge on every recycle after that.
+		"x": randf_range(0.0, view_size.x) if scatter else view_size.x + length * randf_range(0.0, 0.6),
+		"y": band_y + randf_range(0.0, BOOST_SPEEDLINE_BAND_HEIGHT - thickness) + thickness * 0.5,
+		"length": length,
+		"thickness": thickness,
+		"speed": randf_range(BOOST_SPEEDLINE_SPEED_RANGE.x, BOOST_SPEEDLINE_SPEED_RANGE.y),
+		"alpha_scale": randf_range(BOOST_SPEEDLINE_ALPHA_SCALE_RANGE.x, BOOST_SPEEDLINE_ALPHA_SCALE_RANGE.y),
+	}
+
+
+func _init_boost_speedlines(view_size: Vector2) -> void:
+	boost_speedlines.clear()
+	for i in range(BOOST_SPEEDLINE_COUNT):
+		boost_speedlines.append(_make_boost_speedline(view_size, i, true))
+
+
+func _update_boost_speedlines(delta: float, view_size: Vector2) -> void:
+	if boost_speedlines.is_empty():
+		return
+	for i in range(boost_speedlines.size()):
+		var l: Dictionary = boost_speedlines[i]
+		l.x -= l.speed * delta
+		# x is the streak's RIGHT end — _draw_boost_speedlines lays the rect
+		# out from x - length to x — so the right end is the trailing one
+		# while it travels left, and the whole streak is gone exactly when
+		# that passes 0. Recycling on x + length instead would hold a dead
+		# streak in the pool for another full length of travel.
+		if l.x < 0.0:
+			var fresh: Dictionary = _make_boost_speedline(view_size, i, false)
+			for key in fresh:
+				l[key] = fresh[key]
+
+
+func _boost_speedline_color() -> Color:
+	# Four separate @exports rather than an exported Array[Color]: an array
+	# shows in the Inspector as numbered rows, and "element 2" is a worse
+	# label than "ocean" for something picked by eye. The match is the only
+	# place the two representations meet.
+	match current_mode:
+		Mode.JUNGLE:
+			return boost_speedline_color_jungle
+		Mode.OCEAN:
+			return boost_speedline_color_ocean
+		Mode.DREAM:
+			return boost_speedline_color_dream
+		_:
+			return boost_speedline_color_sky
+
+
+func _draw_boost_speedlines() -> void:
+	if speed_line_texture == null or boost_visual_blend <= 0.0:
+		return
+	var tint: Color = _boost_speedline_color()
+	for l in boost_speedlines:
+		var a: float = tint.a * l.alpha_scale * boost_visual_blend * boost_speedline_intensity
+		if a <= 0.002:
+			continue
+		draw_texture_rect(speed_line_texture,
+				Rect2(Vector2(l.x - l.length, l.y - l.thickness * 0.5), Vector2(l.length, l.thickness)),
+				false, Color(tint.r, tint.g, tint.b, a))
+
+
 func _draw_impact_flashes() -> void:
 	if fx_impact_flashes.is_empty():
 		return
@@ -3960,16 +5715,7 @@ func _draw_impact_flashes() -> void:
 func _draw_sparks() -> void:
 	if fx_sparks.is_empty():
 		return
-	# Two passes: plain sparks first, then themed objects (wings/leaves/
-	# bubbles) on top — otherwise the much larger small-particle burst (18-26
-	# of them) buries the handful of themed pieces underneath it.
 	for s in fx_sparks:
-		if s.is_theme:
-			continue
-		_draw_one_spark(s)
-	for s in fx_sparks:
-		if not s.is_theme:
-			continue
 		_draw_one_spark(s)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
@@ -3980,42 +5726,9 @@ func _draw_one_spark(s: Dictionary) -> void:
 		return
 	var tex_size := Vector2(texture.get_width(), texture.get_height())
 	var t: float = s.elapsed / s.lifetime
-	var draw_pos: Vector2 = s.pos
 	var modulate := Color(1.0, 1.0, 1.0, 1.0 - t)  # fast fade-out
-	if s.is_theme:
-		# Sway perpendicular to the outward travel direction so the straight
-		# radial drift reads as a flutter, not a rigid slide.
-		var dir: Vector2 = (s.vel as Vector2).normalized()
-		var perp := Vector2(-dir.y, dir.x)
-		var wobble: float = sin(s.elapsed * s.wobble_freq * TAU + s.wobble_phase) * s.wobble_amplitude
-		draw_pos += perp * wobble
-		# Full opacity for the first FX_SPARK_THEME_HOLD_FRACTION of its life,
-		# then fades — unlike sparks' immediate linear fade — so wings are
-		# still fully visible once the bigger, shorter-lived spark bursts
-		# have already cleared out.
-		var hold_alpha: float = 1.0 if t < FX_SPARK_THEME_HOLD_FRACTION \
-			else clampf(1.0 - (t - FX_SPARK_THEME_HOLD_FRACTION) / (1.0 - FX_SPARK_THEME_HOLD_FRACTION), 0.0, 1.0)
-		modulate = Color(FX_SPARK_THEME_MODULATE.r, FX_SPARK_THEME_MODULATE.g, FX_SPARK_THEME_MODULATE.b, hold_alpha)
-	draw_set_transform(draw_pos, s.rotation, Vector2.ONE * s.scale)
+	draw_set_transform(s.pos, s.rotation, Vector2.ONE * s.scale)
 	draw_texture_rect(texture, Rect2(-tex_size * 0.5, tex_size), false, modulate)
-
-
-func _draw_score_pops() -> void:
-	if fx_score_pops.is_empty():
-		return
-	var font := ThemeDB.fallback_font
-	var text := "+1"
-	var text_size := font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE)
-	for p in fx_score_pops:
-		var t: float = p.elapsed / FX_SCORE_POP_DURATION
-		var alpha: float = 1.0 - t
-		var pos: Vector2 = p.pos + Vector2(0.0, -FX_SCORE_POP_RISE * t)
-		var draw_pos := Vector2(pos.x - text_size.x * 0.5, pos.y + text_size.y * 0.25)
-		var outline_col := Color(COLOR_TEXT_OUTLINE.r, COLOR_TEXT_OUTLINE.g, COLOR_TEXT_OUTLINE.b, COLOR_TEXT_OUTLINE.a * alpha)
-		var main_col := Color(FX_SCORE_POP_COLOR.r, FX_SCORE_POP_COLOR.g, FX_SCORE_POP_COLOR.b, alpha)
-		for offset in [Vector2(-1, -1), Vector2(1, -1), Vector2(-1, 1), Vector2(1, 1)]:
-			draw_string(font, draw_pos + offset, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, outline_col)
-		draw_string(font, draw_pos, text, HORIZONTAL_ALIGNMENT_CENTER, -1, FX_SCORE_POP_FONT_SIZE, main_col)
 
 
 # Tuning overlay for the pass zones. Drawn over the gate art so each band can
@@ -4156,19 +5869,60 @@ func _best_for(mode: int) -> int:
 	return best_scores[mode]
 
 
+# ---- 히든 모드(MIX) 해금 ----
+
+# 해금 조건을 채운 단일 모드의 수. 카드 설명문의 "n/3" 이 이 값이다.
+func hidden_modes_cleared() -> int:
+	var n := 0
+	for mode in range(Mode.size()):
+		if mode == HIDDEN_MODE or mode >= mode_gates_cleared.size():
+			continue
+		if mode_gates_cleared[mode] >= HIDDEN_UNLOCK_GATES:
+			n += 1
+	return n
+
+
+# 조건에 걸리는 모드의 수 — 히든 모드 자신은 뺀다. 모드가 늘어나면 조건도 같이
+# 늘어난다.
+func hidden_modes_required() -> int:
+	return maxi(1, Mode.size() - 1)
+
+
+func hidden_mode_unlocked() -> bool:
+	return hidden_modes_cleared() >= hidden_modes_required()
+
+
+# 모드 선택 화면에 지금 진행도를 넘긴다. 잠금과 설명문을 화면이 같은 값에서
+# 함께 뽑게 하려는 것이다 — 둘을 따로 넘기면 "열렸는데 잠겼다고 안내"하는
+# 상태가 만들어질 수 있고, 그건 화면만 봐서는 틀렸다고 알기 어렵다.
+func _push_hidden_progress() -> void:
+	if mode_select_panel == null:
+		return
+	var cleared: int = hidden_modes_cleared()
+	if debug_force_hidden_locked and OS.is_debug_build():
+		cleared = 0
+	mode_select_panel.set_hidden_progress(
+		cleared, hidden_modes_required(), HIDDEN_UNLOCK_GATES)
+
+
 func _load_best_score() -> void:
 	best_scores.resize(Mode.size())
 	best_scores.fill(0)
 	leaderboard_bests.resize(Mode.size())
 	leaderboard_bests.fill(0)
+	mode_gates_cleared.resize(Mode.size())
+	mode_gates_cleared.fill(0)
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
+	tutorial_seen = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_TUTORIAL, false))
 	for mode in range(Mode.size()):
 		best_scores[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
 		leaderboard_bests[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), 0))
+		mode_gates_cleared[mode] = clampi(int(cfg.get_value(
+			SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), 0)), 0, HIDDEN_UNLOCK_GATES)
 	# 예전 저장본에는 모드 구분 없는 기록 하나뿐이다. 어느 모드에서 낸
 	# 점수인지 알 길이 없으므로, 처음 모드(SKY)의 기록으로 옮긴다. 버리는
 	# 것보다는 낫고, 여러 모드에 복사하면 없던 기록이 생긴다.
@@ -4178,11 +5932,21 @@ func _load_best_score() -> void:
 		_save_best_score(Mode.SKY)
 
 
+func _save_tutorial_seen() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_TUTORIAL, tutorial_seen)
+	var err := cfg.save(SAVE_PATH)
+	if err != OK:
+		push_warning("could not write %s (error %d) — the tutorial will run again" % [SAVE_PATH, err])
+
+
 func _save_best_score(mode: int) -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), best_scores[mode])
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), leaderboard_bests[mode])
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), mode_gates_cleared[mode])
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])
@@ -4208,10 +5972,11 @@ func _offer_revive() -> void:
 	combo = 0
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
-	_stop_bgm()
+	_play_gameover_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
 	revive_panel.set_character(sad_face_texture, PLAYER_VISUAL_SIZE.y * active_visual_size_scale)
+	revive_panel.set_score(score)
 	# 이어 뛰어도 순위표는 여기서 멈춘다는 걸 숫자로 보여 준다.
 	revive_panel.set_leaderboard_score(leaderboard_score, player_logged_in)
 	revive_panel.visible = true
@@ -4224,7 +5989,7 @@ func _on_revive_continue() -> void:
 	revive_panel.visible = false
 	var view_size := get_viewport_rect().size
 	gates.clear()
-	player_y = (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
 	last_zone_center = player_y
 	flash_time = 0.0
@@ -4270,7 +6035,7 @@ func _finish_run() -> void:
 	else:
 		final_score_label.text = "SCORE: %d" % score
 		gameover_panel.visible = true
-	_stop_bgm()
+	_play_gameover_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
 
@@ -4283,6 +6048,7 @@ func _finish_run() -> void:
 func _on_gameover_play_again_pressed() -> void:
 	gameover_popup.visible = false
 	_reset_game()
+	_ad_try_interstitial()
 	_start_countdown()
 
 
@@ -4314,12 +6080,15 @@ func _on_restart_pressed() -> void:
 	# clears the just-ended run's score/gates so mode-select's background
 	# isn't showing stale gates.
 	_reset_game()
+	_ad_try_interstitial()
 	_set_state(State.MODE_SELECT)
 
 
 # 메인 화면 오른쪽 위 톱니바퀴. 지금 볼륨을 넣어 열어 준다.
 func _open_settings() -> void:
 	settings_popup.set_volumes(sfx_volume, music_volume)
+	settings_popup.set_boost_side(boost_button_on_left)
+	settings_popup.set_language(TranslationServer.get_locale().begins_with(LOCALE_KO))
 	# 프로필 사진과 닉네임은 인증이 붙으면 여기로 들어온다.
 	settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
 	settings_popup.visible = true
@@ -4333,12 +6102,14 @@ func _on_logout_pressed() -> void:
 	push_warning("설정: 로그아웃 아직 연결 안 됨")
 
 
+# 세 링크는 앱 밖으로 나간다. 주소는 scripts/ExternalLinks.gd 한 곳에 있고,
+# 아직 비어 있으면 열리지 않는다 — 설정 화면도 그 줄을 흐리게 그린다.
 func _on_privacy_pressed() -> void:
-	push_warning("설정: 개인정보 처리방침 링크 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.PRIVACY_POLICY_URL)
 
 
 func _on_terms_pressed() -> void:
-	push_warning("설정: 이용약관 링크 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.TERMS_OF_SERVICE_URL)
 
 
 func _on_about_closed() -> void:
@@ -4346,8 +6117,9 @@ func _on_about_closed() -> void:
 	settings_popup.visible = true
 
 
+# 메일 앱을 연다. 주소가 없으면 contact_url 이 빈 문자열을 주고 open 이 거른다.
 func _on_contact_pressed() -> void:
-	push_warning("설정: 문의/피드백 아직 연결 안 됨")
+	ExternalLinks.open(ExternalLinks.contact_url())
 
 
 # About 을 여는 동안 설정은 감춘다. 겹쳐 두면 두 판의 테두리와 닫기 버튼이
@@ -4367,13 +6139,91 @@ func _on_mode_selected(mode: int) -> void:
 	# ReadyPanel/PlayButton 은 그대로 두었다 — 되돌리려면 이 두 줄만 바꾸면 된다.
 	_apply_mode(mode)
 	_reset_game()
+	# 게임 화면에 처음 들어온 것이면 튜토리얼을 먼저 돌린다. 다 보고 나면
+	# _on_tutorial_finished 가 이어서 카운트다운을 건다.
+	if (not tutorial_seen or _tutorial_forced()) and tutorial_overlay != null:
+		_begin_tutorial()
+		return
+	_start_countdown()
+
+
+# ---- 튜토리얼 (설치 후 1회, 모드 무관) ----
+#
+# 메뉴가 아니라 게임 화면 위에서 돈다. 설명하는 것들이 전부 "화면의 이 물건"에
+# 관한 것이라, 그 물건을 옆에 두고 봐야 옮겨진다.
+#
+# State.COUNTDOWN 에 세워 둔다. 이 상태는 세계를 그리면서 물리는 안 돌리는
+# 유일한 상태라 그대로 쓸 수 있고, 시계만 tutorial_active 로 멈춘다
+# (_process). READY/START 글자도 같은 값으로 잠시 접어 둔다.
+# 다시 보기 스위치가 지금 듣고 있는가. 릴리스 빌드에서는 언제나 false 다.
+func _tutorial_forced() -> bool:
+	return debug_replay_tutorial and OS.is_debug_build()
+
+
+func _begin_tutorial() -> void:
+	tutorial_active = true
+	_set_state(State.COUNTDOWN)
+	var view_size := get_viewport_rect().size
+	# 게이트를 하나 띄워 둔다. 퀴즈 상자는 다음 게이트의 문제를 그리므로
+	# (_get_upcoming_gate) 게이트가 없으면 빈 상자를 가리키게 된다.
+	if gates.is_empty():
+		_spawn_gate(view_size)
+	_apply_screen_visibility()
+	tutorial_overlay.begin(_tutorial_steps(view_size))
+	queue_redraw()
+
+
+# 밝힐 자리와 문구. 자리는 전부 게임이 실제로 그리는 데서 가져온다 — 여기에
+# 좌표를 적어 두면 HUD 를 옮길 때 하이라이트만 옛 자리에 남는다.
+func _tutorial_steps(view_size: Vector2) -> Array:
+	var char_size: Vector2 = PLAYER_VISUAL_SIZE * active_visual_size_scale
+	var char_rect := Rect2(
+		Vector2(PLAYER_X, player_y) - char_size * 0.5, char_size)
+	var quiz: Rect2 = _quiz_box_rect(view_size)
+	var bar: Rect2 = _boost_bar_rect(view_size)
+	var button: Rect2 = _boost_button_rect(view_size)
+	return [
+		{
+			"holes": [{"rect": char_rect, "round": maxf(char_size.x, char_size.y)}],
+			"text": tr("TAP anywhere to fly up.\nStop tapping and you fall."),
+			# 캐릭터 바로 아래 빈 자리. 캐릭터 위에 겹치면 정작 밝힌 것을 가린다.
+			"tap": Vector2(view_size.x * 0.5, char_rect.end.y + char_size.y * 0.55),
+		},
+		{
+			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
+			"text": tr("Read the question up here,\nthen fly through the gate\nwith the right answer."),
+		},
+		{
+			# 둘을 같이 밝힌다. 화면 반대쪽 끝에 떨어져 있어서 따로 보여 주면
+			# "버튼을 누르면 저 바가 남는다"가 안 읽힌다.
+			"holes": [
+				{"rect": bar, "round": bar.size.y * 0.5},
+				{"rect": button, "round": maxf(button.size.x, button.size.y)},
+			],
+			# 마지막 줄은 자리 바꾸기 안내다. 왼손잡이에게는 이 버튼이 처음부터
+			# 반대쪽에 있어야 하는데, 설정을 뒤져 볼 생각을 하려면 그런 것이
+			# 있다는 걸 먼저 알아야 한다 — 버튼을 가리키고 있는 지금이 그 자리다.
+			"text": tr("Hold BOOST to fly faster.\nThe fuller this bar is when you\npass a gate, the more you score.\nSwap its side in Settings or Pause."),
+		},
+	]
+
+
+func _on_tutorial_finished() -> void:
+	tutorial_active = false
+	# 다 본 순간 저장한다. 판이 끝날 때 쓰면 첫 판 도중에 앱이 죽었을 때
+	# 다음 실행에서 또 돈다. 다시 보기로 켜서 돈 것은 저장하지 않는다.
+	if not _tutorial_forced():
+		tutorial_seen = true
+		_save_tutorial_seen()
+	# 튜토리얼용으로 띄워 둔 게이트는 그대로 두고 시작한다 — 지우면 첫 게이트가
+	# 한 칸 늦게 오고, 그 한 칸이 다른 판과 다른 시작이 된다.
 	_start_countdown()
 
 
 # Loads the character/gate/FX asset set for the given Mode into the existing
 # runtime textures/vars — called once at _ready() (default SKY) and again
 # every time the mode-select screen picks a mode. See MODE_CHARACTER_DIR/
-# MODE_GATE_DIR/MODE_FX_DIR above for what's shared vs. per-mode.
+# MODE_GATE_DIR above for what's shared vs. per-mode.
 func _apply_mode(mode: int) -> void:
 	current_mode = mode
 
@@ -4426,15 +6276,26 @@ func _apply_mode(mode: int) -> void:
 	if bg_path != "" and ResourceLoader.exists(bg_path):
 		bg_texture = load(bg_path)
 	bg_scroll_x = 0.0
+	bg_near_texture = null
+	var bg_near_path: String = MODE_BG_NEAR_TEXTURE_PATH[mode]
+	if bg_near_path != "" and ResourceLoader.exists(bg_near_path):
+		bg_near_texture = load(bg_near_path)
+	bg_near_scroll_x = 0.0
 
+	# Per-mode animation strip, sliced the same way the character sheets are.
+	boost_burst_frames = _slice_spritesheet(BOOST_BURST_DIR + BOOST_BURST_FILE_PER_MODE[mode], BOOST_BURST_SHEET_GRID.x, BOOST_BURST_SHEET_GRID.y)
+	boost_burst_elapsed = -1.0
+
+	# SKY used to be skipped here — its old twinkling lights did not suit the
+	# scene and were dropped. It has drifting feathers now, so every mode
+	# loads.
 	particle_textures.clear()
-	if mode != Mode.SKY:  # sky's twinkling light particles didn't fit the scene, dropped per request — jungle/ocean keep theirs
-		var particle_dir: String = MODE_PARTICLE_DIR[mode]
-		var particle_prefix: String = MODE_PARTICLE_PREFIX[mode]
-		for i in range(1, MODE_PARTICLE_COUNT[mode] + 1):
-			var particle_path: String = particle_dir + "%s_%02d.png" % [particle_prefix, i]
-			if ResourceLoader.exists(particle_path):
-				particle_textures.append(load(particle_path))
+	var particle_dir: String = MODE_PARTICLE_DIR[mode]
+	var particle_prefix: String = MODE_PARTICLE_PREFIX[mode]
+	for i in range(1, MODE_PARTICLE_COUNT[mode] + 1):
+		var particle_path: String = particle_dir + "%s_%02d.png" % [particle_prefix, i]
+		if ResourceLoader.exists(particle_path):
+			particle_textures.append(load(particle_path))
 	_init_ambient_particles(get_viewport_rect().size)
 
 	gate_flag_panel_texture = null
@@ -4470,35 +6331,50 @@ func _apply_mode(mode: int) -> void:
 		pause_button.icon = load(MODE_PAUSE_ICON_PATH[mode])
 	if ResourceLoader.exists(MODE_MUTE_ICON_PATH[mode]):
 		mute_button.icon = load(MODE_MUTE_ICON_PATH[mode])
+	if ResourceLoader.exists(MODE_BOOST_ICON_PATH[mode]):
+		boost_button.icon = load(MODE_BOOST_ICON_PATH[mode])
 	# Re-run now that the icons are loaded: _ready lays the row out before
 	# any mode is applied, so it sizes off the HUD_BUTTON_SRC fallback.
 	_layout_hud_buttons()
 
-	var fx_dir: String = MODE_FX_DIR[mode]
-	fx_big_particle_textures.clear()
-	for i in range(1, 4):
-		var big_path: String = fx_dir + "fx_big_%d.png" % i
-		if ResourceLoader.exists(big_path):
-			fx_big_particle_textures.append(load(big_path))
-	fx_theme_object_textures.clear()
-	for i in range(1, 6):
-		var theme_path: String = fx_dir + "fx_theme_%d.png" % i
-		if ResourceLoader.exists(theme_path):
-			fx_theme_object_textures.append(load(theme_path))
-	fx_small_particle_textures.clear()
-	for i in range(1, FX_SMALL_PARTICLE_MAX_COUNT + 1):
-		var small_path: String = fx_dir + "fx_small_%d.png" % i
-		if ResourceLoader.exists(small_path):
-			fx_small_particle_textures.append(load(small_path))
-	trail_textures.clear()
-	for i in TRAIL_TEXTURE_NUMBERS_PER_MODE[mode]:
-		var trail_path: String = fx_dir + "fx_small_%d.png" % i
-		if ResourceLoader.exists(trail_path):
-			trail_textures.append(load(trail_path))
-	active_theme_motion = MODE_FX_THEME_MOTION[mode]
+	# Sparkles come from one shared folder rather than a per-mode one: the art
+	# is a single sheet cut four ways by colour, and both the trail (DREAM
+	# needs all four rows at once) and the gate burst (every mode sprinkles
+	# in the other three colours) reach across modes, which a per-mode
+	# folder could not express. Every colour is loaded for every mode; the
+	# two tables below only pick among them. load() is cached, so re-running
+	# this on each mode switch costs nothing after the first.
+	sparkle_texture_sets.clear()
+	for color_name in SPARKLE_COLOR_NAMES:
+		var color_set: Array[Texture2D] = []
+		for i in range(1, SPARKLE_SPRITES_PER_COLOR + 1):
+			var sparkle_path: String = SPARKLE_DIR + "tap_%s_%d.png" % [color_name, i]
+			if ResourceLoader.exists(sparkle_path):
+				color_set.append(load(sparkle_path))
+		sparkle_texture_sets.append(color_set)
+
+	trail_texture_sets.clear()
+	for color_name in TRAIL_COLORS_PER_MODE[mode]:
+		var ci: int = SPARKLE_COLOR_NAMES.find(color_name)
+		if ci >= 0 and not sparkle_texture_sets[ci].is_empty():
+			trail_texture_sets.append(sparkle_texture_sets[ci])
+	trail_color_cursor = 0
+
+	# Weights realised as repetition: a colour weighted 7 lands in the pool
+	# seven times over, so _spawn_spark_burst's plain uniform pick already
+	# produces the mix without carrying weight logic of its own.
+	fx_burst_textures.clear()
+	var burst_weights: Array = FX_BURST_COLOR_WEIGHTS_PER_MODE[mode]
+	for ci in range(SPARKLE_COLOR_NAMES.size()):
+		var color_set: Array = sparkle_texture_sets[ci]
+		if color_set.is_empty():
+			continue
+		for _repeat in range(int(burst_weights[ci])):
+			fx_burst_textures.append_array(color_set)
 
 
 func _start_countdown() -> void:
+	run_active = true   # 여기부터 "떠날 수 있는 판"이 된다 — _reset_game 참고
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
 	_set_state(State.COUNTDOWN)
@@ -4509,8 +6385,21 @@ func _start_countdown() -> void:
 
 
 func _reset_game() -> void:
+	# 판을 떠나는 네 경로(게임오버 PLAY AGAIN/HOME, 일시정지 RESTART/HOME)가
+	# 전부 여기를 지난다. 세는 자리를 여기 하나로 두면 경로를 빠뜨릴 수 없다 —
+	# 핸들러마다 넣으면 나중에 다섯 번째 경로가 생겼을 때 조용히 안 세어진다.
+	if run_active:
+		_ad_note_run_left()
+		# 해금 진행도도 여기서 저장한다. _finish_run 에 두면 일시정지에서
+		# HOME 으로 빠져나간 판의 게이트가 사라져, 열 만큼 지났는데 안 열리는
+		# 일이 생긴다 — 최고 점수와 달리 이건 "잘해야 얻는 것"이 아니라서
+		# 경로에 따라 없어지면 고장으로 읽힌다.
+		if gates_passed > 0:
+			_save_best_score(current_mode)
+			_push_hidden_progress()
+		run_active = false
 	var view_size := get_viewport_rect().size
-	player_y = (_gate_zone_top(view_size) + _gate_zone_bottom(view_size)) * 0.5
+	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
 	score = 0
 	combo = 0
@@ -4518,6 +6407,9 @@ func _reset_game() -> void:
 	gates_passed = 0
 	gates.clear()
 	last_quiz_key = ""  # repeat guard is per-run — see last_quiz_key
+	# 주머니도 판마다 비운다. 남겨 두면 다음 판의 첫 세 게이트가 지난 판의
+	# 남은 조각으로 시작해, MIX 의 첫인상이 판마다 달라진다.
+	mix_quiz_bag.clear()
 	revive_offered = false
 	run_revived = false
 	leaderboard_score = 0
@@ -4525,12 +6417,20 @@ func _reset_game() -> void:
 		revive_panel.visible = false
 	flash_time = 0.0
 	gate_speed_boost_elapsed = -1.0
+	boost_button_held = false
+	if fx_sound_boost != null:
+		fx_sound_boost.stop()
+	boost_visual_blend = 0.0
+	boost_burst_elapsed = -1.0
+	boost_bar_elapsed = -1.0
+	boost_bar_flash_elapsed = -1.0
+	boost_pop_elapsed = -1.0
+	boost_pop_anchor = Vector2.ZERO
 	last_zone_center = player_y
 	fx_sparks.clear()
 	fx_speed_lines.clear()
 	trail_particles.clear()
 	trail_spawn_timer = 0.0
-	fx_score_pops.clear()
 	combo_display_punch_elapsed = 0.0
 	combo_display_time = 0.0
 	fx_impact_flashes.clear()
@@ -4555,6 +6455,7 @@ func _on_pause_pressed() -> void:
 	# 슬라이더가 현재 볼륨을 비추도록 — 팝업은 값을 들고 있지 않고, 열릴 때마다
 	# 받아 간다.
 	pause_panel.set_volumes(sfx_volume, music_volume)
+	pause_panel.set_boost_side(boost_button_on_left)
 	pause_panel.visible = true
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 0.5)
 
@@ -4570,6 +6471,7 @@ func _on_resume_pressed() -> void:
 func _on_pause_restart_pressed() -> void:
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_reset_game()
+	_ad_try_interstitial()
 	_start_countdown()
 
 
@@ -4577,6 +6479,7 @@ func _on_pause_restart_pressed() -> void:
 func _on_pause_home_pressed() -> void:
 	pause_button.modulate = Color(1.0, 1.0, 1.0, 1.0)
 	_reset_game()
+	_ad_try_interstitial()
 	_set_state(State.MODE_SELECT)
 
 
@@ -4626,6 +6529,161 @@ func _load_audio_settings() -> void:
 	_apply_bus_volume(BUS_MUSIC, music_volume)
 
 
+# ---- 전면광고 판단. 위 @export 블록의 주석에 규칙이 있다. ----
+
+# 판 하나를 떠났다. _reset_game 에서만 부른다.
+func _ad_note_run_left() -> void:
+	games_played_total += 1
+	# 면제 구간의 판은 세지도 않는다. 처음에는 세되 노출만 막았는데, 그러면
+	# 면제가 끝나는 순간 카운터가 이미 3이라 두 판 만에 첫 광고가 나온다 —
+	# "5판마다"면 첫 광고가 5판째라, 면제 3판이 아무 일도 안 하는 값이 된다.
+	# 세지 않아야 두 값이 각자 뜻대로 움직인다: 처음 3판 무료, 그 뒤 5판마다.
+	if games_played_total <= interstitial_free_games:
+		_save_ad_state()
+		return
+	# 리워드 광고를 본 판은 카운터에 넣지 않는다. run_revived 가 곧 "부활
+	# 광고를 보고 이어 뛰었다"이므로 따로 플래그를 두지 않는다 — 두 개를 두면
+	# 언젠가 한쪽만 갱신된다.
+	if not run_revived:
+		restarts_since_interstitial += 1
+	_save_ad_state()
+
+
+## 지금 전면광고를 띄워야 하는가. 실제로 띄우는 것은 부르는 쪽의 몫이다.
+func should_show_interstitial() -> bool:
+	if games_played_total <= interstitial_free_games:
+		return false
+	return restarts_since_interstitial >= interstitial_every_restarts
+
+
+## 광고가 실제로 나갔을 때 부른다. 판단과 분리해 둔 이유는, 플러그인이 붙으면
+## 광고 로드 실패나 사용자 이탈로 안 나갈 수 있기 때문이다 — 그때 카운터를
+## 비우면 다음 기회까지 또 다섯 판을 기다리게 된다.
+func note_interstitial_shown() -> void:
+	restarts_since_interstitial = 0
+	_save_ad_state()
+
+
+# 지금은 SDK 가 없으므로 "띄웠다" 치고 카운터만 비운다. 플러그인이 붙으면 이
+# 함수 안에서 광고를 요청하고, note_interstitial_shown 은 광고가 닫힌 뒤
+# 콜백에서 부르도록 옮기면 된다.
+func _ad_try_interstitial() -> bool:
+	if not should_show_interstitial():
+		return false
+	# 단위 ID 를 같이 찍는다. SDK 가 붙기 전까지 AdIds 가 실제로 불리는 곳은
+	# 여기뿐이라, 이 줄이 없으면 잠금장치가 걸려 있는지 로그로 알 수 없다.
+	print("[광고] 전면광고 노출 지점 (누적 %d판, 마지막 광고 이후 %d판) unit=%s" % [
+		games_played_total, restarts_since_interstitial, AdIds.interstitial_id()])
+	note_interstitial_shown()
+	return true
+
+
+func _load_ad_state() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		games_played_total = int(cfg.get_value(
+			SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total))
+		restarts_since_interstitial = int(cfg.get_value(
+			SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial))
+
+
+func _save_ad_state() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_GAMES_PLAYED, games_played_total)
+	cfg.set_value(SAVE_SECTION_ADS, SAVE_KEY_RESTARTS_SINCE_AD, restarts_since_interstitial)
+	cfg.save(SAVE_PATH)
+
+
+# 조작 설정. 볼륨과 같은 파일을 쓰지만 오디오가 아니므로 따로 둔다.
+func _load_control_settings() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) == OK:
+		boost_button_on_left = bool(cfg.get_value(
+			SAVE_SECTION_CONTROLS, SAVE_KEY_BOOST_LEFT, boost_button_on_left))
+
+
+# 저장해 둔 언어. 없으면 기기 언어를 그대로 쓴다.
+#
+# 다른 설정들과 달리 _boot_load 의 맨 앞에서 불린다 — 판을 짓는 것보다 먼저
+# 정해져 있어야 한다. 여기 뒤로 밀려 있었을 때는, 한국어를 고른 기기에서
+# 영어를 골라 두고 다시 켜면 화면 전체가 한국어로 뜬 뒤 로케일만 영어가
+# 되어 있었다.
+func _load_language() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	var saved: String = str(cfg.get_value(SAVE_SECTION_LOCALE, SAVE_KEY_LANGUAGE, ""))
+	if saved != "":
+		TranslationServer.set_locale(saved)
+
+
+func _save_control_settings() -> void:
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_CONTROLS, SAVE_KEY_BOOST_LEFT, boost_button_on_left)
+	cfg.save(SAVE_PATH)
+
+
+# 설정 팝업에서 좌/우를 고를 때. 바로 옮겨 보여야 고른 것이 무엇인지 알 수
+# 있으므로, 저장과 함께 그 자리에서 다시 배치한다.
+func set_boost_button_on_left(on_left: bool) -> void:
+	if boost_button_on_left == on_left:
+		return
+	boost_button_on_left = on_left
+	_save_control_settings()
+	_layout_hud_buttons()
+	# 두 팝업이 같은 값을 보여야 한다 — 한쪽에서 바꾸고 다른 쪽을 열었을 때
+	# 옛 상태가 켜져 있으면 어느 쪽이 참인지 알 수 없다.
+	if settings_popup != null:
+		settings_popup.set_boost_side(on_left)
+	if pause_panel != null:
+		pause_panel.set_boost_side(on_left)
+
+
+# ---- 언어 ----
+#
+# 설정에서 ENG/KOR 을 고를 때. 저장한 뒤 화면들을 다시 짓는다.
+#
+# 다시 짓는 것 말고는 방법이 마땅치 않다. 이 프로젝트는 글자를 그릴 때 tr() 을
+# 거치는데, 그 결과가 라벨의 text 나 미리 맞춰 둔 글자 크기·판 너비로 굳어
+# 있다 — 로케일만 바꾸면 이미 굳은 것들은 옛 언어 그대로 남는다. 판을 새로
+# 짓게 하면 모든 tr() 과 모든 맞춤 계산이 새 언어로 다시 돈다.
+func set_language_korean(korean: bool) -> void:
+	var want: String = LOCALE_KO if korean else LOCALE_EN
+	if TranslationServer.get_locale().begins_with(want):
+		return
+	TranslationServer.set_locale(want)
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_LOCALE, SAVE_KEY_LANGUAGE, want)
+	cfg.save(SAVE_PATH)
+	# 지금 이 호출은 설정 팝업의 버튼 신호 안이다. 그 팝업을 여기서 헐면
+	# 신호를 쏜 노드가 자기 아래에서 사라진다.
+	_rebuild_for_language.call_deferred()
+
+
+func _rebuild_for_language() -> void:
+	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
+			mode_select_panel]:
+		if panel != null and panel.has_method("rebuild"):
+			panel.rebuild()
+	# 설정 팝업은 다시 지어지면서 토글도 초기값으로 돌아간다 — 지금 값을 도로
+	# 넣어 준다. 보스트 쪽도 같은 이유로 함께.
+	if settings_popup != null:
+		settings_popup.set_language(TranslationServer.get_locale().begins_with(LOCALE_KO))
+		settings_popup.set_boost_side(boost_button_on_left)
+		settings_popup.set_volumes(sfx_volume, music_volume)
+		settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
+	if pause_panel != null:
+		pause_panel.set_boost_side(boost_button_on_left)
+		pause_panel.set_volumes(sfx_volume, music_volume)
+	if mode_select_panel != null:
+		mode_select_panel.set_best_scores(best_scores)
+		_push_hidden_progress()
+	queue_redraw()
+
+
 # 최고 점수와 같은 파일을 쓰므로, 먼저 읽어 들여 다른 값을 지우지 않는다.
 func _save_audio_settings() -> void:
 	var cfg := ConfigFile.new()
@@ -4639,6 +6697,43 @@ func _on_mute_pressed() -> void:
 	muted = not muted
 	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted)
 	mute_button.modulate = Color(1.0, 1.0, 1.0, 0.5) if muted else Color(1.0, 1.0, 1.0, 1.0)
+
+
+# Hold to accelerate. Both handlers only move the flag — the multiplier is
+# read off it fresh every frame in _gate_speed_multiplier, so release takes
+# effect on the very next frame with no decay to unwind.
+func _on_boost_pressed() -> void:
+	boost_button_held = true
+	_tween_boost_alpha(BOOST_BUTTON_PRESSED_ALPHA)
+	if fx_sound_boost.stream != null:
+		fx_sound_boost.play()
+	# 악센트는 루프와 나란히, 그리고 매번 처음부터. 연타하면 다시 울리는 게
+	# 맞다 — 앞선 재생의 꼬리에 삼켜지면 두 번째 누름이 무음이 된다.
+	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
+		fx_sound_boost_start.play()
+	# Restarted from 0 rather than only started when idle: hammering the
+	# button should re-pop each time, not be swallowed by the tail of the
+	# previous one.
+	boost_burst_elapsed = 0.0
+
+
+func _on_boost_released() -> void:
+	boost_button_held = false
+	_tween_boost_alpha(BOOST_BUTTON_ALPHA)
+	fx_sound_boost.stop()
+
+
+# modulate:a 만 민다 — 크기는 _animate_button_press/_release 가 따로 맡는다.
+#
+# 진행 중인 것은 먼저 죽인다. 빠르게 눌렀다 떼면 반대 방향 트윈이 겹쳐 서로
+# 덮어쓰고, 무엇보다 버튼이 숨을 때 알파를 되돌려도 살아남은 트윈이 다음
+# 프레임에 눌린 값으로 다시 칠해 버린다(_process 의 리셋 참고).
+func _tween_boost_alpha(alpha: float) -> void:
+	if boost_alpha_tween != null and boost_alpha_tween.is_valid():
+		boost_alpha_tween.kill()
+	boost_alpha_tween = create_tween()
+	boost_alpha_tween.tween_property(boost_button, "modulate:a", alpha, BUTTON_PRESS_ANIM_DURATION) \
+		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _animate_button_press(button: Button) -> void:
@@ -4657,8 +6752,7 @@ func _animate_button_release(button: Button) -> void:
 # minified. The layer is a child CanvasItem carrying its own filter, so the
 # title screen gets smooth minification without changing how the game itself
 # draws a single pixel.
-# 로고 화면. 검은 바탕 + 로고 + "BETA VERSION" + 크레딧 두 줄을 한 덩어리로
-# 묶어 가운데에 놓고, 전체에 같은 페이드를 건다.
+# 로고 화면. 검은 바탕에 로고 한 장, 페이드 인/아웃.
 func _draw_logo(view_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, view_size), LOGO_BACKGROUND)
 	if logo_texture == null:
@@ -4671,53 +6765,13 @@ func _draw_logo(view_size: Vector2) -> void:
 		alpha = clampf(1.0 - out_t, 0.0, 1.0)
 	if alpha <= 0.0:
 		return
-	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 
 	var logo_w: float = view_size.x * LOGO_WIDTH_FRAC
 	var logo_h: float = logo_w * float(logo_texture.get_height()) / float(logo_texture.get_width())
-	var beta_size: int = maxi(8, int(round(view_size.y * LOGO_BETA_FONT_FRAC)))
-	var credit_size: int = maxi(7, int(round(view_size.y * LOGO_CREDIT_FONT_FRAC)))
-	var beta_h: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).y
-	var credit_h: float = font.get_string_size("Ag", HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).y
-	var gap1: float = view_size.y * LOGO_TO_BETA_GAP_FRAC
-	var gap2: float = view_size.y * LOGO_BETA_TO_CREDIT_GAP_FRAC
-	var line_gap: float = view_size.y * LOGO_CREDIT_LINE_GAP_FRAC
-
-	var block_h: float = logo_h + gap1 + beta_h + gap2 + credit_h * LOGO_CREDITS.size() \
-		+ line_gap * (LOGO_CREDITS.size() - 1)
-	var top: float = view_size.y * LOGO_BLOCK_CENTER_FRAC - block_h * 0.5
-
+	var top: float = view_size.y * LOGO_BLOCK_CENTER_FRAC - logo_h * 0.5
 	draw_texture_rect(logo_texture,
 		Rect2(view_size.x * 0.5 - logo_w * 0.5, top, logo_w, logo_h),
 		false, Color(1.0, 1.0, 1.0, alpha))
-
-	var beta_w: float = font.get_string_size(LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size).x
-	var beta_baseline: float = top + logo_h + gap1 + beta_h * 0.78
-	draw_string(font, Vector2(view_size.x * 0.5 - beta_w * 0.5, beta_baseline),
-		LOGO_BETA_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, beta_size,
-		Color(LOGO_BETA_COLOR, LOGO_BETA_COLOR.a * alpha))
-
-	# 역할 칸을 가장 긴 역할에 맞춰 두면 두 줄의 점이 세로로 맞는다.
-	var gap: float = view_size.x * LOGO_CREDIT_GAP_FRAC
-	var role_w := 0.0
-	var name_w := 0.0
-	for row in LOGO_CREDITS:
-		role_w = maxf(role_w, font.get_string_size(row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
-		name_w = maxf(name_w, font.get_string_size(row[1], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x)
-	var dot_w: float = font.get_string_size(LOGO_CREDIT_DOT, HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size).x
-	var block_w: float = role_w + gap + dot_w + gap + name_w
-	var left: float = view_size.x * 0.5 - block_w * 0.5
-	var y: float = top + logo_h + gap1 + beta_h + gap2 + credit_h * 0.78
-	for row in LOGO_CREDITS:
-		draw_string(font, Vector2(left, y), row[0], HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
-		draw_string(font, Vector2(left + role_w + gap, y), LOGO_CREDIT_DOT,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_ROLE_COLOR, LOGO_CREDIT_ROLE_COLOR.a * alpha))
-		draw_string(font, Vector2(left + role_w + gap + dot_w + gap, y), row[1],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, credit_size,
-			Color(LOGO_CREDIT_NAME_COLOR, LOGO_CREDIT_NAME_COLOR.a * alpha))
-		y += credit_h + line_gap
 
 
 func _draw_splash_characters() -> void:
@@ -4868,7 +6922,10 @@ func _bgm_path_for_state() -> String:
 	return _resolve_audio(BGM_MENU_NAME)
 
 
-func _play_bgm(path: String) -> void:
+# target_db 는 다 페이드인했을 때의 크기다. 기본은 0(원래 크기) 이고 게임오버
+# 곡만 낮춰 깐다 — 버스 볼륨을 건드리면 설정의 음악 슬라이더와 싸우게 되므로
+# 플레이어 쪽에서 낮춘다.
+func _play_bgm(path: String, target_db: float = 0.0) -> void:
 	if path == "" or path == bgm_current_path:
 		return  # nothing to switch to, or already on this track
 	var incoming: int = 1 - bgm_active
@@ -4885,9 +6942,23 @@ func _play_bgm(path: String) -> void:
 		bgm_fade_tween.kill()
 	bgm_fade_tween = create_tween()
 	bgm_fade_tween.set_parallel(true)
-	bgm_fade_tween.tween_property(target, "volume_db", 0.0, BGM_CROSSFADE_TIME)
+	bgm_fade_tween.tween_property(target, "volume_db", target_db, BGM_CROSSFADE_TIME)
 	bgm_fade_tween.tween_property(outgoing, "volume_db", BGM_SILENT_DB, BGM_CROSSFADE_TIME)
 	bgm_fade_tween.chain().tween_callback(outgoing.stop)
+
+
+# 부활 제안과 게임오버가 같은 곡을 같은 크기로 깐다. 두 곳에서 같은 두 값을
+# 적으면 한쪽만 고치는 날이 온다.
+#
+# 파일이 없으면 _resolve_audio 가 빈 문자열을 주고 _play_bgm 은 아무 일도 안
+# 한다 — 그러면 판이 끝나도 게임 곡이 계속 흐르게 되므로, 그때는 예전처럼
+# 끊는다.
+func _play_gameover_bgm() -> void:
+	var path: String = _resolve_audio(BGM_GAMEOVER_NAME)
+	if path == "":
+		_stop_bgm()
+		return
+	_play_bgm(path, gameover_bgm_db)
 
 
 func _stop_bgm() -> void:
@@ -4914,7 +6985,11 @@ func _enable_stream_loop(stream: AudioStream) -> void:
 		# 다시 임포트해도 그대로다.
 		stream.loop_mode = AudioStreamWAV.LOOP_FORWARD
 		stream.loop_begin = 0
-		stream.loop_end = 0   # 0이면 끝까지
+		# loop_end 는 "끝까지"가 아니라 마지막 프레임 번호다. 0으로 두면 길이
+		# 0짜리 구간을 돌게 되어 재생이 첫 프레임에 그냥 끝난다. BGM 은 전부
+		# .ogg 라 위 갈래로 빠져서 이게 드러나지 않았고, 부스트 홀드 소리가
+		# 이 갈래를 처음 쓰면서 나왔다.
+		stream.loop_end = int(round(stream.get_length() * stream.mix_rate))
 
 
 func _on_bgm_finished(player: AudioStreamPlayer) -> void:
@@ -4941,18 +7016,18 @@ func _set_state(new_state: int) -> void:
 	# 기록을 갈아치웠을 수 있다.
 	if state == State.MODE_SELECT:
 		mode_select_panel.set_best_scores(best_scores)
+		# 같은 이유로 해금 진행도도 여기서 다시 넘긴다 — 방금 끝난 판이 마지막
+		# 한 모드를 채웠을 수 있다.
+		_push_hidden_progress()
 
 
 # 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
 # 로고가 떠 있는 동안 만들어진 노드(스플래시 캐릭터 층 등)는 기본값이 "보임"이라,
 # 다시 적용하지 않으면 로고 위로 튀어나온다.
 func _apply_screen_visibility() -> void:
-	# The menu screens have no audio control of their own, and the mute button
-	# sits exactly where the mode picker puts its settings icon — so it is an
-	# in-game control only.
 	if splash_char_layer != null:
 		splash_char_layer.visible = state == State.SPLASH
-	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT and state != State.LOGO
+	_update_mute_button_visibility()
 	mode_select_panel.visible = state == State.MODE_SELECT
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
@@ -4964,6 +7039,28 @@ func _apply_screen_visibility() -> void:
 		settings_popup.visible = false
 	if about_popup != null:
 		about_popup.visible = false
+
+
+# 음소거 버튼이 사라져야 하는 경우는 두 가지다.
+#
+# 하나는 화면 — 메뉴 화면들은 자체 음량 조절이 있고, 음소거 버튼은 모드 선택
+# 화면이 설정 아이콘을 놓는 자리와 정확히 겹친다. 그래서 게임 화면 전용이다.
+#
+# 다른 하나는 팝업 — 부활 제안과 게임오버가 떠 있는 동안에는 뒤에 남아 있으면
+# 안 된다. 이건 화면 상태만으로는 판별할 수 없다. 두 팝업 모두 GAMEOVER 상태에서
+# 뜨지만, _offer_revive 는 게임오버 화면이 먼저 나타나지 않도록 _set_state 를
+# 일부러 우회하고 state 를 직접 넣기 때문에 _apply_screen_visibility 가 아예
+# 호출되지 않는다. 그래서 상태 대신 팝업 노드의 실제 표시 여부를 본다.
+#
+# 일시정지 버튼이 이미 두 팝업에서 알아서 사라지는 건 별개 이유다 — _process 가
+# 매 프레임 PLAYING/COUNTDOWN 일 때만 켜는데 두 팝업은 GAMEOVER 라서 걸러진다.
+func _update_mute_button_visibility() -> void:
+	if mute_button == null:
+		return
+	var popup_open: bool = (revive_panel != null and revive_panel.visible) \
+		or (gameover_popup != null and gameover_popup.visible)
+	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT \
+		and state != State.LOGO and not popup_open
 
 
 # ---- Layer 3: HUD bar + quiz box (always drawn above the background/gate
@@ -5042,6 +7139,13 @@ func _layout_hud_buttons() -> void:
 	mute_button.set_deferred("size", size)
 	mute_button.set_deferred("position", Vector2(view_size.x - HUD_ROW_SIDE_MARGIN - size.x, top))
 	mute_button.set_deferred("pivot_offset", size * 0.5)
+	# Bottom corner, sized off its own constant rather than the HUD row's
+	# scale — it belongs to the play area, not to the top bar. Which corner is
+	# the player's choice (see boost_button_on_left).
+	var boost_rect: Rect2 = _boost_button_rect(view_size)
+	boost_button.set_deferred("size", boost_rect.size)
+	boost_button.set_deferred("position", boost_rect.position)
+	boost_button.set_deferred("pivot_offset", boost_rect.size * 0.5)
 
 
 # Called from HudCanvas._draw. Everything here draws onto `ci` (the HUD's
@@ -5051,7 +7155,50 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
+		_draw_boost_bar(ci, view_size)
 	_draw_combo_glow(view_size, ci)
+
+
+# The three zones are painted across the WHOLE track at low alpha, not just
+# under the fill: the point of the bar is to show where the boundaries are
+# before you get there, so the bands have to stay visible in the part that
+# has already drained. The fill then repaints 0..remaining at full strength
+# in whichever zone the remaining amount currently falls in.
+func _draw_boost_bar(ci: CanvasItem, view_size: Vector2) -> void:
+	var rect := _boost_bar_rect(view_size)
+	if rect.size.x <= 0.0:
+		return
+	if boost_bar_track_texture == null:
+		return
+	# Both pieces go through the same horizontal 3-slice the quiz box uses:
+	# left cap, stretched middle, right cap. On a capsule the cap IS the
+	# rounded end, so its width is half the art's height — that keeps the
+	# ends round no matter how far the fill has drained.
+	var track_cap: float = boost_bar_track_texture.get_height() * 0.5
+	_draw_horizontal_slice(boost_bar_track_texture, rect, track_cap, ci)
+
+	# The fill sits in the track's well, so it is inset by the rim on every
+	# side rather than covering the whole rect.
+	var inset: float = rect.size.y * BOOST_BAR_FILL_INSET_FRAC
+	var well := Rect2(rect.position + Vector2(inset, inset), rect.size - Vector2(inset, inset) * 2.0)
+	var remaining: float = _boost_bar_remaining()
+	var fill_texture: Texture2D = _boost_bar_fill_texture(remaining)
+	if fill_texture != null and remaining > 0.0 and well.size.y > 0.0:
+		var fill_rect := Rect2(well.position, Vector2(well.size.x * remaining, well.size.y))
+		_draw_horizontal_slice(fill_texture, fill_rect, fill_texture.get_height() * 0.5, ci)
+
+	# Threshold ticks last, so they read on top of both track and fill.
+	for threshold: float in [boost_bonus_mid_threshold, boost_bonus_best_threshold]:
+		var x: float = well.position.x + well.size.x * threshold
+		ci.draw_line(Vector2(x, well.position.y), Vector2(x, well.end.y),
+			BOOST_BAR_DIVIDER_COLOR, BOOST_BAR_DIVIDER_WIDTH)
+
+	# Post-judgement highlight: the whole bar in the colour of the zone the
+	# pass actually landed in, fading out.
+	if boost_bar_flash_elapsed >= 0.0:
+		var t: float = boost_bar_flash_elapsed / BOOST_BAR_FLASH_DURATION
+		var alpha: float = BOOST_BAR_FLASH_ALPHA * clampf(1.0 - t, 0.0, 1.0)
+		ci.draw_rect(rect, Color(boost_bar_flash_color.r, boost_bar_flash_color.g, boost_bar_flash_color.b, alpha))
 
 
 # 빈 패널 위에 "SCORE" / 구분선 / 왕관+"BEST"를 얹는다. 예전 스코어 박스
@@ -5134,16 +7281,22 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if ci == null:
 		ci = self
-	# OCEAN's question is a painted colour, not a string, so it takes over
-	# the whole box rather than feeding text into the path below.
-	if current_mode == Mode.OCEAN:
+	# A Stroop question is a painted colour, not a string, so it takes over
+	# the whole box rather than feeding text into the path below. Asked of
+	# the pending GATE, not of the mode — in MIX the box has to repaint
+	# itself in a different form from one gate to the next.
+	var pending: Dictionary = _get_upcoming_gate()
+	if not pending.is_empty() and pending.quiz_kind == QuizKind.STROOP:
 		_draw_ocean_quiz_box(view_size, ci)
 		return
 	var upcoming_target := _get_upcoming_target()
 	if upcoming_target == "":
 		return
 	var box_top: float = _quiz_box_rect(view_size).position.y
-	var text: String = upcoming_target
+	# 국기 모드의 나라 이름만 옮겨진다 — 연산 모드의 "3 + 4 = ?" 는 표에 없어
+	# 그대로 돌아온다. 색 이름과 같은 규칙이다: 이름표는 영어로 두고 그리는
+	# 자리에서만 번역한다.
+	var text: String = tr(upcoming_target)
 	if quiz_box_texture != null:
 		var rect := _quiz_box_rect(view_size)
 		var draw_size: Vector2 = rect.size
@@ -5181,9 +7334,10 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 # First gate whose question hasn't been answered yet — the one the box is
 # currently asking about. Sibling of _get_upcoming_target, which returns a
 # bare string and so can't carry a colour.
-func _get_upcoming_ocean_gate() -> Dictionary:
+# 아직 판정되지 않은 첫 게이트 — 지금 질문 상자에 떠 있어야 할 문제.
+func _get_upcoming_gate() -> Dictionary:
 	for g in gates:
-		if not g.resolved and g.has("ocean_answer_index"):
+		if not g.resolved:
 			return g
 	return {}
 
@@ -5204,8 +7358,8 @@ func _draw_ocean_text(ci: CanvasItem, text: String, left_x: float, center_y: flo
 
 
 func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
-	var g: Dictionary = _get_upcoming_ocean_gate()
-	if g.is_empty():
+	var g: Dictionary = _get_upcoming_gate()
+	if g.is_empty() or not g.has("ocean_answer_index"):
 		return
 	var rect := _quiz_box_rect(view_size)
 	if quiz_box_texture != null:
@@ -5224,7 +7378,10 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	var area_width: float = area_right - area_left
 	var center_y: float = rect.position.y + rect.size.y * QUIZ_TEXT_CENTER_Y_FRAC
 
-	var word: String = OCEAN_COLOR_NAMES[g.ocean_word_index]
+	# 보여 주는 글자만 번역한다. OCEAN_COLOR_NAMES 는 문제를 만들고 정답을
+	# 맞춰 보는 데 쓰이는 이름표라 영어 그대로 둔다 — 그려지는 자리에서만
+	# 옮겨야 로직이 언어에 안 묶인다.
+	var word: String = tr(OCEAN_COLOR_NAMES[g.ocean_word_index])
 	var ink_color: Color = OCEAN_COLOR_RGB[g.ocean_answer_index]
 	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
 
@@ -5240,20 +7397,21 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 	var word_width: float = 0.0
 	while true:
 		prompt_size = maxi(OCEAN_PROMPT_MIN_FONT, int(round(word_size * OCEAN_PROMPT_SIZE_RATIO)))
-		prompt_width = font.get_string_size(OCEAN_PROMPT_INK, HORIZONTAL_ALIGNMENT_LEFT, -1, prompt_size).x
+		prompt_width = font.get_string_size(tr(OCEAN_PROMPT_INK), HORIZONTAL_ALIGNMENT_LEFT, -1, prompt_size).x
 		word_width = font.get_string_size(word, HORIZONTAL_ALIGNMENT_LEFT, -1, word_size).x
 		if prompt_width + gap + word_width <= area_width or word_size <= min_word_size:
 			break
 		word_size -= 1
 
 	var cursor_x: float = (area_left + area_right) * 0.5 - (prompt_width + gap + word_width) * 0.5
-	_draw_ocean_text(ci, OCEAN_PROMPT_INK, cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
+	_draw_ocean_text(ci, tr(OCEAN_PROMPT_INK), cursor_x, center_y, prompt_size, COLOR_TEXT_DARK, Color(0.0, 0.0, 0.0, 0.0), 0.0)
 	cursor_x += prompt_width + gap
 
 	# The answer is the INK. Outlined because a YELLOW or WHITE word would
 	# otherwise wash out against the cream box art; the same outline goes on
 	# every colour so it never becomes a hint.
-	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, OCEAN_INK_OUTLINE_PX)
+	var outline_px: float = maxf(OCEAN_INK_OUTLINE_MIN_PX, word_size * ocean_ink_outline_ratio)
+	_draw_ocean_text(ci, word, cursor_x, center_y, word_size, ink_color, OCEAN_INK_OUTLINE_COLOR, outline_px)
 
 
 func _draw() -> void:
@@ -5267,6 +7425,10 @@ func _draw() -> void:
 	if bg_texture != null:
 		_draw_sky_background(view_size)     # single scrolling background image — see _draw_sky_background
 		_draw_ambient_particles()           # small twinkle/leaf/bubble particles, still behind the gate zone
+		# Behind every gate and the character by construction — see the
+		# BOOST_SPEEDLINE_* block. Inside the bg_texture branch only because
+		# the fallback branch below is legacy art no mode still uses.
+		_draw_boost_speedlines()
 	else:
 		_draw_sky_gradient(view_size)          # Layer 0
 		_draw_mountains()                      # Layer 1
@@ -5299,16 +7461,27 @@ func _draw() -> void:
 		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
 		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
+	# 판정 구역에는 이제 아무것도 안 칠한다. 예전에는 두 레인을 옅은 파랑
+	# (COLOR_ZONE, 알파 0.55)으로 덮었는데, 그건 게이트가 그림 없이 사각형이던
+	# 시절 "여기로 지나가라"를 보여 주던 것이다. 지금은 링 아트의 안쪽 구멍이
+	# 곧 판정 구역이고(_gate_ring_inner_zone_height 가 그 구멍을 재서 만든다),
+	# 그림이 이미 말하고 있는 것을 파란 판이 한 번 더 덮어 네 모드의 게이트가
+	# 전부 푸르스름하게 보였다.
 	for g in gates:
 		var wall_rect := Rect2(Vector2(g.x, wall_top), Vector2(GATE_WIDTH, WALL_THICKNESS))
-		draw_rect(Rect2(Vector2(g.x, g.top_zone_top), Vector2(GATE_WIDTH, g.top_zone_bottom - g.top_zone_top)), COLOR_ZONE)
-		draw_rect(Rect2(Vector2(g.x, g.bottom_zone_top), Vector2(GATE_WIDTH, g.bottom_zone_bottom - g.bottom_zone_top)), COLOR_ZONE)
 		draw_rect(wall_rect, COLOR_WALL)
 
 	_draw_bird_trail()   # behind the bird, and behind the speed lines
 	_draw_speed_lines()  # behind the bird
 
 	if state != State.READY and state != State.MODE_SELECT:
+		# UNDER the character, and over the trail. The old art was a
+		# symmetric ring with a hole in the middle, so it could sit on top
+		# and let the body read through it; this is a solid plume, and on
+		# top it covers the character's back half and reads as something
+		# stuck to the front of it. Underneath, with its head buried in the
+		# body (MODE_BOOST_BURST_HEAD_OFFSET), it reads as exhaust.
+		_draw_boost_burst()
 		# Stretch (see _bird_stretch_scale) and the happy pop/bounce (see
 		# _happy_pop_scale/_happy_pop_bounce_offset) are both draw-time-only —
 		# player_y/PLAYER_X/PLAYER_SIZE and collision never change. They
@@ -5351,13 +7524,13 @@ func _draw() -> void:
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
 		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
 
-	# Answer boxes (flag icon, or a number for JUNGLE's math quiz) drawn last
+	# Answer boxes (flag icon, or text for a math/Stroop gate) drawn last
 	# (topmost) of everything gate-related, after both ring halves and the
 	# bird, so they can never end up hidden behind the ring art — see
 	# _draw_gate_answer_box.
 	for g in gates:
-		_draw_gate_answer_box(g.top_code, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
-		_draw_gate_answer_box(g.bottom_code, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
+		_draw_gate_answer_box(g.top_code, g.quiz_kind, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
+		_draw_gate_answer_box(g.bottom_code, g.quiz_kind, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
 	# ---- Layer 3: HUD bar + quiz box ----
 	# Drawn by the HudCanvas child instead of here, so it can use its own
@@ -5369,12 +7542,12 @@ func _draw() -> void:
 	_draw_sparks()
 	if debug_show_zones and (state == State.PLAYING or state == State.COUNTDOWN):
 		_draw_debug_zones(view_size)
-	_draw_score_pops()
+	_draw_boost_pop(view_size)
 	_draw_combo_popups(view_size)
 	# _draw_combo_glow also moved to HudCanvas: its top band overlaps the
 	# score box, and it has to stay on top of it the way it was here.
 
-	if state == State.COUNTDOWN:
+	if state == State.COUNTDOWN and not tutorial_active:
 		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
 		if countdown_phase == CountdownPhase.READY_TEXT:
 			if ready_texture != null:
@@ -5414,17 +7587,14 @@ func _pop_scale(t: float) -> float:
 	# COUNTDOWN_START_WIDTH * PEAK_SCALE * 0.928 <= 480, 즉 400 기준 1.29 까지.
 	# 여유를 두고 1.22 — 튀는 맛이 있어야 "출발" 느낌이 산다.
 	const PEAK_T := 0.35
-	const PEAK_SCALE := 1.22
 	if t < PEAK_T:
-		return lerpf(1.0, PEAK_SCALE, t / PEAK_T)
-	return lerpf(PEAK_SCALE, 1.0, (t - PEAK_T) / (1.0 - PEAK_T))
+		return lerpf(1.0, POP_PEAK_SCALE, t / PEAK_T)
+	return lerpf(POP_PEAK_SCALE, 1.0, (t - PEAK_T) / (1.0 - PEAK_T))
 
 
 func _get_upcoming_target() -> String:
-	for g in gates:
-		if not g.resolved:
-			return g.target_name
-	return ""
+	var g: Dictionary = _get_upcoming_gate()
+	return "" if g.is_empty() else str(g.target_name)
 
 
 # `ci` lets the HUD render this onto its own canvas (see HudCanvas.gd);
@@ -5498,17 +7668,31 @@ func _draw_spaced_digits(text: String, anchor: Vector2, font_size: int, extra_sp
 # 뜬다 — DIGIT_BASELINE_FROM_CENTER_FRAC 이 그래서 있다.
 func _digit_positions(text: String, anchor: Vector2, font_size: int, extra_spacing: float,
 		align_right: bool, font: Font) -> PackedVector2Array:
+	# 숫자는 가장 넓은 자릿수에 맞춘 고정 칸에 하나씩 넣는다. 점수가 오르며
+	# 1 이 7 로 바뀔 때 그 앞뒤가 흔들리지 않게 하는 것이 이 함수의 존재
+	# 이유이고, 비례폭 글꼴에 draw_string 한 번으로는 얻을 수 없다.
+	#
+	# 다만 숫자 아닌 글자는 제 폭을 쓴다. ScoreFormat.compact 가 "1.2M" 같은
+	# 것을 돌려주기 시작하면서 필요해졌다 — 마침표를 숫자 칸에 넣으면 양옆이
+	# 반 칸씩 비어 "1 . 2 M" 처럼 벌어지고, K/M 은 숫자보다 넓어 반대로
+	# 이웃을 파고든다. 자릿수 정렬은 자릿수에만 필요하다.
 	var cell := 0.0
 	for d in range(10):
 		cell = maxf(cell, font.get_string_size(str(d), HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
-	var total_width: float = cell * text.length() + extra_spacing * maxi(0, text.length() - 1)
+	var glyph := PackedFloat32Array()
+	var cells := PackedFloat32Array()
+	var total_width: float = extra_spacing * maxi(0, text.length() - 1)
+	for i in range(text.length()):
+		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+		glyph.append(w)
+		cells.append(cell if text[i].is_valid_int() else w)
+		total_width += cells[i]
 	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
 	var y: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	var out := PackedVector2Array()
 	for i in range(text.length()):
-		var w: float = font.get_string_size(text[i], HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-		out.append(Vector2(cursor_x + (cell - w) * 0.5, y))
-		cursor_x += cell + extra_spacing
+		out.append(Vector2(cursor_x + (cells[i] - glyph[i]) * 0.5, y))
+		cursor_x += cells[i] + extra_spacing
 	return out
 
 
@@ -5534,7 +7718,7 @@ func _score_digit_layout(view_size: Vector2) -> Dictionary:
 	var rect := _score_box_rect(view_size)
 	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
 	var font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
-	var text := "%05d" % score
+	var text: String = ScoreFormat.compact(score)
 	var anchor := Vector2(
 		rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC),
 		rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC)
@@ -5574,7 +7758,7 @@ func _make_gradient_canvas(node_name: String, method: String, top: Color, bottom
 func _best_digit_layout(rect: Rect2) -> Dictionary:
 	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
 	var font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
-	var text := "%05d" % _best_for(current_mode)
+	var text: String = ScoreFormat.compact(_best_for(current_mode))
 	var anchor := Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC,
 		rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC)
 	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
