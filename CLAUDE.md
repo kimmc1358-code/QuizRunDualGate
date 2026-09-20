@@ -260,6 +260,10 @@ mode select, settings, revive, game over and about screens in both languages,
 and drives the language switch through `Main` rather than the popup so the
 rebuild path is the one being photographed.
 
+`capture_store_screenshots.gd` takes the Play Store phone screenshots, five per language, into `store/screenshots/<ko|en>/`: mode select with MIX still locked, one gate of each quiz mid-flight, and a new-record game over. A phone cannot take them — at 19.5:9 its screen is outside the 16:9 / 9:16 the store accepts — and the dev PC cannot open a 1080x1920 window on a 1440-tall monitor, so the game runs inside an off-screen `SubViewport` 1080 by 1920 whose `size_2d_override` tells it the screen is 480x854: the layout is the game's own, drawn at 2.25x. It switches language and finishes a run, so it backs up and restores the save file like the checkers do.
+
+`capture_feature_graphic.gd` renders five drafts of the Play Store feature graphic (1024x500) from the game's own art. Draft E is `store/feature_graphic_1024x500.png`: three panels — SKY, JUNGLE, OCEAN — each on that mode's blurred game background with its character flying through its own gate (the ring's right half behind, the left half in front), and the logo across the top. D is the same on the sharp backgrounds with a smaller ring; its jungle panel lost the green gate and dragon against green foliage, which is why E uses the game's `_blur` layers and a 320px ring. MIX's unicorn is left out of every draft on purpose: that mode is hidden until earned, and a store image showing it would spoil it.
+
 `capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
 
 `capture_ocean_quiz.gd` shoots the Stroop quiz box in Korean and English with each language's widest colour word, full screen and cropped to the box, because whether 19px *reads* on that art is not something a px count answers.
