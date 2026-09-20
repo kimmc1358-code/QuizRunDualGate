@@ -184,6 +184,13 @@ func _run() -> void:
 			_expect(main.get("banner_reserved") and fake.calls.has("show_banner b1"),
 				"%s: a 50dp banner gets its space and shows on mode select" % label,
 				"%s: the banner should fit but reserved=%s calls=%s" % [label, main.get("banner_reserved"), fake.calls])
+			# 같은 상태를 다시 청하면 아무것도 보내지 않는다. 화면이 바뀔 때마다
+			# 청했더니 플러그인이 "이미 안 보인다"는 오류를 매번 남겼다.
+			fake.calls.clear()
+			main.call("_update_banner")
+			main.call("_set_state", main.State.MODE_SELECT)
+			_expect(fake.calls.is_empty(), "%s: asking again for the same banner state sends nothing" % label,
+				"%s: the same banner state was requested again (%s)" % [label, fake.calls])
 			fake.calls.clear()
 			main.call("_set_state", main.State.PLAYING)
 			_expect(fake.calls.has("hide_banner b1"), "%s: leaving mode select hides the banner" % label,

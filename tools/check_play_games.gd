@@ -282,8 +282,69 @@ func _check_leaderboards(main: Node2D, pg: Node) -> void:
 	_ok(lb.shown.is_empty(), "로그인에 실패하면 순위표를 열지 않는다")
 	_ok(after == before, "기다리던 연결이 남지 않는다 (%d -> %d)" % [before, after])
 
+	await _check_submit_retry(pg, lb, ids)
+
 	pg.set("_leaderboards_client", null)
 	lb.queue_free()
+
+
+# 제출이 실패하면 다시 로그인해 한 번만 더 보낸다. 폰에서 Play 서명 빌드로
+# 바뀐 뒤 모든 제출이 26502 CLIENT_RECONNECT_REQUIRED 로 실패한 적이 있다.
+# 한 번뿐이어야 한다 — 끝없이 되풀이하면 실패가 계속될 때 로그인 창만 돈다.
+func _check_submit_retry(pg: Node, lb: Node, ids: Array) -> void:
+	print("")
+	print("순위표 제출 실패 뒤 재시도")
+	var connections: int = pg.get_signal_connection_list("sign_in_finished").size()
+	var signer := FakeSignInClient.new()
+	pg.add_child(signer)
+	pg.set("_sign_in_client", signer)
+	pg.set("available", true)
+	pg.call("_on_authenticated", true)
+	await process_frame
+	lb.submitted.clear()
+
+	pg.call("submit_score", ids[0], 500)
+	pg.call("_on_score_submitted", false, ids[0])
+	_ok(signer.calls == 1 and lb.submitted == [[ids[0], 500]],
+		"실패하면 다시 로그인부터 한다 — 연결이 새로 되기 전에는 다시 보내지 않는다")
+	pg.call("_on_authenticated", true)
+	await process_frame
+	_ok(lb.submitted == [[ids[0], 500], [ids[0], 500]],
+		"다시 로그인되면 같은 점수를 한 번 더 보낸다 (%s)" % str(lb.submitted))
+	pg.call("_on_score_submitted", false, ids[0])
+	_ok(signer.calls == 1, "다시 보낸 것도 실패하면 거기서 멈춘다 — 로그인을 되풀이하지 않는다")
+
+	lb.submitted.clear()
+	pg.call("submit_score", ids[0], 600)
+	pg.call("_on_score_submitted", false, ids[0])
+	_ok(signer.calls == 2, "다음에 새로 보낸 점수는 다시 한 번 기회를 얻는다")
+	pg.call("_on_authenticated", true)
+	await process_frame
+
+	lb.submitted.clear()
+	pg.call("submit_score", ids[1], 700)
+	pg.call("submit_score", ids[2], 800)
+	pg.call("_on_score_submitted", false, ids[1])
+	pg.call("_on_score_submitted", false, ids[2])
+	_ok(signer.calls == 3, "두 순위표가 함께 실패해도 다시 로그인은 한 번 (%d)" % signer.calls)
+	lb.submitted.clear()
+	pg.call("_on_authenticated", true)
+	await process_frame
+	_ok(lb.submitted.size() == 2 and lb.submitted.has([ids[1], 700]) and lb.submitted.has([ids[2], 800]),
+		"다시 로그인되면 둘 다 다시 보낸다 (%s)" % str(lb.submitted))
+
+	pg.call("submit_score", ids[3], 900)
+	pg.call("_on_score_submitted", false, ids[3])
+	lb.submitted.clear()
+	pg.call("_on_authenticated", false)
+	await process_frame
+	_ok(lb.submitted.is_empty(), "다시 로그인에 실패하면 보내지 않는다")
+	_ok(pg.get_signal_connection_list("sign_in_finished").size() == connections,
+		"재시도가 기다리던 연결이 남지 않는다")
+
+	pg.set("available", false)
+	pg.set("_sign_in_client", null)
+	signer.queue_free()
 
 
 func _finish() -> void:

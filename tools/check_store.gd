@@ -161,6 +161,7 @@ func _run() -> void:
 	main.call("_apply_banner_height", 150.0, 1080.0)
 	_expect(main.get("banner_reserved"), "before buying, 20:9 reserves the banner", "the banner had no room even before buying")
 
+	admob.calls.clear()
 	store.call("_on_purchase_updated", {"response_code": 0, "purchases": [_purchase(Store.PURCHASE_STATE_PURCHASED, false, "t1")]})
 	_expect(main.get("ads_removed"), "purchased -> ads removed", "a completed purchase did not remove the ads")
 	_expect(client.calls.has("ack t1"), "the purchase is acknowledged", "the purchase was never acknowledged — Google would refund it in 3 days")
@@ -169,10 +170,13 @@ func _run() -> void:
 	# ---- 광고가 정말 없는가 ----
 	_expect(not main.get("banner_reserved") and float(screen.get("banner_reserve_px")) == 0.0,
 		"the banner's space is given back", "the banner space is still reserved (%s)" % screen.get("banner_reserve_px"))
+	# 배너는 같은 상태를 두 번 청하지 않으므로(Ads._apply_banner), 숨김 요청은
+	# 산 순간에 한 번 나간다. 그 뒤로는 무엇을 해도 다시 보이면 안 된다.
+	_expect(admob.calls.has("hide_banner b1") and not admob.calls.has("show_banner b1"),
+		"buying hides the banner on mode select", "the banner was not hidden when the purchase came in (%s)" % [admob.calls])
 	admob.calls.clear()
 	main.call("_update_banner")
-	_expect(admob.calls.has("hide_banner b1") and not admob.calls.has("show_banner b1"),
-		"the banner stays hidden on mode select", "the banner showed after buying")
+	_expect(not admob.calls.has("show_banner b1"), "and it stays hidden", "the banner showed again after buying")
 	var every: int = main.get("interstitial_every_restarts")
 	main.set("games_played_total", int(main.get("interstitial_free_games")) + 10)
 	main.set("restarts_since_interstitial", every + 5)

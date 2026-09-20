@@ -40,6 +40,10 @@ var _players_client: Node = null
 var _leaderboards_client: Node = null
 var _avatar_path := ""
 var _attempt := 0
+# 순위표 제출이 실패했을 때의 한 번짜리 재시도(_on_score_submitted).
+var _last_scores := {}                   # 순위표 ID -> 마지막으로 보낸 점수
+var _retried := {}                       # 이미 재시도를 쓴 순위표 ID
+var _reconnect_pending: Array[String] = []   # 다시 로그인한 뒤 다시 보낼 순위표 ID
 
 
 ## 부팅 때 한 번. 플러그인을 켜고, 기기에서 이미 Play 게임즈에 들어가 있는지
@@ -87,6 +91,13 @@ func sign_in() -> void:
 func submit_score(leaderboard_id: String, score: int) -> void:
 	if not signed_in or _leaderboards_client == null or leaderboard_id == "" or score <= 0:
 		return
+	# 새로 보내는 점수는 실패했을 때 재시도를 한 번 더 얻는다.
+	_retried.erase(leaderboard_id)
+	_send(leaderboard_id, score)
+
+
+func _send(leaderboard_id: String, score: int) -> void:
+	_last_scores[leaderboard_id] = score
 	_leaderboards_client.call("submit_score", leaderboard_id, score)
 
 
@@ -97,11 +108,51 @@ func show_leaderboard(leaderboard_id: String) -> void:
 	_leaderboards_client.call("show_leaderboard", leaderboard_id)
 
 
-# 실패해도 붙잡아 두지 않는다. 다음 판이 끝날 때 쌓아 둔 최고 기록을 다시
-# 보내므로(Main._submit_leaderboard), 한 번 놓친 기록은 그때 따라 올라간다.
+# 실패하면 한 번만 다시 로그인해 연결을 새로 한 뒤 같은 점수를 다시 보낸다.
+#
+# 폰에서 디버그 서명 빌드를 쓰다가 Play 가 서명한 빌드로 바뀌었을 때, 로그인과
+# 순위표 보기는 되는데 모든 제출이 26502 CLIENT_RECONNECT_REQUIRED 로 실패했다.
+# 이름 그대로 연결을 다시 하라는 답이라, 로그인(signIn)을 다시 불러 연결을
+# 새로 하고 보낸다. 플러그인은 성공 여부만 bool 로 주므로 실패의 종류는 가리지
+# 않는다.
+#
+# 재시도는 순위표마다 한 번뿐이다. 다시 보낸 것도 실패하면 거기서 멈추고, 다음
+# 판이 끝날 때 쌓아 둔 최고 기록을 다시 보낼 때(Main._submit_leaderboard) 새
+# 기회를 얻는다 — 끝없이 로그인을 되풀이하지 않는다.
 func _on_score_submitted(ok: bool, leaderboard_id: String) -> void:
-	if not ok:
-		push_warning("PlayGames: %s 순위표에 올리지 못했다" % leaderboard_id)
+	if ok:
+		_retried.erase(leaderboard_id)
+		return
+	if _retried.has(leaderboard_id) or not _last_scores.has(leaderboard_id):
+		push_warning("PlayGames: %s 순위표에 올리지 못했다 — 다음 판이 끝날 때 다시 보낸다" % leaderboard_id)
+		return
+	push_warning("PlayGames: %s 순위표에 올리지 못했다 — 다시 로그인해 한 번 더 보낸다" % leaderboard_id)
+	_retried[leaderboard_id] = true
+	if not _reconnect_pending.has(leaderboard_id):
+		_reconnect_pending.append(leaderboard_id)
+	# 여러 순위표가 한꺼번에 실패해도 다시 로그인은 한 번.
+	if _reconnect_pending.size() == 1:
+		_reconnect()
+
+
+func _reconnect() -> void:
+	# 결과를 한 번만 받는다. 로그인이 이미 떠 있으면 sign_in() 은 그냥 돌아오고,
+	# 떠 있던 로그인의 결과가 이리로도 온다. 쓸 수 없는 곳이면 그 자리에서 false 가
+	# 오므로 연결을 먼저 걸어 둔다.
+	if not sign_in_finished.is_connected(_on_reconnected):
+		sign_in_finished.connect(_on_reconnected, CONNECT_ONE_SHOT)
+	sign_in()
+
+
+func _on_reconnected(ok: bool) -> void:
+	var ids := _reconnect_pending.duplicate()
+	_reconnect_pending.clear()
+	if not ok or _leaderboards_client == null:
+		push_warning("PlayGames: 다시 로그인하지 못해 순위표에 다시 보내지 않았다")
+		return
+	for id in ids:
+		if _last_scores.has(id):
+			_send(id, int(_last_scores[id]))
 
 
 ## 에디터에서 로그인한 화면을 보는 길. PC 에서는 진짜 로그인이 안 되므로 이것

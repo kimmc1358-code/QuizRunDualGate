@@ -40,6 +40,9 @@ var _interstitial_id := ""
 var _rewarded_id := ""
 var _banner_id := ""
 var _banner_wanted: bool = false
+# 배너가 지금 어떤 상태인지: -1 모름, 0 숨김, 1 보임. 같은 상태를 다시 청하지
+# 않으려고 들고 있다(_apply_banner).
+var _banner_state: int = -1
 var _showing: bool = false
 var _reward_done: Callable
 var _reward_earned: bool = false
@@ -223,6 +226,9 @@ func _on_rewarded_finished(shown: bool) -> void:
 
 func _on_banner_loaded(id: String) -> void:
 	_banner_id = id
+	# 새 배너가 불러와진 직후에는 보이는지 알 수 없다 — 폰에서 불러오자마자 보인
+	# 적도 있고("already visible"), 안 보인 적도 있다. 첫 요청은 반드시 보낸다.
+	_banner_state = -1
 	var size: Vector2 = _admob.call("get_banner_dimension_in_pixels", id)
 	print("[광고] 배너 준비됨 (%.0fx%.0f 기기 px)" % [size.x, size.y])
 	banner_ready.emit(size.y)
@@ -232,6 +238,13 @@ func _on_banner_loaded(id: String) -> void:
 func _apply_banner() -> void:
 	if not available or _banner_id.is_empty():
 		return
+	# 이미 그 상태면 다시 청하지 않는다. 화면이 바뀔 때마다 숨김을 청했더니,
+	# 광고 제거 상태에서 플러그인이 "배너가 안 보여서 숨길 수 없다"는 오류를
+	# 매번 남겼다.
+	var want: int = 1 if _banner_wanted else 0
+	if want == _banner_state:
+		return
+	_banner_state = want
 	if _banner_wanted:
 		_admob.call("show_banner_ad", _banner_id)
 	else:
