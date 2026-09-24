@@ -674,16 +674,31 @@ reporting an already-fixed bug against the wrong number.
 
 `version/code` is the exception and cannot be derived from anything. It is an
 integer, it lives only in the (gitignored) preset, and **Google rejects an
-upload whose code is not higher than the last one** — so it goes up by one
-per upload, independently of the version string. It is at 1, and 1 has been
-used: the first AAB went to internal testing on 2026-09-13, so the next upload
-must be 2.
+upload whose code is not higher than the last one** — so it goes up per
+upload, independently of the version string. It is at **3**, built on
+2026-09-24 as `build/QuizRunDualGate-v3.aab` and carrying version 1.1.0.
+Code 1 went to internal testing on 2026-09-13; 2 was built the same day.
+Consecutive numbering is not required, only increase.
 
-To confirm the inheritance after a build:
+A built AAB will not open in `aapt`, which refuses the bundle format. To
+read what it actually carries, pull the manifest out and look at it:
 
 ```bash
-aapt dump badging build/QuizRunDualGate.apk | head -1
+unzip -o -q build/QuizRunDualGate-v3.aab base/manifest/AndroidManifest.xml -d /tmp/aabchk
 ```
+
+The manifest is protobuf, not binary XML, but both values are legible in
+it: `versionName` sits next to the plain string `1.1.0`, and `versionCode`
+is the single character right after it (`\x1a\x01` then `3`) — confirmed by
+diffing the v1, v2 and v3 bundles, where only that byte changes. The
+signing key is read with the JDK's own tools rather than `apksigner`, which
+does not verify bundles:
+
+```bash
+keytool -printcert -file /tmp/sigchk/META-INF/QUIZRUN.RSA
+```
+
+That must print the upload key's SHA-1 (`5B:10:59:…`), not the debug key.
 
 ## Login
 
