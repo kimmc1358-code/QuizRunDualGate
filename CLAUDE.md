@@ -325,6 +325,23 @@ Consequences worth knowing before editing:
   `_ready`. A headless run that only survives a few frames will not have
   reached it.
 
+**The boost has two looks on trial and a switch for each**, because testers
+said the flame plume does not belong on a shark or a unicorn — the art is
+already per-mode (a water jet, a rainbow comet) but every silhouette is a
+jet exhaust. `boost_afterimage_enabled` draws fading copies of the
+character itself, which no mode can look borrowed in;
+`boost_burst_enabled` keeps the plume, and is **off**: the owner chose the
+afterimage. The flame code and art are still here and `true` brings them
+back, so nothing was deleted on one screenshot; once the choice has been
+played for a while the loser goes completely — consts, state, update, draw,
+call sites and art.
+
+The afterimage is half a lie and the comment on `BOOST_AFTERIMAGE_STEP_X`
+says so: the character never moves horizontally, so real ghosts would stack
+on one x. The recorded `y` is genuine history (it bends with the flapping);
+the backward offset is invented, and that is the half the eye reads as
+speed.
+
 **A three-step tutorial runs once per install**, on the first entry to the
 play screen in any mode. `TutorialOverlay` dims the game and opens one hole
 at a time — character, then the quiz box, then the boost bar and button

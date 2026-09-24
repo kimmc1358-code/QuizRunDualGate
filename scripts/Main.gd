@@ -699,6 +699,45 @@ const MODE_BOOST_BURST_HEAD_DROP := [0.12, 0.20, 0.09, 0.12]
 @export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
 @export_group("")  # closes "Boost Burst"
 
+# ============================================================
+# 부스트 잔상. 기능 전체 = 이 상수들 + boost_afterimages/boost_afterimage_timer
+# + _update_boost_afterimages + _draw_boost_afterimages + 부르는 자리 둘
+# (_update_fx, _draw) + _reset_game 의 clear. 지우려면 그것만 지우면 된다.
+#
+# 왜 있는가: 불꽃 플룸은 모드마다 그림이 다른데도(오션은 물줄기, 드림은 무지개
+# 혜성) 실루엣이 전부 뒤로 뿜는 제트라, 상어와 유니콘에게는 남의 것을 붙인 것처럼
+# 보인다는 말이 테스트에서 계속 나왔다. 잔상은 캐릭터 자기 그림을 쓰므로 그 문제가
+# 생길 수가 없다.
+#
+# 진짜 잔상은 이 게임에서 세로로만 생긴다. 캐릭터는 PLAYER_X 에 못 박혀 있고 가로로
+# 움직이지 않으므로, 지나온 자리를 그대로 찍으면 전부 같은 x 에 겹쳐 한 장처럼
+# 보인다. 그래서 y 는 실제로 지나온 기록을 쓰고(펄럭이면 그대로 휜다) x 는 등수에
+# 비례해 뒤로 민다 — 잔상 반, 모션 블러 반이고 가속으로 읽히는 쪽은 뒤의 절반이다.
+const BOOST_AFTERIMAGE_COUNT := 7          # 동시에 남는 복사본 수
+# 한 장을 남기는 간격. 화면에서의 간격은 STEP_X 가 정하므로, 이 값이 정하는 것은
+# "한 장이 얼마나 오래된 y 를 들고 있는가" — 즉 잔상이 펄럭임을 따라 휘는 정도다.
+# 0.026 이면 일곱 장이 약 0.18초를 덮는데, 한 번의 탭 상승이 그 안에 들어온다.
+const BOOST_AFTERIMAGE_INTERVAL := 0.026
+# 등수마다 뒤로 미는 px. 캐릭터 그림이 100px 이므로 8 이면 일곱 장이 56px 안에 촘촘히
+# 겹쳐 한 줄기 번짐이 된다. 13px 로 네 장을 두었을 때는 장마다 따로 보여서, 빠른 것보다
+# 여러 마리로 보였다. 대신 겹칠수록 진해지므로 ALPHA_HEAD 를 0.34 에서 내렸다.
+const BOOST_AFTERIMAGE_STEP_X := 8.0
+const BOOST_AFTERIMAGE_ALPHA_HEAD := 0.26  # 몸에 가장 가까운 장
+const BOOST_AFTERIMAGE_ALPHA_TAIL := 0.05  # 가장 먼 장
+# 등수마다 가로로 늘리고 세로로 누른다. 트레일 반짝이를 선으로 만드는 것과 같은
+# 수법이고(TRAIL_BOOST_STREAK_SQUASH), 같은 그림을 그냥 흐리게만 깔아 두는 것보다
+# 진행 방향이 분명해진다.
+const BOOST_AFTERIMAGE_STRETCH_X := 0.05
+const BOOST_AFTERIMAGE_SQUASH_Y := 0.03
+# 이 아래로 블렌드가 떨어지면 기록도 그리기도 멈춘다. 알파에 blend 를 곱하므로
+# 이 지점의 잔상은 이미 0.02 알파라, 비워도 끊기는 것이 보이지 않는다.
+const BOOST_AFTERIMAGE_MIN_BLEND := 0.05
+# 불꽃과 비교하려고 남겨 둔 스위치. 지금은 주인 결정으로 불꽃을 끄고 잔상만 쓴다 —
+# 불꽃 쪽 코드와 그림은 아직 그대로 있고, 되돌리려면 이 값만 true 로 하면 된다.
+# 잔상으로 확정되면 규칙대로 통째로 걷어낸다(상수, 상태, 그리기, 호출부, 그림).
+@export var boost_afterimage_enabled: bool = true
+@export var boost_burst_enabled: bool = false
+
 const BOOST_BUTTON_SIZE := 110.0       # diameter, px — 92 read small on a phone
 const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's bottom and its chosen side
 
@@ -2446,6 +2485,10 @@ var boost_visual_blend: float = 0.0
 # -1-means-idle convention the other one-shot FX timers here use.
 var boost_burst_frames: Array[Texture2D] = []
 var boost_burst_elapsed: float = -1.0
+# 각 항목: {y, texture, offset} — 최신이 앞. x 는 저장하지 않는다. 캐릭터가
+# 가로로 움직이지 않으므로 화면에서의 간격은 등수로 만든다(_draw_boost_afterimages).
+var boost_afterimages: Array = []
+var boost_afterimage_timer: float = 0.0
 # Boost bonus bar (see the BOOST_BAR_* consts). elapsed counts real seconds
 # since the current gate spawned and is deliberately NOT scaled by boost —
 # that is the entire mechanic.
@@ -5438,6 +5481,74 @@ func _boost_burst_head() -> Vector2:
 					+ PLAYER_VISUAL_SIZE.y * MODE_BOOST_BURST_HEAD_DROP[current_mode])
 
 
+
+# 지금 그려야 할 캐릭터 프레임과 그 오프셋. 그리기 코드에서 꺼냈다 — 잔상도 같은
+# 것을 써야 하는데, 한쪽만 happy/sad 를 알면 부스트 중 게이트를 지날 때 본체만
+# 표정이 바뀌고 잔상은 날갯짓으로 남는다.
+func _bird_draw_frame() -> Dictionary:
+	if state == State.GAMEOVER and sad_face_texture != null:
+		# Static — no flap cycling once the run has ended.
+		return {"texture": sad_face_texture, "offset": active_draw_offset_sad}
+	if happy_flap_elapsed >= 0.0 and happy_face_texture != null:
+		# Single static frame — no cycling, reverts to fly on its own once
+		# happy_flap_elapsed passes HAPPY_FLAP_DURATION (_update_fx).
+		return {"texture": happy_face_texture, "offset": active_draw_offset_happy}
+	# Guarded rather than a bare index — an unfinished asset sync (or a bad
+	# mode path) leaving flap_frames empty would otherwise throw an
+	# out-of-bounds error every single frame here, which reads as the whole
+	# game freezing rather than "the bird just doesn't draw".
+	var texture: Texture2D = flap_frames[flap_frame_index] if flap_frame_index < flap_frames.size() else null
+	return {"texture": texture, "offset": active_draw_offset_fly}
+
+
+func _update_boost_afterimages(delta: float) -> void:
+	if not boost_afterimage_enabled or boost_visual_blend <= BOOST_AFTERIMAGE_MIN_BLEND:
+		boost_afterimages.clear()
+		boost_afterimage_timer = 0.0
+		return
+	# 프레임레이트가 아니라 시계로 기록한다. 매 프레임 한 장씩이면 60fps 폰과
+	# 120fps 폰에서 잔상이 덮는 시간이 두 배 달라진다.
+	boost_afterimage_timer += delta
+	while boost_afterimage_timer >= BOOST_AFTERIMAGE_INTERVAL:
+		boost_afterimage_timer -= BOOST_AFTERIMAGE_INTERVAL
+		var frame: Dictionary = _bird_draw_frame()
+		if frame["texture"] == null:
+			continue
+		# 그릴 때 쓰는 y 그대로 — 해피 바운스까지 포함해서 기록해야 게이트를
+		# 지나는 순간 본체만 튀어오르고 잔상은 제자리에 남는 일이 없다.
+		boost_afterimages.push_front({
+			"y": player_y + _happy_pop_bounce_offset(),
+			"texture": frame["texture"],
+			"offset": frame["offset"],
+		})
+		if boost_afterimages.size() > BOOST_AFTERIMAGE_COUNT:
+			boost_afterimages.resize(BOOST_AFTERIMAGE_COUNT)
+
+
+func _draw_boost_afterimages() -> void:
+	if boost_afterimages.is_empty():
+		return
+	# 본체와 같은 스쿼시/팝 배율을 쓴다. 잔상만 배율을 모르면 게이트 충돌 스쿼시가
+	# 들어간 순간 본체는 납작해지고 잔상은 그대로여서 두 마리로 갈라져 보인다.
+	var base_scale: Vector2 = _bird_stretch_scale() * _happy_pop_scale() * active_visual_size_scale
+	var span: int = maxi(BOOST_AFTERIMAGE_COUNT - 1, 1)
+	# 먼 것부터 그려 가까운 것이 위에 오게 한다. 반대로 깔면 흐린 장이 진한 장을
+	# 덮어 번짐이 뒤로 갈수록 진해 보인다.
+	for i in range(boost_afterimages.size() - 1, -1, -1):
+		var ghost: Dictionary = boost_afterimages[i]
+		var rank: int = i + 1
+		var t: float = float(i) / float(span)
+		var alpha: float = lerpf(BOOST_AFTERIMAGE_ALPHA_HEAD, BOOST_AFTERIMAGE_ALPHA_TAIL, t) * boost_visual_blend
+		if alpha <= 0.002:
+			continue
+		var ghost_scale := Vector2(
+			base_scale.x * (1.0 + BOOST_AFTERIMAGE_STRETCH_X * rank),
+			base_scale.y * (1.0 - BOOST_AFTERIMAGE_SQUASH_Y * rank))
+		draw_set_transform(Vector2(PLAYER_X - BOOST_AFTERIMAGE_STEP_X * rank, ghost["y"]), 0.0, ghost_scale)
+		draw_texture_rect(ghost["texture"], Rect2(-PLAYER_VISUAL_SIZE * 0.5 + ghost["offset"], PLAYER_VISUAL_SIZE),
+			false, Color(1.0, 1.0, 1.0, alpha))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
 func _draw_boost_burst() -> void:
 	if boost_burst_elapsed < 0.0 or boost_burst_frames.is_empty():
 		return
@@ -5551,6 +5662,9 @@ func _update_fx(delta: float) -> void:
 	var blend_target: float = 1.0 if boost_button_held else 0.0
 	var blend_span: float = BOOST_VISUAL_BLEND_IN if boost_button_held else BOOST_VISUAL_BLEND_OUT
 	boost_visual_blend = move_toward(boost_visual_blend, blend_target, delta / maxf(blend_span, 0.001))
+	# 블렌드 바로 뒤에 둔다 — 잔상의 알파가 그 값을 곱하므로, 같은 프레임의
+	# 값을 보게 해야 눌렀다 뗄 때 한 프레임씩 밀리지 않는다.
+	_update_boost_afterimages(delta)
 	if boost_burst_elapsed >= 0.0:
 		# Only the clock. The plume is pinned to the character and its
 		# position is derived at draw time (_boost_burst_head), so there is
@@ -6761,6 +6875,8 @@ func _reset_game() -> void:
 	combo_display_time = 0.0
 	fx_impact_flashes.clear()
 	fx_pending_bursts.clear()
+	boost_afterimages.clear()
+	boost_afterimage_timer = 0.0
 	fx_shake_elapsed = -1.0
 	fx_stretch_elapsed = -1.0
 	happy_flap_elapsed = -1.0
@@ -7838,31 +7954,21 @@ func _draw() -> void:
 		# top it covers the character's back half and reads as something
 		# stuck to the front of it. Underneath, with its head buried in the
 		# body (MODE_BOOST_BURST_HEAD_OFFSET), it reads as exhaust.
-		_draw_boost_burst()
+		# 잔상이 먼저, 그 위에 플룸, 그 위에 본체. 잔상은 반투명한 자기 복사본이라
+		# 본체 위에 오면 캐릭터가 뿌옇게 비쳐 보인다.
+		_draw_boost_afterimages()
+		if boost_burst_enabled:
+			_draw_boost_burst()
 		# Stretch (see _bird_stretch_scale) and the happy pop/bounce (see
 		# _happy_pop_scale/_happy_pop_bounce_offset) are both draw-time-only —
 		# player_y/PLAYER_X/PLAYER_SIZE and collision never change. They
 		# multiply/add together rather than one replacing the other, so a
 		# gate pass reads as one continuous "impact squash, then happy
 		# bounce" motion instead of two competing effects.
-		var bird_texture: Texture2D
-		var draw_offset: Vector2
-		if state == State.GAMEOVER and sad_face_texture != null:
-			# Static — no flap cycling once the run has ended.
-			bird_texture = sad_face_texture
-			draw_offset = active_draw_offset_sad
-		elif happy_flap_elapsed >= 0.0 and happy_face_texture != null:
-			# Single static frame — no cycling, reverts to fly on its own
-			# once happy_flap_elapsed passes HAPPY_FLAP_DURATION (_update_fx).
-			bird_texture = happy_face_texture
-			draw_offset = active_draw_offset_happy
-		else:
-			# Guarded rather than a bare index — an unfinished asset sync (or a
-			# bad mode path) leaving flap_frames empty would otherwise throw
-			# an out-of-bounds error every single frame here, which reads as
-			# the whole game freezing rather than "the bird just doesn't draw".
-			bird_texture = flap_frames[flap_frame_index] if flap_frame_index < flap_frames.size() else null
-			draw_offset = active_draw_offset_fly
+		# 프레임 고르기는 _bird_draw_frame 이 한다 — 잔상도 같은 것을 쓴다.
+		var bird_frame: Dictionary = _bird_draw_frame()
+		var bird_texture: Texture2D = bird_frame["texture"]
+		var draw_offset: Vector2 = bird_frame["offset"]
 		var bird_scale: Vector2 = _bird_stretch_scale() * _happy_pop_scale() * active_visual_size_scale
 		var pos := Vector2(PLAYER_X, player_y + _happy_pop_bounce_offset())
 		if bird_texture != null:
