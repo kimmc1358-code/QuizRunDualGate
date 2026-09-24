@@ -190,7 +190,8 @@ func _run() -> void:
 	print("  %-9s %7s %9s %10s %9s %10s %s" % ["ratio", "height", "spread", "hole/spread", "worst up", "worst down", ""])
 	main.call("_apply_mode", 0)
 	main.set("current_mode", 0)
-	var hole: float = main.call("_gate_ring_inner_zone_height")
+	# 램프를 끈 상태의 구멍, 즉 제일 작아졌을 때다 — 판 대비 비율은 그때가 최악이다.
+	var hole: float = main.call("_gate_ring_inner_zone_height", 1.0)
 	var spans: Array[float] = []
 	var hole_fracs: Array[float] = []
 	# 페이즈별로도 나눠 둔다. max_move_ratio 상한은 페이즈 1~2 에서만 실제로
@@ -263,7 +264,7 @@ func _run() -> void:
 		_fail("gates spread over %.0f..%.0f px depending on the device — the same hole then reads %.1f%% of the field on one phone and %.1f%% on another" % [
 			fh_min, fh_max, hole / fh_min * 100.0, hole / fh_max * 100.0])
 	else:
-		print("  gates spread over %.0f px on every ratio, hole is %.1f%% of that" % [fh_max, hole / fh_max * 100.0])
+		print("  gates spread over %.0f px on every ratio, the full-size hole is %.1f%% of that" % [fh_max, hole / fh_max * 100.0])
 
 	# 그리고 페이즈별로도 같아야 한다. 위의 spread 는 전 페이즈를 합친 것이라,
 	# max_move_ratio 상한이 기기 화면 높이를 따라가더라도(그러면 페이즈 1~2 만
@@ -282,6 +283,59 @@ func _run() -> void:
 			print("  phase %d worst swing %.0f px (spread %.0f across ratios)" % [p + 1, hi_p, hi_p - lo_p])
 
 	print("")
+	# ---- 초반 구멍 확대 ----
+	#
+	# 비공개 테스트에서 제일 많이 나온 말이 "게이트가 너무 작다" 였다. 그래서
+	# 첫 게이트들은 구멍을 gate_hole_start_scale 만큼 키워 두고
+	# gate_hole_full_size_gate 까지 원래 크기로 되돌린다. 여기서 지킬 것은 둘이다.
+	#
+	#   1. 판정 구역과 그려지는 링이 같은 배수를 쓴다. 게이트가 배수를 자기
+	#      안에 들고 다니는 이유가 그것인데(g.hole_scale), 스폰 때만 키우고
+	#      그리는 쪽이 모르면 보이는 구멍과 통과되는 구멍이 어긋난다 — 화면에서는
+	#      "링을 스쳤는데 통과됐다" 로만 보이고, 어느 쪽이 진짜인지 알 수 없다.
+	#   2. 램프가 실제로 내려온다. 끝까지 커져 있으면 난이도를 그냥 낮춘 것이고,
+	#      시작부터 1.0 이면 이 기능은 없는 것과 같다.
+	var base_hole: float = main.call("_gate_ring_inner_zone_height", 1.0)
+	var start_scale: float = main.get("gate_hole_start_scale")
+	var hold: int = main.get("gate_hole_hold_gates")
+	var full_at: int = main.get("gate_hole_full_size_gate")
+	print("  hole ramp: %.2fx for the first %d gates, 1.00x from gate %d (%.0f px -> %.0f px)" % [
+		start_scale, hold, full_at, base_hole * start_scale, base_hole])
+	if start_scale <= 1.0:
+		_fail("gate_hole_start_scale is %.2f — the early gates are not enlarged at all" % start_scale)
+	if full_at <= hold:
+		_fail("gate_hole_full_size_gate (%d) is not past gate_hole_hold_gates (%d), so the ramp never runs" % [full_at, hold])
+	main.call("_apply_mode", 0)
+	main.set("current_mode", 0)
+	var prev_scale := INF
+	for passed in range(0, full_at + 6):
+		main.set("gates_passed", passed)
+		main.set("last_zone_center", main.get("player_y"))
+		main.get("gates").clear()
+		main.call("_spawn_gate", view)
+		var g: Dictionary = main.get("gates")[0]
+		var carried: float = float(g.get("hole_scale", -1.0))
+		var drawn: float = main.call("_gate_ring_inner_zone_height", carried)
+		var judged: float = float(g.top_zone_bottom) - float(g.top_zone_top)
+		if absf(judged - drawn) > EPS:
+			_fail("gate %d judges a %.1f px hole but carries %.2fx, which draws %.1f px" % [
+				passed, judged, carried, drawn])
+		if passed < hold and absf(carried - start_scale) > 0.001:
+			_fail("gate %d is inside the hold but came out at %.2fx instead of %.2fx" % [passed, carried, start_scale])
+		if passed >= full_at and absf(carried - 1.0) > 0.001:
+			_fail("gate %d is past the ramp but is still %.2fx — the enlargement never ends" % [passed, carried])
+		if carried > prev_scale + 0.001:
+			_fail("gate %d grew back to %.2fx from %.2fx — the ramp is not monotone" % [passed, carried, prev_scale])
+		prev_scale = carried
+	# 링 자체도 같이 커져야 한다. 구멍만 키우고 프레임을 그대로 두면 프레임이
+	# 구멍 위를 덮고, 그러면 1번 검사는 통과하면서 화면은 전혀 넓어지지 않는다.
+	var overhang_one: float = main.call("_gate_frame_top_overhang", 1.0)
+	var overhang_big: float = main.call("_gate_frame_top_overhang", start_scale)
+	if absf(overhang_big - overhang_one * start_scale) > EPS:
+		_fail("the ring art does not scale with the hole: %.1f px of overhang at 1.00x but %.1f at %.2fx" % [
+			overhang_one, overhang_big, start_scale])
+	print("")
+
 	print("  worst over everything: up %.0f of %.0f possible (%.0f%% margin), down %.0f of %.0f (%.0f%%)" % [
 		worst_up, can_climb, (1.0 - worst_up / can_climb) * 100.0,
 		worst_down, can_fall, (1.0 - worst_down / can_fall) * 100.0])

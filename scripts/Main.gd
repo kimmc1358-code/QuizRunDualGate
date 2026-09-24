@@ -838,6 +838,31 @@ const GATE_VISUAL_CLAMP_MARGIN := 1.1
 const GATE_VISUAL_REFERENCE_ZONE_HEIGHT := 96.0
 @export_range(1.0, 4.0, 0.05) var gate_visual_zone_ratio: float = 2.3
 
+# ---- 초반 게이트만 크게 ----
+#
+# 비공개 테스트에서 가장 많이 나온 말이 "구멍이 작다"였는데, 오래 해 본 사람은
+# 그렇게 느끼지 않았다. 어렵다기보다 처음 잡은 사람이 익힐 구간이 없다는 뜻으로
+# 읽고, 초반 게이트를 키운 뒤 원래 크기로 되돌린다.
+#
+# 키우는 것은 판정 구멍과 링 그림 **둘 다**이다. 한쪽만 키우면 보이는 구멍과
+# 실제로 통과되는 자리가 어긋나고, 그 어긋남은 "분명히 지나갔는데 죽었다"로
+# 나타난다 — 화면만 보는 플레이어에게는 버그와 구분되지 않는다.
+#
+# 1.2 의 근거(측정): 구멍 124 -> 149px, 캐릭터 판정(50px)과의 여유가 74 -> 99px
+# 이라 캐릭터 높이의 1.5배에서 2.0배가 된다. 눈에 보이는 여유는 24 -> 49px 로
+# 두 배다 — 캐릭터는 판정이 50px 인데 100px 로 그려지므로, 구멍이 실제보다 빡빡해
+# 보이는 진짜 이유가 이 그림 크기다. 1.3 이상은 구멍이 캐릭터 그림보다 뚜렷이
+# 커져 초반이 밋밋해지고 뒤에서 줄어들 때의 낙차도 커진다. 배치 여유는 1.4배에서도
+# 위/아래 두 구멍과 가운데 벽을 다 넣고 130px 넘게 남으므로, 화면 크기가 상한을
+# 정하지는 않는다 — 상한은 "너무 쉬워지는 것" 하나뿐이다.
+@export_range(1.0, 2.0, 0.05) var gate_hole_start_scale: float = 1.2
+# 이만큼 통과할 때까지는 시작 배율 그대로. 처음 잡은 사람이 "할 만하다"를 느낄
+# 구간이라 여기서는 줄이지 않는다.
+@export var gate_hole_hold_gates: int = 10
+# 여기까지 통과하면 원래 크기로 돌아온다. 10 -> 30 사이 20개에 걸쳐 줄면 게이트
+# 하나당 약 1% 라, 한 판 안에서는 줄어드는 것이 느껴지지 않는다.
+@export var gate_hole_full_size_gate: int = 30
+
 # Sky gradient — colors sampled from the reference
 # (assets/references/sky_gradient/sky_gradient_v2.png), top -> mid -> bottom,
 # drawn as two vertex-colored quads for a smooth blend.
@@ -3692,7 +3717,25 @@ func _gate_wall_center_y(view_size: Vector2) -> float:
 	return (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 
 
-func _gate_ring_inner_zone_height() -> float:
+# 이번 게이트의 구멍 배율. 통과한 게이트 수만 보고 정한다 — 페이즈 테이블과
+# 따로 두는 것은 페이즈가 퀴즈 난이도를 나누는 눈금이라, 크기를 거기에 묶으면
+# 퀴즈 곡선을 건드릴 때마다 손 감각까지 같이 움직이기 때문이다.
+#
+# 한 게이트 안에서는 한 번 정해진 배율이 끝까지 간다(_spawn_gate 가 게이트에
+# 적어 둔다). 매 프레임 다시 계산하면 날아오는 도중에 구멍이 오므라든다.
+func _gate_hole_scale(passed_count: int) -> float:
+	if gate_hole_start_scale <= 1.0:
+		return 1.0
+	if passed_count < gate_hole_hold_gates:
+		return gate_hole_start_scale
+	var span: int = gate_hole_full_size_gate - gate_hole_hold_gates
+	if span <= 0:
+		return 1.0
+	var t: float = clampf(float(passed_count - gate_hole_hold_gates) / float(span), 0.0, 1.0)
+	return lerpf(gate_hole_start_scale, 1.0, t)
+
+
+func _gate_ring_inner_zone_height(hole_scale: float = 1.0) -> float:
 	# Converts the ring art's measured inner-hole height (in source-canvas
 	# pixels, see GATE_RING_INNER_TOP/BOTTOM_LOCAL_Y) into world pixels using
 	# the exact same scale factor _draw_gate_frame_layer uses to size the
@@ -3702,10 +3745,12 @@ func _gate_ring_inner_zone_height() -> float:
 	# now that the passable opening is dictated by real art, not a rectangle.
 	var scale: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE
 	var inner_height_px: float = (GATE_RING_INNER_BOTTOM_LOCAL_Y - GATE_RING_INNER_TOP_LOCAL_Y) + GATE_ZONE_HEIGHT_MARGIN_LOCAL
-	return inner_height_px * scale
+	# hole_scale 은 초반 게이트를 키우는 배수다(_gate_hole_scale). 그리는 쪽도
+	# 같은 배수를 받으므로(_draw_gate_frame_layer) 구멍과 그림이 함께 커진다.
+	return inner_height_px * scale * hole_scale
 
 
-func _gate_frame_top_overhang() -> float:
+func _gate_frame_top_overhang(hole_scale: float = 1.0) -> float:
 	# How far above a zone's center the pillars' tops extend, in world
 	# pixels. _spawn_gate insets the top-lane spawn band by this so a zone
 	# never rolls close enough to the screen's top edge to push the frame
@@ -3713,24 +3758,26 @@ func _gate_frame_top_overhang() -> float:
 	# _draw()), so keeping the frame on-screen this way — instead of
 	# clamping the draw position — means the drawn "hole" never drifts
 	# away from the actual judged zone.
-	var base_scale: float = ((GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE) * GATE_VISUAL_CLAMP_MARGIN
+	var base_scale: float = ((GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE) * GATE_VISUAL_CLAMP_MARGIN * hole_scale
 	var pillar_center: float = GATE_PILLAR_CANVAS_SIZE * 0.5
 	return (pillar_center - GATE_PILLAR_TOP_LOCAL_Y) * base_scale
 
 
-func _gate_frame_bottom_overhang() -> float:
+func _gate_frame_bottom_overhang(hole_scale: float = 1.0) -> float:
 	# Same as _gate_frame_top_overhang, for how far below a zone's center
 	# the pillars' feet extend — used to inset the bottom-lane spawn band
 	# from the screen's bottom edge. Pillar-canvas-space (512 units).
-	var base_scale: float = ((GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE) * GATE_VISUAL_CLAMP_MARGIN
+	var base_scale: float = ((GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) / GATE_PILLAR_CANVAS_SIZE) * GATE_VISUAL_CLAMP_MARGIN * hole_scale
 	var pillar_center: float = GATE_PILLAR_CANVAS_SIZE * 0.5
 	return (GATE_PILLAR_BOTTOM_LOCAL_Y - pillar_center) * base_scale
 
 
-func _draw_gate_frame_layer(texture: Texture2D, center_x: float, center_y: float, punch_scale: float = 1.0, tint: Color = Color.WHITE) -> void:
+func _draw_gate_frame_layer(texture: Texture2D, center_x: float, center_y: float, punch_scale: float = 1.0, tint: Color = Color.WHITE, hole_scale: float = 1.0) -> void:
 	if texture == null:
 		return
-	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio
+	# hole_scale 은 이 게이트가 생성될 때 정해진 구멍 배수다. 판정 구멍도 같은
+	# 배수로 커지므로(_gate_ring_inner_zone_height) 둘은 절대 어긋나지 않는다.
+	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio * hole_scale
 	# punch_scale (see _gate_punch_scale) is a draw-time-only size wobble —
 	# it never changes the zone/collision geometry this is centered on. The
 	# gate-pass color flash is a brightness tint (see _gate_glow_tint) on
@@ -3752,10 +3799,11 @@ func _gate_base_center_y_offset() -> float:
 	return ring_bottom_from_center + base_top_from_center - GATE_BASE_OVERLAP_LOCAL[current_mode]
 
 
-func _draw_gate_base(center_x: float, center_y: float) -> void:
+func _draw_gate_base(center_x: float, center_y: float, hole_scale: float = 1.0) -> void:
 	if gate_base_texture == null:
 		return
-	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio
+	# 링과 같은 배수로 커져야 받침이 링 발치에 그대로 물린다.
+	var target_long_edge: float = GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio * hole_scale
 	var tex_size := Vector2(gate_base_texture.get_width(), gate_base_texture.get_height())
 	var scale_factor: float = target_long_edge / max(tex_size.x, tex_size.y)
 	# Position offset uses the ring's own scale_factor (it's defined relative
@@ -4278,7 +4326,10 @@ func _spawn_gate(view_size: Vector2) -> void:
 	var wall_center_y := _gate_wall_center_y(view_size)
 	var wall_top := wall_center_y - WALL_THICKNESS * 0.5
 	var wall_bottom := wall_center_y + WALL_THICKNESS * 0.5
-	var zone_height: float = _gate_ring_inner_zone_height()
+	# 이 게이트의 구멍 배수. 여기서 한 번 정해 게이트에 적어 두고, 그리는 쪽도
+	# 같은 값을 읽는다 — 매 프레임 다시 계산하면 날아오는 도중에 구멍이 오므라든다.
+	var hole_scale: float = _gate_hole_scale(gates_passed)
+	var zone_height: float = _gate_ring_inner_zone_height(hole_scale)
 
 	# The decorative pillar frame drawn around a zone is taller than the
 	# zone itself — see _gate_frame_top_overhang/
@@ -4293,8 +4344,8 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# 화면이 아니라 판이다 — _gate_field_top 의 주석을 볼 것.
 	var gate_zone_top := _gate_field_top(view_size)
 	var gate_zone_bottom := _gate_field_bottom(view_size)
-	var top_lane_band_top: float = gate_zone_top + max(0.0, _gate_frame_top_overhang() - zone_height * 0.5)
-	var bottom_lane_band_bottom: float = gate_zone_bottom - max(0.0, _gate_frame_bottom_overhang() - zone_height * 0.5)
+	var top_lane_band_top: float = gate_zone_top + max(0.0, _gate_frame_top_overhang(hole_scale) - zone_height * 0.5)
+	var bottom_lane_band_bottom: float = gate_zone_bottom - max(0.0, _gate_frame_bottom_overhang(hole_scale) - zone_height * 0.5)
 
 	# base_gate_spacing controls how far ahead of the judgement line a new
 	# gate spawns, which is exactly how long the player has to get from the
@@ -4371,6 +4422,8 @@ func _spawn_gate(view_size: Vector2) -> void:
 		"top_zone_bottom": top_zone.y,
 		"bottom_zone_top": bottom_zone.x,
 		"bottom_zone_bottom": bottom_zone.y,
+		# 구멍을 키운 배수. 그리는 쪽이 판정과 같은 크기로 그리려면 필요하다.
+		"hole_scale": hole_scale,
 		# 그리는 쪽이 나중에 이 게이트가 무엇을 물었는지 알아야 한다.
 		"quiz_kind": quiz_kind,
 	}
@@ -5204,23 +5257,28 @@ func _play_gate_success_fx(g: Dictionary, in_top: bool) -> void:
 	var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
 	var gate_center := Vector2(g.x + GATE_WIDTH * 0.5, (zone_top + zone_bottom) * 0.5)
 
+	# 초반의 큰 게이트에서는 섬광과 불꽃 고리도 링을 따라 커져야 한다 — 반지름이
+	# 고정이면 커진 링 안쪽에서 터져 빠져나간 자리와 어긋나 보인다.
+	var hole_scale: float = float(g.get("hole_scale", 1.0))
+
 	# 0ms: impact flash + gate punch/crystal flash (driven by fx_flash_elapsed
 	# above, sampled in _draw()) + big spark burst + both sound hooks.
-	_spawn_impact_flash(gate_center)
-	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SIZE_RANGE, fx_burst_textures)
+	_spawn_impact_flash(gate_center, hole_scale)
+	_spawn_spark_burst(gate_center, FX_SPARK_BURST_A_COUNT_RANGE, FX_SPARK_BURST_A_SIZE_RANGE, fx_burst_textures, FX_SPARK_SPEED_RANGE, FX_SPARK_LIFETIME_RANGE, -1.0, hole_scale)
 	# 30-50ms: small spark burst + speed streaks, fired together once this
 	# pending entry's delay elapses (see _update_fx).
 	fx_pending_bursts.append({
 		"delay": randf_range(FX_SPARK_BURST_B_DELAY_RANGE.x, FX_SPARK_BURST_B_DELAY_RANGE.y),
 		"gate_center": gate_center,
+		"hole_scale": hole_scale,
 	})
 	fx_shake_elapsed = 0.0
 	fx_stretch_elapsed = 0.0
 	_play_gate_success_sound()
 
 
-func _spawn_impact_flash(gate_center: Vector2) -> void:
-	var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
+func _spawn_impact_flash(gate_center: Vector2, hole_scale: float = 1.0) -> void:
+	var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio * hole_scale) * 0.5
 	fx_impact_flashes.append({
 		"pos": gate_center,
 		"radius": frame_outer_radius + FX_IMPACT_FLASH_MARGIN,
@@ -5228,7 +5286,7 @@ func _spawn_impact_flash(gate_center: Vector2) -> void:
 	})
 
 
-func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2, texture_pool: Array[Texture2D], speed_range: Vector2 = FX_SPARK_SPEED_RANGE, lifetime_range: Vector2 = FX_SPARK_LIFETIME_RANGE, spawn_radius_override: float = -1.0) -> void:
+func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range: Vector2, texture_pool: Array[Texture2D], speed_range: Vector2 = FX_SPARK_SPEED_RANGE, lifetime_range: Vector2 = FX_SPARK_LIFETIME_RANGE, spawn_radius_override: float = -1.0, hole_scale: float = 1.0) -> void:
 	if texture_pool.is_empty():
 		return
 	# Default ring sits outside the gate frame's own edge — right for a gate
@@ -5238,7 +5296,7 @@ func _spawn_spark_burst(gate_center: Vector2, count_range: Vector2i, scale_range
 	if spawn_radius_override >= 0.0:
 		ring_radius = spawn_radius_override
 	else:
-		var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio) * 0.5
+		var frame_outer_radius: float = (GATE_VISUAL_REFERENCE_ZONE_HEIGHT * gate_visual_zone_ratio * hole_scale) * 0.5
 		ring_radius = frame_outer_radius + FX_SPARK_RING_MARGIN
 	var strength: float = clampf(successFxIntensity, 0.0, 2.0)
 	var count: int = int(round(randi_range(count_range.x, count_range.y) * strength))
@@ -5533,7 +5591,7 @@ func _update_fx(delta: float) -> void:
 	var fired: Array = fx_pending_bursts.filter(func(b): return b.delay <= 0.0)
 	fx_pending_bursts = fx_pending_bursts.filter(func(b): return b.delay > 0.0)
 	for b in fired:
-		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SIZE_RANGE, fx_burst_textures)
+		_spawn_spark_burst(b.gate_center, FX_SPARK_BURST_B_COUNT_RANGE, FX_SPARK_BURST_B_SIZE_RANGE, fx_burst_textures, FX_SPARK_SPEED_RANGE, FX_SPARK_LIFETIME_RANGE, -1.0, float(b.get("hole_scale", 1.0)))
 		_spawn_speed_lines()
 
 	if fx_stretch_elapsed >= 0.0:
@@ -7749,16 +7807,16 @@ func _draw() -> void:
 	# Base pedestal drawn first (furthest back) so the ring always renders in
 	# front of it — see _draw_gate_base.
 	for g in gates:
-		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5)
-		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5)
+		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, float(g.get("hole_scale", 1.0)))
+		_draw_gate_base(g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, float(g.get("hole_scale", 1.0)))
 
 	# Right pillar drawn behind the bird (bird occludes it while passing that
 	# side), left pillar drawn in front (it occludes the bird while passing
 	# that side) — that's what sells the bird actually passing *through* the
 	# gate instead of just sliding across a flat picture.
 	for g in gates:
-		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
-		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
+		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"), float(g.get("hole_scale", 1.0)))
+		_draw_gate_frame_layer(gate_right_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"), float(g.get("hole_scale", 1.0)))
 
 	# 판정 구역에는 이제 아무것도 안 칠한다. 예전에는 두 레인을 옅은 파랑
 	# (COLOR_ZONE, 알파 0.55)으로 덮었는데, 그건 게이트가 그림 없이 사각형이던
@@ -7820,8 +7878,8 @@ func _draw() -> void:
 			draw_rect(hitbox_rect, DEBUG_HITBOX_COLOR, false, 2.0)
 
 	for g in gates:
-		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"))
-		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"))
+		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.top_zone_top + g.top_zone_bottom) * 0.5, _gate_punch_scale(g, "top"), _gate_glow_tint(g, "top"), float(g.get("hole_scale", 1.0)))
+		_draw_gate_frame_layer(gate_left_pillar_texture, g.x + GATE_WIDTH * 0.5, (g.bottom_zone_top + g.bottom_zone_bottom) * 0.5, _gate_punch_scale(g, "bottom"), _gate_glow_tint(g, "bottom"), float(g.get("hole_scale", 1.0)))
 
 	# Answer boxes (flag icon, or text for a math/Stroop gate) drawn last
 	# (topmost) of everything gate-related, after both ring halves and the

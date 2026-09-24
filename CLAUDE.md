@@ -50,6 +50,22 @@ that locks MIX for everyone with the game still running perfectly.
 The whole game is "Hard mode". There is no difficulty selector; the phase
 system (`_get_phase_index`) scales difficulty by gates passed.
 
+**The first gates are drawn with a bigger hole**, because the one thing the
+closed test said over and over was that the game is too hard to start. The
+hole is `gate_hole_start_scale` (1.20x) for the first `gate_hole_hold_gates`
+(10) gates and eases back to its real size by `gate_hole_full_size_gate`
+(30) — about 1% a gate, which is under the noise of one run. Nothing else
+moves: the ring art, the frame overhang and the judged zone all take the
+same multiplier, so the hole the player sees is the hole that judges them.
+1.20x buys 98.5px of clearance for a 50px hitbox against the full-size
+73.8px; the lane bands have slack to spare even at 1.4x, so the ceiling
+here is difficulty, not geometry.
+
+The multiplier is **carried on the gate** (`hole_scale`), not recomputed
+while drawing. A gate is spawned one whole gate ahead of being judged, so
+recomputing from `gates_passed` at draw time would shrink a gate in mid-air
+as the one before it scored.
+
 ## Language
 
 `assets/i18n/ui.csv` holds every translated string, `en` and `ko`, and Godot
@@ -169,7 +185,7 @@ on failure.
 
 | Script | Guards | Re-run when |
 |---|---|---|
-| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one | `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
+| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one; and that the early-gate hole ramp holds its start size, eases down and ends, with the judged hole and the drawn ring on the same multiplier | `gate_hole_start_scale`/`gate_hole_hold_gates`/`gate_hole_full_size_gate`, `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID; `android_export.cfg` exists, has all three keys, and while testing holds `is_real = false` with Google's test app ID in both slots; the node `Ads.make_admob_node` builds has `is_real` off, every real unit field empty and Google's demo units in the debug ones; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
 | `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_update_banner`, or `set_banner_reserve` |
@@ -263,6 +279,12 @@ rebuild path is the one being photographed.
 `capture_store_screenshots.gd` takes the Play Store phone screenshots, five per language, into `store/screenshots/<ko|en>/`: mode select with MIX still locked, one gate of each quiz mid-flight, and a new-record game over. A phone cannot take them — at 19.5:9 its screen is outside the 16:9 / 9:16 the store accepts — and the dev PC cannot open a 1080x1920 window on a 1440-tall monitor, so the game runs inside an off-screen `SubViewport` 1080 by 1920 whose `size_2d_override` tells it the screen is 480x854: the layout is the game's own, drawn at 2.25x. It switches language and finishes a run, so it backs up and restores the save file like the checkers do.
 
 `capture_feature_graphic.gd` renders five drafts of the Play Store feature graphic (1024x500) from the game's own art. Draft E is `store/feature_graphic_1024x500.png`: three panels — SKY, JUNGLE, OCEAN — each on that mode's blurred game background with its character flying through its own gate (the ring's right half behind, the left half in front), and the logo across the top. D is the same on the sharp backgrounds with a smaller ring; its jungle panel lost the green gate and dragon against green foliage, which is why E uses the game's `_blur` layers and a 320px ring. MIX's unicorn is left out of every draft on purpose: that mode is hidden until earned, and a store image showing it would spoil it.
+
+`capture_gate_size.gd` shoots one gate at eight points along the early-gate
+hole ramp (`--mode <n>` for another mode), because `check_gate_reach.gd` can
+say the hole is 148.5px and still not answer whether 1.20x looks like enough
+room to a first-time player, or whether the shrink back to full size is
+something they would notice.
 
 `capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
 
