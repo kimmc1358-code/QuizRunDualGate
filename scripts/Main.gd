@@ -566,148 +566,16 @@ const BOOST_SPEEDLINE_ALPHA_SCALE_RANGE := Vector2(0.45, 1.0)
 @export_range(0.0, 2.5, 0.05) var boost_speedline_intensity: float = 1.0
 @export_group("")  # closes "Boost Speed Lines"
 
-# --- Boost burst: an exhaust plume fired out of the character's back, lit on
-# the press and burning for as long as the button is down. Whole feature =
-# these consts + boost_burst_frames/boost_burst_elapsed + _draw_boost_burst +
-# its call sites in _on_boost_pressed/_update_fx/_reset_game/_apply_mode/
-# _draw() + the art in assets/fx/boost_burst/. Delete those to remove it.
-#
-# It has a shape the hold flag alone does not: ignition, sustain, cutoff. So
-# it keeps its own clock rather than reading boost_visual_blend — a blend is
-# a single number easing between two values, with no way to say "play the
-# opening once, then hold this middle part". See _update_fx for how the
-# three parts are cut out of one 5-frame run.
-#
-# 5 frames on one row, 300x256 cells, one strip per mode. Sliced at runtime
-# by _slice_spritesheet like the character sheets rather than cut by a tool
-# into separate files: it is an animation strip, which is the same thing
-# those are, and the cell grid is regular. The strips themselves ARE built by
-# a tool (tools/build_boost_burst_strips.ps1) because this art arrived as
-# loose frames — that script also bakes the soft edge, since there is no
-# runtime blur here.
-#
-# The art replaced a symmetric ring, and it is directional: the flame's head
-# points right and its tail streams left, registered so the head holds still
-# while the tail lengthens. That is what dictates the two geometry rules
-# below and the draw order — see _draw_boost_burst.
-#
-# It stays STUCK TO THE CHARACTER for its whole run — there is no world
-# position and no drift. The ring before it did the opposite, staying where
-# it went off and sliding left with the world plus a recoil, so the
-# character flew out of its own blast; that suited a blast, but this is a
-# thruster, and a thruster that detaches from the thing it is thrusting
-# reads as debris. So the head is recomputed from the character every frame
-# (_boost_burst_head) instead of being stored at the press.
-const BOOST_BURST_DIR := "res://assets/fx/boost_burst/"
-const BOOST_BURST_FILE_PER_MODE := ["boost_effect_sky.png", "boost_effect_jungle.png", "boost_effect_ocean.png", "boost_effect_dream.png"]
-const BOOST_BURST_SHEET_GRID := Vector2i(5, 1)
-# Fraction of the animation after which it eases to nothing. Late, because
-# this art dissipates on its own — its last frame is already just scattered
-# embers, and that frame is 20% of a 5-frame run. Fading from any earlier
-# thins frame 4, which is still a full plume and still the thing being
-# looked at. (Was 0.55 for the 6-frame ring, whose tail was longer.)
-const BOOST_BURST_FADE_START := 0.8
-
-# Drawn WIDTH, as a multiple of PLAYER_VISUAL_SIZE.x, and deliberately NOT
-# of the character's own per-mode scale — that is what kept the same effect
-# a different size in each mode. Height follows from the cell's own aspect
-# (see _draw_boost_burst); a square rect would squash a 300x256 plume. The
-# art already grows and thins across its own frames, so nothing here
-# animates scale.
-#
-# Per-mode, though three of the four share a value. This was one shared
-# number on the reasoning that "how big the boost reads" should not depend
-# on the character — DREAM is the exception that broke it, for a reason in
-# the art rather than in taste: its v2 strip is cut on a 400x256 cell where
-# the others are 300x256, so at equal WIDTH its plume is drawn a quarter
-# shorter vertically. 0.92 buys that height back.
-#
-# How much the player sees also varies, since the plume runs from its head
-# backward and whatever sits under the body is hidden:
-#
-#   SKY 64px   JUNGLE 60px   OCEAN 68px   DREAM 77px (7px of it off screen)
-#
-# It has come down from 1.35 through 1.08, 0.95 and 0.88 to here. Those
-# figures move whenever MODE_BOOST_BURST_HEAD_OFFSET does, so recompute from
-# that rather than trusting a number in an older comment.
-const MODE_BOOST_BURST_SIZE_SCALE := [0.82, 0.82, 0.82, 0.92]
-# Where the plume's HEAD sits at the moment it fires, as a multiple of
-# PLAYER_VISUAL_SIZE.x measured forward from the character's centre.
-#
-# The head is what needs placing, not the centre: the tail grows backward
-# out of a head the art holds still, so anchoring the centre would slide the
-# whole thing forward as the plume lengthens.
-#
-# Two limits bound it, and which one binds depends on the character:
-#
-#   Forward, the head has to stay under the body, or the flame stops
-#   reading as coming from behind and becomes something the character is
-#   holding in its beak. Each mode's own width sets this, so the stop is
-#   different for each: PLAYER_X - 50*MODE_VISUAL_SIZE_SCALE, which is -0.46
-#   for SKY's narrow bird but -0.60 for DREAM's wide unicorn.
-#
-#   Backward, PLAYER_X is only 130, so there are just 130px of screen left
-#   of the character's centre for the plume's whole 82px.
-#
-# Per-mode because the characters are not the same shape — one shared value
-# put the flame through JUNGLE's wing and left OCEAN's too far forward. Same
-# parallel-array-by-Mode convention as MODE_DRAW_OFFSET_FLY.
-#
-#   SKY    -0.28  head at 102, 18px under the bird. Unchanged, it was right.
-#   JUNGLE -0.28  same; the dragon only needed moving down, not back.
-#   OCEAN  -0.36  head at 94, 14px under the shark.
-#   DREAM  -0.45  head at 85, and the tail hangs 7px off the left edge of
-#                 the screen — deliberate, the tail is the cheapest part to
-#                 lose. This one is placed against the unicorn's OWN rainbow
-#                 tail rather than its body box: that tail's opaque pixels
-#                 start at game x 74.7 and its first fifth runs to 96.3, so
-#                 85 drops the plume's star into the middle of it. -0.55 put
-#                 the star at 75, clear of the tail entirely, which read as
-#                 a separate object flying alongside.
-const MODE_BOOST_BURST_HEAD_OFFSET := [-0.28, -0.28, -0.36, -0.45]
-# How far BELOW the character's drawn centre the plume comes out, as a
-# multiple of PLAYER_VISUAL_SIZE.y. Centring it on the body put the flame
-# out of the middle of the character's back; it belongs at the tail.
-#
-# Measured where measuring works — same approach as MODE_DRAW_OFFSET_FLY.
-# For each mode's fly sheet, the vertical centroid of the opaque pixels in
-# the back quarter of the body, through (y - 128) * (100/256) *
-# MODE_VISUAL_SIZE_SCALE:
-#
-#   SKY bird 16.4px   OCEAN shark 8.7px   DREAM unicorn 13.1px
-#   JUNGLE dragon -3.4px — the measurement FAILS here, and narrowing the
-#   slice does not rescue it (0.8px at the back 10%, 6.5px at the back 5%).
-#   The dragon's whole rear silhouette is WING, which sits high, so any
-#   automatic read describes the wing and never finds the tail below it.
-#
-#   SKY    0.12  in the middle of its 12.9-16.4px readings.
-#   JUNGLE 0.20  set by eye off a capture, not measured, for the reason
-#                above — 0.12 put the flame straight through the wing.
-#   OCEAN  0.09  raised from 0.12 by eye, and it landed on the back-quarter
-#                reading (8.7px) — the shark's tail fin is high and narrow,
-#                so the wider slices describe it better than the tight ones.
-#   DREAM  0.12  readings 13.1-20.6px; left alone with the rest of DREAM's
-#                tuning until the new v2 art is judged.
-const MODE_BOOST_BURST_HEAD_DROP := [0.12, 0.20, 0.09, 0.12]
-@export_group("Boost Burst")
-# Whole animation, seconds. The one boost-burst value still shared by every
-# mode and still worth a slider — the geometry above went per-mode and into
-# consts, but timing is timing. 5 frames in 0.28s is ~18fps: slow enough
-# that each frame registers, fast enough that the plume is gone before the
-# next press. The frames are not evenly weighted (1 is a stub, 3 is the
-# peak), so stretching this reads as a stutter rather than a slower burn.
-@export_range(0.10, 0.80, 0.01) var boost_burst_duration: float = 0.28
-@export_group("")  # closes "Boost Burst"
 
 # ============================================================
 # 부스트 잔상. 기능 전체 = 이 상수들 + boost_afterimages/boost_afterimage_timer
 # + _update_boost_afterimages + _draw_boost_afterimages + 부르는 자리 둘
 # (_update_fx, _draw) + _reset_game 의 clear. 지우려면 그것만 지우면 된다.
 #
-# 왜 있는가: 불꽃 플룸은 모드마다 그림이 다른데도(오션은 물줄기, 드림은 무지개
-# 혜성) 실루엣이 전부 뒤로 뿜는 제트라, 상어와 유니콘에게는 남의 것을 붙인 것처럼
-# 보인다는 말이 테스트에서 계속 나왔다. 잔상은 캐릭터 자기 그림을 쓰므로 그 문제가
-# 생길 수가 없다.
+# 왜 있는가: 전에 있던 불꽃 플룸은 모드마다 그림이 달랐는데도(오션은 물줄기, 드림은
+# 무지개 혜성) 실루엣이 전부 뒤로 뿜는 제트라, 상어와 유니콘에게는 남의 것을 붙인
+# 것처럼 보인다는 말이 테스트에서 계속 나왔다. 잔상은 캐릭터 자기 그림을 쓰므로 그
+# 문제가 생길 수가 없어서, 불꽃을 지우고 이것만 남겼다.
 #
 # 진짜 잔상은 이 게임에서 세로로만 생긴다. 캐릭터는 PLAYER_X 에 못 박혀 있고 가로로
 # 움직이지 않으므로, 지나온 자리를 그대로 찍으면 전부 같은 x 에 겹쳐 한 장처럼
@@ -732,11 +600,9 @@ const BOOST_AFTERIMAGE_SQUASH_Y := 0.03
 # 이 아래로 블렌드가 떨어지면 기록도 그리기도 멈춘다. 알파에 blend 를 곱하므로
 # 이 지점의 잔상은 이미 0.02 알파라, 비워도 끊기는 것이 보이지 않는다.
 const BOOST_AFTERIMAGE_MIN_BLEND := 0.05
-# 불꽃과 비교하려고 남겨 둔 스위치. 지금은 주인 결정으로 불꽃을 끄고 잔상만 쓴다 —
-# 불꽃 쪽 코드와 그림은 아직 그대로 있고, 되돌리려면 이 값만 true 로 하면 된다.
-# 잔상으로 확정되면 규칙대로 통째로 걷어낸다(상수, 상태, 그리기, 호출부, 그림).
+# 끄고 한 판 해 볼 수 있게 남긴 스위치. 잔상은 정지 화면으로 판정이 안 되는
+# 효과라, 있는 쪽과 없는 쪽을 번갈아 보는 것 말고는 비교할 방법이 없다.
 @export var boost_afterimage_enabled: bool = true
-@export var boost_burst_enabled: bool = false
 
 const BOOST_BUTTON_SIZE := 110.0       # diameter, px — 92 read small on a phone
 const BOOST_BUTTON_MARGIN := 20.0      # inset from the screen's bottom and its chosen side
@@ -2480,11 +2346,6 @@ var boost_button_held: bool = false  # see the BOOST_BUTTON_* consts; read fresh
 # it reads the bool directly, so release is instant — but the look is, so it
 # does not snap. See the speed-feel block above.
 var boost_visual_blend: float = 0.0
-# Boost burst (see the BOOST_BURST_* consts). -1 = not playing; the press
-# sets it to 0 and _update_fx runs it back to -1 at the end. Same
-# -1-means-idle convention the other one-shot FX timers here use.
-var boost_burst_frames: Array[Texture2D] = []
-var boost_burst_elapsed: float = -1.0
 # 각 항목: {y, texture, offset} — 최신이 앞. x 는 저장하지 않는다. 캐릭터가
 # 가로로 움직이지 않으므로 화면에서의 간격은 등수로 만든다(_draw_boost_afterimages).
 var boost_afterimages: Array = []
@@ -5452,36 +5313,6 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 	return 1.0 + (raw - 1.0) * successFxIntensity
 
 
-
-# Where the plume's head sits right now. Derived from the character every
-# frame rather than stored at the press, which is the whole of what keeps
-# the plume attached — see the BOOST_BURST_* block.
-#
-# It matches the character's DRAWN centre, happy-bounce included, not the
-# bare player_y: the bounce is draw-time-only, and a plume that ignored it
-# would visibly unstick from the body for the length of every gate-pass
-# celebration.
-# Normalised time the held loop wraps back to: one frame in, so the ignition
-# stub is played once on the press and never again. Derived from the loaded
-# frame count rather than written as a fraction, so a re-cut strip with a
-# different number of frames still skips exactly one.
-func _boost_burst_sustain_start() -> float:
-	if boost_burst_frames.size() < 3:
-		# Nothing to loop between — no ignition frame to skip and no embers
-		# to hold back. Wrap the whole run rather than dividing by a size
-		# that would put the start past the end.
-		return 0.0
-	return 1.0 / float(boost_burst_frames.size())
-
-
-func _boost_burst_head() -> Vector2:
-	return Vector2(
-			PLAYER_X + PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_HEAD_OFFSET[current_mode],
-			player_y + _happy_pop_bounce_offset()
-					+ PLAYER_VISUAL_SIZE.y * MODE_BOOST_BURST_HEAD_DROP[current_mode])
-
-
-
 # 지금 그려야 할 캐릭터 프레임과 그 오프셋. 그리기 코드에서 꺼냈다 — 잔상도 같은
 # 것을 써야 하는데, 한쪽만 happy/sad 를 알면 부스트 중 게이트를 지날 때 본체만
 # 표정이 바뀌고 잔상은 날갯짓으로 남는다.
@@ -5548,37 +5379,6 @@ func _draw_boost_afterimages() -> void:
 		draw_texture_rect(ghost["texture"], Rect2(-PLAYER_VISUAL_SIZE * 0.5 + ghost["offset"], PLAYER_VISUAL_SIZE),
 			false, Color(1.0, 1.0, 1.0, alpha))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
-func _draw_boost_burst() -> void:
-	if boost_burst_elapsed < 0.0 or boost_burst_frames.is_empty():
-		return
-	# Floor of the normalised time, clamped: at exactly t = 1 the index would
-	# run one past the last frame.
-	var t: float = clampf(boost_burst_elapsed / maxf(boost_burst_duration, 0.001), 0.0, 0.9999)
-	var frame: Texture2D = boost_burst_frames[int(t * boost_burst_frames.size())]
-	if frame == null:
-		return
-	# Held at full until BOOST_BURST_FADE_START, then eased out, so the plume
-	# stays solid and only the dying end of it thins.
-	var alpha: float = 1.0
-	if t > BOOST_BURST_FADE_START:
-		alpha = 1.0 - (t - BOOST_BURST_FADE_START) / maxf(1.0 - BOOST_BURST_FADE_START, 0.001)
-	# Width is NOT scaled by active_visual_size_scale. The character sizes
-	# differ per mode (0.92 to 1.20) and letting the burst follow made the
-	# same effect a different size in each one; it is the boost's own art,
-	# not part of the body.
-	#
-	# Height comes off the frame rather than a const so a re-cut strip cannot
-	# silently start being squashed: the cells are 300x256 today, and a
-	# square rect would lose a seventh of the plume's length.
-	var frame_size: Vector2 = frame.get_size()
-	var width: float = PLAYER_VISUAL_SIZE.x * MODE_BOOST_BURST_SIZE_SCALE[current_mode]
-	var size := Vector2(width, width * frame_size.y / maxf(frame_size.x, 1.0))
-	# The anchor is the HEAD, not the centre — see MODE_BOOST_BURST_HEAD_OFFSET for
-	# why — so the rect hangs left of it and centres vertically on it.
-	var head: Vector2 = _boost_burst_head()
-	draw_texture_rect(frame, Rect2(head - Vector2(size.x, size.y * 0.5), size), false,
-			Color(1.0, 1.0, 1.0, clampf(alpha, 0.0, 1.0)))
 
 
 func _gate_glow_tint(g: Dictionary, side: String) -> Color:
@@ -5665,33 +5465,6 @@ func _update_fx(delta: float) -> void:
 	# 블렌드 바로 뒤에 둔다 — 잔상의 알파가 그 값을 곱하므로, 같은 프레임의
 	# 값을 보게 해야 눌렀다 뗄 때 한 프레임씩 밀리지 않는다.
 	_update_boost_afterimages(delta)
-	if boost_burst_elapsed >= 0.0:
-		# Only the clock. The plume is pinned to the character and its
-		# position is derived at draw time (_boost_burst_head), so there is
-		# nothing here to move.
-		boost_burst_elapsed += delta
-		var sustain_end: float = boost_burst_duration * BOOST_BURST_FADE_START
-		if boost_button_held and boost_burst_elapsed >= sustain_end:
-			# Held: wrap back into the SUSTAIN rather than to 0. The run's
-			# two ends are not loopable — frame 1 is an ignition stub and the
-			# last frame is scattered embers with no flame in it at all, so
-			# looping the whole thing would blink the plume out completely
-			# five times a second and strobe. Looping the middle burns
-			# continuously, which is what a held thruster should do, and
-			# matches the hold sound, which loops too (_enable_stream_loop).
-			#
-			# The overshoot is carried across the wrap instead of being
-			# dropped, so the cycle keeps real time rather than losing a
-			# sliver of a frame every lap.
-			var sustain_start: float = boost_burst_duration * _boost_burst_sustain_start()
-			var span: float = maxf(sustain_end - sustain_start, 0.001)
-			boost_burst_elapsed = sustain_start + fmod(boost_burst_elapsed - sustain_end, span)
-		elif boost_burst_elapsed >= boost_burst_duration:
-			# Released. The clock was left inside the sustain, so it runs on
-			# through the embers and the BOOST_BURST_FADE_START ease before
-			# stopping — the cutoff plays itself out instead of the flame
-			# vanishing on the frame the finger lifts.
-			boost_burst_elapsed = -1.0
 
 	if combo > 0:
 		combo_display_punch_elapsed += delta
@@ -6722,9 +6495,6 @@ func _apply_mode(mode: int) -> void:
 		bg_near_texture = load(bg_near_path)
 	bg_near_scroll_x = 0.0
 
-	# Per-mode animation strip, sliced the same way the character sheets are.
-	boost_burst_frames = _slice_spritesheet(BOOST_BURST_DIR + BOOST_BURST_FILE_PER_MODE[mode], BOOST_BURST_SHEET_GRID.x, BOOST_BURST_SHEET_GRID.y)
-	boost_burst_elapsed = -1.0
 
 	# SKY used to be skipped here — its old twinkling lights did not suit the
 	# scene and were dropped. It has drifting feathers now, so every mode
@@ -6861,7 +6631,6 @@ func _reset_game() -> void:
 	if fx_sound_boost != null:
 		fx_sound_boost.stop()
 	boost_visual_blend = 0.0
-	boost_burst_elapsed = -1.0
 	boost_bar_elapsed = -1.0
 	boost_bar_flash_elapsed = -1.0
 	boost_pop_elapsed = -1.0
@@ -7167,10 +6936,6 @@ func _on_boost_pressed() -> void:
 	# 맞다 — 앞선 재생의 꼬리에 삼켜지면 두 번째 누름이 무음이 된다.
 	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
 		fx_sound_boost_start.play()
-	# Restarted from 0 rather than only started when idle: hammering the
-	# button should re-pop each time, not be swallowed by the tail of the
-	# previous one.
-	boost_burst_elapsed = 0.0
 
 
 func _on_boost_released() -> void:
@@ -7948,17 +7713,9 @@ func _draw() -> void:
 	_draw_speed_lines()  # behind the bird
 
 	if state != State.READY and state != State.MODE_SELECT:
-		# UNDER the character, and over the trail. The old art was a
-		# symmetric ring with a hole in the middle, so it could sit on top
-		# and let the body read through it; this is a solid plume, and on
-		# top it covers the character's back half and reads as something
-		# stuck to the front of it. Underneath, with its head buried in the
-		# body (MODE_BOOST_BURST_HEAD_OFFSET), it reads as exhaust.
-		# 잔상이 먼저, 그 위에 플룸, 그 위에 본체. 잔상은 반투명한 자기 복사본이라
+		# 캐릭터 바로 아래, 트레일 위. 잔상은 반투명한 자기 복사본이라
 		# 본체 위에 오면 캐릭터가 뿌옇게 비쳐 보인다.
 		_draw_boost_afterimages()
-		if boost_burst_enabled:
-			_draw_boost_burst()
 		# Stretch (see _bird_stretch_scale) and the happy pop/bounce (see
 		# _happy_pop_scale/_happy_pop_bounce_offset) are both draw-time-only —
 		# player_y/PLAYER_X/PLAYER_SIZE and collision never change. They

@@ -212,7 +212,7 @@ on failure.
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 | `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
-| `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), the press one-shot is a separate, shorter, NON-looping stream that fires on every press, and the press-burst slices to all 5 frames in every mode with a wider-than-tall cell, fires with its head buried inside the character and its tail on screen, stays stuck to it in both axes instead of drifting off with the world, loops its sustain frames for as long as the button is down without touching the ember frame, and ends once released; and the gate-pass popup's two cues are loaded, distinct from each other and from the hold and press sounds, and the tier that puts BOOST!/TURBO! on screen sounds the matching one | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, the `BOOST_BURST_*` block, `BOOST_POP_SOUND_*`/`_play_boost_pop_sound`, or the burst art change |
+| `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), the press one-shot is a separate, shorter, NON-looping stream that fires on every press, and the boost afterimage stacks to exactly `BOOST_AFTERIMAGE_COUNT` copies and no more, carries the character's own frames, records the character's real y as it moves, and is emptied on release; and the gate-pass popup's two cues are loaded, distinct from each other and from the hold and press sounds, and the tier that puts BOOST!/TURBO! on screen sounds the matching one | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, any `BOOST_AFTERIMAGE_*` constant or `_update_boost_afterimages`, or `BOOST_POP_SOUND_*`/`_play_boost_pop_sound` |
 
 **A checker that plays real gates writes to the real save file.** `user://
 savegame.cfg` holds the best scores, the hidden-mode progress and the ad
@@ -325,22 +325,19 @@ Consequences worth knowing before editing:
   `_ready`. A headless run that only survives a few frames will not have
   reached it.
 
-**The boost has two looks on trial and a switch for each**, because testers
-said the flame plume does not belong on a shark or a unicorn — the art is
-already per-mode (a water jet, a rainbow comet) but every silhouette is a
-jet exhaust. `boost_afterimage_enabled` draws fading copies of the
-character itself, which no mode can look borrowed in;
-`boost_burst_enabled` keeps the plume, and is **off**: the owner chose the
-afterimage. The flame code and art are still here and `true` brings them
-back, so nothing was deleted on one screenshot; once the choice has been
-played for a while the loser goes completely — consts, state, update, draw,
-call sites and art.
+**The boost draws an afterimage of the character**, and the flame plume it
+replaced is gone. Testers kept saying the plume did not belong on a shark or
+a unicorn: the art was already per-mode (a water jet, a rainbow comet) but
+every silhouette was a jet exhaust. Fading copies of the character's own
+sprite cannot have that problem in any mode, and cost no per-mode art.
 
 The afterimage is half a lie and the comment on `BOOST_AFTERIMAGE_STEP_X`
 says so: the character never moves horizontally, so real ghosts would stack
 on one x. The recorded `y` is genuine history (it bends with the flapping);
 the backward offset is invented, and that is the half the eye reads as
-speed.
+speed. Seven copies 8px apart, not four at 13px — at 13 the copies were
+individually legible and the bird read as several birds. Denser copies
+overlap, so `BOOST_AFTERIMAGE_ALPHA_HEAD` came down with the spacing.
 
 **A three-step tutorial runs once per install**, on the first entry to the
 play screen in any mode. `TutorialOverlay` dims the game and opens one hole
@@ -495,20 +492,11 @@ arc, then a `StyleBoxFlat` border on top. The strips have no anti-aliasing
 and the StyleBox does, so the strips are tucked `CARD_FILL_TUCK_PX` under the
 border and their stair-stepped edge never shows.
 
-The exception is an **animation strip** — the character sheets and the boost
-burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
+The exception is an **animation strip** — the character sheets. Those stay
+whole and are cut at load time by `_slice_spritesheet`,
 which takes a cell grid, drops fully transparent cells and rebuilds each
 cell's mipmaps. A regular grid needs no detection, so there is nothing for a
 tool to measure and nothing to commit twice.
-
-The boost burst runs the pipeline **backwards**: that art arrived as loose
-per-frame PNGs, so `tools/build_boost_burst_strips.ps1` assembles them into
-the strips instead of cutting one up. The sources live in
-`assets/fx/boost_burst/frames/` behind a `.gdignore`, so Godot never imports
-twenty PNGs the game does not open. Frames are copied at their **full canvas
-size**, never trimmed — the frames are registered against each other (the
-flame's head holds still while its tail grows backward out of it), and
-trimming each to its own bounds makes the head jitter.
 
 Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
 unconverted wav still plays and dropping the ogg beside it switches over).
@@ -526,7 +514,6 @@ has no blur shader in its custom-draw setup, so:
 
 - Background softness is baked by `tools/blur_background.ps1`.
 - Ambient particle blur is baked by `slice_ambient_sheet.ps1 -Sigma`.
-- The boost burst's soft edge is baked by `build_boost_burst_strips.ps1 -Sigma`.
 - The boost speed-line strip is squashed to its drawn proportions by
   `tools/bake_speed_line.ps1`. No blur — that art arrives soft already (zero
   fully opaque pixels). What it does is premultiply before the resize,
