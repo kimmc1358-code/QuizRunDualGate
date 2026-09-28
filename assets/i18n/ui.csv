@@ -96,3 +96,28 @@ I scored {score} in {mode} on QuizRun: Dual Gate! Can you beat me?,I scored {sco
 Share your score,Share your score,점수 공유하기
 ADS REMOVED,ADS REMOVED,광고 제거됨
 CONTINUE,CONTINUE,이어하기
+COLLECTION,COLLECTION,도감
+FLAGS,FLAGS,국기
+MATH,MATH,연산
+COLORS,COLORS,색깔
+Tap a flag to see its name,Tap a flag to see its name,국기를 누르면 이름이 나와요
+Tap a card to see it,Tap a card to see it,칸을 누르면 무엇인지 나와요
+"Stars at 10, 50 and 200 correct","Stars at 10, 50 and 200 correct",10 · 50 · 200문제를 맞히면 별을 받아요
+Not discovered yet,Not discovered yet,아직 못 만났어요
+"Seen it, missed it. Catch it next time!","Seen it, missed it. Catch it next time!",봤지만 놓쳤어요. 다음엔 꼭 맞혀요!
+'%s' written in %s,'%s' written in %s,'%s' 글자 · %s 색
+EASY,EASY,쉬움
+NORMAL,NORMAL,보통
+HARD,HARD,어려움
+EXPERT,EXPERT,전문가
+1-digit add & subtract,1-digit add & subtract,한 자리 덧셈 · 뺄셈
+2-digit add & subtract,2-digit add & subtract,두 자리 덧셈 · 뺄셈
+Times tables,Times tables,구구단
+2-digit with carrying,2-digit with carrying,받아올림 있는 두 자리
+2-digit × 1-digit,2-digit × 1-digit,두 자리 × 한 자리
+Missing number,Missing number,빈칸 채우기
+MAX,MAX,완료
+NEW!,NEW!,새로 수집!
+Flags +%d,Flags +%d,국기 +%d
+Colors +%d,Colors +%d,색 +%d
+Math stars +%d,Math stars +%d,연산 별 +%d

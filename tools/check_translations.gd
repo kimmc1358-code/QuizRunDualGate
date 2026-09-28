@@ -37,6 +37,7 @@ const UI_SCRIPTS := [
 	"res://scripts/ModeSelectScreen.gd",
 	"res://scripts/TutorialOverlay.gd",
 	"res://scripts/ShareCard.gd",
+	"res://scripts/CollectionPopup.gd",
 ]
 const ALL_SCRIPTS_DIR := "res://scripts"
 

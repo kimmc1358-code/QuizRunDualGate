@@ -2159,6 +2159,43 @@ const SAVE_KEY_TUTORIAL := "tutorial_seen"
 # 해금 대상이 아닌 모드. 자기 자신을 조건에 넣을 수는 없다.
 const HIDDEN_MODE := Mode.DREAM
 # ============================================================
+# 도감. 판과 판 사이에 쌓이는 것.
+#
+# 비공개 테스트에서 가장 많이 나온 말이 "다시 할 이유가 없다"였다. 점수와
+# 순위표는 잘하는 사람에게만 동기가 되고, 코인·꾸미기는 그림이 너무 많이 든다.
+# 퀴즈 자체에 이미 끝이 있는 목록이 들어 있으니 그것을 모으게 한다:
+#
+#   국기  193개. 맞히면 모이고, 봤지만 틀린 것은 따로 기억한다 — 도감에서
+#         흐린 그림으로 보여 "저건 봤는데" 하고 다시 노리게 하는 것이 목적이다.
+#   연산  문제가 사실상 무한이라 칸으로 못 모은다. 유형별로 맞힌 수를 세고
+#         MATH_STAR_THRESHOLDS 에 별을 준다.
+#   색깔  단어 11개 x 다른 잉크 10개 = 110 조합. 국기처럼 모은다.
+#
+# 모드가 아니라 게이트가 무엇을 물었는지(quiz_kind)로 센다 — MIX 에서 맞힌
+# 것도 세 도감에 똑같이 들어간다.
+#
+# 한 판 동안은 메모리에만 쌓고 판을 떠날 때(_finish_run, _reset_game) 한 번
+# 쓴다. 게이트마다 쓰면 판 중에 디스크를 계속 친다.
+const SAVE_SECTION_COLLECTION := "collection"
+const SAVE_KEY_FLAGS_COLLECTED := "flags"
+const SAVE_KEY_FLAGS_SEEN := "flags_seen"
+const SAVE_KEY_MATH_SOLVED := "math_solved"
+const SAVE_KEY_COLORS_COLLECTED := "colors"
+# 도감을 아직 열어 보지 않은 새 항목. 모드 선택의 도감 버튼 점과 도감 칸의 NEW
+# 표시가 이것 하나를 본다.
+const SAVE_KEY_COLLECTION_UNVIEWED := "unviewed"
+# 아직 못 모은 항목이 뽑힐 무게(모은 항목은 1). 난이도가 정한 풀 안에서만
+# 기운다 — 어느 등급·어느 색 거리에서 낼지는 그대로라 난이도 곡선은 안 바뀐다.
+#
+# 이게 없으면 마지막 몇 칸이 안 나온다. 193 개 중 190 개를 모은 뒤 남은 셋이
+# 나올 확률은 게이트당 1.5% 남짓이라, 도감이 "안 채워지는 것"으로 읽히는
+# 순간이 온다. 3 이면 한 등급 풀(40~60 개)에서 하나 남은 칸이 약 세 배 자주
+# 나오고, 모은 것도 여전히 충분히 섞여 나와 "같은 것만 나온다"가 되지 않는다.
+const COLLECTION_UNCOLLECTED_WEIGHT := 3.0
+# 연산 유형마다 별이 붙는 누적 정답 수. 첫 별은 한두 판이면 닿고, 마지막은
+# 오래 걸리게.
+const MATH_STAR_THRESHOLDS := [10, 50, 200]
+# ============================================================
 # ============================================================
 # 전면광고 노출 판단.
 #
@@ -2478,6 +2515,19 @@ var leaderboard_bests := PackedInt32Array()
 # 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
 # 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
 var mode_gates_cleared := PackedInt32Array()
+# 도감 — SAVE_SECTION_COLLECTION 블록을 볼 것. Dictionary 는 집합으로만 쓴다
+# (값은 늘 true). 색 조합의 키는 _color_key 가 만드는 이름 문자열이라, 색 표의
+# 순서가 바뀌어도 저장본이 엉뚱한 칸을 가리키지 않는다.
+var collected_flags: Dictionary = {}
+var seen_flags: Dictionary = {}
+var math_solved := PackedInt32Array()
+var collected_colors: Dictionary = {}
+var collection_unviewed: Dictionary = {}   # "f:<code>" / "c:<key>" / "m:<MathKind>"
+var collection_dirty: bool = false
+# 이번 판에 새로 생긴 것 — 게임오버 팝업의 한 줄이 이것을 읽는다.
+var run_new_flags: int = 0
+var run_new_colors: int = 0
+var run_new_stars: int = 0
 # 튜토리얼을 봤는지. SAVE_KEY_TUTORIAL 참고.
 var tutorial_seen: bool = false
 # 튜토리얼이 도는 동안. 카운트다운 시계를 세우고, 평소 PLAYING 에서만 보이는
@@ -2637,6 +2687,10 @@ var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be kil
 @onready var boost_button: Button = $UI/BoostButton
 @onready var pause_panel: Control = $UI/PausePanel
 @onready var revive_panel: Control = $UI/RevivePanel
+# 도감. 씬에 두지 않고 _boot_load 가 만든다 — 모드 선택 화면에서만 열리고,
+# 다른 팝업처럼 씬 순서에 기댈 것이 없다(맨 뒤에 붙어 늘 맨 위다).
+const COLLECTION_POPUP_SCRIPT := "res://scripts/CollectionPopup.gd"
+var collection_popup: Control
 
 
 # 부팅을 둘로 나눈다.
@@ -2682,11 +2736,19 @@ func _boot_load() -> void:
 	# 맞춰 둔 글자 크기에 굳혀 버린다 — 다 지은 뒤에 로케일을 바꾸면 화면은
 	# 기기 언어 그대로 남는다.
 	_load_language()
+	collection_popup = load(COLLECTION_POPUP_SCRIPT).new()
+	collection_popup.name = "CollectionPopup"
+	collection_popup.visible = false
+	$UI.add_child(collection_popup)
+	# 씬의 팝업들은 .tscn 이 오프셋까지 화면에 맞춰 두지만, 코드로 만든 노드는
+	# 크기 0 에서 시작한다. PopupBase 의 set_anchors_preset 은 앵커만 옮기고
+	# 크기는 지키므로, 여기서 오프셋까지 화면 전체로 편다.
+	collection_popup.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	# 팝업 셋과 모드 선택 화면은 씬의 자식이라 원래 Main 보다 먼저 _ready 가
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
 	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
-			tutorial_overlay, mode_select_panel]:
+			tutorial_overlay, mode_select_panel, collection_popup]:
 		if panel != null and panel.has_method("ensure_built"):
 			panel.ensure_built()
 	# ...except the top HUD, whose painted frames are minified hard enough
@@ -2707,6 +2769,7 @@ func _boot_load() -> void:
 		BEST_NUMBER_TOP, BEST_NUMBER_BOTTOM)
 	best_fill_material = best_fill_canvas.material
 	_load_best_score()
+	_load_collection()
 	_load_audio_settings()
 	_load_control_settings()
 	_load_ad_state()
@@ -2838,6 +2901,8 @@ func _boot_load() -> void:
 	mode_select_panel.settings_pressed.connect(_open_settings)
 	mode_select_panel.login_pressed.connect(_on_mode_select_login_pressed)
 	mode_select_panel.leaderboard_pressed.connect(_on_mode_select_leaderboard_pressed)
+	mode_select_panel.collection_pressed.connect(_open_collection)
+	collection_popup.close_pressed.connect(_on_collection_closed)
 	mode_select_panel.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	settings_popup.close_pressed.connect(func(): settings_popup.visible = false)
 	settings_popup.sfx_volume_changed.connect(set_sfx_volume)
@@ -4148,6 +4213,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# never read them.
 	var ocean_word_index: int = -1
 	var ocean_answer_index: int = -1
+	var math_kind: int = -1
 	# 모드가 아니라 이 게이트가 무엇을 묻는지로 갈린다. 단일 모드에서는 늘
 	# 같은 답이 나오고, MIX 에서만 게이트마다 달라진다.
 	var quiz_kind: int = _next_quiz_kind()
@@ -4167,6 +4233,7 @@ func _spawn_gate(view_size: Vector2) -> void:
 				break
 			problem = _make_math_problem(phase_index)
 		last_quiz_key = problem.text
+		math_kind = int(problem.kind)
 		target_code = str(problem.answer)
 		# The shape supplies the whole question, "= ?" included — the blank
 		# is mid-expression for MISSING_OPERAND ("7 + ? = 15"), so it cannot
@@ -4336,6 +4403,9 @@ func _spawn_gate(view_size: Vector2) -> void:
 	if quiz_kind == QuizKind.STROOP:
 		gate["ocean_word_index"] = ocean_word_index
 		gate["ocean_answer_index"] = ocean_answer_index
+	# 도감이 어느 유형 줄에 셀지 알려면 필요하다 — _collection_note.
+	if quiz_kind == QuizKind.MATH:
+		gate["math_kind"] = math_kind
 	gates.append(gate)
 	_start_boost_bar(gate)
 
@@ -4443,8 +4513,10 @@ func _pick_flag_target(phase_index: int) -> Dictionary:
 	for i in range(weights.size()):
 		roll -= weights[i]
 		if roll < 0.0:
-			var pool: Array = flag_records_by_tier[i + 1]
-			return pool[randi() % pool.size()]
+			# The tier is the difficulty; inside it, lean toward flags the
+			# collection is still missing — see COLLECTION_UNCOLLECTED_WEIGHT.
+			return _pick_favoring_uncollected(flag_records_by_tier[i + 1],
+				func(r): return collected_flags.has(str(r.code)))
 	return flag_records[randi() % flag_records.size()]
 
 
@@ -4519,20 +4591,26 @@ func _pick_math_kind(phase_index: int) -> int:
 	return MathKind.SINGLE_ADD_SUB
 
 
+# "kind" rides along so the gate can tell the collection which row to count.
 func _make_math_problem(phase_index: int) -> Dictionary:
-	match _pick_math_kind(phase_index):
+	var kind: int = _pick_math_kind(phase_index)
+	var problem: Dictionary
+	match kind:
 		MathKind.DOUBLE_ADD_SUB_PLAIN:
-			return _make_double_add_sub(false)
+			problem = _make_double_add_sub(false)
 		MathKind.TIMES_TABLE:
-			return _make_times_table()
+			problem = _make_times_table()
 		MathKind.DOUBLE_ADD_SUB_CARRY:
-			return _make_double_add_sub(true)
+			problem = _make_double_add_sub(true)
 		MathKind.DOUBLE_X_SINGLE:
-			return _make_double_x_single()
+			problem = _make_double_x_single()
 		MathKind.MISSING_OPERAND:
-			return _make_missing_operand()
+			problem = _make_missing_operand()
 		_:
-			return _make_single_add_sub()
+			kind = MathKind.SINGLE_ADD_SUB
+			problem = _make_single_add_sub()
+	problem["kind"] = kind
+	return problem
 
 
 # 한자리 덧셈/뺄셈 — both operands single-digit AND the result capped, so
@@ -4692,7 +4770,10 @@ func _make_color_problem(phase_index: int) -> Dictionary:
 			elif absf(miss - nearest_miss) <= 0.01:
 				nearest.append(Vector2i(word, answer))
 	var pool: Array = in_band if not in_band.is_empty() else nearest
-	var pick: Vector2i = pool[randi() % pool.size()]
+	# The band is the difficulty; inside it, lean toward pairs the collection
+	# is still missing — see COLLECTION_UNCOLLECTED_WEIGHT.
+	var pick: Vector2i = _pick_favoring_uncollected(pool,
+		func(p): return collected_colors.has(_color_key(p.x, p.y)))
 	return {"word": pick.x, "answer": pick.y}
 
 
@@ -5091,6 +5172,7 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 	var p_bottom := player_y + half_h
 
 	if p_bottom > wall_top and p_top < wall_bottom:
+		_collection_note(g, false)
 		_game_over()
 		return
 
@@ -5107,6 +5189,7 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 		var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
 		passed = p_top >= zone_top and p_bottom <= zone_bottom
 
+	_collection_note(g, passed)
 	if passed:
 		gates_passed += 1
 		# 히든 모드 해금용 누적. 문턱에서 멈추므로 열린 뒤로는 값이 안 변하고,
@@ -5960,6 +6043,153 @@ func _load_best_score() -> void:
 		_save_best_score(Mode.SKY)
 
 
+func _load_collection() -> void:
+	collected_flags.clear()
+	seen_flags.clear()
+	collected_colors.clear()
+	collection_unviewed.clear()
+	math_solved.resize(MathKind.size())
+	math_solved.fill(0)
+	collection_dirty = false
+	var cfg := ConfigFile.new()
+	if cfg.load(SAVE_PATH) != OK:
+		return
+	for code in cfg.get_value(SAVE_SECTION_COLLECTION, SAVE_KEY_FLAGS_COLLECTED, []):
+		collected_flags[str(code)] = true
+	for code in cfg.get_value(SAVE_SECTION_COLLECTION, SAVE_KEY_FLAGS_SEEN, []):
+		seen_flags[str(code)] = true
+	for key in cfg.get_value(SAVE_SECTION_COLLECTION, SAVE_KEY_COLORS_COLLECTED, []):
+		collected_colors[str(key)] = true
+	for key in cfg.get_value(SAVE_SECTION_COLLECTION, SAVE_KEY_COLLECTION_UNVIEWED, []):
+		collection_unviewed[str(key)] = true
+	var solved: Array = cfg.get_value(SAVE_SECTION_COLLECTION, SAVE_KEY_MATH_SOLVED, [])
+	# 유형이 늘면 뒤가 0 으로 남고, 줄면 넘치는 것은 버린다.
+	for i in range(mini(solved.size(), math_solved.size())):
+		math_solved[i] = maxi(0, int(solved[i]))
+
+
+func _save_collection() -> void:
+	if not collection_dirty:
+		return
+	collection_dirty = false
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_COLLECTION, SAVE_KEY_FLAGS_COLLECTED, collected_flags.keys())
+	cfg.set_value(SAVE_SECTION_COLLECTION, SAVE_KEY_FLAGS_SEEN, seen_flags.keys())
+	cfg.set_value(SAVE_SECTION_COLLECTION, SAVE_KEY_COLORS_COLLECTED, collected_colors.keys())
+	cfg.set_value(SAVE_SECTION_COLLECTION, SAVE_KEY_COLLECTION_UNVIEWED, collection_unviewed.keys())
+	cfg.set_value(SAVE_SECTION_COLLECTION, SAVE_KEY_MATH_SOLVED, Array(math_solved))
+	var err := cfg.save(SAVE_PATH)
+	if err != OK:
+		collection_dirty = true   # 다음 기회에 다시
+		push_warning("could not write %s (error %d) — the collection will not persist" % [SAVE_PATH, err])
+
+
+## 색 조합 한 칸의 이름. 인덱스가 아니라 색 이름으로 짓는다 — _load_collection 참고.
+func _color_key(word_index: int, ink_index: int) -> String:
+	return "%s/%s" % [OCEAN_COLOR_NAMES[word_index], OCEAN_COLOR_NAMES[ink_index]]
+
+
+## 그 누적 정답 수로 받은 별 수(0 ~ MATH_STAR_THRESHOLDS.size()).
+func math_stars(solved: int) -> int:
+	var stars := 0
+	for t in MATH_STAR_THRESHOLDS:
+		if solved >= int(t):
+			stars += 1
+	return stars
+
+
+## 게이트 하나가 판정된 순간 도감에 적는다. 통과든 실패든 _resolve_gate 가
+## 반드시 한 번 부른다 — 국기는 틀려도 "봤다"가 남아야 하기 때문이다.
+func _collection_note(g: Dictionary, passed: bool) -> void:
+	match int(g.get("quiz_kind", QuizKind.FLAG)):
+		QuizKind.FLAG:
+			var code: String = str(g.get("target_code", ""))
+			if code == "":
+				return
+			if not seen_flags.has(code):
+				seen_flags[code] = true
+				collection_dirty = true
+			if passed and not collected_flags.has(code):
+				collected_flags[code] = true
+				collection_unviewed["f:" + code] = true
+				run_new_flags += 1
+				collection_dirty = true
+		QuizKind.MATH:
+			if not passed or not g.has("math_kind"):
+				return
+			var kind: int = int(g.math_kind)
+			if kind < 0 or kind >= math_solved.size():
+				return
+			var before: int = math_stars(math_solved[kind])
+			math_solved[kind] += 1
+			collection_dirty = true
+			if math_stars(math_solved[kind]) > before:
+				collection_unviewed["m:%d" % kind] = true
+				run_new_stars += 1
+		QuizKind.STROOP:
+			if not passed or not g.has("ocean_word_index"):
+				return
+			var key: String = _color_key(int(g.ocean_word_index), int(g.ocean_answer_index))
+			if not collected_colors.has(key):
+				collected_colors[key] = true
+				collection_unviewed["c:" + key] = true
+				run_new_colors += 1
+				collection_dirty = true
+
+
+## 풀에서 하나를 고르되, 아직 못 모은 것에 COLLECTION_UNCOLLECTED_WEIGHT 를 준다.
+func _pick_favoring_uncollected(pool: Array, is_collected: Callable) -> Variant:
+	var total: float = 0.0
+	var weights: Array[float] = []
+	for item in pool:
+		var w: float = 1.0 if is_collected.call(item) else COLLECTION_UNCOLLECTED_WEIGHT
+		weights.append(w)
+		total += w
+	var roll: float = randf() * total
+	for i in range(pool.size()):
+		roll -= weights[i]
+		if roll < 0.0:
+			return pool[i]
+	return pool[pool.size() - 1]
+
+
+## 모드 선택의 도감 버튼 점. 도감을 닫을 때와 화면에 들어올 때 부른다.
+func _push_collection_badge() -> void:
+	if mode_select_panel != null and mode_select_panel.has_method("set_collection_new"):
+		mode_select_panel.set_collection_new(not collection_unviewed.is_empty())
+
+
+func _open_collection() -> void:
+	if collection_popup == null:
+		return
+	collection_popup.set_data({
+		"flag_records": flag_records,
+		"flag_textures": flag_textures,
+		"collected_flags": collected_flags,
+		"seen_flags": seen_flags,
+		"math_solved": math_solved,
+		"math_thresholds": MATH_STAR_THRESHOLDS,
+		"color_names": OCEAN_COLOR_NAMES,
+		"color_rgb": OCEAN_COLOR_RGB,
+		"collected_colors": collected_colors,
+		"unviewed": collection_unviewed,
+		"color_key": _color_key,
+	})
+	collection_popup.visible = true
+
+
+# 닫으면 이번에 본 것의 NEW 표시를 지운다. 도감을 열기만 하고 탭을 안 넘겨 본
+# 것까지 지우지만, 탭마다 따로 세면 점이 좀처럼 안 꺼져서 그쪽이 더 귀찮다.
+func _on_collection_closed() -> void:
+	collection_popup.visible = false
+	if not collection_unviewed.is_empty():
+		collection_unviewed.clear()
+		collection_dirty = true
+		_save_collection()
+	_push_collection_badge()
+
+
 func _save_tutorial_seen() -> void:
 	var cfg := ConfigFile.new()
 	cfg.load(SAVE_PATH)   # keep anything else already stored there
@@ -6111,6 +6341,7 @@ func _finish_run() -> void:
 		leaderboard_bests[current_mode] = leaderboard_score
 	if is_new_record or leaderboard_score > 0:
 		_save_best_score(current_mode)
+	_save_collection()
 	# 로그인해 있으면 이 모드의 순위표 기록을 올린다. 이번 판 점수가 아니라
 	# 쌓아 둔 최고 기록을 보낸다 — Play 게임즈는 높은 쪽만 남기므로 손해가 없고,
 	# 전에 오프라인이라 못 올린 기록이 있으면 여기서 따라 올라간다.
@@ -6122,6 +6353,9 @@ func _finish_run() -> void:
 		# 신기록이면 웃는 얼굴, 아니면 우는 얼굴. 어느 모드인지 아는 쪽이
 		# 여기라, 표정도 여기서 고른다.
 		var face: Texture2D = happy_face_texture if is_new_record else sad_face_texture
+		# set_result 가 배치를 다시 하므로 그보다 먼저 — 한 줄이 늘지 줄지가
+		# 여기서 정해진다.
+		gameover_popup.set_collection_news(run_new_flags, run_new_colors, run_new_stars)
 		gameover_popup.set_result(face,
 			PLAYER_VISUAL_SIZE.y * active_visual_size_scale,
 			score, max_combo, previous_best, is_new_record, player_logged_in,
@@ -6607,7 +6841,13 @@ func _reset_game() -> void:
 		if gates_passed > 0:
 			_save_best_score(current_mode)
 			_push_hidden_progress()
+		# 같은 까닭으로 도감도 여기서 — 일시정지 HOME 으로 나간 판에서 모은
+		# 것이 사라지면 안 된다. 게임오버로 끝난 판은 _finish_run 이 이미 썼다.
+		_save_collection()
 		run_active = false
+	run_new_flags = 0
+	run_new_colors = 0
+	run_new_stars = 0
 	var view_size := get_viewport_rect().size
 	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
@@ -6890,7 +7130,7 @@ func set_language_korean(korean: bool) -> void:
 
 func _rebuild_for_language() -> void:
 	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
-			mode_select_panel]:
+			mode_select_panel, collection_popup]:
 		if panel != null and panel.has_method("rebuild"):
 			panel.rebuild()
 	# 설정 팝업은 다시 지어지면서 토글도 초기값으로 돌아간다 — 지금 값을 도로
@@ -6906,6 +7146,7 @@ func _rebuild_for_language() -> void:
 	if mode_select_panel != null:
 		mode_select_panel.set_best_scores(best_scores)
 		_push_hidden_progress()
+		_push_collection_badge()
 	queue_redraw()
 
 
@@ -7240,6 +7481,7 @@ func _set_state(new_state: int) -> void:
 		# 같은 이유로 해금 진행도도 여기서 다시 넘긴다 — 방금 끝난 판이 마지막
 		# 한 모드를 채웠을 수 있다.
 		_push_hidden_progress()
+		_push_collection_badge()
 
 
 # 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
@@ -7261,6 +7503,8 @@ func _apply_screen_visibility() -> void:
 		settings_popup.visible = false
 	if about_popup != null:
 		about_popup.visible = false
+	if collection_popup != null:
+		collection_popup.visible = false
 
 
 # 음소거 버튼이 사라져야 하는 경우는 두 가지다.

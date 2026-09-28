@@ -19,6 +19,7 @@ signal settings_pressed
 # 고른 카드의 모드를 실어 보낸다 — 어느 순위표를 열지는 그 모드가 정한다.
 signal leaderboard_pressed(mode: int)
 signal remove_ads_pressed
+signal collection_pressed
 
 # Mirrors Main.gd's Mode enum. The mode-select sheet's quadrants are read in
 # reading order, so top-left is SKY and the fourth is the hidden slot.
@@ -340,6 +341,35 @@ const LEADERBOARD_LABEL_HEIGHT_FRAC := 0.40   # of the plate's height
 const LEADERBOARD_LABEL_MIN_SIZE := 8
 const LEADERBOARD_LABEL_PAD_FRAC := 0.05      # of the plate's width, kept off its right edge
 
+# 도감 버튼. 리더보드와 같은 판을 쓰고 한 줄에 나란히 선다 — 각자 카드 한
+# 열 아래에 오도록 폭이 카드 폭과 같다. 새 줄을 만들지 않은 까닭은 이 화면에
+# 놀고 있는 세로가 없어서다(16:9 에서 블록 간격이 2px 남짓 — CARD_HEIGHT_SCALE
+# 참고). 둘로 나누면 판이 낮아져 오히려 세로가 조금 남는다.
+#
+# 판 높이. 판 그림 자체는 약 4.8:1 이라 비율대로 그리면 카드 한 열 폭에서
+# 35px 남짓이었고, 누르기에도 글자에도 얇았다. 그래서 판을 9-slice 로 그려
+# (_make_plate_button) 양 끝 반원은 지키고 가운데만 늘이며, 높이는 이 비율로
+# 정한다 — 3.8 이면 16:9 에서 51px, 글자와 아이콘은 판 높이를 따라 함께 큰다.
+# 늘어난 높이는 예전에 버튼이 끌어안고 있던 투명 여백(캔버스 65px)보다 작아서,
+# 세로 흐름에는 오히려 자리가 남는다.
+const PLATE_ASPECT := 3.8
+const PLATE_BAKE_H := 128        # 판 그림을 미리 줄여 둘 높이(px). 화면의 2 배 남짓
+const PLATE_ICON_GAP_FRAC := 0.14   # 판 높이 대비, 아이콘과 글자 사이
+
+# 책 아이콘은 시트에 없어서 그린다(_draw_book). 트로피와 같은 크기, 같은 자리.
+#
+# 트로피와 같은 옷을 입힌다 — 속이 찬 네이비 실루엣. 처음에는 흰 면에 검은
+# 선으로 그렸는데, 옆의 트로피는 선이 없는 덩어리라 둘이 다른 세트에서 온
+# 것처럼 보였고, 20px 남짓에서 선들이 뭉개졌다. 트로피의 흰 별 자리에 흰
+# 책갈피도 얹어 봤지만 그 크기에서는 긁힌 자국으로 읽혀 뺐다.
+const COLLECTION_LABEL := "COLLECTION"
+const BOOK_FILL := Color(0.094, 0.196, 0.40, 1.0)   # 화면에 그려진 트로피에서 잰 색
+const BOOK_CURVE_STEPS := 10
+# 새로 모은 것이 있을 때 버튼 오른쪽 위에 뜨는 점. 도감을 닫으면 꺼진다.
+const COLLECTION_DOT_COLOR := Color(0.93, 0.20, 0.20, 1.0)
+const COLLECTION_DOT_RING := Color(1.0, 1.0, 1.0, 1.0)
+const COLLECTION_DOT_FRAC := 0.20               # 판 높이 대비 지름
+
 # Tap cues. Loaded only if present and played only if loaded, the same
 # defensive shape as the sounds in Main.gd — removing a file leaves a silent
 # button rather than a crash.
@@ -389,8 +419,8 @@ const CARD_HEIGHT_SCALE := 1.18
 const CARD_GROW_MIN_GAP_FRAC := 0.014   # of screen height
 # The explain bar takes its width from the cards rather than a fraction of
 # its own, so its ends line up exactly with the outer edges of the left and
-# right columns however the cards are sized.
-const LEADERBOARD_WIDTH_FRAC := 0.52
+# right columns however the cards are sized. The leaderboard and collection
+# plates do the same, one under each card column — see COLLECTION_LABEL.
 const START_WIDTH_FRAC := 0.72
 
 # Ad removal — emits remove_ads_pressed, and Main opens the Play purchase sheet
@@ -476,8 +506,13 @@ var _crown_texture: Texture2D
 var _font_bold: Font
 var _font_heavy: Font
 var _trophy: TextureRect
-var _leaderboard_bounds := Rect2(0, 0, 1, 1)
+var _plate_texture: Texture2D           # _bake_plate — 리더보드와 도감이 함께 쓴다
 var _leaderboard_label: Label
+var _collection: TextureButton
+var _collection_label: Label
+var _book: Control
+var _collection_dot: Control
+var _collection_new := false
 # 직전 배치에서 실제로 비운 배너 높이. 요청한 값과 다를 수 있다 — 자리가
 # 없으면 0 이다. banner_applied_px 로 읽는다.
 var _banner_applied := 0.0
@@ -888,13 +923,10 @@ func _build() -> void:
 	_setting.pressed.connect(func(): _play(_sfx_cream); settings_pressed.emit())
 	add_child(_setting)
 
-	_leaderboard = _make_button(_load_art(LEADERBOARD_FILE))
+	_plate_texture = _bake_plate(_load_art(LEADERBOARD_FILE))
+	_leaderboard = _make_plate_button()
 	_leaderboard.pressed.connect(func(): _play(_sfx_cream); leaderboard_pressed.emit(CARD_MODES[selected_index]))
 	add_child(_leaderboard)
-	# The plate does not fill its texture — there is transparent padding around
-	# it — so the icon is placed against the art's measured bounds rather than
-	# the button rect, which would hang it off the bottom edge.
-	_leaderboard_bounds = _texture_bounds(_leaderboard.texture_normal)
 	_trophy = TextureRect.new()
 	_trophy.texture = _load_icon(ICON_TROPHY_INDEX)
 	_trophy.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -913,6 +945,29 @@ func _build() -> void:
 	_leaderboard_label.add_theme_color_override("font_color", START_LABEL_COLOR)
 	_leaderboard_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
 	_leaderboard.add_child(_leaderboard_label)
+
+	_collection = _make_plate_button()
+	_collection.pressed.connect(func(): _play(_sfx_cream); collection_pressed.emit())
+	add_child(_collection)
+	_book = Control.new()
+	_book.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_book.draw.connect(_draw_book)
+	_collection.add_child(_book)
+	_collection_label = Label.new()
+	_collection_label.text = tr(COLLECTION_LABEL)
+	_collection_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_collection_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_collection_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if _font_heavy != null:
+		_collection_label.add_theme_font_override("font", _font_heavy)
+	_collection_label.add_theme_color_override("font_color", START_LABEL_COLOR)
+	_collection_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
+	_collection.add_child(_collection_label)
+	_collection_dot = Control.new()
+	_collection_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_collection_dot.draw.connect(_draw_collection_dot)
+	_collection_dot.visible = _collection_new
+	_collection.add_child(_collection_dot)
 
 	# Added before the button so it draws underneath — children render in
 	# order, and a halo on top would sit over the plate.
@@ -956,7 +1011,7 @@ func _build() -> void:
 	_remove_ads.add_child(_remove_ads_rule)
 
 	# Every button gets the same press feedback.
-	for button in [_start, _leaderboard, _login, _setting] + _cards:
+	for button in [_start, _leaderboard, _collection, _login, _setting] + _cards:
 		button.button_down.connect(_animate_press.bind(button))
 		button.button_up.connect(_animate_release.bind(button))
 
@@ -1177,8 +1232,8 @@ func _layout() -> void:
 	# the bar far too tall for the shape actually drawn in it.
 	var explain_native: Vector2 = _explain_src.size
 	var explain_h: float = explain_w * (explain_native.y / explain_native.x) * EXPLAIN_HEIGHT_SCALE
-	var leaderboard_w: float = view.x * LEADERBOARD_WIDTH_FRAC
-	var leaderboard_h: float = leaderboard_w / _aspect(_leaderboard)
+	var leaderboard_w: float = card_w
+	var leaderboard_h: float = leaderboard_w / PLATE_ASPECT
 	var start_w: float = view.x * START_WIDTH_FRAC
 	var start_h: float = start_w / _aspect(_start)
 
@@ -1286,32 +1341,20 @@ func _layout() -> void:
 	var start_y: float = remove_ads_y - gap - start_h
 	var leaderboard_y: float = explain_bottom + (start_y - explain_bottom - leaderboard_h) * 0.5
 
-	_place(_leaderboard, leaderboard_w, leaderboard_h, leaderboard_y)
-	if _trophy != null:
-		var plate_pos := Vector2(
-			_leaderboard_bounds.position.x * leaderboard_w,
-			_leaderboard_bounds.position.y * leaderboard_h)
-		var plate_size := Vector2(
-			_leaderboard_bounds.size.x * leaderboard_w,
-			_leaderboard_bounds.size.y * leaderboard_h)
-		var trophy_h: float = plate_size.y * TROPHY_HEIGHT_FRAC
-		_trophy.size = Vector2(trophy_h, trophy_h)
-		_trophy.position = plate_pos + Vector2(
-			plate_size.x * TROPHY_LEFT_FRAC,
-			(plate_size.y - trophy_h) * 0.5)
-
-		if _leaderboard_label != null:
-			# From the trophy's right edge to the plate's right padding.
-			var text_left: float = _trophy.position.x + trophy_h
-			var text_right: float = plate_pos.x + plate_size.x * (1.0 - LEADERBOARD_LABEL_PAD_FRAC)
-			_leaderboard_label.position = Vector2(text_left, plate_pos.y)
-			_leaderboard_label.size = Vector2(maxf(1.0, text_right - text_left), plate_size.y)
-			var wanted: int = int(round(plate_size.y * LEADERBOARD_LABEL_HEIGHT_FRAC))
-			var size: int = _fit_text_size(
-				_leaderboard_label, tr(LEADERBOARD_LABEL), _leaderboard_label.size.x, wanted)
-			_leaderboard_label.add_theme_font_size_override("font_size", size)
-			_leaderboard_label.add_theme_constant_override(
-				"outline_size", maxi(1, int(round(size * START_LABEL_OUTLINE_SIZE_FRAC))))
+	# 리더보드는 왼쪽 카드 열, 도감은 오른쪽 카드 열 아래.
+	_leaderboard.position = Vector2(cards_left, leaderboard_y)
+	_leaderboard.size = Vector2(leaderboard_w, leaderboard_h)
+	_layout_plate(_leaderboard, _trophy, _leaderboard_label, tr(LEADERBOARD_LABEL))
+	if _collection != null:
+		_collection.position = Vector2(cards_left + card_w + card_gap, leaderboard_y)
+		_collection.size = Vector2(leaderboard_w, leaderboard_h)
+		_layout_plate(_collection, _book, _collection_label, tr(COLLECTION_LABEL))
+		var plate: Rect2 = _plate_rect(_collection)
+		var dot: float = plate.size.y * COLLECTION_DOT_FRAC
+		# 판의 오른쪽 위 모서리에 반쯤 걸친다 — 알림 점의 흔한 자리.
+		_collection_dot.position = plate.position + Vector2(plate.size.x - dot * 0.9, -dot * 0.1)
+		_collection_dot.size = Vector2(dot, dot)
+		_collection_dot.queue_redraw()
 	# START and Remove Ads use the bottom-up positions computed above.
 	_place(_start, start_w, start_h, start_y)
 	# The plate is scaled on press, so the label is anchored to fill it and
@@ -1342,8 +1385,150 @@ func _layout() -> void:
 		_remove_ads_rule.queue_redraw()
 
 	# Scaling happens about the middle, not the top-left corner.
-	for button in [_start, _leaderboard] + _cards:
+	for button in [_start, _leaderboard, _collection] + _cards:
 		button.pivot_offset = button.size * 0.5
+
+
+# The plate art, cropped to its opaque shape and shrunk to PLATE_BAKE_H so a
+# 9-slice can use it — NinePatchRect draws its margins at texture pixel size,
+# so the 724px source would give caps the size of the screen.
+#
+# The transparent pixels around the plate are black, and a straight resize
+# drags that black into the rim as a dark fringe. fix_alpha_edges first
+# copies the rim colour outward into them — native, where an unpremultiply
+# loop in GDScript would cost boot time this screen has been cut down to save.
+func _bake_plate(texture: Texture2D) -> Texture2D:
+	if texture == null:
+		return null
+	var img: Image = texture.get_image()
+	if img.is_compressed():
+		img.decompress()
+	img.convert(Image.FORMAT_RGBA8)
+	img.clear_mipmaps()
+	var b: Rect2 = _opaque_bounds(img)
+	var region := Rect2i(
+		int(b.position.x * img.get_width()), int(b.position.y * img.get_height()),
+		int(ceil(b.size.x * img.get_width())), int(ceil(b.size.y * img.get_height())))
+	img = img.get_region(region)
+	var w: int = int(round(img.get_width() * float(PLATE_BAKE_H) / img.get_height()))
+	img.fix_alpha_edges()
+	img.resize(w, PLATE_BAKE_H, Image.INTERPOLATE_LANCZOS)
+	img.generate_mipmaps()
+	return ImageTexture.create_from_image(img)
+
+
+# A plain TextureButton (for the shared press animation) whose face is a
+# 9-slice of the plate, so it can be made taller than the art's own aspect
+# without squashing its round ends. _size_plate fits it after layout.
+func _make_plate_button() -> TextureButton:
+	var button := TextureButton.new()
+	button.ignore_texture_size = true
+	button.focus_mode = Control.FOCUS_NONE
+	_use_smooth_filter(button)
+	var face := NinePatchRect.new()
+	face.name = "Plate"
+	face.texture = _plate_texture
+	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# 둥근 양 끝만 고정하고 가운데만 가로로 늘인다. 위아래는 늘릴 일이 없다 —
+	# _size_plate 가 높이를 텍스처 높이에 맞춰 두기 때문이다.
+	face.patch_margin_left = int(PLATE_BAKE_H * 0.5)
+	face.patch_margin_right = int(PLATE_BAKE_H * 0.5)
+	button.add_child(face)
+	return button
+
+
+# Draw the baked plate at the button's height: the node is made texture-sized
+# tall and scaled back down, so each cap stays an exact half-circle.
+func _size_plate(button: Control) -> void:
+	var face: NinePatchRect = button.get_node_or_null("Plate")
+	if face == null or button.size.y <= 0.0:
+		return
+	var s: float = PLATE_BAKE_H / button.size.y
+	face.position = Vector2.ZERO
+	face.size = button.size * s
+	face.scale = Vector2.ONE / s
+
+
+# The gold plate, in the button's own coordinates — the whole button now that
+# the face is a cropped 9-slice with no transparent padding around it.
+func _plate_rect(button: Control) -> Rect2:
+	return Rect2(Vector2.ZERO, button.size)
+
+
+# Icon at the left of the plate, label centred in what is left of it — the
+# same for the leaderboard and the collection plate, so the pair reads as one.
+# `text` arrives already translated.
+func _layout_plate(button: Control, icon: Control, label: Label, text: String) -> void:
+	if icon == null:
+		return
+	_size_plate(button)
+	var plate: Rect2 = _plate_rect(button)
+	var icon_h: float = plate.size.y * TROPHY_HEIGHT_FRAC
+	icon.size = Vector2(icon_h, icon_h)
+	icon.position = plate.position + Vector2(
+		plate.size.x * TROPHY_LEFT_FRAC, (plate.size.y - icon_h) * 0.5)
+	icon.queue_redraw()
+	if label == null:
+		return
+	# From just past the icon's right edge to the plate's right padding. The
+	# gap matters in English: "LEADERBOARD" fills its room and, with none,
+	# its L sat flush against the trophy.
+	var text_left: float = icon.position.x + icon_h + plate.size.y * PLATE_ICON_GAP_FRAC
+	var text_right: float = plate.position.x + plate.size.x * (1.0 - LEADERBOARD_LABEL_PAD_FRAC)
+	label.position = Vector2(text_left, plate.position.y)
+	label.size = Vector2(maxf(1.0, text_right - text_left), plate.size.y)
+	var wanted: int = int(round(plate.size.y * LEADERBOARD_LABEL_HEIGHT_FRAC))
+	var font_size: int = _fit_text_size(label, text, label.size.x, wanted)
+	label.add_theme_font_size_override("font_size", font_size)
+	label.add_theme_constant_override(
+		"outline_size", maxi(1, int(round(font_size * START_LABEL_OUTLINE_SIZE_FRAC))))
+
+
+# An open book as one solid silhouette: two pages bowed down toward the spine,
+# with a thin gap for the spine itself.
+func _draw_book() -> void:
+	var s: Vector2 = _book.size
+	if s.x <= 0.0:
+		return
+	var cx: float = s.x * 0.5
+	var half: float = s.x * 0.50          # 한쪽 페이지 폭(책등에서 바깥 끝까지)
+	var gap: float = s.x * 0.055          # 책등 틈의 절반 — 20px 에서도 틈이 보이는 폭
+	var top: float = s.y * 0.14           # 바깥 끝의 위
+	var bottom: float = s.y * 0.72        # 바깥 끝의 아래
+	var sag: float = s.y * 0.18           # 책등 쪽으로 처지는 깊이 — 이보다 얕으면 네모로 읽힌다
+	for side in [-1.0, 1.0]:
+		var inner: float = cx + side * gap
+		var outer: float = cx + side * half
+		var page := PackedVector2Array()
+		# 윗변: 책등(처짐)에서 바깥 끝(높음)으로 부드럽게.
+		for i in range(BOOK_CURVE_STEPS + 1):
+			var t: float = float(i) / BOOK_CURVE_STEPS
+			page.append(Vector2(lerpf(inner, outer, t), top + sag * (1.0 - t) * (1.0 - t)))
+		# 아랫변: 바깥 끝에서 책등으로, 같은 곡선을 아래로 옮겨.
+		for i in range(BOOK_CURVE_STEPS, -1, -1):
+			var t: float = float(i) / BOOK_CURVE_STEPS
+			page.append(Vector2(lerpf(inner, outer, t), bottom + sag * (1.0 - t) * (1.0 - t)))
+		_book.draw_colored_polygon(page, BOOK_FILL)
+		# 폴리곤 가장자리는 안티앨리어싱이 안 된다 — 같은 색 선을 한 번 둘러
+		# 트로피(텍스처)의 부드러운 가장자리와 맞춘다.
+		var ring := page.duplicate()
+		ring.append(page[0])
+		_book.draw_polyline(ring, BOOK_FILL, 1.0, true)
+
+
+func _draw_collection_dot() -> void:
+	var r: float = _collection_dot.size.x * 0.5
+	var c := Vector2(r, r)
+	_collection_dot.draw_circle(c, r, COLLECTION_DOT_RING)
+	_collection_dot.draw_circle(c, r * 0.72, COLLECTION_DOT_COLOR)
+
+
+## 도감에 아직 안 본 새 항목이 있는지. Main 이 모드 선택으로 들어올 때와
+## 도감을 닫을 때 넘긴다.
+func set_collection_new(has_new: bool) -> void:
+	_collection_new = has_new
+	if _collection_dot != null:
+		_collection_dot.visible = has_new
 
 
 # Name across the top, character in the middle, best score along the bottom.

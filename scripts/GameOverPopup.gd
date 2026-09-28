@@ -147,6 +147,20 @@ const GAP_LINE_FORMAT := "%s to beat your best"
 const GAP_LINE_FRAC := 0.048           # 판 너비 대비
 const GAP_LINE_TOP := 6.0              # 점수 줄과의 간격
 
+# 이번 판에 도감에 새로 들어온 것. 아무것도 없으면 줄 자체가 사라져 다른 줄들이
+# 그 자리를 나눠 갖는다 — "새로 0개"를 보여 주는 것은 벌이다.
+#
+# 도감은 따로 열어야만 보이는 화면이라, 모은 순간을 알려 주는 곳은 여기뿐이다.
+# 이 줄이 없으면 도감이 있다는 것 자체를 잊는다.
+const COLLECTION_BOX_COLOR := Color(1.0, 0.92, 0.66, 1.0)   # 연한 금색 — 좋은 소식
+const COLLECTION_BOX_HEIGHT_FRAC := 0.058                    # 로그인 상자와 같은 두께
+const COLLECTION_HEADER := "NEW!"
+const COLLECTION_FLAGS_FORMAT := "Flags +%d"
+const COLLECTION_COLORS_FORMAT := "Colors +%d"
+# "★" 가 아니라 글자로 — 그 글리프가 두 폰트(Fredoka, Cafe24)에 다 있는지
+# 확인하지 않았다.
+const COLLECTION_STARS_FORMAT := "Math stars +%d"
+const COLLECTION_HEADER_COLOR := Color(0.85, 0.30, 0.10, 1.0)
 const FIRE_FILE := "res://assets/ui_assets/popup/icon_fire.png"
 const COMBO_LABEL := "MAX COMBO"
 
@@ -198,6 +212,10 @@ var _top_row: Control
 var _login_box: Control
 var _score_row: Control
 var _combo_box: Control
+var _collection_box: Control
+var _new_flags := 0
+var _new_colors := 0
+var _new_stars := 0
 var _play_button: Button
 var _google_button: Button
 var _share_button: Button
@@ -327,6 +345,11 @@ func _build_content() -> void:
 	_combo_box.draw.connect(_draw_combo_box)
 	add_child(_combo_box)
 
+	_collection_box = Control.new()
+	_collection_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_collection_box.draw.connect(_draw_collection_box)
+	add_child(_collection_box)
+
 	_play_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(PLAY_BUTTON_TEXT),
 		_load_popup_icon(POPUP_ICON_RESTART), true)
 	_play_button.pressed.connect(func(): play_again_pressed.emit())
@@ -406,6 +429,26 @@ func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
 	_layout()
 
 
+## 이번 판에 도감에 새로 들어온 수. set_result 보다 먼저 부른다 — 배치는
+## set_result 가 한다.
+func set_collection_news(new_flags: int, new_colors: int, new_stars: int) -> void:
+	_new_flags = maxi(0, new_flags)
+	_new_colors = maxi(0, new_colors)
+	_new_stars = maxi(0, new_stars)
+
+
+func _collection_text() -> String:
+	var parts: Array[String] = []
+	if _new_flags > 0:
+		parts.append(tr(COLLECTION_FLAGS_FORMAT) % _new_flags)
+	if _new_colors > 0:
+		parts.append(tr(COLLECTION_COLORS_FORMAT) % _new_colors)
+	if _new_stars > 0:
+		parts.append(tr(COLLECTION_STARS_FORMAT) % _new_stars)
+	# 가운뎃점은 어느 언어에서나 같은 구분자라 번역 파일에 두지 않는다.
+	return "  ·  ".join(parts)
+
+
 ## 떠 있는 동안 로그인이 끝났을 때 Main 이 부른다. 이 팝업의 LOGIN WITH GOOGLE
 ## 로 로그인하면 결과가 팝업이 떠 있는 채로 돌아온다. set_result 는 판의 결과
 ## 전부를 다시 넣는 함수라 로그인 하나 때문에 부를 것이 아니고, 바뀌는 것은
@@ -468,12 +511,14 @@ func _layout_content(inner: Rect2) -> void:
 	var play_h: float = ph * PLAY_BUTTON_HEIGHT_FRAC
 	var pair_h: float = ph * PAIR_BUTTON_HEIGHT_FRAC
 	var home_h: float = ph * HOME_BUTTON_HEIGHT_FRAC
+	var has_news: bool = _collection_text() != ""
+	var news_h: float = ph * COLLECTION_BOX_HEIGHT_FRAC if has_news else 0.0
 
 	# 골드 버튼 둘레(위아래)와 크림 두 줄 사이는 고정 간격이고, 남는 공간은
-	# 위쪽 네 줄이 나눠 갖는다 — 간격 셋.
-	var used: float = top_row_h + login_h + combo_h + score_h + play_h + pair_h + home_h
+	# 위쪽 줄들이 나눠 갖는다 — 간격 셋, 도감 줄이 있으면 넷.
+	var used: float = top_row_h + login_h + combo_h + score_h + news_h + play_h + pair_h + home_h
 	var fixed: float = PLAY_BUTTON_GAP * 2.0 + BUTTON_BLOCK_GAP
-	var gap: float = maxf(4.0, (bottom - top - used - fixed) / 3.0)
+	var gap: float = maxf(4.0, (bottom - top - used - fixed) / (4.0 if has_news else 3.0))
 
 	var y := top
 
@@ -540,7 +585,17 @@ func _layout_content(inner: Rect2) -> void:
 	_combo_box.position = Vector2(wide_x, y)
 	_combo_box.size = Vector2(wide_w, combo_h)
 	_combo_box.queue_redraw()
-	y += combo_h + PLAY_BUTTON_GAP
+	y += combo_h
+
+	# --- 도감 소식 (있을 때만) ---
+	_collection_box.visible = has_news
+	if has_news:
+		y += gap
+		_collection_box.position = Vector2(wide_x, y)
+		_collection_box.size = Vector2(wide_w, news_h)
+		_collection_box.queue_redraw()
+		y += news_h
+	y += PLAY_BUTTON_GAP
 
 	# --- 버튼들 ---
 	_place(_play_button, wide_x, y, wide_w, play_h, PLAY_ICON_SCALE,
@@ -826,6 +881,27 @@ func _draw_combo_box() -> void:
 	_combo_box.draw_string(_font_heavy,
 		Vector2(_combo_box.size.x - BOX_PAD - vw, _combo_box.size.y * 0.5 + _combo_font * 0.35),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _combo_font, INK)
+
+
+# NEW! 를 앞에 두고 모은 것들을 한 줄로. 로그인 상자와 같이, 들어올 때까지
+# 글자를 줄인다.
+func _draw_collection_box() -> void:
+	_draw_box(_collection_box, COLLECTION_BOX_COLOR)
+	var header := tr(COLLECTION_HEADER) + "  "
+	var body := _collection_text()
+	var fs := _login_font
+	var room: float = _collection_box.size.x - BOX_PAD * 2.0
+	while fs > BOX_TEXT_MIN and _font_heavy.get_string_size(header, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x \
+			+ _font_bold.get_string_size(body, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+		fs -= 1
+	var hw: float = _font_heavy.get_string_size(header, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var bw: float = _font_bold.get_string_size(body, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var x: float = (_collection_box.size.x - hw - bw) * 0.5
+	var baseline: float = _collection_box.size.y * 0.5 + fs * 0.35
+	_collection_box.draw_string(_font_heavy, Vector2(x, baseline), header,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, COLLECTION_HEADER_COLOR)
+	_collection_box.draw_string(_font_bold, Vector2(x + hw, baseline), body,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
 
 
 # SCORE + 숫자를 한 덩어리로 묶어 가운데에 맞춘다. 숫자가 라벨보다 훨씬
