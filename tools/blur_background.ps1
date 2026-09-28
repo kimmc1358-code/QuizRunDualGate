@@ -19,11 +19,8 @@
     common softness; a near layer is barely touched, so it keeps whatever
     crispness its painting arrived with. See $NearSigma for why.
 
-    That holds for three of the four. DREAM's near layer is a pale cloud
-    bank whose raw sharpness (0.78) is already below every far layer in the
-    project, so no sigma can make its pair order the way the others do —
-    see its row. Blur is not the depth cue there; occlusion and the speed
-    difference are.
+    That holds for three of the four. SKY is knowingly inverted — see
+    $DepthInversionExpected.
 
     CutOut is the difference between a full-bleed painting and a near layer
     with transparency. An opaque background can be blurred on RGB alone —
@@ -310,20 +307,21 @@ $bgRoot = [System.IO.Path]::Combine($repo, 'assets', 'backgrounds')
 #   SKY    1.47 / 1.70 = 0.86   sigma 0.9   by eye
 #   JUNGLE 3.67 / 2.53 = 1.45   sigma 1.0   measured
 #   OCEAN  4.53 / 1.72 = 2.64   sigma 1.5   by eye
-#   DREAM  0.46 / 1.03 = 0.45   sigma 1.1   by eye
+#   DREAM  2.09 / 1.13 = 1.86   sigma 0.5   measured (art replaced, see its row)
 #
 # Only JUNGLE's is what the metric alone would pick. The first pass matched
 # all three ratios onto ~1.45, and looking at it on a screen said otherwise:
-# SKY and DREAM still read too busy in front, OCEAN had gone too soft. Take
+# SKY and the old DREAM art still read too busy in front, OCEAN had gone too
+# soft. Take
 # that as the standing correction to the metric rather than an exception to
 # it — it averages over a whole painting, and how much a foreground pulls
 # the eye depends on where its detail sits, not on the mean.
 #
 # It does cost SKY the ordering. Its near layer is now softer than its own
-# far layer, joining DREAM, so two of the four pairs no longer get their
-# depth from blur. That is the same inversion this project once shipped and
-# reverted wholesale; the difference is that it is now two deliberate rows
-# rather than the whole scheme, with occlusion and the 2.5x speed split
+# far layer, so that pair no longer gets its depth from blur. That is the
+# same inversion this project once shipped and reverted wholesale; the
+# difference is that it is now one deliberate row rather than the whole
+# scheme, with occlusion and the 2.5x speed split
 # still carrying the depth. -SelfTest lists them as notes and still warns
 # for any mode not named in $DepthInversionExpected.
 #
@@ -334,7 +332,6 @@ $NearSigma = 0.5
 # Anything NOT listed here that inverts is a mistake and -SelfTest says so.
 $DepthInversionExpected = @{
     sky   = 'judged by eye; its far layer paints hard-edged stone arches that the mean does not weight the way the eye does'
-    dream = 'near art is softer raw (0.78) than any far layer in the project, so no sigma can order this pair'
 }
 
 $ModeBackgrounds = @{
@@ -421,29 +418,27 @@ $ModeBackgrounds = @{
         @{ File = 'background_near'; Sigma = 1.5; CutOut = $true }
     )
     dream = @(
-        # 시그마 1.1은 이 모드가 단일 배경이던 시절 쓰던 값이고, 원경이 된
-        # 뒤에도 그대로다. 이 그림은 처음부터 부드러운 파스텔이라 세게 걸면
-        # 꽃 모양만 뭉개진다 — 1.8까지 올려 봤지만 화면에서 달라지는 게 없고
-        # 꽃만 잃는다.
+        # 2026-09-28 그림 교체: 분홍 파스텔 하늘(구름/무지개/꽃잎) 한 장에서
+        # 보라 산맥 원경 + 구름 띠 근경으로. 옛 그림은 지형지물이 없어 네 모드
+        # 중 유일하게 깊이가 안 읽혔고, 근경이 어떤 원경보다도 부드러워
+        # (원본 0.78) 쌍이 뒤집혀 있었다. 새 쌍은 정상 순서다.
         #
-        # 이 쌍만은 흐림이 깊이를 말해 주지 않는다. 근경이 원본 그대로도
-        # 0.78인데, 이는 프로젝트의 어떤 *원경*보다 부드럽다(스카이 1.70,
-        # 정글 2.53, 오션 1.72). 같은 파스텔 구름을 같은 톤으로 그린 두 장이라
-        # 고유 부드러움이 같아서, 원경을 2.0까지 밀어도 겨우 동점이다.
+        # 1821x864 — 다른 레이어(2.09:1)와 거의 같은 2.11:1 이라 한 바퀴가
+        # 1800px, 나머지는 1786px. 레이어마다 따로 타일링하니 문제없다. 좌우
+        # 끝 차이는 원경 1.4/255, 근경 3.9/255 로 이음새가 안 보인다.
         #
-        # 그래서 깊이는 다른 두 단서가 맡는다: 근경이 화면 아래에서 원경을
-        # 가리는 것(occlusion), 그리고 2.67배 속도차. 선명도 순서가 뒤집혀
-        # 보이는 것은 처리가 잘못된 게 아니라 소재가 그런 것이다.
-        @{ File = 'background_far';  Sigma = 1.1; CutOut = $false }
-        # 1472x704 — 네 모드의 근경 중 유일하게 2208x1056 이 아니라 화면을
-        # 채우며 1.21배 확대된다(스카이는 원경이 그랬다). Sharpness 가 리샘플
-        # 뒤에 재는 이유가 이것이다.
-        #
-        # 0.5 에서 1.1 로. 0.72 -> 0.46 이고, 이 그림에서 얻어낼 수 있는
-        # 거의 전부다 — 원본이 이미 부드러워서 곡선이 여기서 눕는다(0.9 에
-        # 0.50, 1.4 에 0.43, 1.8 에 0.40). 더 올리면 꽃 모양만 잃고 부드러움은
-        # 안 는다. 이미 뒤집힌 쌍이라 순서를 더 망가뜨릴 것도 없다.
-        @{ File = 'background_near'; Sigma = 1.1; CutOut = $true }
+        # 원경은 원래 연무 낀 그림이라 0.5 에서 이미 1.80 이다. 0.8 로 1.13 —
+        # 다른 모드 원경(1.70~2.53)보다 부드럽지만, 옛 DREAM 원경(1.03)과
+        # 같은 자리이고 파스텔이 그 부드러움을 감당한다. 원경을 이만큼
+        # 물려야 바닥 근경(0.5 = 2.09)이 1.86 배로 앞에 선다. 1.0(0.92)은
+        # 산 능선이 뭉개지기 시작한다.
+        @{ File = 'background_far';  Sigma = 0.8; CutOut = $false }
+        # 근경은 바닥(0.5) 그대로. 원본(dream1_2.png)은 구름 본체 알파가
+        # 255 가 아니라 253 으로 와서 — 배경 제거 도구 흔적 — Sharpness 가
+        # 한 픽셀도 못 세고 0 을 냈다. 넣을 때 252~254 를 255 로 올렸고,
+        # 그 아래 부드러운 테두리는 손대지 않았다. 커밋된 background_near.png
+        # 가 그 보정본이다.
+        @{ File = 'background_near'; Sigma = 0.5; CutOut = $true }
     )
 }
 

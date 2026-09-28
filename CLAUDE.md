@@ -540,12 +540,18 @@ all.
 
 Matching every near/far **ratio** onto one number is what the metric alone
 would do, and it was tried and rejected by looking at a screen. Only
-JUNGLE (1.45) kept it; SKY and DREAM needed more blur than the metric
-allowed and OCEAN much less (2.64). Two pairs — SKY and DREAM — are
-therefore knowingly inverted, with the near layer softer than the far, and
-get their depth from occlusion and the 2.5x speed split instead. They are
-listed in `$DepthInversionExpected` with a reason each; `-SelfTest` prints
-those as notes and still warns for any other mode that inverts.
+JUNGLE (1.45) kept it; SKY needed more blur than the metric allowed and
+OCEAN much less (2.64). SKY is therefore knowingly inverted, with the near
+layer softer than the far, and gets its depth from occlusion and the 2.5x
+speed split instead. It is listed in `$DepthInversionExpected` with its
+reason; `-SelfTest` prints that as a note and still warns for any other mode
+that inverts. DREAM used to be the second one, until its art was replaced
+with a pair that orders properly (1.86).
+
+The metric only counts pixels whose alpha is exactly 255. A cut-out from a
+background-removal tool can arrive with its body at 253, which measures as
+0 at every sigma — DREAM's near layer did. Check the alpha histogram of new
+cut-out art before probing.
 
 Blur strength is **measured, not eyeballed**. `blur_background.ps1
 -Sharpness` reports the mean |Laplacian| over opaque RGB for every committed
