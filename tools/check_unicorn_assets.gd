@@ -7,6 +7,8 @@ extends SceneTree
 #   godot --headless --path . --script res://tools/check_unicorn_assets.gd
 var main: Node = null
 var frames := 0
+var waited := 0.0
+var done := false
 var out_dir := ""
 
 
@@ -16,12 +18,22 @@ func _initialize() -> void:
 	root.add_child(main)
 
 
-func _process(_delta: float) -> bool:
+func _process(delta: float) -> bool:
+	if done:
+		return true
 	frames += 1
-	if frames != 8:
-		if frames > 200:
+	waited += delta
+	# 부팅이 끝나야 누른다. BGM 플레이어는 로고 뒤 _boot_load 에서야 생기므로,
+	# 그 전에 _on_play_pressed 를 부르면 _play_bgm 이 빈 bgm_players 를 치고
+	# SCRIPT ERROR 를 남긴다 — 실제 게임에선 부팅 전에 Play 를 누를 수 없다.
+	# 헤드리스는 프레임을 제한 없이 돌리므로 한도는 프레임이 아니라 시간으로 잰다.
+	if frames < 8 or main.get("boot_pending"):
+		if waited > 30.0:
+			print("RESULT: FAIL — 30초 안에 부팅이 끝나지 않음")
+			done = true
 			quit(1)
 		return false
+	done = true
 
 	var M = load("res://scripts/Main.gd")
 	var d: int = M.Mode.DREAM
