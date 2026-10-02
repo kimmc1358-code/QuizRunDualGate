@@ -693,9 +693,12 @@ reporting an already-fixed bug against the wrong number.
 `version/code` is the exception and cannot be derived from anything. It is an
 integer, it lives only in the (gitignored) preset, and **Google rejects an
 upload whose code is not higher than the last one** — so it goes up per
-upload, independently of the version string. It is at **3**, built on
-2026-09-24 as `build/QuizRunDualGate-v3.aab` and carrying version 1.1.0.
-Code 1 went to internal testing on 2026-09-13; 2 was built the same day.
+upload, independently of the version string. It is at **4**, built on
+2026-10-02 as `build/QuizRunDualGate-v4.aab` and carrying version 1.1.1.
+Code 1 went to internal testing on 2026-09-13; 2 was built the same day and
+uploaded too (Play Console reported on "2 (1.0.0)"); 3 is 1.1.0, built
+2026-09-24. Each upload gets a new version string as well, or testers see
+two builds under one name and their reports cannot say which.
 Consecutive numbering is not required, only increase.
 
 A built AAB will not open in `aapt`, which refuses the bundle format. To
