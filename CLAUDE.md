@@ -199,8 +199,8 @@ on failure.
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one; and that the early-gate hole ramp holds its start size, eases down and ends, with the judged hole and the drawn ring on the same multiplier | `gate_hole_start_scale`/`gate_hole_hold_gates`/`gate_hole_full_size_gate`, `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID; `android_export.cfg` exists, has all three keys, and while testing holds `is_real = false` with Google's test app ID in both slots; the node `Ads.make_admob_node` builds has `is_real` off, every real unit field empty and Google's demo units in the debug ones; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
-| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_update_banner`, or `set_banner_reserve` |
-| `check_mode_select_layout.gd` | across seven ratios: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
+| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it; and a device-pixel banner is converted by the axis that fits the screen — the width on a phone, the height on a pillarboxed tablet | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_game_px_per_device_px`/`_update_banner`, `set_banner_reserve`, or the stretch aspect |
+| `check_mode_select_layout.gd` | the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `display/window/stretch/aspect`, `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
 | `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
@@ -1019,10 +1019,10 @@ What each format does:
   for; with nothing loaded it stays due and the next exit tries again. On PC
   the old "count it as shown" path remains, because `check_ad_policy.gd`
   measures the policy there.
-- **Banner** — loaded once, its device-pixel height converted by
-  `480 / device width` and passed to `set_banner_reserve`, and shown only on
-  mode select and only when the reserve came back non-zero. 16:9 phones get no
-  banner.
+- **Banner** — loaded once, its device-pixel height converted to game pixels by
+  `_game_px_per_device_px` and passed to `set_banner_reserve`, and shown only on
+  mode select and only when the reserve came back non-zero. 16:9 phones and
+  pillarboxed tablets get no banner.
 - Game audio is muted on the Master bus while a full-screen ad is up.
 
 A failed load retries after 30 seconds. **None of this has run on a device
@@ -1083,10 +1083,12 @@ the hole.
 pixels** and returns what it actually reserved. Two things follow from that
 signature:
 
-- **The caller must convert.** A plugin reports the banner in device pixels;
-  the viewport is pinned to 480 wide whatever the device is, so the value has
-  to be scaled by `480 / real screen width` before being passed in. Handing
-  over raw device pixels reserves the wrong amount on every phone but one.
+- **The caller must convert.** A plugin reports the banner in device pixels,
+  and the stretch scales the game by whichever axis fits the screen exactly —
+  the width on a phone, the height on a pillarboxed tablet — so the value is
+  multiplied by `_game_px_per_device_px` (one over the smaller of the two axis
+  ratios) before being passed in. It used to divide by the screen width alone,
+  which is right on every phone and counts a tablet's side bars as screen.
 - **The return value is the decision.** It is all-or-nothing: reserving half
   a banner is worse than reserving none, because the screen loses the space
   *and* still gets covered. If the reserve would leave less than
@@ -1096,7 +1098,8 @@ signature:
 Measured at 480 wide, the space available before blocks collide is 11px at
 16:9, 118px at 18:9 and 225px at 20:9. A 50dp banner is roughly 67 game px on
 a 1080-wide phone, so everything from 18:9 up takes it and 16:9 has never had
-the room. That is why the refusal path exists rather than being a bug.
+the room. A tablet presents that same 16:9 viewport with bars beside it, so it
+is refused too. That is why the refusal path exists rather than being a bug.
 
 `Ads` fills this hole: `Main._apply_banner_height` converts the banner's height
 and shows it only when the reserve came back non-zero (see *How ads reach the
@@ -1141,7 +1144,7 @@ screen*).
   reachable range stay exactly where they were (130/600 and 200/900 are the
   same 4.5-second gate).
 - **The device's screen height is not the play field.** The stretch mode is
-  `canvas_items` + `expand`, so width is pinned at 480 and only height grows
+  `canvas_items` + `keep_width`, so width is pinned at 480 and only height grows
   to fit the phone: a 21:9 device runs a 480x1120 viewport, not 480x854. The
   hole (124px of ring art), the hitbox, gravity and the seconds a gate takes
   to arrive are all fixed, so letting gates spread over the taller viewport
@@ -1153,15 +1156,26 @@ screen*).
   fraction of the *reference* viewport height, not `view_size.y`. Character
   clamping and the death line deliberately still use the real screen — see
   the comment on `_gate_field_top` for why an invisible floor is worse.
-- **Phones are covered; tablets are not, and that is a decision, not an
-  oversight.** `expand` treats the base size as a minimum on *both* axes, so
-  a screen wider than 16:9 does not lose height — it gains width, and the
-  viewport comes out 640x854 on 4:3 rather than 480x640. Gameplay survives
-  that (the field lands at 650px, near the 690 cap) but the mode-select
-  screen does not: at 4:3 the START button overlaps the bottom row of cards
-  and covers their BEST scores. Left alone deliberately while the game is
-  being tested on phones. Reproduce with
-  `DisplayServer.window_set_size(Vector2i(480, 640))` before the scene loads.
+- **Tablets get side bars, not a wider game.** The stretch aspect is
+  `keep_width`: a screen taller than 9:16 grows the viewport's height exactly
+  as `expand` did, and a screen fatter than 9:16 keeps the 480x854 viewport
+  and pillarboxes it. That second case is every tablet held upright — 16:10
+  or 4:3 — and under `expand` it widened the viewport to 534 or 641 px, where
+  the mode-select screen overlapped itself (the START button over the bottom
+  cards' BEST scores at 4:3). The game was never designed for tablets and
+  still is not; this only keeps them from breaking.
+
+  Rotating does not change it. The manifest carries `appCategory="game"`, and
+  Android 16 exempts games from the large-screen override that ignores
+  `screenOrientation`, so a tablet keeps the portrait lock rather than
+  running the game landscape. Play Console still flags the lock as a
+  large-screen issue; that is a warning, not a block.
+
+  `check_mode_select_layout.gd` fails while the aspect is anything but
+  `keep_width`, and derives each ratio's viewport from the setting rather
+  than from a copy of the rule. A capture at 3:4 confirmed the screen lays out
+  exactly as a 16:9 phone; the bars themselves cannot be photographed that
+  way, because the root texture is only the game's own area.
 - **The mode-select screen has no spare height, so a taller card is paid for
   out of the gaps.** It was tempting to grow the cards into space the layout
   was not using; there is none. Leftover height goes entirely into the five

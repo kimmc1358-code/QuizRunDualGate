@@ -2505,8 +2505,9 @@ var ad_hold_countdown: bool = false
 # 모드 선택 화면이 배너 자리를 실제로 비워 주었는가(set_banner_reserve). 16:9
 # 처럼 자리가 없는 화면은 거절하고, 그러면 배너를 띄우지 않는다.
 var banner_reserved: bool = false
-# 마지막으로 받은 배너 크기(기기 폭, 기기 높이). 광고 제거가 환불로 풀렸을 때
-# 배너 자리를 다시 비우려면 필요하다 — 배너는 한 번만 불러온다.
+# 마지막으로 받은 배너 높이와 그때의 기기 화면 크기(둘 다 기기 픽셀). 광고 제거가
+# 환불로 풀렸을 때 배너 자리를 다시 비우려면 필요하다 — 배너는 한 번만 불러온다.
+var _banner_height_device_px: float = 0.0
 var _banner_device_size := Vector2.ZERO
 # 광고 제거. Store 가 Google Play 결제를 감싼다 — PC 에서는 available 이 false 다.
 var store: Store
@@ -6328,25 +6329,40 @@ func _on_ads_fullscreen(showing: bool) -> void:
 
 
 # 배너가 준비되면 그 높이만큼 모드 선택 화면의 아래를 비운다. 플러그인은 기기
-# 픽셀로 주고 뷰포트는 폭 480 으로 고정이라, 화면 폭 비율로 바꿔서 넘긴다.
+# 픽셀로 주므로 게임 픽셀로 바꿔서 넘긴다(_game_px_per_device_px).
 func _on_banner_ready(height_device_px: float) -> void:
-	_apply_banner_height(height_device_px, float(DisplayServer.window_get_size().x))
+	_apply_banner_height(height_device_px, Vector2(DisplayServer.window_get_size()))
 
 
-# 기기 폭을 따로 받는 것은 체커 때문이다 — 헤드리스의 창 크기는 폰이 아니다.
-func _apply_banner_height(height_device_px: float, device_width_px: float) -> void:
-	_banner_device_size = Vector2(device_width_px, height_device_px)
+# 기기 화면 크기를 따로 받는 것은 체커 때문이다 — 헤드리스의 창 크기는 폰이 아니다.
+func _apply_banner_height(height_device_px: float, device_size: Vector2) -> void:
+	_banner_height_device_px = height_device_px
+	_banner_device_size = device_size
 	if ads_removed:
 		# 광고를 없앤 사람에게 배너 자리를 비워 둘 까닭이 없다.
 		banner_reserved = false
 		mode_select_panel.set_banner_reserve(0.0)
 		_update_banner()
 		return
-	var game_px: float = height_device_px * get_viewport_rect().size.x / maxf(device_width_px, 1.0)
+	var game_px: float = height_device_px * _game_px_per_device_px(device_size)
 	banner_reserved = float(mode_select_panel.set_banner_reserve(game_px)) > 0.0
 	if not banner_reserved:
 		print("[광고] 배너 %.0f px 을 비울 자리가 없는 화면이라 배너를 띄우지 않는다" % game_px)
 	_update_banner()
+
+
+# 기기 1px 이 게임 몇 px 인가. canvas_items 스트레치는 화면에 꼭 맞는 쪽 축 하나로
+# 고르게 키우므로, 그 배율은 두 축 비 가운데 작은 쪽이다 — expand 든 keep_width 든
+# 같다. 폰(9:16 보다 길다)에서는 그게 폭이라 예전 공식 "480 / 기기 폭" 과 같은
+# 값이 나오고, 태블릿(더 뚱뚱하다)에서는 높이가 꼭 맞고 양옆에 띠가 생기므로
+# "854 / 기기 높이" 가 된다. 폭으로만 나누던 시절의 공식은 태블릿에서 띠까지
+# 게임 화면인 줄 알고 배너를 작게 잡았다.
+func _game_px_per_device_px(device_size: Vector2) -> float:
+	var base := Vector2(
+		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
+		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
+	var stretch: float = minf(device_size.x / base.x, device_size.y / base.y)
+	return 1.0 / maxf(stretch, 0.0001)
 
 
 # 배너는 모드 선택 화면에만. 게임 중과 스플래시에는 숨긴다.
@@ -6606,8 +6622,8 @@ func _apply_ads_removed() -> void:
 	settings_popup.set_ads_removed(ads_removed)
 	mode_select_panel.set_ads_removed(ads_removed)
 	revive_panel.set_ad_free(ads_removed)
-	if _banner_device_size.y > 0.0:
-		_apply_banner_height(_banner_device_size.y, _banner_device_size.x)
+	if _banner_height_device_px > 0.0:
+		_apply_banner_height(_banner_height_device_px, _banner_device_size)
 	else:
 		_update_banner()
 

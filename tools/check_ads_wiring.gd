@@ -178,7 +178,7 @@ func _run() -> void:
 		main.call("_set_state", main.State.MODE_SELECT)
 		fake.calls.clear()
 		ads.call("_on_banner_loaded", "b1")
-		main.call("_apply_banner_height", 150.0, 1080.0)
+		main.call("_apply_banner_height", 150.0, Vector2(1080.0, 1080.0 * case[0] / width))
 		var label := "480x%.0f" % case[0]
 		if case[1]:
 			_expect(main.get("banner_reserved") and fake.calls.has("show_banner b1"),
@@ -199,6 +199,18 @@ func _run() -> void:
 			_expect(not main.get("banner_reserved") and not fake.calls.has("show_banner b1"),
 				"%s: no room, so no banner" % label,
 				"%s: the screen had no room but the banner showed" % label)
+	# 기기 픽셀 -> 게임 픽셀. 폰은 폭이 꼭 맞으니 480/1080 이고, 양옆에 띠가 생기는
+	# 태블릿은 높이가 꼭 맞으니 854/2560 이다. 폭으로만 나누던 공식은 태블릿에서
+	# 띠까지 게임 화면으로 쳐서 배너를 실제보다 작게 잡았다.
+	var height := float(ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var phone: float = main.call("_game_px_per_device_px", Vector2(1080.0, 2400.0))
+	var tablet: float = main.call("_game_px_per_device_px", Vector2(1600.0, 2560.0))
+	_expect(is_equal_approx(phone, width / 1080.0),
+		"phone: the banner is converted by the width (%.4f)" % phone,
+		"phone: expected %.4f, got %.4f" % [width / 1080.0, phone])
+	_expect(is_equal_approx(tablet, height / 2560.0),
+		"pillarboxed tablet: the banner is converted by the height (%.4f)" % tablet,
+		"tablet: expected %.4f from the height, got %.4f — the side bars were counted as screen" % [height / 2560.0, tablet])
 	screen.call("set_banner_reserve", 0.0)
 
 	_finish()

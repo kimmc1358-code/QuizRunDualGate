@@ -158,7 +158,7 @@ func _run() -> void:
 	screen.call("_layout")
 	main.call("_set_state", main.State.MODE_SELECT)
 	ads.call("_on_banner_loaded", "b1")
-	main.call("_apply_banner_height", 150.0, 1080.0)
+	main.call("_apply_banner_height", 150.0, Vector2(1080.0, 2400.0))
 	_expect(main.get("banner_reserved"), "before buying, 20:9 reserves the banner", "the banner had no room even before buying")
 
 	admob.calls.clear()

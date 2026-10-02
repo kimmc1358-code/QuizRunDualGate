@@ -44,6 +44,19 @@ func _rect(c: Control) -> Rect2:
 	return Rect2(c.position, c.size)
 
 
+# 기기 화면 비율 ratio(세로/가로)에서 게임이 실제로 받는 뷰포트 크기. 헤드리스는
+# 창이 정사각형이라 엔진에 물어볼 수가 없어서, 프로젝트 설정의 스트레치 규칙을
+# 따른다. expand 와 keep_width 는 화면이 기준(9:16)보다 길 때는 똑같이 세로를
+# 늘린다. 갈리는 것은 더 뚱뚱할 때다 — expand 는 가로를 늘리고, keep_width 는
+# 기준 크기를 그대로 두고 양옆에 띠를 친다.
+func _viewport_for(ratio: float, base: Vector2) -> Vector2:
+	if ratio >= base.y / base.x:
+		return Vector2(base.x, base.x * ratio)
+	if str(ProjectSettings.get_setting("display/window/stretch/aspect")) == "keep_width":
+		return base
+	return Vector2(base.y / ratio, base.y)
+
+
 func _run() -> void:
 	await process_frame
 	await process_frame
@@ -56,18 +69,22 @@ func _run() -> void:
 		quit(1)
 		return
 
-	# 기준 해상도. 스트레치가 expand 라 이 크기는 양축 모두 최소값이다 — 화면이
-	# 기준보다 길면 세로가 늘고, 기준보다 넓으면 가로가 는다. 어느 쪽도 줄지는
-	# 않는다.
-	#
-	# 그래서 4:3 기기의 뷰포트는 480x640 이 아니라 640x854 다. 처음에 폭을
-	# 480 으로 고정하고 세로만 바꿔 훑었더니 존재할 수 없는 화면을 검사하며
-	# 4:3 과 16:10 에서 겹친다고 실패했다.
+	# 기준 해상도. 화면이 이보다 길면 세로가 늘고, 이보다 뚱뚱하면 스트레치 규칙에
+	# 따라 갈린다(_viewport_for). 처음에 폭을 480 으로 고정하고 세로만 바꿔 훑었을
+	# 때는 expand 시절이라 존재할 수 없는 화면을 검사하고 있었다.
 	var base := Vector2(
 		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
 		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
 	var base_ratio: float = base.y / base.x
 	print("check_mode_select_layout: base %.0fx%.0f, %d ratios" % [base.x, base.y, RATIOS.size()])
+	# 태블릿을 세로로 세우면 16:10 이나 4:3 이다 — 폰보다 뚱뚱하다. 스트레치가
+	# expand 이던 시절에는 그 화면에서 뷰포트가 가로로 늘어 641x854 가 됐고 모드
+	# 선택 화면이 겹쳤다. keep_width 는 폭을 480 에 두고 양옆에 띠를 친다. 누가
+	# expand 로 되돌리면 아래 4:3/16:10 줄도 다시 겹치겠지만, 원인이 레이아웃이
+	# 아니라 설정이라는 것은 여기서 먼저 말해 둔다.
+	var aspect: String = str(ProjectSettings.get_setting("display/window/stretch/aspect"))
+	if aspect != "keep_width":
+		_fail("stretch aspect is \"%s\", not keep_width — a tablet held upright widens the viewport and the mode-select blocks overlap" % aspect)
 	print("")
 	print("  %-12s %11s %9s %10s %8s" % ["ratio", "viewport", "card gap", "card->bar", "verdict"])
 	# 배너 구간에서 "원래 멀쩡했는데 배너가 깨뜨렸는가"를 가리는 데 쓴다.
@@ -75,8 +92,7 @@ func _run() -> void:
 
 	for row in RATIOS:
 		var ratio: float = float(row[1])
-		var view: Vector2 = Vector2(base.x, base.x * ratio) if ratio >= base_ratio \
-			else Vector2(base.y / ratio, base.y)
+		var view: Vector2 = _viewport_for(ratio, base)
 		var w: float = view.x
 		var h: float = view.y
 		s.size = view
@@ -144,8 +160,7 @@ func _run() -> void:
 	var applied_any := false
 	for row in RATIOS:
 		var ratio: float = float(row[1])
-		var view: Vector2 = Vector2(base.x, base.x * ratio) if ratio >= base_ratio \
-			else Vector2(base.y / ratio, base.y)
+		var view: Vector2 = _viewport_for(ratio, base)
 		s.size = view
 		var applied: float = s.call("set_banner_reserve", BANNER_TEST_PX)
 		await process_frame
