@@ -19,6 +19,8 @@ extends SceneTree
 #   5. 앱을 껐다 켜도 남는다. 그리고 게임오버가 아니라 일시정지 HOME 으로
 #      빠져나간 판의 게이트도 남는다 — 경로에 따라 사라지면 조건을 채우고도
 #      안 열린다.
+#   6. 문턱을 올려도 옛 문턱으로 이미 연 사람은 열린 채고, 그 표시가 저장된다.
+#      같은 숫자라도 새 규칙으로 적힌 저장본은 잠긴 채다.
 
 # 진짜 판을 굴리므로 진짜 저장 파일에 쓴다 — 해금 진행도만이 아니라 최고
 # 기록과 광고 카운터까지. 값 몇 개만 되돌리면 나머지가 남는다(같은 실수로 이
@@ -90,6 +92,7 @@ func _fresh(m: Node2D) -> void:
 	zeros.resize(saved_gates.size())
 	zeros.fill(0)
 	m.set("mode_gates_cleared", zeros)
+	m.set("hidden_unlock_kept", false)
 	for mode in range(zeros.size()):
 		m.call("_save_best_score", mode)
 
@@ -209,6 +212,42 @@ func _run() -> void:
 	if kept != need:
 		_fail("일시정지 HOME 으로 나가니 그 판의 게이트 %d개가 사라졌다 (남은 값 %d)" % [need, kept])
 	fresh2.queue_free()
+
+	# ---- 6. 문턱을 올려도 이미 연 사람은 안 잠긴다 ----
+	# 규칙 키가 없는 저장본 = 옛 문턱(10) 시절. 거기서 세 모드가 다 10 이면 열렸던
+	# 사람이다. 같은 10/10/10 이라도 지금 규칙으로 적힌 것은 반쯤 온 사람이다.
+	var legacy: int = m.get("HIDDEN_UNLOCK_GATES_LEGACY")
+	for case in [["옛 규칙, 옛 문턱 채움", false, legacy, true],
+			["옛 규칙, 옛 문턱 못 채움", false, legacy - 1, false],
+			["새 규칙, 같은 숫자", true, legacy, false]]:
+		var cfg := ConfigFile.new()
+		for mode in single:
+			cfg.set_value("progress", "gates_cleared_%d" % mode, int(case[2]))
+		if case[1]:
+			cfg.set_value("progress", "gates_rule", need)
+		cfg.save(SAVE_PATH)
+		var inst: Node2D = load("res://scenes/Main.tscn").instantiate()
+		root.add_child(inst)
+		await process_frame
+		while inst.get("boot_pending"):
+			await process_frame
+		var open: bool = inst.call("hidden_mode_unlocked")
+		print("  %s (%d씩) -> 열림=%s" % [case[0], case[2], open])
+		if open != bool(case[3]):
+			_fail("%s: 열림=%s (기대 %s)" % [case[0], open, case[3]])
+		# 열린 사람은 다시 띄워도 열려 있어야 한다 — 표시가 저장됐는가.
+		if open:
+			inst.queue_free()
+			var again: Node2D = load("res://scenes/Main.tscn").instantiate()
+			root.add_child(again)
+			await process_frame
+			while again.get("boot_pending"):
+				await process_frame
+			if not again.call("hidden_mode_unlocked"):
+				_fail("%s: 한 번 더 띄우니 다시 잠겼다 — 열림 표시가 저장되지 않았다" % case[0])
+			again.queue_free()
+		else:
+			inst.queue_free()
 
 	# 사용자의 저장을 통째로 되돌린다 — 이 검사가 굴린 판들이 해금 진행도 외에
 	# 최고 기록과 광고 카운터까지 건드렸다.

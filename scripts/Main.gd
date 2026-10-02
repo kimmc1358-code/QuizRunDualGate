@@ -2151,8 +2151,20 @@ const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 #
 # 세는 값은 문턱에서 멈춘다. 더 세어 봐야 쓸 데가 없고, 멈추면 해금된 뒤로는
 # 저장 파일이 더 이상 바뀌지 않는다.
-const HIDDEN_UNLOCK_GATES := 10
+#
+# 10 에서 20 으로 올렸다(2026-10-02, 주인 결정). 10 은 너무 빨리 열려 숨겨 둔
+# 보람이 없었다.
+const HIDDEN_UNLOCK_GATES := 20
 const SAVE_KEY_GATES_PREFIX := "gates_cleared_"
+# 문턱을 올려도 이미 연 사람은 다시 잠그지 않는다 — 열려 있던 카드가 업데이트
+# 뒤에 잠기면 고장으로 읽힌다. 그런데 세는 값이 문턱에서 멈추므로, 옛 문턱으로
+# 연 사람의 저장본은 "10/10/10" 이고 새 문턱에서 반쯤 온 사람도 "10/10/10" 이다.
+# 그래서 진행도를 어느 문턱으로 셌는지(SAVE_KEY_GATES_RULE)를 함께 적고, 한 번
+# 열린 것은 SAVE_KEY_HIDDEN_KEPT 로 따로 기억한다. 규칙 키가 없는 저장본은 이
+# 키가 생기기 전, 곧 문턱이 HIDDEN_UNLOCK_GATES_LEGACY 이던 시절의 것이다.
+const HIDDEN_UNLOCK_GATES_LEGACY := 10
+const SAVE_KEY_GATES_RULE := "gates_rule"
+const SAVE_KEY_HIDDEN_KEPT := "hidden_unlocked"
 # 튜토리얼을 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다 켤 때마다
 # 다시 돈다.
 const SAVE_KEY_TUTORIAL := "tutorial_seen"
@@ -2515,7 +2527,9 @@ var leaderboard_bests := PackedInt32Array()
 # 모드별로 지금까지 통과한 게이트 수. 히든 모드 해금 조건이며, 그것 말고는
 # 쓰이지 않는다. HIDDEN_UNLOCK_GATES 를 볼 것.
 var mode_gates_cleared := PackedInt32Array()
-# 도감 — SAVE_SECTION_COLLECTION 블록을 볼 것. Dictionary 는 집합으로만 쓴다
+# 한 번 열린 MIX 는 문턱이 올라가도 열린 채다 — SAVE_KEY_HIDDEN_KEPT 참고.
+var hidden_unlock_kept: bool = false
+# 도감 —SAVE_SECTION_COLLECTION 블록을 볼 것. Dictionary 는 집합으로만 쓴다
 # (값은 늘 true). 색 조합의 키는 _color_key 가 만드는 이름 문자열이라, 색 표의
 # 순서가 바뀌어도 저장본이 엉뚱한 칸을 가리키지 않는다.
 var collected_flags: Dictionary = {}
@@ -5984,6 +5998,8 @@ func _best_for(mode: int) -> int:
 
 # 해금 조건을 채운 단일 모드의 수. 카드 설명문의 "n/3" 이 이 값이다.
 func hidden_modes_cleared() -> int:
+	if hidden_unlock_kept:
+		return hidden_modes_required()
 	var n := 0
 	for mode in range(Mode.size()):
 		if mode == HIDDEN_MODE or mode >= mode_gates_cleared.size():
@@ -6034,6 +6050,17 @@ func _load_best_score() -> void:
 			SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), 0))
 		mode_gates_cleared[mode] = clampi(int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), 0)), 0, HIDDEN_UNLOCK_GATES)
+	hidden_unlock_kept = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_HIDDEN_KEPT, false))
+	# 다른 문턱으로 센 저장본이면, 그 문턱으로 이미 열렸었는지 본다.
+	var rule: int = int(cfg.get_value(SAVE_SECTION, SAVE_KEY_GATES_RULE, HIDDEN_UNLOCK_GATES_LEGACY))
+	if not hidden_unlock_kept and rule != HIDDEN_UNLOCK_GATES:
+		var opened := true
+		for mode in range(Mode.size()):
+			if mode != HIDDEN_MODE and mode_gates_cleared[mode] < rule:
+				opened = false
+		if opened:
+			hidden_unlock_kept = true
+			_save_best_score(HIDDEN_MODE)   # 표시와 새 규칙을 바로 적어 둔다
 	# 예전 저장본에는 모드 구분 없는 기록 하나뿐이다. 어느 모드에서 낸
 	# 점수인지 알 길이 없으므로, 처음 모드(SKY)의 기록으로 옮긴다. 버리는
 	# 것보다는 낫고, 여러 모드에 복사하면 없던 기록이 생긴다.
@@ -6205,6 +6232,11 @@ func _save_best_score(mode: int) -> void:
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), best_scores[mode])
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_LEADERBOARD_PREFIX + str(mode), leaderboard_bests[mode])
 	cfg.set_value(SAVE_SECTION, SAVE_KEY_GATES_PREFIX + str(mode), mode_gates_cleared[mode])
+	# 지금 규칙으로 열렸으면 그것도 기억한다 — 다음에 문턱이 또 바뀌어도 안 잠긴다.
+	if hidden_mode_unlocked():
+		hidden_unlock_kept = true
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_HIDDEN_KEPT, hidden_unlock_kept)
+	cfg.set_value(SAVE_SECTION, SAVE_KEY_GATES_RULE, HIDDEN_UNLOCK_GATES)
 	var err := cfg.save(SAVE_PATH)
 	if err != OK:
 		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])

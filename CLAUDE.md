@@ -20,11 +20,22 @@ and the draw code has to know which is which long after the roll. Anything
 that reaches for `current_mode` to decide how to render a question or an
 answer is a bug waiting for MIX to expose it.
 
-MIX is also **hidden until earned**: `HIDDEN_UNLOCK_GATES` (10) gates passed
+MIX is also **hidden until earned**: `HIDDEN_UNLOCK_GATES` (20) gates passed
 in each of the other three, counted cumulatively across runs and persisted
 per mode. Cumulative rather than per-run because the whole game is hard mode
 — the condition is meant to ask "have you met all three quizzes", not "are
-you good". A locked card is covered by a translucent panel carrying the lock
+you good".
+
+It was 10 until 2026-10-02, and **raising it did not re-lock anyone who had
+already opened MIX** — a card that locks itself after an update reads as a
+bug. That takes more than comparing counts, because each count stops at the
+threshold: a tester who opened MIX under the old rule saved `10/10/10`, and so
+does a new player halfway there under the new one. So the save also records
+which threshold the counts were kept under (`gates_rule`; a save without it
+predates the key and used `HIDDEN_UNLOCK_GATES_LEGACY`), and once MIX opens,
+`hidden_unlocked` keeps it open. Raising the threshold again needs only a new
+`HIDDEN_UNLOCK_GATES_LEGACY` if old saves without the key are still around —
+everyone who unlocked since then is already carrying the flag. A locked card is covered by a translucent panel carrying the lock
 art, which fills the gap between the name plate and the BEST plate — sized
 from that gap, not from the card, because those two plates do not grow when
 the card does. A corner badge was tried first and said only "this card has a
@@ -193,7 +204,7 @@ on failure.
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
 | `check_revive_continuity.gd` | continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
-| `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; and the mode-select screen learns about it | `HIDDEN_UNLOCK_GATES`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
+| `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; the mode-select screen learns about it; and an old-rule save that had opened MIX stays open (and stays open on the next launch) while the same counts saved under the new rule stay locked | `HIDDEN_UNLOCK_GATES`, `HIDDEN_UNLOCK_GATES_LEGACY`, `gates_rule`/`hidden_unlocked`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
 | `check_gameover_bgm.gd` | the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |

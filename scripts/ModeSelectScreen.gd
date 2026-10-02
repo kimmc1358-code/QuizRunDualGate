@@ -156,7 +156,7 @@ const CARD_EXPLAIN_HIDDEN_LOCKED := "Pass %d gates in every mode to unlock!  %d/
 # 잠금 안내에 들어가는 숫자. Main 의 HIDDEN_UNLOCK_GATES 와 모드 수가 그대로
 # 넘어온다 — 여기에 같은 값을 또 적어 두면 한쪽만 고쳤을 때 안내문이 거짓말을
 # 한다.
-var hidden_gates_needed: int = 10
+var hidden_gates_needed: int = 20
 var hidden_modes_cleared: int = 0
 var hidden_modes_required: int = 3
 # The explain bar's ends are round, and their radius is a large fraction of
