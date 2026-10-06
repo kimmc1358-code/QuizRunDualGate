@@ -20,9 +20,9 @@ extends RefCounted
 ## 실제 광고가 나가려면 둘 다 통과해야 한다. 출시 직전에 1번을 끄는 것이
 ## 유일한 수동 조작이고, 그 한 줄은 커밋으로 남는다.
 ##
-## 아직 이 프로젝트에 광고 SDK 는 없다. 여기 있는 것은 SDK 가 붙었을 때
-## 부르는 쪽이 물어볼 창구뿐이다 — Main 의 _ad_try_interstitial 과
-## ModeSelectScreen.set_banner_reserve 참고.
+## 광고는 Ads.gd 가 AdMob 플러그인으로 띄우고, 단위는 여기서만 받아 간다
+## (Ads.make_admob_node). 앱 ID 는 addons/AdmobPlugin/android_export.cfg 가
+## 빌드 때 매니페스트에 넣는다.
 
 
 ## Google 이 공개한 데모 단위. 어떤 계정에도 묶여 있지 않고, 항상 "Test Ad"
@@ -41,10 +41,10 @@ const TEST_REWARDED := "ca-app-pub-3940256099942544/5224354917"
 
 ## AdMob 콘솔에서 만든 실제 단위. 채우고 나서도 FORCE_TEST_ADS 가 켜져 있는 한
 ## 아무 데도 쓰이지 않는다 — 미리 채워 둬도 안전하다는 뜻이다.
-const LIVE_APP_ID := ""
-const LIVE_BANNER := ""
-const LIVE_INTERSTITIAL := ""
-const LIVE_REWARDED := ""
+const LIVE_APP_ID := "ca-app-pub-6214282306800929~2199640508"
+const LIVE_BANNER := "ca-app-pub-6214282306800929/8486576208"          # Banner - Main menu
+const LIVE_INTERSTITIAL := "ca-app-pub-6214282306800929/6083045191"    # Interstitial - Restart
+const LIVE_REWARDED := "ca-app-pub-6214282306800929/1433353747"        # Rewarded - Revive
 
 ## 출시 준비가 끝나면 이 한 줄을 false 로 바꾼다. 그때까지는 릴리스 빌드로 뽑아도
 ## 테스트 광고만 나간다.
@@ -52,12 +52,21 @@ const LIVE_REWARDED := ""
 ## 기본값이 true 인 쪽이 맞다. 잘못 걸렸을 때 잃는 것이 다르기 때문이다 —
 ## 켜져 있는데 출시하면 수익이 0 이 되고 "Test Ad" 딱지가 보이는 정도지만,
 ## 꺼져 있는데 테스트하면 계정을 잃는다.
-const FORCE_TEST_ADS := true
+# 2026-10-06 프로덕션 출시(1.2.0)를 앞두고 false 로 바꿨다. 이제 릴리스 빌드는
+# 실제 광고를 내보낸다 — 출시 빌드를 자기 폰에 깔았다면 광고를 누르지 말 것.
+# 디버그 빌드는 맨 위 설명의 2번 잠금 때문에 여전히 테스트 광고뿐이다.
+const FORCE_TEST_ADS := false
 
 
 ## 지금 이 빌드가 테스트 광고를 써야 하는가.
 static func use_test_ads() -> bool:
-	return FORCE_TEST_ADS or OS.is_debug_build()
+	return use_test_ads_in(OS.is_debug_build())
+
+
+## 디버그 빌드 여부를 받아서 판정한다. 체커는 늘 에디터(디버그) 실행 파일로 돌아
+## use_test_ads() 가 언제나 참이므로, 릴리스 빌드가 무엇을 쓸지는 이걸로 묻는다.
+static func use_test_ads_in(debug_build: bool) -> bool:
+	return FORCE_TEST_ADS or debug_build
 
 
 ## 지금 모드에서 쓸 앱 ID. 없으면 빈 문자열.

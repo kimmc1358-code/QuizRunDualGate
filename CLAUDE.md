@@ -198,8 +198,8 @@ on failure.
 |---|---|---|
 | `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one; and that the early-gate hole ramp holds its start size, eases down and ends, with the judged hole and the drawn ring on the same multiplier | `gate_hole_start_scale`/`gate_hole_hold_gates`/`gate_hole_full_size_gate`, `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
-| `check_ad_ids.gd` | no build can serve a **live** AdMob unit while either lock is on, every accessor really returns the test unit, the test units still match Google's published demo values, and an app ID has not been swapped for a unit ID; `android_export.cfg` exists, has all three keys, and while testing holds `is_real = false` with Google's test app ID in both slots; the node `Ads.make_admob_node` builds has `is_real` off, every real unit field empty and Google's demo units in the debug ones; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, any accessor, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
-| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it; and a device-pixel banner is converted by the axis that fits the screen — the width on a phone, the height on a pillarboxed tablet | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_game_px_per_device_px`/`_update_banner`, `set_banner_reserve`, or the stretch aspect |
+| `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the four `AdIds.LIVE_*` values and nothing in the formats the game does not use; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
+| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it; and a device-pixel banner is converted by the axis that fits the screen — the width on a phone, the height on a pillarboxed tablet; and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_game_px_per_device_px`/`_update_banner`, `set_banner_reserve`, the stretch aspect, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `display/window/stretch/aspect`, `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
@@ -645,12 +645,12 @@ the preset on another machine has to reproduce them exactly.
 | Launcher label (`package/name`) | `QuizRun` |
 | Launcher icons | `assets/ui_assets/icon/` — legacy 192, adaptive fore/back/monochrome 432 |
 | Export filter | `all_resources` |
-| Excluded | `assets/references/*`, `tools/*` |
+| Excluded | `assets/references/*`, `tools/*`, and 17 author-time source images listed below the table |
 | Gradle build | **on** — the Play Games and AdMob plugins need it; the Android build template lives in the gitignored `/android/` |
 | Play Games plugin | `addons/GodotPlayGameServices/` — godot-play-game-services v3.4.0 |
 | Play Games Game ID | `554024495812` (preset option `godot_play_game_services/game_id`) |
 | AdMob plugin | `addons/AdmobPlugin/` + `addons/GMPShared/` — godot-sdk-integrations/godot-admob v7.0 (`AdmobPlugin-Android-v7.0.zip`, sha256 `ce38b75a…93aee8`); gradle pulls `play-services-ads` 24.9.0 at build time |
-| AdMob app ID | `addons/AdmobPlugin/android_export.cfg`, **not** the preset — Google's test app ID in both slots until release |
+| AdMob app ID | `ca-app-pub-6214282306800929~2199640508`, set in `addons/AdmobPlugin/android_export.cfg` (`[Release]`, `is_real = true`) and `AdIds.LIVE_APP_ID` — **not** the preset |
 | Play Billing plugin | `addons/GodotGooglePlayBilling/` — godot-sdk-integrations/godot-google-play-billing 3.3.0 (sha256 `20d75623…b18568`); gradle pulls `billing-ktx` 9.1.0 |
 | In-app product | `remove_ads`, one-time, non-consumable — `Store.REMOVE_ADS_PRODUCT_ID`; must exist and be active in Play Console, and cannot be renamed once created |
 | Export format | **AAB** (`gradle_build/export_format=1`) — Play accepts nothing else. The editor holds the preset in memory, so set it there too or an editor save puts APK back |
@@ -676,6 +676,31 @@ record; changing it later means recreating all four. It was
 runtime — flags, particles, tap sparkles — so nothing links them from a
 scene, and the scene-following export modes drop them silently.
 
+That is also why the **exclude filter** carries more than the two folders.
+`all_resources` ships everything under `res://`, including the sources the
+art tools read and the game never opens — 25.1MB of the bundle before
+2026-10-06. Seventeen files are excluded by name, and this list is the only
+copy that travels, since the preset does not:
+
+- `assets/backgrounds/<world>/background_far.png` and `background_near.png`
+  for all four worlds — the unblurred inputs of `blur_background.ps1`; the
+  game draws the `_blur` files
+- `assets/backgrounds/ambient_sheet.png`, `assets/fx/fx_small_N.png`,
+  `assets/ui_assets/boost_bar_sheet.png`, `boost_button_sheet.png`,
+  `hud_sheet_v7.png`, `ready_start_sheet_v2.png`, `ready_start_sheet_v3.png`
+  — sheets the slicers cut
+- `assets/gates/gate_ring_dream/gate_ring_dream.png` — `fit_gate_ring.ps1`'s
+  source
+- `assets/ui_assets/main/login_setting_button.png` — referenced by nothing
+
+The list was proved, not guessed: with all seventeen moved out of the
+project, none could be loaded even from the import cache, and the game still
+booted and passed all 29 checkers. Searching scripts for file names is not
+enough on its own here — paths are built at runtime, and several sheets are
+named in comments. A new sheet or source image goes on this list in both
+places. (`assets/fx/speed_lines/source/` needs nothing: its `.gdignore`
+keeps it out of the project altogether.)
+
 ### Version numbers
 
 **`application/config/version` in `project.godot` is the only place the
@@ -693,8 +718,10 @@ reporting an already-fixed bug against the wrong number.
 `version/code` is the exception and cannot be derived from anything. It is an
 integer, it lives only in the (gitignored) preset, and **Google rejects an
 upload whose code is not higher than the last one** — so it goes up per
-upload, independently of the version string. It is at **4**, built on
-2026-10-02 as `build/QuizRunDualGate-v4.aab` and carrying version 1.1.1.
+upload, independently of the version string. It is at **5**, built on
+2026-10-06 as `build/QuizRunDualGate-v5.aab`, carrying version 1.2.0 — the first
+production build, and the first with live ads. 4 is 1.1.1 (2026-10-02), the
+last closed-test build.
 Code 1 went to internal testing on 2026-09-13; 2 was built the same day and
 uploaded too (Play Console reported on "2 (1.0.0)"); 3 is 1.1.0, built
 2026-09-24. Each upload gets a new version string as well, or testers see
@@ -958,29 +985,45 @@ also invisible, because a test ad and a live ad differ by one small label.
 
 Two independent locks, and a live unit needs both open:
 
-- `FORCE_TEST_ADS` (currently `true`) — set to `false` once, deliberately, at
-  release, and the change is a commit anyone can see.
+- `FORCE_TEST_ADS` — **`false` since 2026-10-06**, for the 1.2.0 production
+  build. Release exports now serve live ads, including a release build
+  installed on the owner's own phone; that phone should be registered as a
+  test device in AdMob, and its ads never tapped either way.
 - `OS.is_debug_build()` — a debug export can never serve a live ad no matter
-  what the flag says.
+  what the flag says. This is the lock that is still closed, and it is the one
+  that makes developing on top of release-state code safe.
 
-The default is `true` because the two mistakes cost differently. Shipping
-with it on means zero revenue and a "Test Ad" badge; shipping a test build
-with it off means losing the account.
+The flag defaulted to `true` because the two mistakes cost differently.
+Shipping with it on means zero revenue and a "Test Ad" badge; shipping a test
+build with it off means losing the account. Turning it back on is the way to
+take a build to testers who are not on a debug export.
 
 The test units are **Google's published demo IDs**, not real units with test
 devices registered. Device registration is the other supported approach and
-is the wrong one here: it protects only the phones you enrolled, so the first
-friend to install a build serves a real impression. `check_ad_ids.gd` keeps a
-copy of Google's values as an outside reference — editing `AdIds` alone is
-*supposed* to fail it.
+is the wrong one for test builds: it protects only the phones you enrolled, so
+the first friend to install a build serves a real impression. `check_ad_ids.gd`
+keeps a copy of Google's values as an outside reference — editing `AdIds`
+alone is *supposed* to fail it.
 
-Filling `LIVE_*` early is safe; the accessors ignore those values entirely
-while either lock is on. What is not safe is flipping the flag to "just check
-something".
+The live IDs are in `AdIds.LIVE_*`, all four from one account
+(`ca-app-pub-6214282306800929`): the app, `Banner - Main menu`,
+`Interstitial - Restart` and `Rewarded - Revive`, named as in the AdMob
+console. They are public — they ship inside every APK — so they live in code.
 
 `AdIds` is read in two places: `Ads.make_admob_node`, which fills the plugin's
 unit fields, and the unit ID printed by `_ad_try_interstitial`, so that the
 lock's state is visible in a log rather than only in a checker.
+
+**`check_ad_ids.gd` checks both builds, not the one it runs as.** It always
+runs from the editor binary, which is a debug build, so `use_test_ads()` is
+true there whatever the flag says — and for the whole test period the
+checker's live branch had never once run. `AdIds.use_test_ads_in(debug)` and
+`Ads.make_admob_node(script, live)` take the build kind as an argument, so the
+checker asks what a debug build and a release build would each do: the debug
+node must hold Google's demo units with every real field empty, and the
+release node, with the flag off, must carry exactly the four `LIVE_*` values
+and nothing in the formats the game does not use. It also fails if the four
+live IDs come from more than one account.
 
 ### How ads reach the screen
 
@@ -990,24 +1033,29 @@ and on PC — where the plugin's calls log an error and emit nothing —
 `available` stays false and every request is answered "no ad" at once. It
 builds the plugin's `Admob` node in code rather than keeping one in a scene.
 
-**Three walls keep a live ad out of a test build**, and `check_ad_ids.gd`
-checks each:
+**Three walls decide what a build serves**, and `check_ad_ids.gd` checks each:
 
 1. The **app ID** in the manifest comes from
-   `addons/AdmobPlugin/android_export.cfg`: `is_real = false` and Google's test
-   app ID in both `[Debug]` and `[Release]`. If that file is missing or a key is
-   absent the plugin silently falls back to searching the project's scenes for
-   an `Admob` node and using its Inspector values — so the checker also fails
-   on any scene that contains one.
+   `addons/AdmobPlugin/android_export.cfg`: `is_real = true` and the live app ID
+   in `[Release]` since 2026-10-06. The plugin picks the slot by `is_real`
+   alone, **not by export kind**, so a debug build carries the live app ID too
+   — harmless, because what is served is decided by the units, and a debug
+   build's units are Google's demos. `[Debug]` keeps the test app ID for the
+   day `is_real` goes off again. If the file is missing or a key is absent the
+   plugin silently falls back to searching the project's scenes for an `Admob`
+   node and using its Inspector values — so the checker also fails on any
+   scene that contains one.
 2. The **unit IDs** are set by `Ads.make_admob_node` before the node enters
    the tree, because the plugin picks its units in `_ready`: `is_real` follows
-   `AdIds.use_test_ads()`, the debug fields get Google's demo units, and the
-   real fields get `AdIds.LIVE_*` only when live — empty today. An `is_real`
-   switched on by mistake finds nothing to load.
+   the build, the debug fields get Google's demo units, and the real fields
+   get `AdIds.LIVE_*` only in a release build. A debug build's real fields are
+   empty, so an `is_real` switched on by mistake there finds nothing to load.
 3. `AdIds`' own two locks, above.
 
-Releasing therefore means changing all three on purpose: `FORCE_TEST_ADS`,
-the `LIVE_*` values, and `is_real` plus `[Release]` in the cfg.
+Going back to test ads for everyone means turning all three back on purpose:
+`FORCE_TEST_ADS = true`, and `is_real = false` with the test app ID in
+`[Release]` — the checker fails until the two agree. The `LIVE_*` values can
+stay; they are ignored while the flag is on.
 
 What each format does:
 
@@ -1028,10 +1076,36 @@ What each format does:
   pillarboxed tablets get no banner.
 - Game audio is muted on the Master bus while a full-screen ad is up.
 
-A failed load retries after 30 seconds. **None of this has run on a device
-yet** — `check_ads_wiring.gd` drives it with a fake plugin, which proves the
-wiring and nothing about the SDK. UMP consent, which EEA users need, is not
-wired.
+A failed load retries after 30 seconds. The test units have been seen
+loading and showing on a phone; live units have never served, by design.
+`check_ads_wiring.gd` drives the wiring with a fake plugin.
+
+### Consent (Google UMP)
+
+EEA and UK players must see a Google-certified consent form before an ad is
+requested, so `Ads` asks Google first and starts the SDK only after: `start()`
+calls `_begin_consent()` (`update_consent_info`), and `initialize` waits in
+`_start_sdk()`, which runs once. Google decides the region; everywhere else it
+answers `NOT_REQUIRED` and nothing is shown. When it answers `REQUIRED`, the
+form is loaded and shown, and the SDK starts when it closes. The wording on
+the form is the GDPR message made in AdMob's "Privacy & messaging" page —
+without one, Google answers that no form exists and the game logs a warning.
+
+**Failing to ask never blocks ads.** Offline, a form that fails to load, or no
+message in AdMob all start the SDK anyway: the SDK keeps the consent from the
+last time it was given, and for an EEA player who never gave it Google serves
+limited ads itself. Blocking instead would take the revive ad away for the
+whole session after one bad connection.
+
+Google also requires a way back in. Settings carries **Ad Privacy Choices**
+under Privacy Policy, lit only where consent was asked for (`REQUIRED` or
+`OBTAINED`) and dimmed everywhere else, the way an unset link already is. It
+re-shows the same form; the SDK is not restarted. The plugin has no separate
+privacy-options form, so the consent form is what comes back.
+
+The consent flow has **not run on a device**. Seeing the form from outside
+Europe needs a test build with a debug geography and the phone's hashed test
+device ID, which UMP prints to logcat on first launch; neither is set today.
 
 ## Remove ads
 

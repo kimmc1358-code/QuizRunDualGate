@@ -16,6 +16,8 @@ signal remove_ads_pressed
 signal contact_pressed
 signal about_pressed
 signal privacy_pressed
+## 광고 동의를 다시 고르는 줄. 유럽 사용자에게만 살아 있다(set_ad_privacy_available).
+signal ad_privacy_pressed
 signal terms_pressed
 signal sfx_volume_changed(value: float)
 signal music_volume_changed(value: float)
@@ -79,9 +81,10 @@ const REMOVE_ADS_GAP_FRAC := 0.048       # 판 너비 대비
 # 비슷하게 잡는다.
 const REMOVE_ADS_TEXTURE_WIDTH := BUTTON_TEXTURE_WIDTH
 
-const LINK_TEXTS := ["Privacy Policy", "Terms of Service", "Contact / Feedback", "About"]
+const LINK_TEXTS := ["Privacy Policy", "Ad Privacy Choices", "Terms of Service", "Contact / Feedback", "About"]
 # 아이콘 시트에 편지 그림이 없어서 직접 그린다 — 봉투 사각형 + 뚜껑 선 둘.
-const LINK_MAIL_INDEX := 2               # 편지 아이콘이 붙는 줄
+const LINK_MAIL_INDEX := 3               # 편지 아이콘이 붙는 줄
+const LINK_AD_PRIVACY_INDEX := 1         # 광고 동의 줄 — 개인정보 처리방침 바로 아래
 const LINK_MAIL_GAP_FRAC := 0.45         # 글자 크기 대비 글자-아이콘 간격
 const LINK_MAIL_HEIGHT_FRAC := 0.72      # 글자 크기 대비 아이콘 높이
 const LINK_MAIL_LINE_PX := 1.3
@@ -144,6 +147,9 @@ var _login: Button
 var _remove_ads: Button
 var _ads_removed: bool = false
 var _links: Array[Button] = []
+# 광고 동의 줄을 살릴지. Ads 가 Google 에서 동의 상태를 받아 오면 Main 이 넣는다.
+# 다시 짓기(언어 전환) 뒤에도 남도록 노드가 아니라 여기에 둔다.
+var _ad_privacy_enabled: bool = false
 var _sfx_icon: Texture2D
 var _music_icon: Texture2D
 var _avatar: Texture2D          # 로그인하면 Main이 넣어 준다
@@ -257,7 +263,8 @@ func _build_content() -> void:
 		link.pressed.connect(_on_link_pressed.bind(i))
 		# 그리는 것은 그대로 두고 노드째 흐리게 한다 — 글자·밑줄·아이콘·꺾쇠가
 		# 각각 다른 색이라, 색마다 흐린 짝을 두면 넷을 따로 관리하게 된다.
-		# 여기서 한 번만 정하면 된다: 주소는 상수라 실행 중에 바뀌지 않는다.
+		# 주소 셋은 상수라 여기서 한 번 정하면 되고, 광고 동의 줄만 실행 중에
+		# 바뀐다(set_ad_privacy_available 이 다시 칠한다).
 		# (_draw_link 안에서 modulate 를 건드리면 그 프레임에는 반영되지 않는다.)
 		link.modulate.a = 1.0 if _link_enabled(i) else LINK_DISABLED_DIM
 		add_child(link)
@@ -499,6 +506,13 @@ func set_ads_removed(removed: bool) -> void:
 	rebuild()
 
 
+## 광고 동의 줄을 살리거나 흐리게 한다. 유럽 밖에서는 바꿀 동의가 없어 흐린 채로 둔다.
+func set_ad_privacy_available(on: bool) -> void:
+	_ad_privacy_enabled = on
+	if _links.size() > LINK_AD_PRIVACY_INDEX:
+		_links[LINK_AD_PRIVACY_INDEX].modulate.a = 1.0 if on else LINK_DISABLED_DIM
+
+
 func set_language(korean: bool) -> void:
 	_korean = korean
 	if _language_toggle != null:
@@ -614,8 +628,9 @@ func _draw_mail(ctrl: Control, x: float, centre_y: float, h: float) -> void:
 func _link_enabled(index: int) -> bool:
 	match index:
 		0: return ExternalLinks.is_set(ExternalLinks.PRIVACY_POLICY_URL)
-		1: return ExternalLinks.is_set(ExternalLinks.TERMS_OF_SERVICE_URL)
-		2: return ExternalLinks.is_set(ExternalLinks.CONTACT_EMAIL)
+		1: return _ad_privacy_enabled
+		2: return ExternalLinks.is_set(ExternalLinks.TERMS_OF_SERVICE_URL)
+		3: return ExternalLinks.is_set(ExternalLinks.CONTACT_EMAIL)
 		_: return true
 
 
@@ -624,8 +639,9 @@ func _on_link_pressed(index: int) -> void:
 		return
 	match index:
 		0: privacy_pressed.emit()
-		1: terms_pressed.emit()
-		2: contact_pressed.emit()
+		1: ad_privacy_pressed.emit()
+		2: terms_pressed.emit()
+		3: contact_pressed.emit()
 		_: about_pressed.emit()
 
 

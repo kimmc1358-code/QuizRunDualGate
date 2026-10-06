@@ -2926,6 +2926,7 @@ func _boot_load() -> void:
 	settings_popup.language_changed.connect(set_language_korean)
 	settings_popup.login_pressed.connect(_on_login_pressed)
 	settings_popup.privacy_pressed.connect(_on_privacy_pressed)
+	settings_popup.ad_privacy_pressed.connect(_on_ad_privacy_pressed)
 	settings_popup.terms_pressed.connect(_on_terms_pressed)
 	settings_popup.contact_pressed.connect(_on_contact_pressed)
 	settings_popup.about_pressed.connect(_on_about_pressed)
@@ -2958,6 +2959,7 @@ func _boot_load() -> void:
 	add_child(ads)
 	ads.fullscreen_changed.connect(_on_ads_fullscreen)
 	ads.banner_ready.connect(_on_banner_ready)
+	ads.consent_changed.connect(_on_ads_consent_changed)
 	ads.start()
 	# 광고 제거 결제. 저장해 둔 답을 먼저 화면에 걸고, Google Play 의 답이 오면
 	# 그걸 따른다(_on_store_ownership).
@@ -6574,6 +6576,17 @@ func _on_signed_in_for_leaderboard(ok: bool, mode: int) -> void:
 # 아직 비어 있으면 열리지 않는다 — 설정 화면도 그 줄을 흐리게 그린다.
 func _on_privacy_pressed() -> void:
 	ExternalLinks.open(ExternalLinks.PRIVACY_POLICY_URL)
+
+
+# 유럽 사용자가 광고 동의를 다시 고른다. Ads 가 Google 의 동의 화면을 다시 띄운다.
+func _on_ad_privacy_pressed() -> void:
+	if ads != null:
+		ads.show_privacy_options()
+
+
+# 동의 상태가 새로 읽히면 설정의 광고 동의 줄을 살릴지 다시 정한다.
+func _on_ads_consent_changed() -> void:
+	settings_popup.set_ad_privacy_available(ads.privacy_options_available())
 
 
 func _on_terms_pressed() -> void:

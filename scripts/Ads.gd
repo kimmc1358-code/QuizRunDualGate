@@ -23,6 +23,8 @@ extends Node
 signal fullscreen_changed(showing: bool)
 ## 배너가 준비됐을 때. 높이는 기기 픽셀이다 — 게임 좌표로 바꾸는 것은 받는 쪽.
 signal banner_ready(height_device_px: float)
+## 동의 상태가 새로 읽혔을 때. 설정의 "광고 개인정보 설정" 줄을 살릴지가 바뀔 수 있다.
+signal consent_changed
 
 const ADMOB_SCRIPT := "res://addons/AdmobPlugin/Admob.gd"
 const LOAD_AD_REQUEST_SCRIPT := "res://addons/AdmobPlugin/model/LoadAdRequest.gd"
@@ -47,6 +49,9 @@ var _showing: bool = false
 var _reward_done: Callable
 var _reward_earned: bool = false
 var _interstitial_done: Callable
+## Google UMP 가 마지막으로 알려 준 동의 상태: UNKNOWN, NOT_REQUIRED, REQUIRED, OBTAINED.
+var consent_status := "UNKNOWN"
+var _sdk_started: bool = false
 
 
 ## 안드로이드에서만 플러그인을 띄운다. 다른 곳에서는 available 이 false 로 남는다.
@@ -70,14 +75,16 @@ func start() -> void:
 	add_child(node)
 	available = true
 	_connect()
-	_admob.call("initialize")
+	# 광고 SDK 는 동의가 정리된 뒤에 시작한다 — _begin_consent 를 볼 것.
+	_begin_consent()
 
 
 ## 플러그인 노드를 만들어 광고 단위를 채운다(트리에는 안 넣는다). 체커가 같은
 ## 함수로 만든 노드를 들여다본다.
-func make_admob_node(script: Script) -> Node:
+func make_admob_node(script: Script, live: bool = not AdIds.use_test_ads()) -> Node:
 	var node: Node = script.new()
-	var live: bool = not AdIds.use_test_ads()
+	# live 를 따로 받는 것은 체커 때문이다 — 체커는 디버그 실행 파일이라 기본값으로는
+	# 늘 테스트 노드만 나오고, 릴리스 빌드가 만들 노드를 볼 길이 없다.
 	node.set("is_real", live)
 	node.set("android_debug_application_id", AdIds.TEST_APP_ID)
 	node.set("android_debug_banner_id", AdIds.TEST_BANNER)
@@ -151,6 +158,11 @@ func _connect() -> void:
 	_admob.connect("rewarded_ad_dismissed_full_screen_content", func(_info): _on_rewarded_finished(true))
 	_admob.connect("banner_ad_loaded", func(info, _response): _on_banner_loaded(info.get_ad_id()))
 	_admob.connect("banner_ad_failed_to_load", func(_info, error): _retry(_load_banner, "banner", error))
+	_admob.connect("consent_info_updated", func(): _on_consent_info_updated())
+	_admob.connect("consent_info_update_failed", func(_error): _on_consent_info_update_failed())
+	_admob.connect("consent_form_loaded", func(): _on_consent_form_loaded())
+	_admob.connect("consent_form_dismissed", func(_error): _on_consent_form_dismissed())
+	_admob.connect("consent_form_failed_to_load", func(_error): _on_consent_form_failed())
 
 
 func _on_initialized() -> void:
@@ -249,3 +261,85 @@ func _apply_banner() -> void:
 		_admob.call("show_banner_ad", _banner_id)
 	else:
 		_admob.call("hide_banner_ad", _banner_id)
+
+
+## ---- 광고 동의 (Google UMP) ----
+##
+## 유럽(EEA·영국) 사용자에게는 광고를 청하기 전에 Google 인증 동의 화면을 띄워야
+## 한다. 그 밖의 지역은 Google 이 "필요 없음"이라고 답하므로 아무것도 안 뜬다 —
+## 지역 판단은 우리가 하지 않고 Google 에 맡긴다. 화면에 나올 문구는 AdMob 콘솔의
+## "개인 정보 보호 및 메시지"에서 만든 GDPR 메시지이고, 그게 없으면 폼이 없다고
+## 답이 온다.
+##
+## 그래서 광고 SDK 의 initialize 는 동의가 정리된 뒤에야 부른다(_start_sdk).
+## 매 실행마다 다시 묻는 것은 Google 의 요구다 — 지역이 바뀌었거나 동의를 새로
+## 받아야 할 때가 있다.
+##
+## 동의를 묻지 못해도 광고를 막지는 않는다. 오프라인이거나 폼을 못 불러온 날은
+## 그대로 SDK 를 시작한다 — 지난번에 받은 동의는 SDK 가 기억하고, 동의가 없는
+## 유럽 사용자에게는 Google 이 알아서 제한된 광고만 준다. 여기서 광고를 막으면
+## 한 번 오프라인이었다고 그 실행 내내 부활 광고까지 사라진다.
+func _begin_consent() -> void:
+	print("[광고] 동의 정보 확인")
+	_admob.call("update_consent_info")
+
+
+func _on_consent_info_updated() -> void:
+	_read_consent_status()
+	print("[광고] 동의 상태: %s" % consent_status)
+	if consent_status == "REQUIRED":
+		if bool(_admob.call("is_consent_form_available")):
+			_admob.call("load_consent_form")   # 불러와지면 _on_consent_form_loaded 가 띄운다
+			return
+		push_warning("ads: consent is required but no form exists — create the GDPR message in AdMob's Privacy & messaging")
+	_start_sdk()
+
+
+func _on_consent_info_update_failed() -> void:
+	push_warning("ads: consent info could not be updated — starting ads with whatever consent the SDK already holds")
+	_start_sdk()
+
+
+func _on_consent_form_loaded() -> void:
+	_admob.call("show_consent_form")
+
+
+func _on_consent_form_dismissed() -> void:
+	_read_consent_status()
+	print("[광고] 동의 화면 닫힘: %s" % consent_status)
+	_start_sdk()
+
+
+func _on_consent_form_failed() -> void:
+	push_warning("ads: the consent form failed to load")
+	_start_sdk()
+
+
+# 한 번만. 설정에서 동의를 다시 바꾼 뒤에 닫혀도 여기로 오지만, SDK 는 이미 돌고
+# 있고 바뀐 동의는 다음 광고 요청부터 SDK 가 읽는다.
+func _start_sdk() -> void:
+	if _sdk_started:
+		return
+	_sdk_started = true
+	_admob.call("initialize")
+
+
+func _read_consent_status() -> void:
+	var consent = _admob.call("get_consent_status")
+	consent_status = "UNKNOWN" if consent == null else str(consent.call("to_status_string"))
+	consent_changed.emit()
+
+
+## 설정의 "광고 개인정보 설정" 줄을 살릴지. 동의를 물어야 했던 사람(유럽)에게만
+## 의미가 있다 — 나머지 지역은 바꿀 동의가 없다. Google 은 동의를 준 사람이
+## 언제든 바꿀 수 있는 입구를 요구한다.
+func privacy_options_available() -> bool:
+	return available and (consent_status == "REQUIRED" or consent_status == "OBTAINED")
+
+
+## 동의 화면을 다시 띄운다. 불러와지면 _on_consent_form_loaded 가 띄운다.
+func show_privacy_options() -> bool:
+	if not privacy_options_available():
+		return false
+	_admob.call("load_consent_form")
+	return true
