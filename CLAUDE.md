@@ -745,10 +745,11 @@ reporting an already-fixed bug against the wrong number.
 `version/code` is the exception and cannot be derived from anything. It is an
 integer, it lives only in the (gitignored) preset, and **Google rejects an
 upload whose code is not higher than the last one** — so it goes up per
-upload, independently of the version string. It is at **5**, built on
-2026-10-06 as `build/QuizRunDualGate-v5.aab`, carrying version 1.2.0 — the first
-production build, and the first with live ads. 4 is 1.1.1 (2026-10-02), the
-last closed-test build.
+upload, independently of the version string. It is at **6**, built on
+2026-10-29 as `build/QuizRunDualGate-v6.aab`, carrying version 1.2.1 — the first
+build with Firebase Analytics. 5 is 1.2.0 (2026-10-06), the first production
+build and the first with live ads; 4 is 1.1.1 (2026-10-02), the last
+closed-test build.
 Code 1 went to internal testing on 2026-09-13; 2 was built the same day and
 uploaded too (Play Console reported on "2 (1.0.0)"); 3 is 1.1.0, built
 2026-09-24. Each upload gets a new version string as well, or testers see
