@@ -2499,6 +2499,10 @@ var share_busy: bool = false
 var last_run_new_record: bool = false
 # 광고. Ads 가 AdMob 을 감싼다 — PC 에서는 available 이 false 다.
 var ads: Ads
+# 분석. Firebase Analytics 를 감싼다 — PC 에서는 available 이 false 고 아무것도 안 보낸다.
+var analytics: Analytics
+# MIX 해금을 "넘어선 순간"에만 기록하려고 직전 값을 든다. -1 은 아직 모름.
+var _last_hidden_cleared: int = -1
 # 전면광고가 떠 있는 동안 카운트다운을 붙잡는다. 광고 뒤에서 READY -> START 가
 # 흘러가 버리면, 광고를 닫았을 때 판이 이미 시작돼 있다.
 var ad_hold_countdown: bool = false
@@ -2954,6 +2958,11 @@ func _boot_load() -> void:
 	share_card.name = "ShareCard"
 	add_child(share_card)
 	# 광고. PC 에서는 아무것도 띄우지 않고 available 만 false 로 남는다.
+	# 분석은 광고보다 먼저 세운다 — 광고 쪽 동의 결과가 오면 바로 받아야 한다.
+	analytics = Analytics.new()
+	analytics.name = "Analytics"
+	add_child(analytics)
+	analytics.start()
 	ads = Ads.new()
 	ads.name = "Ads"
 	add_child(ads)
@@ -6029,6 +6038,12 @@ func _push_hidden_progress() -> void:
 	if mode_select_panel == null:
 		return
 	var cleared: int = hidden_modes_cleared()
+	# 해금을 넘어선 그 순간만 기록한다. 첫 호출은 지금 값을 기억하기만 한다 —
+	# 이미 열린 채로 켠 사람을 매 실행마다 "방금 해금"으로 세지 않으려고.
+	var required: int = hidden_modes_required()
+	if _last_hidden_cleared >= 0 and _last_hidden_cleared < required and cleared >= required:
+		_log_event("unlock_achievement", {"achievement_id": "mix_mode"})
+	_last_hidden_cleared = cleared
 	if debug_force_hidden_locked and OS.is_debug_build():
 		cleared = 0
 	mode_select_panel.set_hidden_progress(
@@ -6193,6 +6208,7 @@ func _push_collection_badge() -> void:
 func _open_collection() -> void:
 	if collection_popup == null:
 		return
+	_log_event("collection_open")
 	collection_popup.set_data({
 		"flag_records": flag_records,
 		"flag_textures": flag_textures,
@@ -6292,6 +6308,7 @@ func _on_revive_continue() -> void:
 
 # 제안을 거절했을 때 — 여기서부터가 원래의 게임오버다.
 func _on_revive_decline() -> void:
+	_log_event("revive", {"result": "declined"})
 	revive_panel.visible = false
 	_finish_run()
 
@@ -6302,15 +6319,19 @@ func _on_revive_decline() -> void:
 func _on_revive_watch_ad() -> void:
 	# 광고 제거를 산 사람은 광고 없이 곧장 이어 간다(주인이 정한 규칙).
 	if ads_removed:
+		_log_event("revive", {"result": "ad_free"})
 		_on_revive_continue()
 		return
 	if ads == null or not ads.show_rewarded(_on_revive_ad_finished):
+		_log_event("revive", {"result": "no_ad"})
 		_on_revive_continue()
 
 
 # 광고가 닫힌 뒤. 끝까지 보지 않고 닫았으면 팝업에 남는다 — 다시 누르거나
 # 거절할 수 있다. 띄우려다 실패한 것은 광고가 없던 것과 같게 친다.
 func _on_revive_ad_finished(result: int) -> void:
+	_log_event("revive", {"result": "skipped" if result == Ads.Reward.SKIPPED \
+		else ("watched" if result == Ads.Reward.EARNED else "no_ad")})
 	if result == Ads.Reward.SKIPPED:
 		return
 	_on_revive_continue()
@@ -6375,6 +6396,13 @@ func _update_banner() -> void:
 
 func _finish_run() -> void:
 	state = State.GAMEOVER
+	_log_event("post_score", {
+		"level_name": Analytics.mode_name(current_mode),
+		"score": score,
+		"gates": gates_passed,
+		"max_combo": max_combo,
+		"revived": 1 if run_revived else 0,
+	})
 	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
 	# Whether this run set a record has to be read BEFORE the record is
 	# updated — the popup shows a different face for a new best, and once
@@ -6447,6 +6475,8 @@ func _on_gameover_leaderboard_pressed() -> void:
 func _on_gameover_share_pressed() -> void:
 	if share_busy or share_card == null:
 		return
+	_log_event("share", {"method": "share_sheet", "content_type": "score_card",
+		"item_id": Analytics.mode_name(current_mode)})
 	share_busy = true
 	var img: Image = await share_card.render(current_mode, score, last_run_new_record,
 		happy_face_texture)
@@ -6587,6 +6617,15 @@ func _on_ad_privacy_pressed() -> void:
 # 동의 상태가 새로 읽히면 설정의 광고 동의 줄을 살릴지 다시 정한다.
 func _on_ads_consent_changed() -> void:
 	settings_popup.set_ad_privacy_available(ads.privacy_options_available())
+	# 분석은 Google 이 "동의 필요 없음"이라고 한 곳에서만 켠다(Analytics.gd 참고).
+	if analytics != null:
+		analytics.set_consent_status(ads.consent_status)
+
+
+# 분석 이벤트 한 줄. 분석 노드가 없거나(체커 일부) 수집이 꺼져 있으면 버려진다.
+func _log_event(event_name: String, params: Dictionary = {}) -> void:
+	if analytics != null:
+		analytics.log_event(event_name, params)
 
 
 func _on_terms_pressed() -> void:
@@ -6669,6 +6708,7 @@ func _tutorial_forced() -> bool:
 
 
 func _begin_tutorial() -> void:
+	_log_event("tutorial_begin")
 	tutorial_active = true
 	_set_state(State.COUNTDOWN)
 	var view_size := get_viewport_rect().size
@@ -6717,6 +6757,7 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 
 
 func _on_tutorial_finished() -> void:
+	_log_event("tutorial_complete")
 	tutorial_active = false
 	# 다 본 순간 저장한다. 판이 끝날 때 쓰면 첫 판 도중에 앱이 죽었을 때
 	# 다음 실행에서 또 돈다. 다시 보기로 켜서 돈 것은 저장하지 않는다.
@@ -6880,6 +6921,9 @@ func _apply_mode(mode: int) -> void:
 
 func _start_countdown() -> void:
 	run_active = true   # 여기부터 "떠날 수 있는 판"이 된다 — _reset_game 참고
+	# 부활해 이어 뛸 때도 여기를 지나지만 같은 판이다 — 판의 시작은 한 번만 센다.
+	if not run_revived:
+		_log_event("level_start", {"level_name": Analytics.mode_name(current_mode)})
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
 	_set_state(State.COUNTDOWN)

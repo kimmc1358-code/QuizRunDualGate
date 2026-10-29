@@ -225,6 +225,7 @@ on failure.
 | `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
 | `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), the press one-shot is a separate, shorter, NON-looping stream that fires on every press, and the boost afterimage stacks to exactly `BOOST_AFTERIMAGE_COUNT` copies and no more, carries the character's own frames, records the character's real y as it moves, and is emptied on release; and the gate-pass popup's two cues are loaded, distinct from each other and from the hold and press sounds, and the tier that puts BOOST!/TURBO! on screen sounds the matching one | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, any `BOOST_AFTERIMAGE_*` constant or `_update_boost_afterimages`, or `BOOST_POP_SOUND_*`/`_play_boost_pop_sound` |
 | `check_collection.gd` | a missed flag is remembered as seen and a passed one collected once with a NEW mark; math counts only passes and stars land exactly on the thresholds; colour pairs collect by name; spawned gates carry `math_kind` / the Stroop indices; the collection survives save and reload; the last uncollected flag and colour pair come up more than twice as often as uniform; the game-over NEW! line shows only with news and stays above PLAY AGAIN; the collection popup covers the screen, has a cell for every flag (193) and pair (110), and a tap names what it hit; and the collection plate shares the leaderboard row | `_collection_note`, `_pick_favoring_uncollected`, `COLLECTION_UNCOLLECTED_WEIGHT`, `MATH_STAR_THRESHOLDS`, the `SAVE_SECTION_COLLECTION` keys, `MathKind` or `OCEAN_COLOR_NAMES`, `CollectionPopup.gd`, the game-over layout, or the leaderboard row in `ModeSelectScreen` |
+| `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, `collection_open`, `share`, and `unlock_achievement` only at the moment MIX unlocks | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, `_open_collection`, `_on_gameover_share_pressed`, or `_push_hidden_progress` |
 
 **A checker that plays real gates writes to the real save file.** `user://
 savegame.cfg` holds the best scores, the hidden-mode progress and the ad
@@ -297,6 +298,28 @@ hole ramp (`--mode <n>` for another mode), because `check_gate_reach.gd` can
 say the hole is 148.5px and still not answer whether 1.20x looks like enough
 room to a first-time player, or whether the shrink back to full size is
 something they would notice.
+
+`capture_promo.gd` records the game playing itself, for promo shorts. It runs
+under Godot's **Movie Maker** (`--write-movie <dir>/f.png --fixed-fps 60`),
+which writes lossless frames plus a `.wav` at a fixed timestep, so the video is
+frame-exact at 60fps however slowly the PC renders (about 9% of real time
+here). An autopilot taps through the game's own `_unhandled_input` — so taps
+sound and sparkle as a player's would — keeping the character within ±22px of
+the correct hole's centre, and follows a per-gate boost plan (`--plan
+full,none,half`): `full` boosts from the spawn for TURBO!, `half` from the bar's
+midpoint for BOOST!, `none` flies at normal speed. Boosting every gate made a
+cut where every pass read TURBO!, and the normal-speed stretches are what make
+a boost visible. It logs each pass with its time and tier, and the cut is
+chosen from that log with ffmpeg; `--lang en|ko` picks the language. It puts
+the boost button on the right (a left button hid a character diving for a
+bottom gate) and restores the save file.
+
+The editor binary carries the `.editor` window override (480x1067), which
+`--resolution` does not beat, so a 1080x1920 recording needs a temporary
+`override.cfg` in the project root setting
+`window/size/window_width_override.editor=1080` and `..._height_...=1920` —
+delete it straight after. The shorts of 2026-10-09 were cut from such takes:
+`build/promo/quizrun_shorts_24s_<ko|en>.mp4`, eight seconds per mode.
 
 `capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
 
@@ -652,6 +675,7 @@ the preset on another machine has to reproduce them exactly.
 | AdMob plugin | `addons/AdmobPlugin/` + `addons/GMPShared/` — godot-sdk-integrations/godot-admob v7.0 (`AdmobPlugin-Android-v7.0.zip`, sha256 `ce38b75a…93aee8`); gradle pulls `play-services-ads` 24.9.0 at build time |
 | AdMob app ID | `ca-app-pub-6214282306800929~2199640508`, set in `addons/AdmobPlugin/android_export.cfg` (`[Release]`, `is_real = true`) and `AdIds.LIVE_APP_ID` — **not** the preset |
 | Play Billing plugin | `addons/GodotGooglePlayBilling/` — godot-sdk-integrations/godot-google-play-billing 3.3.0 (sha256 `20d75623…b18568`); gradle pulls `billing-ktx` 9.1.0 |
+| Firebase plugin | `addons/godotx_firebase/` + `android/firebase_core/`, `android/firebase_analytics/` — godot-x/firebase 3.1.0, Core and Analytics only; config in the gitignored `google-services.json` (project `quizrun-9a351`); needs the `build.gradle` lines in *Analytics* |
 | In-app product | `remove_ads`, one-time, non-consumable — `Store.REMOVE_ADS_PRODUCT_ID`; must exist and be active in Play Console, and cannot be renamed once created |
 | Export format | **AAB** (`gradle_build/export_format=1`) — Play accepts nothing else. The editor holds the preset in memory, so set it there too or an editor save puts APK back |
 | Upload key | `C:\Users\user\keys\quizrun-upload.jks`, alias `quizrun`, PKCS12 — **outside the repo**, backed up separately. Its path and password live in `.godot/export_credentials.cfg` (gitignored), not in the preset. SHA-1 `5B:10:59:…` |
@@ -699,7 +723,10 @@ booted and passed all 29 checkers. Searching scripts for file names is not
 enough on its own here — paths are built at runtime, and several sheets are
 named in comments. A new sheet or source image goes on this list in both
 places. (`assets/fx/speed_lines/source/` needs nothing: its `.gdignore`
-keeps it out of the project altogether.)
+keeps it out of the project altogether.) Two non-art entries share the
+filter: `google-services.json`, which the Firebase plugin copies into the
+gradle build itself, and `addons/godotx_firebase/*`, the plugin's export-time
+scripts.
 
 ### Version numbers
 
@@ -1106,6 +1133,76 @@ privacy-options form, so the consent form is what comes back.
 The consent flow has **not run on a device**. Seeing the form from outside
 Europe needs a test build with a debug geography and the phone's hashed test
 device ID, which UMP prints to logcat on first launch; neither is set today.
+
+## Analytics
+
+Firebase Analytics, through the **Godotx Firebase** plugin (godot-x/firebase
+3.1.0, MIT; release zip sha256 `da7273de…8170c1`), Core and Analytics modules
+only. The game talks only to `scripts/Analytics.gd`, which wraps the plugin the
+way `Ads.gd` and `PlayGames.gd` wrap theirs: on PC the singletons are missing,
+`available` stays false, and every event is dropped without an error.
+
+**Collection starts off, and is switched on only outside Europe.** The export
+option `firebase/privacy_safe_defaults` writes "collection disabled, every
+Consent Mode signal denied" into the manifest, so nothing — not even the
+automatic `first_open` — leaves the device before the game says so. The game
+says so only when Google's UMP answers `NOT_REQUIRED` (Korea and everywhere
+else outside the EEA/UK); `Main._on_ads_consent_changed` hands each answer to
+`Analytics.set_consent_status`. `REQUIRED`, `OBTAINED` and `UNKNOWN` all keep it
+off. `OBTAINED` means only that the form was answered, not that analytics was
+agreed to, so treating it as consent would collect from people who refused;
+and an offline launch does not know its region. Events while off are dropped,
+not queued, so a later consent cannot send what happened before it.
+
+Ads take the opposite default — they start even when consent could not be
+asked — because blocking them takes the revive away, while a missing day of
+analytics costs a line of statistics.
+
+What is logged, using Google's recommended game event names where one fits
+(installs, sessions, retention, ad impressions and Play purchases are
+collected by Firebase itself):
+
+| Event | When | Parameters |
+|---|---|---|
+| `level_start` | a run starts — not the countdown after a revive, which is the same run | `level_name` |
+| `post_score` | a run ends | `level_name`, `score`, `gates`, `max_combo`, `revived` (0/1) |
+| `revive` | the revive popup's outcome | `result`: `watched`, `skipped`, `no_ad`, `ad_free`, `declined` |
+| `tutorial_begin` / `tutorial_complete` | the tutorial's two ends | |
+| `unlock_achievement` | the moment MIX unlocks — not every launch after | `achievement_id` = `mix_mode` |
+| `share` | the game over SHARE | `method`, `content_type`, `item_id` = mode |
+| `collection_open` | the collection book opens | |
+
+`level_name` comes from `Analytics.MODE_NAMES` (`flags`, `math`, `colors`,
+`mix`) — fixed English names, so one mode stays one row whichever language the
+player runs.
+
+**Setup lives in three places, two of them off git:**
+
+- `google-services.json` at the project root, from the Firebase console
+  (project `quizrun-9a351`, app `com.janiju.quizrundualgate`). The repository
+  is public, so the file is gitignored, and the export excludes it from the
+  pack; the plugin copies it into `android/build/` at export time. A new
+  machine has to download it again.
+- `android/build/build.gradle` (the gitignored build template) needs a
+  `buildscript` block **at the very top** with `classpath
+  'com.google.gms:google-services:4.4.4'`, and `apply plugin:
+  'com.google.gms.google-services'` at the very end. Reinstalling the Android
+  build template wipes both.
+- The preset: `firebase/android_config_file = res://google-services.json`,
+  `enable_core` and `enable_analytics` on, Crashlytics and Messaging off,
+  `privacy_safe_defaults` on.
+
+The plugin's AAR wrappers sit in `android/firebase_core/` and
+`android/firebase_analytics/`. `.gitignore` used to drop `/android/` whole; it
+now drops `/android/*` and re-admits those two folders, so they travel with the
+repo while the build template still does not. The iOS frameworks in the
+release zip were left out.
+
+The first build with it was 84.7MB against 83.6MB, and its manifest carried
+the five privacy defaults, its resources the Firebase app ID, and its dex the
+Firebase classes — read back from the bundle. **It has not run on a device:**
+whether events reach the console, and the ~24-hour delay before they show
+there, are still to be seen.
 
 ## Remove ads
 

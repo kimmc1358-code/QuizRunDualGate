@@ -1,6 +1,8 @@
 # Godot 4+ specific ignores
 .godot/
-/android/
+/android/*
+!/android/firebase_core/
+!/android/firebase_analytics/
 
 # Godot-specific ignores
 .import/
@@ -43,3 +45,7 @@ desktop.ini
 
 # Exported builds
 /build/
+
+# Firebase config — public repo, so kept out of git. Re-download it from the
+# Firebase console (project quizrun-9a351) on a new machine; see CLAUDE.md.
+/google-services.json
