@@ -1632,8 +1632,8 @@ const BGM_GAMEOVER_NAME := "gameover_bgm"
 const COUNTDOWN_READY_SOUND_PATH := "res://assets/audio/countdown_ready.mp3"
 const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
 # Failure sound — wrong gate, wall collision, or falling off the bottom of
-# the screen all funnel through the single _game_over() below, so this is
-# the one place it needs to be wired. BGM is stopped (not just paused) at
+# the screen. Since 2.0 each of those is a hit (_take_hit) that also plays it
+# while hearts remain; a softer per-hit cue is still to be chosen. BGM is stopped (not just paused) at
 # the same time — see _game_over — pending a separate failure-BGM track
 # later; _start_countdown resumes the music for the next run.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
@@ -4173,8 +4173,11 @@ func _update_playing(delta: float) -> void:
 	elif player_y + half_h > zone_bottom:
 		player_y = zone_bottom - half_h
 		player_vel = 0.0
-		_game_over()
-		return
+		# 무적 중이면 하트 없이 튀어 오르기만 한다 — HURT_INVULN_DURATION 참고.
+		if hurt_elapsed < 0.0 and not _take_hit():
+			return
+		player_vel = flap_velocity
+	_update_hearts(delta)
 
 	if gate_speed_boost_elapsed >= 0.0:
 		gate_speed_boost_elapsed += delta
@@ -5199,7 +5202,7 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 
 	if p_bottom > wall_top and p_top < wall_bottom:
 		_collection_note(g, false)
-		_game_over()
+		_take_gate_hit(view_size)
 		return
 
 	var in_top := player_y < wall_center_y
@@ -5253,7 +5256,7 @@ func _resolve_gate(g: Dictionary, view_size: Vector2) -> void:
 		_play_gate_success_fx(g, in_top)
 		_spawn_combo_popup(view_size)
 	else:
-		_game_over()
+		_take_gate_hit(view_size)
 
 
 # ============================================================
@@ -6261,6 +6264,132 @@ func _save_best_score(mode: int) -> void:
 		push_warning("could not write %s (error %d) — best score will not persist" % [SAVE_PATH, err])
 
 
+# ============================================================
+# 하트 (2.0).
+#
+# 1.x 는 한 번 틀리면 끝이었다. 첫 28일 데이터에서 1인당 판이 8개 남짓, 하루 뒤
+# 다시 오는 사람이 12% 정도였고, 주변 테스터는 한결같이 "어렵다"고 했다 — 날개
+# 조작과 퀴즈를 동시에 맞혀야 하는데 둘 중 하나만 삐끗해도 판이 끝났다. 그래서
+# 판에 하트를 MAX_HEARTS 개 주고, 오답·벽·바닥은 하트 하나를 가져갈 뿐 판을
+# 끝내지 않는다. 마지막 하트를 잃는 순간이 예전의 죽음이고, 그 뒤 흐름(부활 제안
+# → 게임오버)은 그대로다.
+#
+# 맞은 순간 콤보는 끊긴다 — 틀린 것은 틀린 것이고, 점수가 콤보에 비례하므로
+# 하트가 남아도 실수의 값은 치른다.
+#
+# 맞은 뒤 HURT_INVULN_DURATION 동안은 바닥에 닿아도 하트가 안 깎이고 튀어
+# 오르기만 한다. 오답 게이트를 지나 아래 레인 바닥까지 떨어진 상태에서 곧바로
+# 바닥에 한 번 더 닿아 하트 둘을 잃는 일을 막는다. 게이트 판정은 무적과 상관없이
+# 한다 — 게이트마다 문제가 다르니 각자 채점된다.
+const MAX_HEARTS := 3
+const HURT_INVULN_DURATION := 1.2
+# 무적 동안 캐릭터가 깜빡이는 주기(초)와 꺼졌을 때의 알파. 완전히 지우면 어디
+# 있는지 잃어버린다.
+const HURT_BLINK_PERIOD := 0.12
+const HURT_BLINK_ALPHA := 0.25
+const HURT_FLASH_COLOR := Color(0.85, 0.12, 0.12, 0.35)
+# HUD 하트 — 게이트 구역 왼쪽 위, 콤보 표시(오른쪽 위)와 마주 본다.
+const HEART_HUD_SIZE := 26.0
+const HEART_HUD_GAP := 6.0
+const HEART_HUD_MARGIN := Vector2(16.0, 14.0)
+const HEART_FILL := Color(0.93, 0.16, 0.24, 1.0)
+const HEART_EMPTY := Color(0.10, 0.12, 0.20, 0.45)
+const HEART_EDGE := Color(1.0, 1.0, 1.0, 0.95)
+# 잃은 하트가 부풀며 사라지는 시간과 최대 배율.
+const HEART_LOSS_POP_DURATION := 0.45
+const HEART_LOSS_POP_SCALE := 1.9
+
+var hearts: int = MAX_HEARTS
+var hurt_elapsed: float = -1.0       # -1 = 무적 아님
+var heart_lost_elapsed: float = -1.0 # -1 = 사라지는 하트 없음
+
+
+## 오답·벽·바닥에 맞았을 때. 하트가 남으면 판은 계속되고, 마지막 하트였으면
+## 예전의 죽음(_game_over)으로 간다. 하트가 남았는지를 돌려준다.
+func _take_hit() -> bool:
+	combo = 0
+	hearts = maxi(0, hearts - 1)
+	heart_lost_elapsed = 0.0
+	if hearts <= 0:
+		_game_over()
+		return false
+	hurt_elapsed = 0.0
+	flash_color = HURT_FLASH_COLOR
+	flash_time = FLASH_DURATION
+	fx_shake_elapsed = 0.0
+	if fx_sound_gameover.stream != null:
+		fx_sound_gameover.play()
+	return true
+
+
+## 게이트에서 맞았을 때. 다음 게이트는 이 판정 직후 같은 프레임에 만들어지는데
+## (_update_playing), 닿을 수 있는 자리는 last_zone_center 를 기준으로 고른다 —
+## 정답 구멍을 지났을 때는 그곳이 캐릭터의 자리지만, 틀렸을 때 캐릭터는 반대
+## 레인에 있다. 그대로 두면 다음 게이트가 닿을 수 없는 곳에 놓여 하트를 연달아
+## 잃는다. 그래서 실제 자리로 옮겨 둔다.
+func _take_gate_hit(view_size: Vector2) -> void:
+	last_zone_center = clampf(player_y, _gate_field_top(view_size), _gate_field_bottom(view_size))
+	_take_hit()
+
+
+func _update_hearts(delta: float) -> void:
+	if hurt_elapsed >= 0.0:
+		hurt_elapsed += delta
+		if hurt_elapsed >= HURT_INVULN_DURATION:
+			hurt_elapsed = -1.0
+	if heart_lost_elapsed >= 0.0:
+		heart_lost_elapsed += delta
+		if heart_lost_elapsed >= HEART_LOSS_POP_DURATION:
+			heart_lost_elapsed = -1.0
+
+
+## 무적 동안 깜빡이는 캐릭터의 알파.
+func _hurt_blink_alpha() -> float:
+	if hurt_elapsed < 0.0:
+		return 1.0
+	return 1.0 if int(hurt_elapsed / HURT_BLINK_PERIOD) % 2 == 0 else HURT_BLINK_ALPHA
+
+
+## i 번째 하트 칸의 화면 사각형. 그리기와 체커가 함께 쓴다.
+func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
+	var top: float = _gate_zone_top(view_size) + HEART_HUD_MARGIN.y
+	var x: float = HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
+	return Rect2(x, top, HEART_HUD_SIZE, HEART_HUD_SIZE)
+
+
+func _heart_polygon(rect: Rect2) -> PackedVector2Array:
+	# 하트 곡선 x=16sin³t, y=13cos t-5cos2t-2cos3t-cos4t 를 칸에 맞춘다.
+	var pts := PackedVector2Array()
+	var c: Vector2 = rect.get_center()
+	var s: float = rect.size.x / 34.0
+	for k in range(40):
+		var t: float = TAU * k / 40.0
+		var x: float = 16.0 * pow(sin(t), 3)
+		var y: float = 13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t)
+		pts.append(c + Vector2(x, -y - 2.0) * s)
+	return pts
+
+
+func _draw_hearts(ci: CanvasItem, view_size: Vector2) -> void:
+	for i in range(MAX_HEARTS):
+		var rect: Rect2 = heart_hud_rect(i, view_size)
+		var full: bool = i < hearts
+		var poly := _heart_polygon(rect)
+		ci.draw_colored_polygon(poly, HEART_FILL if full else HEART_EMPTY)
+		var ring := poly.duplicate()
+		ring.append(poly[0])
+		ci.draw_polyline(ring, HEART_EDGE, 2.0, true)
+	# 방금 잃은 하트는 빈 칸 위에서 부풀며 사라진다.
+	if heart_lost_elapsed >= 0.0 and hearts < MAX_HEARTS:
+		var t: float = heart_lost_elapsed / HEART_LOSS_POP_DURATION
+		var rect2: Rect2 = heart_hud_rect(hearts, view_size)
+		var grow: float = lerpf(1.0, HEART_LOSS_POP_SCALE, t)
+		var popped := rect2.grow((rect2.size.x * grow - rect2.size.x) * 0.5)
+		var col := HEART_FILL
+		col.a = 1.0 - t
+		ci.draw_colored_polygon(_heart_polygon(popped), col)
+
+
 # 실패한 순간. 곧바로 게임오버 화면으로 가지 않고 부활 제안을 먼저 띄운다 —
 # 판을 접을지 이어갈지는 아직 플레이어가 정하지 않았다. 광고를 보면 이 판이
 # 그대로 이어지고(_on_revive_continue), 거절하면 그때 진짜 게임오버로 간다.
@@ -6296,6 +6425,10 @@ func _offer_revive() -> void:
 func _on_revive_continue() -> void:
 	run_revived = true
 	revive_panel.visible = false
+	# 하트를 다 잃어서 온 자리다 — 이어 하려면 다시 채워야 한다.
+	hearts = MAX_HEARTS
+	hurt_elapsed = -1.0
+	heart_lost_elapsed = -1.0
 	var view_size := get_viewport_rect().size
 	gates.clear()
 	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
@@ -6968,6 +7101,9 @@ func _reset_game() -> void:
 	revive_offered = false
 	run_revived = false
 	leaderboard_score = 0
+	hearts = MAX_HEARTS
+	hurt_elapsed = -1.0
+	heart_lost_elapsed = -1.0
 	if revive_panel != null:
 		revive_panel.visible = false
 	flash_time = 0.0
@@ -7727,6 +7863,7 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
 		_draw_boost_bar(ci, view_size)
+		_draw_hearts(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
 
@@ -8079,7 +8216,8 @@ func _draw() -> void:
 		var pos := Vector2(PLAYER_X, player_y + _happy_pop_bounce_offset())
 		if bird_texture != null:
 			draw_set_transform(pos, 0.0, bird_scale)
-			draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false)
+			draw_texture_rect(bird_texture, Rect2(-PLAYER_VISUAL_SIZE * 0.5 + draw_offset, PLAYER_VISUAL_SIZE), false,
+				Color(1.0, 1.0, 1.0, _hurt_blink_alpha()))
 			draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		if DEBUG_SHOW_HITBOX:
 			# The REAL collision rect — PLAYER_SIZE at (PLAYER_X, player_y),

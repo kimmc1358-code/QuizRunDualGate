@@ -65,6 +65,18 @@ func _restore_save() -> void:
 	f.close()
 
 
+# 판을 실제로 끝낸다. 2.0 부터 틀린 게이트 하나는 하트 하나일 뿐이라, 하트를
+# 다 잃을 때까지 틀린다. 마지막 하나 전까지는 판이 계속되어야 한다 — 하트가
+# 남았는데 죽으면 그것도 여기서 잡는다.
+func _lose_all_hearts(m: Node2D) -> void:
+	var n: int = m.get("hearts")
+	for i in range(n):
+		_gate(m, false)
+		if i < n - 1 and m.get("state") == 4:
+			_fail("하트가 %d 개 남았는데 판이 끝났다" % (n - i - 1))
+			return
+
+
 # 게이트 하나를 실제 판정 함수로 통과시킨다. correct=false 면 틀린 차선에
 # 놓아 진짜 죽음을 만든다.
 func _gate(m: Node2D, correct: bool) -> void:
@@ -120,7 +132,7 @@ func _run() -> void:
 		_fail("%d 게이트를 지났는데 아직 phase %d 다 — 이 검사가 phase 유지 여부를 못 본다" % [
 			RUN_GATES, before["phase"]])
 
-	_gate(m, false)   # 틀린 차선 -> 진짜 죽음 -> 부활 제안
+	_lose_all_hearts(m)   # 틀린 차선을 하트 수만큼 -> 진짜 죽음 -> 부활 제안
 	var dead: Dictionary = _snap(m)
 	_show("죽은 직후", dead)
 	if m.get("state") != 4:
@@ -191,7 +203,7 @@ func _run() -> void:
 	m.get("best_scores")[m.get("current_mode")] = 0
 	m.get("leaderboard_bests")[m.get("current_mode")] = 0
 	var final_score: int = later["score"]
-	_gate(m, false)
+	_lose_all_hearts(m)
 	if m.get("state") != 4:
 		_fail("두 번째 죽음 뒤 상태가 %d 다 — 게임오버로 안 갔다" % m.get("state"))
 	if m.get("leaderboard_score") != frozen:
