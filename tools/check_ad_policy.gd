@@ -20,6 +20,13 @@ extends SceneTree
 
 var fails := 0
 
+# 광고 카운터를 "새 설치"로 되돌려 가며 재므로 진짜 저장 파일에 쓴다. 예전에는
+# 끝에 새 설치 상태를 저장하고 그대로 끝나, 이 PC 의 누적 판 수가 검사 때마다
+# 0 으로 돌아갔다. 다른 체커처럼 파일째로 떠 두었다 되돌린다.
+const SAVE_PATH := "user://savegame.cfg"
+var _save_backup := PackedByteArray()
+var _had_save := false
+
 
 func _init() -> void:
 	root.call_deferred("add_child", load("res://scenes/Main.tscn").instantiate())
@@ -56,6 +63,9 @@ func _run() -> void:
 	var m: Node2D = root.get_child(root.get_child_count() - 1)
 	while m.get("boot_pending"):
 		await process_frame
+	_had_save = FileAccess.file_exists(SAVE_PATH)
+	if _had_save:
+		_save_backup = FileAccess.get_file_as_bytes(SAVE_PATH)
 	m.call("_apply_mode", 0)
 
 	var every: int = m.get("interstitial_every_restarts")
@@ -165,7 +175,12 @@ func _run() -> void:
 		else:
 			print("  %-30s 카운터 +1" % entry[0])
 
-	_fresh_install(m)
+	if _had_save:
+		var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+		f.store_buffer(_save_backup)
+		f.close()
+	else:
+		DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
 	print("")
 	if fails == 0:
 		print("check_ad_policy: OK")
