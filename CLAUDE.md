@@ -1201,9 +1201,12 @@ release zip were left out.
 
 The first build with it was 84.7MB against 83.6MB, and its manifest carried
 the five privacy defaults, its resources the Firebase app ID, and its dex the
-Firebase classes — read back from the bundle. **It has not run on a device:**
-whether events reach the console, and the ~24-hour delay before they show
-there, are still to be seen.
+Firebase classes — read back from the bundle. It reached the console from
+production phones within days of 1.2.1's release: by 2026-11-02 the Firebase
+overview showed daily users, day-1 retention and AdMob revenue (AdMob was
+linked to the Firebase project on 2026-10-29). Event parameters such as
+`level_name` and `gates` appear in reports only once registered as custom
+definitions in Google Analytics, and only from that day forward.
 
 ## Remove ads
 
