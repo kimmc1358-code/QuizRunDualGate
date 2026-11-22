@@ -756,15 +756,21 @@ uploaded too (Play Console reported on "2 (1.0.0)"); 3 is 1.1.0, built
 two builds under one name and their reports cannot say which.
 Consecutive numbering is not required, only increase.
 
-**1.x is frozen; `main` is the 2.0 renewal.** Decided 2026-11-22: 2.0
-rebuilds the core rules, adds reasons to come back and reworks the art and
-screens, and ships as an **update of the same app**, so the package name,
-store listing, leaderboards and the AdMob, Firebase and Play Games setup all
-carry over. The shipped 1.2.1 is tag `v1.2.1`; branch `release/1.x` holds it
-for a hotfix, which would still take a version code above every one used
-before it, 2.0 builds included. Before 2.0 ships, decide what an existing
-player's save turns into, and whether changed scoring needs new leaderboards
-rather than mixing 1.x scores with 2.0 ones.
+**1.x is frozen, and 2.0 is a separate project.** Decided 2026-11-22: 2.0,
+"Dragon Smash: Trick Gate", rebuilds the core rules, adds reasons to come
+back and reworks the art as 2.5D 3D. It is built in its own Godot project,
+`D:\Godot\DragonSmash` (GitHub `kimmc1358-code/DragonSmash`, private), split
+out of this one on 2026-11-23 after its Phase 1 — this repository holds no
+2.0 code, and that project's `CLAUDE.md` is where 2.0 is documented. It still
+ships as an **update of this same app**, so the package name, upload key,
+store listing, leaderboards and the AdMob, Firebase and Play Games setup
+recorded in this file all carry over to it; its Phase 5 ports this game's
+wrapper scripts (`Ads.gd`, `AdIds.gd`, `PlayGames.gd`, `Store.gd`,
+`Analytics.gd`) and their checkers rather than rewriting them.
+
+The shipped 1.2.1 is tag `v1.2.1`; branch `release/1.x` holds it for a
+hotfix. A hotfix and the 2.0 builds share one version code sequence, so
+each upload, from either project, takes a code above every one before it.
 
 A built AAB will not open in `aapt`, which refuses the bundle format. To
 read what it actually carries, pull the manifest out and look at it:
