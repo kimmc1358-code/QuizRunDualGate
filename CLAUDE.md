@@ -756,6 +756,16 @@ uploaded too (Play Console reported on "2 (1.0.0)"); 3 is 1.1.0, built
 two builds under one name and their reports cannot say which.
 Consecutive numbering is not required, only increase.
 
+**1.x is frozen; `main` is the 2.0 renewal.** Decided 2026-11-22: 2.0
+rebuilds the core rules, adds reasons to come back and reworks the art and
+screens, and ships as an **update of the same app**, so the package name,
+store listing, leaderboards and the AdMob, Firebase and Play Games setup all
+carry over. The shipped 1.2.1 is tag `v1.2.1`; branch `release/1.x` holds it
+for a hotfix, which would still take a version code above every one used
+before it, 2.0 builds included. Before 2.0 ships, decide what an existing
+player's save turns into, and whether changed scoring needs new leaderboards
+rather than mixing 1.x scores with 2.0 ones.
+
 A built AAB will not open in `aapt`, which refuses the bundle format. To
 read what it actually carries, pull the manifest out and look at it:
 
