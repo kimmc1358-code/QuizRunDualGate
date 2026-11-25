@@ -188,10 +188,10 @@ const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 # JUNGLE is the rigged 3D dragon (2026-11-25), rendered by
 # tools/rig_jungle_dragon.py, which prints these numbers: fly averages
 # (125.4, 126.5) over its four flap frames, happy (123.5, 129.5), sad
-# (123.0, 108.5). The sad pose is pitched nose-down, which lifts its centre.
+# (124.0, 109.0). The sad pose is pitched nose-down, which lifts its centre.
 const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(1.0, 0.6), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
 const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(1.8, -0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
-const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(2.0, 7.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(1.6, 7.4), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
 # Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
 # scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
 # Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
@@ -4109,6 +4109,7 @@ func _process(delta: float) -> void:
 		while flap_timer >= FLAP_FRAME_DURATION and not flap_frames.is_empty():
 			flap_timer -= FLAP_FRAME_DURATION
 			flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
+		_update_character_3d()
 	queue_redraw()
 	if hud_canvas != null:
 		hud_canvas.queue_redraw()
@@ -5427,6 +5428,11 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 # 것을 써야 하는데, 한쪽만 happy/sad 를 알면 부스트 중 게이트를 지날 때 본체만
 # 표정이 바뀌고 잔상은 날갯짓으로 남는다.
 func _bird_draw_frame() -> Dictionary:
+	# 3D 캐릭터면 자세는 모델 쪽 애니메이션이 정한다(_update_character_3d).
+	# 카메라가 스프라이트를 구울 때와 같은 자리라, 오프셋은 날갯짓 것 하나다 —
+	# 자세마다 따로 맞출 수 없다(한 화면을 그대로 그리므로).
+	if char3d_viewport != null:
+		return {"texture": char3d_viewport.get_texture(), "offset": active_draw_offset_fly}
 	if state == State.GAMEOVER and sad_face_texture != null:
 		# Static — no flap cycling once the run has ended.
 		return {"texture": sad_face_texture, "offset": active_draw_offset_sad}
@@ -6263,6 +6269,100 @@ func _save_best_score(mode: int) -> void:
 
 
 # ============================================================
+# 3D 캐릭터 (2.0).
+#
+# 리깅한 3D 모델을 게임 안에서 실시간으로 그린다. 이 게임은 화면을 전부 2D 로
+# 직접 그리므로(_draw), 캐릭터 몫의 작은 SubViewport 를 하나 두고 그 안에서
+# 모델과 애니메이션을 돌린 뒤, 그 화면을 캐릭터 자리에 텍스처로 그린다. 스프라이트
+# 4장보다 날갯짓이 매끄럽고, 같은 그림을 미리 구운 PNG 와 크기·자리가 같다 —
+# 카메라를 tools/rig_jungle_dragon.py 가 스프라이트를 찍던 자리와 똑같이 둔다.
+#
+# MODE_CHARACTER_3D 가 빈 모드, 또는 파일이 없는 모드는 예전처럼 스프라이트를
+# 그린다. 스프라이트(PNG)는 지워지지 않는다: 모드 선택 카드, 팝업, 공유 카드가
+# 그것을 쓴다.
+const MODE_CHARACTER_3D := ["", "res://assets/characters/dragon_green/dragon_rigged.glb", "", ""]
+const CHAR3D_RESOLUTION := 256          # 스프라이트 한 칸과 같은 크기로 렌더한다
+# tools/rig_jungle_dragon.py 의 ORTHO / CAM_DIR / CAM_TARGET 을 Godot 축으로 옮긴 값.
+# glTF 는 Y 가 위라 Blender 의 (x, y, z) 가 여기서 (x, z, -y) 가 된다.
+const CHAR3D_ORTHO := 1.06
+const CHAR3D_CAM_DIR := Vector3(-1.0, 0.12, -0.18)
+const CHAR3D_TARGET := Vector3(0.0, -0.03, 0.006)
+const CHAR3D_AMBIENT := 0.9
+const CHAR3D_SUN_ENERGY := 1.6
+const CHAR3D_BLEND := 0.15              # 날갯짓 <-> 기쁨/슬픔 자세 전환 시간(초)
+
+var char3d_viewport: SubViewport
+var char3d_anim: AnimationPlayer
+var char3d_pose := ""
+
+
+func _setup_character_3d(mode: int) -> void:
+	if char3d_viewport != null:
+		# 바로 떼어 낸다. queue_free 만 하면 이 프레임 끝까지 남아, 같은 프레임에
+		# 다시 만든 것과 둘이 함께 렌더된다.
+		remove_child(char3d_viewport)
+		char3d_viewport.queue_free()
+		char3d_viewport = null
+		char3d_anim = null
+		char3d_pose = ""
+	var path: String = MODE_CHARACTER_3D[mode] if mode < MODE_CHARACTER_3D.size() else ""
+	if path == "" or not ResourceLoader.exists(path):
+		return
+	var vp := SubViewport.new()
+	vp.name = "Character3D"
+	vp.size = Vector2i(CHAR3D_RESOLUTION, CHAR3D_RESOLUTION)
+	vp.transparent_bg = true
+	vp.own_world_3d = true
+	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	vp.msaa_3d = Viewport.MSAA_4X
+	var env := Environment.new()
+	env.background_mode = Environment.BG_CLEAR_COLOR
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color.WHITE
+	env.ambient_light_energy = CHAR3D_AMBIENT
+	var we := WorldEnvironment.new()
+	we.environment = env
+	vp.add_child(we)
+	var cam := Camera3D.new()
+	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
+	cam.size = CHAR3D_ORTHO
+	vp.add_child(cam)
+	cam.position = CHAR3D_TARGET + CHAR3D_CAM_DIR.normalized() * 3.0
+	cam.look_at_from_position(cam.position, CHAR3D_TARGET, Vector3.UP)
+	var sun := DirectionalLight3D.new()
+	sun.light_energy = CHAR3D_SUN_ENERGY
+	vp.add_child(sun)
+	# 앞쪽 왼편 위에서 — 스프라이트를 찍을 때 Blender 해의 방향.
+	sun.look_at_from_position(Vector3(-1.0, 1.2, -0.8), Vector3.ZERO, Vector3.UP)
+	var model: Node = load(path).instantiate()
+	vp.add_child(model)
+	add_child(vp)
+	var players := model.find_children("*", "AnimationPlayer", true, false)
+	if not players.is_empty():
+		char3d_anim = players[0]
+		if char3d_anim.has_animation("flap"):
+			char3d_anim.get_animation("flap").loop_mode = Animation.LOOP_LINEAR
+	char3d_viewport = vp
+	_update_character_3d()
+
+
+## 지금 보여야 할 자세로 애니메이션을 바꾼다. 스프라이트 쪽 _bird_draw_frame 과
+## 같은 규칙이다: 게임오버면 슬픔, 통과 직후면 기쁨, 그 밖에는 날갯짓.
+func _update_character_3d() -> void:
+	if char3d_anim == null:
+		return
+	var want := "flap"
+	if state == State.GAMEOVER:
+		want = "sad"
+	elif happy_flap_elapsed >= 0.0:
+		want = "happy"
+	if want == char3d_pose or not char3d_anim.has_animation(want):
+		return
+	char3d_pose = want
+	char3d_anim.play(want, CHAR3D_BLEND)
+
+
+# ============================================================
 # 세로 슬라이더 (2.0).
 #
 # 1.x 의 날갯짓(탭하면 튀어 오르고 중력에 떨어짐)을 버리고, 화면 왼쪽 끝 세로
@@ -7042,6 +7142,7 @@ func _apply_mode(mode: int) -> void:
 	active_draw_offset_happy = MODE_DRAW_OFFSET_HAPPY[mode]
 	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
 	active_visual_size_scale = MODE_VISUAL_SIZE_SCALE[mode]
+	_setup_character_3d(mode)
 
 	# 탭 소리도 모드를 따라간다. 없으면 기본 소리로 남겨 둔다.
 	var flap_path: String = _resolve_audio(MODE_FLAP_SOUND_NAME[mode])

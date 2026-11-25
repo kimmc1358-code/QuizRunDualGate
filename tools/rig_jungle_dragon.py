@@ -13,8 +13,12 @@ Writes, into assets/characters/dragon_green/:
   dragon_fly.png    2x2 sheet of 256px cells, 4-frame flap (8 fps in game)
   dragon_happy.png  wings spread, nose up  (gate passed / new record)
   dragon_sad.png    wings folded, nose down  (game over)
-  source/dragon_rigged.glb  the rigged model with the flap as an animation
+  dragon_rigged.glb the rigged model the game draws live in 3D, with three
+                    animations: "flap" (a smooth FLAP_PERIOD loop), "happy"
+                    and "sad" (held poses, pitch included)
 and prints the opaque-bbox centres that MODE_DRAW_OFFSET_* in Main.gd need.
+The PNGs stay because the mode-select card, the popups and the share card
+still draw the sprite, and the game falls back to it if the model is missing.
 
 How the weights were found (2026-11-25): x-z occupancy maps of thin y slices
 showed each wing leaving the back just beside the spine, at about
@@ -32,7 +36,11 @@ DIR = os.path.join(ROOT, "assets", "characters", "dragon_green")
 SRC = os.path.join(DIR, "source", "emerald_emberwing_meshy.glb")
 
 FLAP_ANGLES = [0.0, 30.0, 60.0, 30.0]   # wing roll per frame, degrees outward-and-down
-HAPPY = {"wing": 45.0, "pitch": -8.0}   # pitch < 0 lifts the nose
+# The live 3D flap: up, down to FLAP_DOWN and back, once per FLAP_PERIOD — the
+# same cycle the four-frame sheet makes at the game's 8 fps.
+FLAP_PERIOD = 0.5
+FLAP_DOWN = 60.0
+HAPPY = {"wing": 35.0, "pitch": -8.0}   # pitch < 0 lifts the nose; 45 put a wing tip on the cell edge
 SAD = {"wing": 0.0, "pitch": 10.0}   # wings folded: drooping them at 75 put a tip past the tail and off the cell
 CELL = 256
 # Ortho width the 256px cell spans. The old 2D dragon filled about
@@ -78,8 +86,8 @@ scene.collection.objects.link(arm)
 bpy.context.view_layer.objects.active = arm
 bpy.ops.object.mode_set(mode='EDIT')
 body = arm_data.edit_bones.new("body")
-body.head = (0, 0.1, -0.2)
-body.tail = (0, -0.2, -0.2)
+body.head = (0, 0.0, -0.03)   # the model's middle: pitching about it keeps nose and tail in the cell
+body.tail = (0, -0.3, -0.03)
 for side, sx in (("L", -1), ("R", 1)):
 	b = arm_data.edit_bones.new("wing_" + side)
 	b.head = (sx * ROOT_FRONT.x, ROOT_FRONT.y, ROOT_FRONT.z)
@@ -199,18 +207,78 @@ for i, px in enumerate(frames):
 		sheet[dst:dst + CELL * 4] = px[src:src + CELL * 4]
 save_png(sheet, CELL * 2, CELL * 2, os.path.join(DIR, "dragon_fly.png"))
 
-# The rigged model with its flap, for any later 3D use.
-bpy.ops.object.mode_set(mode='OBJECT')
-bpy.ops.export_scene.gltf(filepath=os.path.join(DIR, "source", "dragon_rigged.glb"), export_animations=True)
-
 # ---- faces: a static pose each, the whole body pitched ----
+# The pitch goes on the body bone, not on the armature object: glTF exports
+# bone tracks but dropped the object's rotation, so the live model's faces
+# came out level. The wing bones are children of the body bone, so the
+# wings tilt with it.
 arm.animation_data_clear()
 bpy.ops.object.mode_set(mode='POSE')
+body_pb = arm.pose.bones["body"]
+body_pb.rotation_mode = 'XYZ'
+# Which way a positive roll about the bone's own X turns the nose. The bone
+# points nose-ward (-Y), so its tail rising means the nose rose.
+body_pb.rotation_euler = (math.radians(10), 0, 0)
+bpy.context.view_layer.update()
+_nose_rises = body_pb.tail.z > -0.03
+body_pb.rotation_euler = (0, 0, 0)
+bpy.context.view_layer.update()
+PITCH_SIGN = -1.0 if _nose_rises else 1.0   # pitch < 0 lifts the nose
+
+
+def pitch(deg, frame=None):
+	body_pb.rotation_euler = (math.radians(deg) * PITCH_SIGN, 0, 0)
+	if frame is not None:
+		body_pb.keyframe_insert("rotation_euler", frame=frame)
+
+
 for name, p in (("happy", HAPPY), ("sad", SAD)):
 	pose(p["wing"])
-	arm.rotation_euler = (math.radians(p["pitch"]), 0, 0)
+	pitch(p["pitch"])
 	px = render(name)
 	report(name, [bbox(px)])
 	save_png(px, CELL, CELL, os.path.join(DIR, "dragon_%s.png" % name))
-arm.rotation_euler = (0, 0, 0)
+pitch(0.0)
+
+# ---- the live 3D model: three named animations ----
+# Every action also keys the body bone's pitch, so switching from "sad" back
+# to "flap" levels the nose instead of keeping the last pitch.
+fps = scene.render.fps
+half = max(1, round(FLAP_PERIOD * fps / 2))
+
+
+def make_action(name, keys):
+	"""keys: (frame, wing degrees, pitch degrees)"""
+	arm.animation_data_clear()
+	arm.animation_data_create()
+	act = bpy.data.actions.new(name)
+	act.use_fake_user = True
+	arm.animation_data.action = act
+	for frame, wing, nose in keys:
+		pose(wing, frame)
+		pitch(nose, frame)
+	return act
+
+
+actions = [
+	make_action("flap", [(1, 0.0, 0.0), (1 + half, FLAP_DOWN, 0.0), (1 + 2 * half, 0.0, 0.0)]),
+	make_action("happy", [(1, HAPPY["wing"], HAPPY["pitch"])]),
+	make_action("sad", [(1, SAD["wing"], SAD["pitch"])]),
+]
+# One NLA track per action, exported as one glTF animation each. Blender 5's
+# 'ACTIONS' export mode wrote none of these (the actions sit unassigned in
+# their slots), and the game found no AnimationPlayer at all.
+arm.animation_data_clear()
+ad = arm.animation_data_create()
+for act in actions:
+	track = ad.nla_tracks.new()
+	track.name = act.name
+	strip = track.strips.new(act.name, 1, act)
+	if hasattr(strip, "action_slot") and act.slots:
+		strip.action_slot = act.slots[0]
+ad.action = None
+pitch(0.0)
+bpy.ops.object.mode_set(mode='OBJECT')
+bpy.ops.export_scene.gltf(filepath=os.path.join(DIR, "dragon_rigged.glb"),
+	export_animations=True, export_animation_mode='NLA_TRACKS')
 print("DONE")
