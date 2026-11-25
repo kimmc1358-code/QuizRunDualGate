@@ -48,7 +48,9 @@ CELL = 256
 # about 237px, so the character keeps its on-screen size, with a few pixels
 # to spare for the pitched faces (12 degrees of nose-down touched the edge).
 ORTHO = 1.06
-CAM_DIR = mathutils.Vector((-1.0, 0.18, 0.12)).normalized()  # from the left, a little ahead and above
+# Straight from the left, a pure side profile: the owner found the earlier
+# slightly-ahead-and-above angle read as the dragon being twisted (2026-11-25).
+CAM_DIR = mathutils.Vector((-1.0, 0.0, 0.0))
 CAM_TARGET = mathutils.Vector((0.0, -0.006, -0.03))
 
 ROOT_FRONT = mathutils.Vector((0.055, 0.02, -0.11))

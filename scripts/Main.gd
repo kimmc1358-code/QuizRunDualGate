@@ -187,11 +187,11 @@ const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 # (126.0, 124.0).
 # JUNGLE is the rigged 3D dragon (2026-11-25), rendered by
 # tools/rig_jungle_dragon.py, which prints these numbers: fly averages
-# (125.4, 126.5) over its four flap frames, happy (123.5, 129.5), sad
-# (124.0, 109.0). The sad pose is pitched nose-down, which lifts its centre.
-const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(1.0, 0.6), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
-const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(1.8, -0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
-const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(1.6, 7.4), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+# (126.0, 126.1) over its four flap frames, happy (128.5, 128.5), sad
+# (123.5, 110.0). The sad pose is pitched nose-down, which lifts its centre.
+const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(0.8, 0.7), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
+const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-0.2, -0.2), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(1.8, 7.0), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
 # Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
 # scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
 # Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
@@ -6285,7 +6285,7 @@ const CHAR3D_RESOLUTION := 256          # 스프라이트 한 칸과 같은 크�
 # tools/rig_jungle_dragon.py 의 ORTHO / CAM_DIR / CAM_TARGET 을 Godot 축으로 옮긴 값.
 # glTF 는 Y 가 위라 Blender 의 (x, y, z) 가 여기서 (x, z, -y) 가 된다.
 const CHAR3D_ORTHO := 1.06
-const CHAR3D_CAM_DIR := Vector3(-1.0, 0.12, -0.18)
+const CHAR3D_CAM_DIR := Vector3(-1.0, 0.0, 0.0)   # pure side profile, as the sprites
 const CHAR3D_TARGET := Vector3(0.0, -0.03, 0.006)
 const CHAR3D_AMBIENT := 0.9
 const CHAR3D_SUN_ENERGY := 1.6
