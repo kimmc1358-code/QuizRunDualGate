@@ -7,6 +7,7 @@ extends SceneTree
 # 게임의 실제 함수(_slider_input, _update_player_follow, _spawn_gate)만 부른다.
 #
 #   1. 화면은 가로다 — 기준 뷰포트가 세로보다 가로가 길고, keep_height 로 늘어난다.
+#      그리고 게임과 모드 선택 화면이 정글(연산) 모드로 시작한다.
 #   2. 슬라이더 범위 = 게이트 판에서 캐릭터 히트박스가 들어가는 구간.
 #   3. 왼쪽 끝 칸을 누르면 손잡이를 잡고, 그 손가락의 드래그만 따라간다.
 #      칸 밖을 누른 손가락, 다른 손가락은 무시한다. 터치를 흉내 낸 마우스
@@ -63,6 +64,12 @@ func _run() -> void:
 	_check(ProjectSettings.get_setting("display/window/stretch/aspect") == "keep_height",
 		"a longer phone gets more width, not more height (keep_height)")
 	var view := Vector2(w, h)
+	# 2.0 은 정글(연산) 모드로 시작한다 — 게임 쪽 기본값과 모드 선택 화면의
+	# 처음 고른 카드가 같아야 한다.
+	var ms = m.mode_select_panel
+	_check(m.current_mode == m.Mode.JUNGLE
+		and ms.CARD_MODES[ms.selected_index] == ms.MODE_JUNGLE,
+		"the game and the mode-select screen both open on JUNGLE")
 
 	m.call("_reset_game")
 	m.call("_apply_mode", 0)

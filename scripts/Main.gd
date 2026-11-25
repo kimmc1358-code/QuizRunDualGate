@@ -2465,7 +2465,10 @@ var last_quiz_key: String = ""
 # _ocean_gate_font_size. -1 = not computed yet.
 var ocean_gate_font_size: int = -1
 
-var current_mode: int = Mode.SKY  # picked at State.MODE_SELECT — see _apply_mode
+# picked at State.MODE_SELECT — see _apply_mode. 2.0 starts on JUNGLE (math):
+# the owner's call. Flags are the hardest quiz for a first run — a player can
+# only answer the flags they already know — while arithmetic can be worked out.
+var current_mode: int = Mode.JUNGLE
 var active_draw_offset_fly := Vector2.ZERO
 var active_draw_offset_happy := Vector2.ZERO
 var active_draw_offset_sad := Vector2.ZERO
@@ -2844,7 +2847,7 @@ func _boot_load() -> void:
 	_init_boost_speedlines(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
-	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
+	_apply_mode(current_mode)  # loads a valid default (JUNGLE) so nothing is empty before mode-select runs _apply_mode again
 	# 효과음과 음악을 따로 조절하려면 각자 버스를 타야 한다.
 	_setup_audio_buses()
 	fx_sound_whoosh = AudioStreamPlayer.new()

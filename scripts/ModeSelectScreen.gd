@@ -461,6 +461,9 @@ const TOP_MARGIN_FRAC := 0.035    # of screen height
 const BOTTOM_MARGIN_FRAC := 0.035
 const MAX_GAP_FRAC := 0.055       # cap, so a tall screen spreads rather than sprawls
 
+# The card selected when the screen opens. 2.0 starts on JUNGLE (math), the
+# same default as Main.current_mode — see the note there.
+const DEFAULT_MODE := MODE_JUNGLE
 var selected_index: int = 0
 
 var _background: TextureRect
@@ -554,7 +557,7 @@ func _ready() -> void:
 	# Straight to _select, not _on_card_pressed: this is the opening state,
 	# not a tap, and should not make a sound — and for the same reason it
 	# snaps to the selected size instead of growing into it.
-	_select(0, false)
+	_select(CARD_MODES.find(DEFAULT_MODE), false)
 	resized.connect(_layout)
 
 
