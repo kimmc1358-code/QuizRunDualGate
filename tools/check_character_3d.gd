@@ -54,6 +54,19 @@ func _run() -> void:
 	_check(m.char3d_viewport != null and _viewports(m) == 1, "JUNGLE has one character SubViewport")
 	var frame: Dictionary = m.call("_bird_draw_frame")
 	_check(frame.texture is ViewportTexture, "the character is drawn from that SubViewport, not a sprite")
+	# ---- 1b. 카툰 셰이더 ----
+	if m.CHAR3D_TOON:
+		var meshes: Array = m.char3d_viewport.find_children("*", "MeshInstance3D", true, false)
+		var toon_ok := not meshes.is_empty()
+		for mi: MeshInstance3D in meshes:
+			for s in mi.mesh.get_surface_count():
+				var mat := mi.get_surface_override_material(s) as ShaderMaterial
+				toon_ok = toon_ok and mat != null \
+					and mat.shader.resource_path == m.CHAR3D_TOON_SHADER \
+					and mat.get_shader_parameter("albedo_tex") is Texture2D \
+					and mat.next_pass is ShaderMaterial \
+					and mat.next_pass.shader.resource_path == m.CHAR3D_TOON_OUTLINE_SHADER
+		_check(toon_ok, "every surface wears the toon material, keeps its texture, and has the outline pass")
 	# ---- 2 ----
 	var ap: AnimationPlayer = m.char3d_anim
 	_check(ap != null, "the model has an AnimationPlayer")

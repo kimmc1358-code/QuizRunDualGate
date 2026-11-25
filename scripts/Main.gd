@@ -6290,6 +6290,15 @@ const CHAR3D_TARGET := Vector3(0.0, -0.03, 0.006)
 const CHAR3D_AMBIENT := 0.9
 const CHAR3D_SUN_ENERGY := 1.6
 const CHAR3D_BLEND := 0.15              # 날갯짓 <-> 기쁨/슬픔 자세 전환 시간(초)
+# 카툰 셰이더. 끄면 모델이 가져온 원래 재질(부드러운 명암)로 돌아간다 — 비교용.
+# 명암을 단계로 끊고(toon.gdshader) 어두운 외곽선을 두른다(toon_outline.gdshader).
+const CHAR3D_TOON := true
+const CHAR3D_TOON_SHADER := "res://assets/shaders/toon.gdshader"
+const CHAR3D_TOON_OUTLINE_SHADER := "res://assets/shaders/toon_outline.gdshader"
+# 셀 셰이딩에서는 그림자 쪽 밝기 = 환경광이다. 0.9 그대로면 해가 비추는 쪽과 거의
+# 차이가 없어 단계가 안 보인다.
+const CHAR3D_TOON_AMBIENT := 0.5
+const CHAR3D_TOON_SUN_ENERGY := 1.8
 
 var char3d_viewport: SubViewport
 var char3d_anim: AnimationPlayer
@@ -6319,7 +6328,7 @@ func _setup_character_3d(mode: int) -> void:
 	env.background_mode = Environment.BG_CLEAR_COLOR
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = CHAR3D_AMBIENT
+	env.ambient_light_energy = CHAR3D_TOON_AMBIENT if CHAR3D_TOON else CHAR3D_AMBIENT
 	var we := WorldEnvironment.new()
 	we.environment = env
 	vp.add_child(we)
@@ -6330,11 +6339,13 @@ func _setup_character_3d(mode: int) -> void:
 	cam.position = CHAR3D_TARGET + CHAR3D_CAM_DIR.normalized() * 3.0
 	cam.look_at_from_position(cam.position, CHAR3D_TARGET, Vector3.UP)
 	var sun := DirectionalLight3D.new()
-	sun.light_energy = CHAR3D_SUN_ENERGY
+	sun.light_energy = CHAR3D_TOON_SUN_ENERGY if CHAR3D_TOON else CHAR3D_SUN_ENERGY
 	vp.add_child(sun)
 	# 앞쪽 왼편 위에서 — 스프라이트를 찍을 때 Blender 해의 방향.
 	sun.look_at_from_position(Vector3(-1.0, 1.2, -0.8), Vector3.ZERO, Vector3.UP)
 	var model: Node = load(path).instantiate()
+	if CHAR3D_TOON:
+		_apply_toon(model)
 	vp.add_child(model)
 	add_child(vp)
 	var players := model.find_children("*", "AnimationPlayer", true, false)
@@ -6344,6 +6355,28 @@ func _setup_character_3d(mode: int) -> void:
 			char3d_anim.get_animation("flap").loop_mode = Animation.LOOP_LINEAR
 	char3d_viewport = vp
 	_update_character_3d()
+
+
+## 모델의 모든 면에 카툰 재질을 덮어씌운다. 원래 재질의 텍스처만 가져다 쓰므로
+## 모델을 바꿔도 셰이더 쪽은 손댈 것이 없다.
+func _apply_toon(model: Node) -> void:
+	var toon: Shader = load(CHAR3D_TOON_SHADER)
+	var outline: Shader = load(CHAR3D_TOON_OUTLINE_SHADER)
+	if toon == null or outline == null:
+		push_warning("toon shader missing — the 3D character keeps its own material")
+		return
+	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
+		for s in mi.mesh.get_surface_count():
+			var src := mi.get_active_material(s)
+			var tex: Texture2D = src.albedo_texture if src is BaseMaterial3D else null
+			var line := ShaderMaterial.new()
+			line.shader = outline
+			line.set_shader_parameter("albedo_tex", tex)
+			var mat := ShaderMaterial.new()
+			mat.shader = toon
+			mat.set_shader_parameter("albedo_tex", tex)
+			mat.next_pass = line
+			mi.set_surface_override_material(s, mat)
 
 
 ## 지금 보여야 할 자세로 애니메이션을 바꾼다. 스프라이트 쪽 _bird_draw_frame 과

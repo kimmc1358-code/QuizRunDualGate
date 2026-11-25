@@ -227,7 +227,7 @@ on failure.
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hearts.gd` | a run starts with `MAX_HEARTS`; a wrong gate and the wall each take one heart and the run goes on, with the combo broken and score and gates passed kept; after a gate hit the next gate is planned from where the character really is; the floor takes a heart and bounces the character up, is free while it blinks, and costs again after; the last heart sends the run to the revive offer; a revive and a new run refill the hearts; and the HUD hearts sit in the gate zone's top-left, clear of the combo readout | `MAX_HEARTS`, `HURT_*`/`HEART_*` constants, `_take_hit`/`_take_gate_hit`/`_update_hearts`, the floor branch of `_update_playing`, `_resolve_gate`'s failure paths, `_on_revive_continue`, `_reset_game`, or the combo readout's position |
 | `check_slider.gd` | the reference viewport is landscape with `keep_height`; the game and the mode-select screen both open on JUNGLE; the slider spans the gate field minus half the hitbox; pressing the left column grabs it, only that finger's drag moves it, a press elsewhere, another finger and touch-emulated mouse events are ignored, and pointing past the field stops at its edge; the character never moves faster than `PLAYER_MOVE_SPEED` and does arrive; and consecutive correct holes stay within boosted reach of that speed | `display/window/*` stretch or size, `SLIDER_*`, `PLAYER_MOVE_SPEED`/`PLAYER_FOLLOW_SHARPNESS`, `_slider_input`/`_update_player_follow`/`slider_range`, `_gate_field_top`/`_bottom`, the reach maths in `_spawn_gate`, `base_gate_spacing`, `GATE_SPEED`, `BOOST_BUTTON_MULTIPLIER`, or `Main.current_mode`/`ModeSelectScreen.DEFAULT_MODE` |
-| `check_character_3d.gd` | JUNGLE draws its character from one `SubViewport` (a `ViewportTexture`, not a sprite); the model carries `flap`, `happy` and `sad` and `flap` loops; the pose follows the game — flap when flying, happy right after a pass, back to flap, sad at game over; SKY, which has no model, draws its sprite with no viewport left behind; and switching modes back and forth leaves exactly one viewport | `MODE_CHARACTER_3D`, `CHAR3D_*`, `_setup_character_3d`/`_update_character_3d`, `_bird_draw_frame`, `_apply_mode`, or `tools/rig_jungle_dragon.py`'s export |
+| `check_character_3d.gd` | JUNGLE draws its character from one `SubViewport` (a `ViewportTexture`, not a sprite); with `CHAR3D_TOON` on, every surface wears the toon material with its own texture and the outline pass; the model carries `flap`, `happy` and `sad` and `flap` loops; the pose follows the game — flap when flying, happy right after a pass, back to flap, sad at game over; SKY, which has no model, draws its sprite with no viewport left behind; and switching modes back and forth leaves exactly one viewport | `MODE_CHARACTER_3D`, `CHAR3D_*`, `_apply_toon` or `assets/shaders/toon*`, `_setup_character_3d`/`_update_character_3d`, `_bird_draw_frame`, `_apply_mode`, or `tools/rig_jungle_dragon.py`'s export |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; the mode-select screen learns about it; and an old-rule save that had opened MIX stays open (and stays open on the next launch) while the same counts saved under the new rule stay locked | `HIDDEN_UNLOCK_GATES`, `HIDDEN_UNLOCK_GATES_LEGACY`, `gates_rule`/`hidden_unlocked`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
@@ -590,6 +590,26 @@ animations. Second, the faces' pitch is keyed on the body bone. A pitch on
 the armature object is dropped by glTF, so the live faces came out level.
 `check_character_3d.gd` guards both, along with the viewport's lifecycle
 across mode switches.
+
+**The live dragon is cel-shaded** (`CHAR3D_TOON`, on since 2026-11-25).
+`_apply_toon` replaces each surface's material with
+`assets/shaders/toon.gdshader`. That shader keeps the model's own texture but
+cuts the light into three bands plus a rim. Its `next_pass` is
+`toon_outline.gdshader`, an inverted hull whose line is the texture darkened.
+Smooth shading read as a 3D model pasted onto painted 2D; stepped bands match
+the hand-painted art around it.
+
+In toon mode the shadow side is lit by ambient light alone, so
+`CHAR3D_TOON_AMBIENT` (0.5, against 0.9 unshaded) sets how dark it is. The
+sun sits almost behind the camera, so the band thresholds are set high
+(0.1 / 0.6) to keep the steps visible at all.
+
+Set `CHAR3D_TOON` false to compare with the original material. The PNG
+sprites (cards, popups, share card) are not toon-shaded.
+
+Under `--headless` the dummy renderer prints `Parameter "material" is null`
+for the outline pass. The real renderer does not, and the checker still
+passes.
 
 Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
 unconverted wav still plays and dropping the ogg beside it switches over).
