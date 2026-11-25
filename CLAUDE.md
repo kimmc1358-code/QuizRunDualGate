@@ -555,6 +555,21 @@ which takes a cell grid, drops fully transparent cells and rebuilds each
 cell's mipmaps. A regular grid needs no detection, so there is nothing for a
 tool to measure and nothing to commit twice.
 
+**The JUNGLE dragon is rendered from a 3D model** (since 2026-11-25), because
+AI image generation could not hold one character steady across frames. The
+source is a Meshy model with no rig, kept in
+`assets/characters/dragon_green/source/` behind a `.gdignore`. Its fly
+sheet and both faces are written by `tools/rig_jungle_dragon.py`, a Blender
+script (`blender -b --python tools/rig_jungle_dragon.py -- <repo>`). It
+weights the wings by position, rolls them about their measured root lines,
+renders the four flap frames into the 2x2 sheet and poses the two faces.
+The happy face spreads the wings and lifts the nose; the sad face folds the
+wings and lowers the nose. The model's own expression cannot change. The
+script prints the bbox centres for `MODE_DRAW_OFFSET_*`, so re-run it and
+copy those numbers rather than editing the PNGs. The first rig hinged the
+wings halfway up and its head mask caught the horns. The docstring records
+how the root line was measured instead.
+
 Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
 unconverted wav still plays and dropping the ogg beside it switches over).
 Tracks arrive as wav and are converted once, at the 160k the existing tracks

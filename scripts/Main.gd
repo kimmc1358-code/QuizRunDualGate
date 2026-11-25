@@ -185,9 +185,13 @@ const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 # the 5 frames' own centers drift 3.5x6.0px, a run cycle's natural bob, well
 # under JUNGLE's 16.5px and not worth flattening — and both faces sit at
 # (126.0, 124.0).
-const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
-const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
-const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+# JUNGLE is the rigged 3D dragon (2026-11-25), rendered by
+# tools/rig_jungle_dragon.py, which prints these numbers: fly averages
+# (125.4, 126.5) over its four flap frames, happy (123.5, 129.5), sad
+# (123.0, 108.5). The sad pose is pitched nose-down, which lifts its centre.
+const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(1.0, 0.6), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
+const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(1.8, -0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(2.0, 7.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
 # Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
 # scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
 # Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
