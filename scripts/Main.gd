@@ -276,7 +276,12 @@ const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallb
 # the drawn rect IS what you see. _score_box_rect/_quiz_box_rect are the only
 # places that turn any of this into screen rects, and _gate_zone_top starts
 # the gate zone at the quiz box's bottom edge.
-const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
+# 2.0 은 가로 화면(854x480 기준)이라 세로 공간이 귀하다. 버튼·점수판·문제 상자를
+# 한 줄에 놓는다 — 세로 화면처럼 점수판 아래 문제 상자를 쌓으면 레인 두 개가
+# 들어갈 높이가 안 남는다.
+const HUD_SCORE_ROW_WIDTH := 400.0   # 버튼·점수판 크기를 정하는 가상의 줄 폭
+const QUIZ_BOX_HEIGHT_TO_SCORE := 1.15
+const SCORE_BOX_TOP := 8.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
@@ -3982,9 +3987,13 @@ func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if state != State.PLAYING and state != State.SPLASH:
-		return
 	if paused:
+		return
+	# 카운트다운 동안에도 손잡이는 잡을 수 있다 — 시작 위치를 미리 정하게.
+	if state == State.PLAYING or state == State.COUNTDOWN:
+		_slider_input(event)
+		return
+	if state != State.SPLASH:
 		return
 	var tapped := false
 	if event is InputEventScreenTouch and event.pressed:
@@ -4011,11 +4020,6 @@ func _unhandled_input(event: InputEvent) -> void:
 				fx_sound_splash_start.play()
 			splash_exit_elapsed = 0.0
 		return
-	if tapped:
-		player_vel = flap_velocity
-		_spawn_trail_burst()
-		if fx_sound_flap.stream != null:
-			fx_sound_flap.play()
 
 
 func _process(delta: float) -> void:
@@ -4162,21 +4166,9 @@ func _boost_bg_multiplier() -> float:
 func _update_playing(delta: float) -> void:
 	var view_size := get_viewport_rect().size
 
-	player_vel = min(player_vel + gravity * delta, max_fall_speed)
-	player_y += player_vel * delta
-	var half_h := PLAYER_SIZE.y * 0.5
-	var zone_top := _gate_zone_top(view_size)
-	var zone_bottom := _gate_zone_bottom(view_size)
-	if player_y - half_h < zone_top:
-		player_y = zone_top + half_h
-		player_vel = 0.0
-	elif player_y + half_h > zone_bottom:
-		player_y = zone_bottom - half_h
-		player_vel = 0.0
-		# 무적 중이면 하트 없이 튀어 오르기만 한다 — HURT_INVULN_DURATION 참고.
-		if hurt_elapsed < 0.0 and not _take_hit():
-			return
-		player_vel = flap_velocity
+	# 2.0: 중력도 바닥도 없다. 캐릭터는 슬라이더 손잡이를 쫓고, 판 밖으로는
+	# 못 나간다 — _update_player_follow.
+	_update_player_follow(delta)
 	_update_hearts(delta)
 
 	if gate_speed_boost_elapsed >= 0.0:
@@ -4358,13 +4350,9 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# 중 상승 가능 거리 294px 대 배치 상한 427px — 아무리 두드려도 못 닿는
 	# 윗레인 갈아타기가 실제로 나올 수 있었다.
 	var available_time: float = base_gate_spacing / (GATE_SPEED * BOOST_BUTTON_MULTIPLIER)
-	# flap_velocity 는 탭 한 번이 속도를 덮어쓰는 값, 즉 순간 속도지 유지되는
-	# 상승률이 아니다. 여기에 그대로 쓰는 것은 간격 0 의 무한 연타를 가정하는
-	# 것과 같았다 — 실제 유지 상승률은 reach_tap_interval 의 표를 볼 것.
-	# 내려가는 쪽은 max_fall_speed 가 정말로 유지되는 속도라 그대로 맞다.
-	var climb_rate: float = maxf(0.0, absf(flap_velocity) - gravity * reach_tap_interval * 0.5)
-	var up_reach: float = available_time * climb_rate * REACH_SAFETY_FACTOR
-	var down_reach: float = available_time * max_fall_speed * REACH_SAFETY_FACTOR
+	# 2.0 의 슬라이더는 위아래가 같은 속도 상한(PLAYER_MOVE_SPEED)을 가진다.
+	var up_reach: float = available_time * PLAYER_MOVE_SPEED * REACH_SAFETY_FACTOR
+	var down_reach: float = up_reach
 
 	# On top of raw physics reachability, cap consecutive-target movement to
 	# a fraction of full screen height so "top then straight to bottom"
@@ -5177,10 +5165,13 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 # 가속 버튼 자리. 버튼을 놓는 쪽과 튜토리얼이 밝히는 쪽이 같은 답을 봐야 해서
 # 함수로 둔다 — 노드의 현재 위치를 읽으면 화면 크기를 넣어 계산하는 쪽과
 # 어긋난다.
+#
+# 2.0 은 왼쪽 끝이 슬라이더 자리라 가속 버튼은 늘 오른쪽이다. 1.x 의 좌우 선택
+# (boost_button_on_left)은 설정 화면을 2.0 에 맞게 다시 만들 때 정리한다.
 func _boost_button_rect(view_size: Vector2) -> Rect2:
 	var s := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
 	return Rect2(Vector2(
-		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - s.x,
+		view_size.x - BOOST_BUTTON_MARGIN - s.x,
 		view_size.y - BOOST_BUTTON_MARGIN - s.y), s)
 
 
@@ -6265,6 +6256,115 @@ func _save_best_score(mode: int) -> void:
 
 
 # ============================================================
+# 세로 슬라이더 (2.0).
+#
+# 1.x 의 날갯짓(탭하면 튀어 오르고 중력에 떨어짐)을 버리고, 화면 왼쪽 끝 세로
+# 슬라이더의 손잡이 높이가 곧 캐릭터 높이가 된다. 1.x 에서 테스터들이 한결같이
+# 어렵다고 한 것이 "조작과 퀴즈를 동시에 맞혀야 하는" 부담이었고, 탭 물리는 그
+# 조작 쪽의 대부분이었다. 슬라이더는 원하는 높이를 바로 가리킬 수 있어 퀴즈에
+# 집중하게 한다.
+#
+# 왼손 엄지가 왼쪽 끝 슬라이더를, 오른손이 오른쪽 아래 가속 버튼을 맡는다.
+# 트랙은 게이트 판의 위아래 끝과 정확히 같은 구간이라 손잡이 위치 = 캐릭터 높이다.
+#
+# 캐릭터는 손잡이를 순간이동으로 따라가지 않는다 — PLAYER_MOVE_SPEED 로 상한을
+# 둔 채 부드럽게 쫓는다. 상한이 없으면 레인 바꾸기에 걸리는 시간이 0 이 되어
+# 게이트 배치의 "닿을 수 있는 거리"가 의미를 잃고, 구멍 맞추기가 너무 쉬워진다.
+const SLIDER_X := 36.0
+const SLIDER_TRACK_WIDTH := 14.0
+const SLIDER_THUMB_RADIUS := 22.0
+# 이 폭 안을 누르면 슬라이더를 잡는다. 트랙보다 넓게 — 엄지는 정확하지 않다.
+const SLIDER_TOUCH_WIDTH := 110.0
+const SLIDER_TRACK_COLOR := Color(0.06, 0.10, 0.22, 0.45)
+const SLIDER_TRACK_EDGE := Color(1.0, 1.0, 1.0, 0.55)
+const SLIDER_THUMB_COLOR := Color(1.0, 0.85, 0.30, 1.0)
+const SLIDER_THUMB_EDGE := Color(0.06, 0.10, 0.22, 1.0)
+const PLAYER_MOVE_SPEED := 900.0       # 캐릭터의 세로 이동 속도 상한, px/s
+const PLAYER_FOLLOW_SHARPNESS := 14.0  # 손잡이를 쫓는 빠르기(지수 감쇠)
+const KEY_SLIDE_SPEED := 600.0         # PC 개발용 위/아래 키
+
+var slider_target_y: float = -1.0
+var _slider_touch_index: int = SLIDER_NO_TOUCH
+const SLIDER_NO_TOUCH := -2
+const SLIDER_MOUSE := -1
+
+
+## 손잡이가 움직일 수 있는 범위 — 캐릭터 히트박스가 게이트 판 안에 머무는 구간.
+func slider_range(view_size: Vector2) -> Vector2:
+	var half: float = PLAYER_SIZE.y * 0.5
+	return Vector2(_gate_field_top(view_size) + half, _gate_field_bottom(view_size) - half)
+
+
+func _slider_set_target(screen_y: float) -> void:
+	var r: Vector2 = slider_range(get_viewport_rect().size)
+	slider_target_y = clampf(screen_y, r.x, r.y)
+
+
+## 슬라이더 입력이면 처리하고 true. 마우스 이벤트는 터치를 흉내 낸 것(device -1)이면
+## 무시한다 — 안 그러면 휴대폰에서 한 번의 터치가 두 번 처리된다.
+func _slider_input(event: InputEvent) -> bool:
+	if event is InputEventScreenTouch:
+		if event.pressed and event.position.x <= SLIDER_TOUCH_WIDTH:
+			_slider_touch_index = event.index
+			_slider_set_target(event.position.y)
+			return true
+		if not event.pressed and event.index == _slider_touch_index:
+			_slider_touch_index = SLIDER_NO_TOUCH
+			return true
+	elif event is InputEventScreenDrag:
+		if event.index == _slider_touch_index:
+			_slider_set_target(event.position.y)
+			return true
+	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION \
+			and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed and event.position.x <= SLIDER_TOUCH_WIDTH:
+			_slider_touch_index = SLIDER_MOUSE
+			_slider_set_target(event.position.y)
+			return true
+		if not event.pressed and _slider_touch_index == SLIDER_MOUSE:
+			_slider_touch_index = SLIDER_NO_TOUCH
+			return true
+	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
+		if _slider_touch_index == SLIDER_MOUSE:
+			_slider_set_target(event.position.y)
+			return true
+	return false
+
+
+## 캐릭터가 손잡이를 쫓는다. player_vel 은 트레일이 기울기를 읽으므로 실제 이동량으로 둔다.
+func _update_player_follow(delta: float) -> void:
+	var view := get_viewport_rect().size
+	var keys := Input.get_axis("ui_up", "ui_down")
+	if keys != 0.0:
+		_slider_set_target(slider_target_y + keys * KEY_SLIDE_SPEED * delta)
+	var r: Vector2 = slider_range(view)
+	if slider_target_y < 0.0:
+		slider_target_y = clampf(player_y, r.x, r.y)
+	var before: float = player_y
+	var want: float = lerpf(player_y, slider_target_y, 1.0 - exp(-PLAYER_FOLLOW_SHARPNESS * delta))
+	var step_max: float = PLAYER_MOVE_SPEED * delta
+	player_y = clampf(before + clampf(want - before, -step_max, step_max), r.x, r.y)
+	player_vel = (player_y - before) / delta if delta > 0.0 else 0.0
+
+
+func _draw_slider(ci: CanvasItem, view_size: Vector2) -> void:
+	var r: Vector2 = slider_range(view_size)
+	var track := Rect2(SLIDER_X - SLIDER_TRACK_WIDTH * 0.5, r.x - SLIDER_THUMB_RADIUS * 0.5,
+		SLIDER_TRACK_WIDTH, r.y - r.x + SLIDER_THUMB_RADIUS)
+	var box := StyleBoxFlat.new()
+	box.bg_color = SLIDER_TRACK_COLOR
+	box.border_color = SLIDER_TRACK_EDGE
+	box.set_border_width_all(2)
+	box.set_corner_radius_all(int(SLIDER_TRACK_WIDTH * 0.5))
+	box.anti_aliasing = true
+	ci.draw_style_box(box, track)
+	var y: float = slider_target_y if slider_target_y >= 0.0 else player_y
+	var c := Vector2(SLIDER_X, clampf(y, r.x, r.y))
+	ci.draw_circle(c, SLIDER_THUMB_RADIUS, SLIDER_THUMB_EDGE)
+	ci.draw_circle(c, SLIDER_THUMB_RADIUS - 3.0, SLIDER_THUMB_COLOR)
+
+
+# ============================================================
 # 하트 (2.0).
 #
 # 1.x 는 한 번 틀리면 끝이었다. 첫 28일 데이터에서 1인당 판이 8개 남짓, 하루 뒤
@@ -6353,7 +6453,8 @@ func _hurt_blink_alpha() -> float:
 ## i 번째 하트 칸의 화면 사각형. 그리기와 체커가 함께 쓴다.
 func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
 	var top: float = _gate_zone_top(view_size) + HEART_HUD_MARGIN.y
-	var x: float = HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
+	# 2.0: 왼쪽 끝은 슬라이더 자리라 그 오른쪽부터 놓는다.
+	var x: float = SLIDER_X + SLIDER_THUMB_RADIUS + HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
 	return Rect2(x, top, HEART_HUD_SIZE, HEART_HUD_SIZE)
 
 
@@ -7792,11 +7893,20 @@ func _hud_button_mult() -> float:
 # fill the screen width inside the margins. Everything in the row is sized
 # from this, so enlarging the buttons automatically takes width back off the
 # score box instead of overflowing the screen.
-func _hud_row_scale(view_size: Vector2) -> float:
+func _hud_row_scale(_view_size: Vector2) -> float:
 	var score_src := SCORE_BOX_SRC
 	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
-	var available: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
+	# 2.0 은 가로 화면이다. 화면 폭에 맞추면 줄 높이가 폭을 따라 커져 레인을
+	# 잡아먹으므로, 버튼·점수판은 HUD_SCORE_ROW_WIDTH 폭의 줄인 것처럼 크기를
+	# 정하고 남는 폭은 문제 상자가 가져간다(_quiz_box_rect).
+	var available: float = HUD_SCORE_ROW_WIDTH - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
 	return available / (score_src.x + button_src.x * 2.0 * _hud_button_mult())
+
+
+# 버튼 한 개의 크기. 버튼 배치와 점수판·문제 상자 배치가 함께 쓴다.
+func _hud_button_size(view_size: Vector2) -> Vector2:
+	return _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC) \
+		* _hud_row_scale(view_size) * _hud_button_mult()
 
 
 # Screen rect of the score box art. The art is cropped tight to its frame, so
@@ -7809,7 +7919,9 @@ func _score_box_rect(view_size: Vector2) -> Rect2:
 	# 높이는 버튼과 같은 식으로 뽑는다(HUD_BUTTON_EXTRA 한 번 더). 그래야
 	# 세 조각의 위/아래 테두리가 한 줄에 딱 맞는다.
 	var draw_size := Vector2(src.x * SCORE_BOX_WIDTH_TRIM, src.y * HUD_BUTTON_EXTRA) * _hud_row_scale(view_size)
-	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, SCORE_BOX_TOP), draw_size)
+	# 가로 화면: 일시정지 버튼 바로 오른쪽, 한 줄의 왼쪽.
+	var left: float = HUD_ROW_SIDE_MARGIN + _hud_button_size(view_size).x + HUD_ROW_GAP
+	return Rect2(Vector2(left, SCORE_BOX_TOP), draw_size)
 
 
 # Screen rect of the quiz box art, parked directly under the score box. It
@@ -7822,11 +7934,13 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 	# 화면 폭을 채우면 박스 높이가 146px이 되어 레인이 10% 짧아진다.
 	# 좌우 끝만 남기고 가운데를 늘리는 방식(_draw_horizontal_slice)으로
 	# 그리므로 아트 비율에 맞출 이유가 없다.
-	var src := QUIZ_BOX_SRC
-	var width: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0
-	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
-	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
-	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
+	# 가로 화면: 점수판과 같은 줄, 점수판 오른쪽부터 음소거 버튼 왼쪽까지.
+	# 높이는 점수판보다 조금 크게 — 문제가 이 화면에서 가장 중요한 글자다.
+	var score := _score_box_rect(view_size)
+	var button := _hud_button_size(view_size)
+	var left: float = score.end.x + QUIZ_BOX_GAP
+	var right: float = view_size.x - HUD_ROW_SIDE_MARGIN - button.x - QUIZ_BOX_GAP
+	return Rect2(Vector2(left, SCORE_BOX_TOP), Vector2(maxf(right - left, 1.0), score.size.y * QUIZ_BOX_HEIGHT_TO_SCORE))
 
 
 # Sizes and parks the pause/mute buttons off the score box, so the three of
@@ -7835,7 +7949,7 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 func _layout_hud_buttons() -> void:
 	var view_size := get_viewport_rect().size
 	var box := _score_box_rect(view_size)
-	var size: Vector2 = _hud_src(pause_button.icon, HUD_BUTTON_SRC) * _hud_row_scale(view_size) * _hud_button_mult()
+	var size: Vector2 = _hud_button_size(view_size)
 	# Bottom edge of the score box's painted art, then hang the buttons so
 	# their own painted bottoms land on the same line.
 	var score_art_bottom: float = box.position.y + box.size.y * MODE_SCORE_BOX_ART_BOTTOM_FRAC[current_mode]
@@ -7864,6 +7978,7 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 		_draw_quiz_box(view_size, ci)
 		_draw_boost_bar(ci, view_size)
 		_draw_hearts(ci, view_size)
+		_draw_slider(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
 
