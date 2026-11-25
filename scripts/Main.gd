@@ -4110,6 +4110,7 @@ func _process(delta: float) -> void:
 			flap_timer -= FLAP_FRAME_DURATION
 			flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
 		_update_character_3d()
+		_update_character_3d_motion(delta)
 	queue_redraw()
 	if hud_canvas != null:
 		hud_canvas.queue_redraw()
@@ -5267,6 +5268,7 @@ func _play_gate_success_fx(g: Dictionary, in_top: bool) -> void:
 	g["fx_flash_side"] = "top" if in_top else "bottom"
 	g["fx_flash_elapsed"] = 0.0
 	happy_flap_elapsed = 0.0
+	_char3d_start_roll()
 
 	var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
 	var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
@@ -6287,12 +6289,34 @@ const CHAR3D_RESOLUTION := 256          # 스프라이트 한 칸과 같은 크�
 const CHAR3D_ORTHO := 1.06
 const CHAR3D_CAM_DIR := Vector3(-1.0, 0.0, 0.0)   # pure side profile, as the sprites
 const CHAR3D_TARGET := Vector3(0.0, -0.03, 0.006)
-const CHAR3D_AMBIENT := 0.9
-const CHAR3D_SUN_ENERGY := 1.6
+# 조명. 처음엔 스프라이트를 찍던 대로 해를 카메라 쪽에 두고 환경광을 0.9 로
+# 했는데, 정면광은 면이 돌아가도 밝기가 거의 안 바뀌어 모델이 납작한 그림으로
+# 읽혔다. 주광은 위·앞(코 쪽)에서 비스듬히 비추고, 반대편 뒤에서 테두리 빛을
+# 하나 더 넣어 실루엣을 띄운다. 환경광을 낮춰야 그 둘이 만든 명암이 남는다.
+const CHAR3D_AMBIENT := 0.55
+const CHAR3D_SUN_ENERGY := 1.7
+const CHAR3D_SUN_FROM := Vector3(-0.45, 1.0, 0.8)    # 카메라 쪽 약간, 위, 코 앞
+const CHAR3D_RIM_ENERGY := 1.4
+const CHAR3D_RIM_FROM := Vector3(1.0, 0.5, -0.5)     # 카메라 반대편, 꼬리 뒤
 const CHAR3D_BLEND := 0.15              # 날갯짓 <-> 기쁨/슬픔 자세 전환 시간(초)
+
+# 움직임에 따라 몸을 기울인다. 정면 옆모습 그대로 위아래로 미끄러지기만 하면
+# 스프라이트와 구별이 안 된다 — 몸이 돌아가며 보이는 면이 바뀌어야 입체로 읽힌다.
+# 올라가면 고개를 들고 배를 살짝 보이고, 내려가면 숙인다. 가만히 있으면 옆모습.
+const CHAR3D_PITCH_MAX_DEG := 16.0
+const CHAR3D_BANK_MAX_DEG := 14.0
+# 이 속도(px/s)에서 최대로 기운다. PLAYER_MOVE_SPEED 전부를 써야 끝까지 기울면
+# 레인을 바꿀 때 거의 기울지 않는다.
+const CHAR3D_TILT_FULL_SPEED := 520.0
+const CHAR3D_TILT_SHARPNESS := 9.0      # 기울기가 속도를 쫓는 빠르기(지수 감쇠)
+# 정답 통과와 부스트에 배럴롤 한 바퀴. 스프라이트로는 그릴 수 없는 장면이라
+# "3D 다"가 가장 분명히 보이는 순간이고, 통과의 손맛도 된다.
+const CHAR3D_ROLL_TIME := 0.55
 # 카툰 셰이더. 끄면 모델이 가져온 원래 재질(부드러운 명암)로 돌아간다 — 비교용.
 # 명암을 단계로 끊고(toon.gdshader) 어두운 외곽선을 두른다(toon_outline.gdshader).
-const CHAR3D_TOON := true
+# 꺼 둔 이유: 셀 셰이딩은 3D 를 2D 그림처럼 보이게 하는 기법이라, 3D 로 바꾼
+# 의미를 오히려 지웠다(2026-11-25).
+const CHAR3D_TOON := false
 const CHAR3D_TOON_SHADER := "res://assets/shaders/toon.gdshader"
 const CHAR3D_TOON_OUTLINE_SHADER := "res://assets/shaders/toon_outline.gdshader"
 # 셀 셰이딩에서는 그림자 쪽 밝기 = 환경광이다. 0.9 그대로면 해가 비추는 쪽과 거의
@@ -6303,6 +6327,10 @@ const CHAR3D_TOON_SUN_ENERGY := 1.8
 var char3d_viewport: SubViewport
 var char3d_anim: AnimationPlayer
 var char3d_pose := ""
+var char3d_pivot: Node3D                # 모델 중심에서 도는 손잡이
+var char3d_prev_y := NAN
+var char3d_vy := 0.0                    # 부드럽게 한 세로 속도(px/s, 아래가 +)
+var char3d_roll_t := -1.0               # 배럴롤 경과 시간, 음수면 안 도는 중
 
 
 func _setup_character_3d(mode: int) -> void:
@@ -6314,6 +6342,10 @@ func _setup_character_3d(mode: int) -> void:
 		char3d_viewport = null
 		char3d_anim = null
 		char3d_pose = ""
+		char3d_pivot = null
+	char3d_prev_y = NAN
+	char3d_vy = 0.0
+	char3d_roll_t = -1.0
 	var path: String = MODE_CHARACTER_3D[mode] if mode < MODE_CHARACTER_3D.size() else ""
 	if path == "" or not ResourceLoader.exists(path):
 		return
@@ -6341,12 +6373,23 @@ func _setup_character_3d(mode: int) -> void:
 	var sun := DirectionalLight3D.new()
 	sun.light_energy = CHAR3D_TOON_SUN_ENERGY if CHAR3D_TOON else CHAR3D_SUN_ENERGY
 	vp.add_child(sun)
-	# 앞쪽 왼편 위에서 — 스프라이트를 찍을 때 Blender 해의 방향.
-	sun.look_at_from_position(Vector3(-1.0, 1.2, -0.8), Vector3.ZERO, Vector3.UP)
-	var model: Node = load(path).instantiate()
+	sun.look_at_from_position(CHAR3D_SUN_FROM, Vector3.ZERO, Vector3.UP)
+	var rim := DirectionalLight3D.new()
+	rim.light_energy = CHAR3D_RIM_ENERGY
+	vp.add_child(rim)
+	rim.look_at_from_position(CHAR3D_RIM_FROM, Vector3.ZERO, Vector3.UP)
+	var model: Node3D = load(path).instantiate()
 	if CHAR3D_TOON:
 		_apply_toon(model)
-	vp.add_child(model)
+	# 모델 원점이 아니라 화면 가운데(CHAR3D_TARGET)를 축으로 돌려야 기울거나
+	# 구를 때 칸 밖으로 밀려나지 않는다.
+	var pivot := Node3D.new()
+	pivot.name = "Pivot"
+	pivot.position = CHAR3D_TARGET
+	vp.add_child(pivot)
+	model.position = -CHAR3D_TARGET
+	pivot.add_child(model)
+	char3d_pivot = pivot
 	add_child(vp)
 	var players := model.find_children("*", "AnimationPlayer", true, false)
 	if not players.is_empty():
@@ -6393,6 +6436,41 @@ func _update_character_3d() -> void:
 		return
 	char3d_pose = want
 	char3d_anim.play(want, CHAR3D_BLEND)
+
+
+## 배럴롤을 시작한다. 이미 도는 중이면 무시한다 — 도중에 처음부터 다시 돌면
+## 한 바퀴가 튀어 보인다.
+func _char3d_start_roll() -> void:
+	if char3d_pivot != null and char3d_roll_t < 0.0:
+		char3d_roll_t = 0.0
+
+
+## 몸의 기울기와 배럴롤. 판정·물리에는 아무 영향이 없다 — 3D 화면 안의 모델만 돈다.
+##
+## 축: 카메라가 +x 를 보고 있어 화면 오른쪽이 +z(코), 위가 +y 다. 고개 들기는
+## x 축 회전, 몸통 축으로 구르기는 z 축 회전이다. Node3D 의 오일러 순서(YXZ)상
+## z 가 먼저 적용되므로, 구르기는 기울어진 몸통 축을 따라 돈다.
+func _update_character_3d_motion(delta: float) -> void:
+	if char3d_pivot == null or delta <= 0.0:
+		return
+	var vy := 0.0
+	if state == State.PLAYING and not is_nan(char3d_prev_y):
+		vy = (player_y - char3d_prev_y) / delta
+	char3d_prev_y = player_y
+	char3d_vy = lerpf(char3d_vy, vy, 1.0 - exp(-CHAR3D_TILT_SHARPNESS * delta))
+	var t := clampf(char3d_vy / CHAR3D_TILT_FULL_SPEED, -1.0, 1.0)   # 위로 가면 음수
+	var roll := 0.0
+	if char3d_roll_t >= 0.0:
+		char3d_roll_t += delta
+		var k := clampf(char3d_roll_t / CHAR3D_ROLL_TIME, 0.0, 1.0)
+		roll = TAU * (k * k * (3.0 - 2.0 * k))   # 천천히 시작해 천천히 멈춘다
+		if k >= 1.0:
+			char3d_roll_t = -1.0
+			roll = 0.0
+	char3d_pivot.rotation = Vector3(
+		t * deg_to_rad(CHAR3D_PITCH_MAX_DEG),
+		0.0,
+		t * deg_to_rad(CHAR3D_BANK_MAX_DEG) + roll)
 
 
 # ============================================================
@@ -7660,6 +7738,8 @@ func _on_boost_pressed() -> void:
 	# 맞다 — 앞선 재생의 꼬리에 삼켜지면 두 번째 누름이 무음이 된다.
 	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
 		fx_sound_boost_start.play()
+	if state == State.PLAYING:
+		_char3d_start_roll()
 
 
 func _on_boost_released() -> void:

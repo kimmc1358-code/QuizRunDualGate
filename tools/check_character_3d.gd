@@ -90,6 +90,47 @@ func _run() -> void:
 	m.state = m.State.GAMEOVER
 	m.call("_update_character_3d")
 	_check(m.char3d_pose == "sad", "game over plays sad")
+	# ---- 3b. 기울기와 배럴롤 ----
+	# 축은 Main.gd 의 _update_character_3d_motion 주석대로: 위로 가면 x 회전이
+	# 음수(고개를 든다), 가만히 있으면 옆모습(0)으로 돌아온다.
+	var pv: Node3D = m.char3d_pivot
+	_check(pv != null and m.char3d_viewport.is_ancestor_of(pv), "the model hangs from a pivot inside the viewport")
+	if pv != null:
+		m.state = m.State.PLAYING
+		var dt := 1.0 / 60.0
+		m.char3d_prev_y = m.player_y
+		for k in 60:
+			m.player_y -= 700.0 * dt
+			m.call("_update_character_3d_motion", dt)
+		var up_pitch := pv.rotation.x
+		_check(up_pitch < -deg_to_rad(10.0) and up_pitch >= -deg_to_rad(m.CHAR3D_PITCH_MAX_DEG) - 0.001,
+			"climbing lifts the nose, no further than CHAR3D_PITCH_MAX_DEG (%.1f deg)" % rad_to_deg(up_pitch))
+		for k in 60:
+			m.player_y += 700.0 * dt
+			m.call("_update_character_3d_motion", dt)
+		_check(pv.rotation.x > deg_to_rad(10.0), "diving lowers it (%.1f deg)" % rad_to_deg(pv.rotation.x))
+		for k in 120:
+			m.call("_update_character_3d_motion", dt)
+		_check(pv.rotation.length() < deg_to_rad(1.0), "holding still settles back to the side profile")
+		# 부스트 버튼을 실제로 누르지는 않는다 — 효과음이 재생 중인 채 quit 하면
+		# 종료 때 가끔 누수 경고가 난다. 누름이 롤을 부르는지는 아래에서 소스로 본다.
+		m.call("_char3d_start_roll")
+		_check(m.char3d_roll_t >= 0.0, "_char3d_start_roll starts a barrel roll")
+		var max_roll := 0.0
+		var t := 0.0
+		while m.char3d_roll_t >= 0.0 and t < 2.0:
+			m.call("_update_character_3d_motion", dt)
+			max_roll = maxf(max_roll, pv.rotation.z)
+			t += dt
+		_check(max_roll > PI and pv.rotation.length() < deg_to_rad(1.0),
+			"the roll goes all the way round and lands level (%.2f s)" % t)
+		_check(absf(t - m.CHAR3D_ROLL_TIME) < 0.05, "and takes CHAR3D_ROLL_TIME")
+		var src: String = FileAccess.get_file_as_string("res://scripts/Main.gd")
+		for fn in ["_play_gate_success_fx", "_on_boost_pressed"]:
+			var at := src.find("func %s(" % fn)
+			var hit := src.find("_char3d_start_roll()", at)
+			_check(at >= 0 and hit >= 0 and hit < src.find("\nfunc ", at + 5),
+				"%s starts the roll" % fn)
 	m.state = m.State.MODE_SELECT
 	# ---- 4 ----
 	m.call("_apply_mode", m.Mode.SKY)
