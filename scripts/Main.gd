@@ -2840,6 +2840,12 @@ func _boot_load() -> void:
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
 	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
+	# 2.0 우주 게임. 판(점수·하트·콤보·팝업)은 Main 이, 3D 세계와 닿음 판정은
+	# SpaceRun 이 맡는다 — scripts/SpaceRun.gd 머리말.
+	space = SpaceRun.new()
+	space.name = "SpaceRun"
+	add_child(space)
+	space.setup(self, view_size)
 	# 효과음과 음악을 따로 조절하려면 각자 버스를 타야 한다.
 	_setup_audio_buses()
 	fx_sound_whoosh = AudioStreamPlayer.new()
@@ -3982,6 +3988,11 @@ func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# 우주 게임에서는 탭이 아니라 끌기로 조종한다. 카운트다운 동안에도 받아
+	# 시작 전에 자리를 잡을 수 있게 한다.
+	if space != null and not paused and (state == State.PLAYING or state == State.COUNTDOWN):
+		space.handle_input(event)
+		return
 	if state != State.PLAYING and state != State.SPLASH:
 		return
 	if paused:
@@ -4068,7 +4079,7 @@ func _process(delta: float) -> void:
 	_update_mute_button_visibility()
 	# Only while actually flying — during the countdown the world is not
 	# scrolling yet, and a paused run has a popup over this corner.
-	boost_button.visible = (state == State.PLAYING and not paused) or tutorial_active
+	boost_button.visible = ((state == State.PLAYING and not paused) or tutorial_active) and space == null
 	if not boost_button.visible:
 		# A Button hidden mid-press never emits button_up, which would leave
 		# the world accelerated forever after dying with it held down. The
@@ -4084,6 +4095,13 @@ func _process(delta: float) -> void:
 		# with the button down would otherwise leave it droning forever.
 		if fx_sound_boost != null:
 			fx_sound_boost.stop()
+	if space != null:
+		space.tick(delta, state == State.PLAYING and not paused,
+			(state == State.PLAYING or state == State.COUNTDOWN) and not paused)
+		if space_banner_elapsed >= 0.0 and not paused:
+			space_banner_elapsed += delta
+			if space_banner_elapsed >= SPACE_BANNER_TIME:
+				space_banner_elapsed = -1.0
 	if not paused:
 		if state == State.PLAYING:
 			_update_playing(delta)
@@ -4161,6 +4179,10 @@ func _boost_bg_multiplier() -> float:
 
 func _update_playing(delta: float) -> void:
 	var view_size := get_viewport_rect().size
+	if space != null:
+		# 움직임과 판정은 SpaceRun.tick 이 한다.
+		_update_hearts(delta)
+		return
 
 	player_vel = min(player_vel + gravity * delta, max_fall_speed)
 	player_y += player_vel * delta
@@ -6300,6 +6322,110 @@ const HEART_LOSS_POP_DURATION := 0.45
 const HEART_LOSS_POP_SCALE := 1.9
 
 var hearts: int = MAX_HEARTS
+# 2.0 우주 게임(SpaceRun.gd). _boot_load 가 만든다. null 이면 예전 2D 판.
+var space: SpaceRun = null
+# 피버 중 행성 하나를 부술 때의 점수 배수 — 콤보 점수(SCORE_PER_COMBO x combo)의
+# 절반. 8초에 스무 개 남짓 부수므로, 문제를 맞힌 열 개보다 조금 더 벌린다.
+const FEVER_SMASH_SHARE := 0.5
+const FEVER_FLASH_COLOR := Color(1.0, 0.65, 0.2, 0.35)
+
+
+## SpaceRun 이 판이 살아 있는지 묻는다(판정 도중 게임오버로 넘어갔는지).
+func space_run_live() -> bool:
+	return state == State.PLAYING
+
+
+## 정답 행성을 부쉈을 때. 예전 게이트 통과(_resolve_gate)의 득점 부분과 같다 —
+## 부스트 배수만 없다.
+func _space_correct() -> void:
+	gates_passed += 1
+	combo += 1
+	max_combo = maxi(max_combo, combo)
+	score += SCORE_PER_COMBO * combo
+	flash_color = Color(0.3, 0.8, 0.4, 0.25)
+	flash_time = FLASH_DURATION
+	_spawn_combo_popup(get_viewport_rect().size)
+
+
+## 오답 행성에 부딪쳤거나 어느 행성에도 닿지 않았을 때. 하트는 그대로다 —
+## 값은 무기가 한 단계 떨어지는 것(SpaceRun._weapon_down)과 끊긴 콤보로 치른다.
+## 하트는 조작의 실수(소행성·보스 탄)에만 쓴다.
+func _space_wrong() -> void:
+	combo = 0
+	flash_color = HURT_FLASH_COLOR
+	flash_time = FLASH_DURATION
+	fx_shake_elapsed = 0.0
+
+
+## 소행성이나 보스 탄에 맞았을 때.
+func _space_hurt() -> void:
+	_take_hit()
+
+
+## 맞은 뒤 깜빡이는 동안은 소행성과 보스 탄이 하트를 가져가지 않는다.
+func _space_invulnerable() -> bool:
+	return hurt_elapsed >= 0.0
+
+
+func _space_points(points: int) -> void:
+	score += points
+
+
+## 룰렛이 멈춰 무기가 올랐을 때. 화면 가운데에 무엇을 얻었는지 띄운다.
+func _space_powered_up(label: String) -> void:
+	_spawn_space_banner(label, Color(0.35, 0.85, 1.0))
+	if fx_sound_chime != null and fx_sound_chime.stream != null:
+		fx_sound_chime.play()
+
+
+func _space_boss_down(points: int) -> void:
+	score += points
+	flash_color = Color(1.0, 0.9, 0.6, 0.5)
+	flash_time = FLASH_DURATION
+	fx_shake_elapsed = 0.0
+	_spawn_space_banner("+%d" % points, Color(1.0, 0.85, 0.3))
+
+
+# 룰렛 결과·보스 처치 점수를 화면 가운데에 잠깐 띄운다.
+const SPACE_BANNER_TIME := 1.1
+var space_banner_text := ""
+var space_banner_color := Color.WHITE
+var space_banner_elapsed := -1.0
+
+
+func _spawn_space_banner(text: String, color: Color) -> void:
+	space_banner_text = text
+	space_banner_color = color
+	space_banner_elapsed = 0.0
+
+
+func _draw_space_banner(view_size: Vector2) -> void:
+	if space_banner_elapsed < 0.0:
+		return
+	var t: float = space_banner_elapsed / SPACE_BANNER_TIME
+	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var size := int(round(lerpf(30.0, 40.0, minf(t * 4.0, 1.0))))
+	var col := space_banner_color
+	col.a = clampf(1.0 - (t - 0.6) / 0.4, 0.0, 1.0)
+	var outline := Color(0.05, 0.04, 0.12, col.a)
+	_draw_centered_text(space_banner_text, Vector2(view_size.x * 0.5, _quiz_box_rect(view_size).end.y + 70.0 - t * 16.0), size, col, outline, font)
+
+
+func _space_fever_started() -> void:
+	flash_color = FEVER_FLASH_COLOR
+	flash_time = FLASH_DURATION
+	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
+		fx_sound_boost_start.play()
+
+
+func _space_fever_ended() -> void:
+	pass
+
+
+func _space_fever_smash() -> void:
+	score += maxi(1, int(round(SCORE_PER_COMBO * maxi(combo, 1) * FEVER_SMASH_SHARE)))
+	if fx_sound_chime != null and fx_sound_chime.stream != null:
+		fx_sound_chime.play()
 var hurt_elapsed: float = -1.0       # -1 = 무적 아님
 var heart_lost_elapsed: float = -1.0 # -1 = 사라지는 하트 없음
 
@@ -6430,6 +6556,11 @@ func _on_revive_continue() -> void:
 	hurt_elapsed = -1.0
 	heart_lost_elapsed = -1.0
 	var view_size := get_viewport_rect().size
+	if space != null:
+		flash_time = 0.0
+		space.revive()
+		_start_countdown()
+		return
 	gates.clear()
 	player_y = (_gate_field_top(view_size) + _gate_field_bottom(view_size)) * 0.5
 	player_vel = 0.0
@@ -7137,7 +7268,11 @@ func _reset_game() -> void:
 	pause_panel.visible = false
 	# First question is revealed immediately so it's visible for the full
 	# spawn-to-player travel time, well over the 1.5-2s minimum preview.
-	_spawn_gate(view_size)
+	space_banner_elapsed = -1.0
+	if space != null:
+		space.reset_run()
+	else:
+		_spawn_gate(view_size)
 
 
 func _on_pause_pressed() -> void:
@@ -7862,7 +7997,10 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
-		_draw_boost_bar(ci, view_size)
+		if space != null:
+			space.draw_hud(ci, _quiz_box_rect(view_size))
+		else:
+			_draw_boost_bar(ci, view_size)
 		_draw_hearts(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
@@ -8146,6 +8284,16 @@ func _draw() -> void:
 	if state == State.SPLASH:
 		_draw_splash(view_size)
 		return
+	if space != null:
+		# 우주 게임: 3D 세계(배경·우주선·행성·파편)를 통째로 깔고, 행성 위의 답
+		# 팻말만 2D 로 얹는다. 예전 배경·게이트·캐릭터는 그리지 않는다.
+		var tex: Texture2D = space.texture()
+		if tex != null:
+			draw_texture_rect(tex, Rect2(Vector2.ZERO, view_size), false)
+		space.draw_labels(self, combo_font if combo_font != null else ThemeDB.fallback_font)
+		_draw_space_banner(view_size)
+		_draw_overlay_layers(view_size)
+		return
 	if bg_texture != null:
 		_draw_sky_background(view_size)     # single scrolling background image — see _draw_sky_background
 		_draw_ambient_particles()           # small twinkle/leaf/bubble particles, still behind the gate zone
@@ -8239,6 +8387,11 @@ func _draw() -> void:
 		_draw_gate_answer_box(g.top_code, g.quiz_kind, g.x, g.top_zone_top, g.top_zone_bottom, view_size)
 		_draw_gate_answer_box(g.bottom_code, g.quiz_kind, g.x, g.bottom_zone_top, g.bottom_zone_bottom, view_size)
 
+	_draw_overlay_layers(view_size)
+
+
+## 게임 화면 맨 위의 효과·카운트다운·번쩍임. 예전 2D 판과 우주 판이 함께 쓴다.
+func _draw_overlay_layers(view_size: Vector2) -> void:
 	# ---- Layer 3: HUD bar + quiz box ----
 	# Drawn by the HudCanvas child instead of here, so it can use its own
 	# texture filter. The child renders after this whole _draw, which keeps
@@ -8300,6 +8453,8 @@ func _pop_scale(t: float) -> float:
 
 
 func _get_upcoming_target() -> String:
+	if space != null:
+		return space.question()
 	var g: Dictionary = _get_upcoming_gate()
 	return "" if g.is_empty() else str(g.target_name)
 

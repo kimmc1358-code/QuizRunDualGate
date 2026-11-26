@@ -49,3 +49,7 @@ desktop.ini
 # Firebase config — public repo, so kept out of git. Re-download it from the
 # Firebase console (project quizrun-9a351) on a new machine; see CLAUDE.md.
 /google-services.json
+
+# Synty Sci-Fi Space kit: paid, licensed for use in a built game but not for
+# redistribution as source. Built by tools/build_space_kit.py; never commit it.
+/assets/synty_space/

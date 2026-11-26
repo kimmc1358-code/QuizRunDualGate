@@ -65,6 +65,94 @@ system (`_get_phase_index`) scales difficulty by gates passed.
 version code 6) is tagged `v1.2.1`, and `release/1.x` branches from it for any
 1.x hotfix. 2.0 ships as an update to the same Play listing.
 
+### 2.0 is a space game
+
+Decided 2026-11-26, after a landscape side view with a slider and a 3D
+jungle dragon were both built and dropped: the owner could not keep the
+character's cute face in a chase view, so the character became a ship. The
+2.0 work before that point was reverted, back to the portrait game with
+hearts (`4a84936`).
+
+A ship seen from behind is steered up, down, left and right by **dragging
+anywhere**. The drag is relative, so the thumb never covers the ship. The
+ship fires on its own. Portrait, 480x854, as 1.x.
+
+The same evening the owner said plainly that **the quiz itself is not fun**,
+which is why 1.x failed. The quiz was therefore made a gate to something
+else. One run goes round a cycle (`SpaceRun.Phase`):
+
+1. **QUIZ.** A wave of planets brings one easy question. The kind is drawn
+   per wave from three. Each was picked because it is answered in a glance
+   and needs no translation.
+   - An arrow: fly to the planet it points at. A red arrow means the
+     opposite one, from the second cycle on.
+   - A rock-paper-scissors hand: fly to the hand that beats it.
+   - A single-digit sum.
+
+   Ram the right planet to smash it. Bullets pass through question planets;
+   only ramming answers. A wrong planet, or none, costs **a weapon step and
+   the combo, not a heart**. Hearts are spent only on steering mistakes.
+2. **LOOT.** A right answer spins a roulette in the question box while an
+   asteroid field flies past, so the new weapon is tried at once. Nothing
+   stops. Every roulette result is a gain (`ROULETTE`); the weights are the
+   luck. Asteroids can be shot for points or dodged, and one that reaches
+   the ship costs a heart.
+3. **BOSS.** After `QUIZ_PER_CYCLE` (10) questions an enemy ship comes. A
+   strong weapon melts it, and a weak one can still win by dodging. Its
+   shots cost a heart.
+4. **FEVER.** The boss down: 8 s at speed with no questions. Every planet
+   touched or shot is smashed and nothing costs a heart. Then the next cycle
+   starts, with one more planet a wave (`planets_for_cycle`: 2, 3, then 4)
+   and a tougher boss.
+
+Flags, Stroop and MIX are being removed (phase 2).
+
+The ship is Synty's `Fighter_05`, chosen from all 18 small ships rendered
+from the game's angle. `Fighter_03`, the first pick, looked good from above
+and was two thin lines from behind. The camera sits well above the plane
+for the same reason: from nearly level, every flat fighter is a line.
+
+`scripts/SpaceRun.gd` owns the 3D world and the rules of contact. Main
+still owns the run: score, combo, hearts, the revive offer, popups and the
+question box. SpaceRun reports each outcome through Main's `_space_*`
+handlers. `space` is null only before boot; the old gate code still sits in
+Main, unreached, until phase 2 removes it.
+
+The fairness lives in one choice: **judging happens on the flight plane
+(z = 0), where the ship really is.** A wave is decided the frame it reaches
+the plane, by which planet's disc the ship's centre is inside
+(`PLANET_RADIUS + SHIP_HIT_RADIUS`). The camera sees the same 3D positions,
+so the picture at contact is the judgement. The slots are far enough apart
+that no point touches two planets.
+
+The camera keeps its **horizontal** field of view (`KEEP_WIDTH`). The game
+is 480 wide on every phone, so a taller phone sees more space above and
+below. With the vertical angle fixed instead, the left and right planets
+ran off the edges at 20:9.
+
+**The Synty Sci-Fi Space pack** supplies the ship, planets, debris and sky.
+The pack is paid and this repository is public, so nothing from it is ever
+committed:
+
+- `tools/build_space_kit.py` (Blender) reads the unzipped pack and writes
+  `assets/synty_space/`, which `.gitignore` excludes.
+- A fresh clone has to run it once with its own licensed copy:
+  `blender -b --python tools/build_space_kit.py -- <repo>
+  <POLYGON_Scifi_Space_SourceFiles_v2/SourceFiles>`.
+- Without the kit the game still plays on plain spheres and a wedge ship.
+  A release build must be exported from a machine that has the kit.
+
+Synty paints its planets with a custom shader that glTF cannot carry.
+`assets/shaders/planet.gdshader` rebuilds the look from the pack's land and
+cloud masks with a sea/ground colour pair per planet, so six meshes make
+many worlds.
+
+`check_space.gd` guards the rules and the framing. `capture_space.gd` shoots
+one frame of each step of the cycle. The gate checkers still
+pass because they call the gate code directly. `check_hearts` (the floor),
+`check_tutorial` (the boost button) and `check_boost_hold` (hangs) fail
+until phase 2 retires or rewrites them.
+
 **A run has `MAX_HEARTS` (3) hearts.** In 1.x one miss ended the run; the
 first 28 days of analytics showed about eight runs per player and roughly 12%
 coming back the next day, and testers kept calling it too hard — the flap and
@@ -225,6 +313,7 @@ on failure.
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
+| `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 planets a wave by cycle; every arrow, hand and sum question has exactly one right planet and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer smashes the planet, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong planet or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_hearts.gd` | a run starts with `MAX_HEARTS`; a wrong gate and the wall each take one heart and the run goes on, with the combo broken and score and gates passed kept; after a gate hit the next gate is planned from where the character really is; the floor takes a heart and bounces the character up, is free while it blinks, and costs again after; the last heart sends the run to the revive offer; a revive and a new run refill the hearts; and the HUD hearts sit in the gate zone's top-left, clear of the combo readout | `MAX_HEARTS`, `HURT_*`/`HEART_*` constants, `_take_hit`/`_take_gate_hit`/`_update_hearts`, the floor branch of `_update_playing`, `_resolve_gate`'s failure paths, `_on_revive_continue`, `_reset_game`, or the combo readout's position |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; the mode-select screen learns about it; and an old-rule save that had opened MIX stays open (and stays open on the next launch) while the same counts saved under the new rule stay locked | `HIDDEN_UNLOCK_GATES`, `HIDDEN_UNLOCK_GATES_LEGACY`, `gates_rule`/`hidden_unlocked`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
