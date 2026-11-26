@@ -12,7 +12,7 @@ extends SceneTree
 #      opposite for a red arrow). Sums never repeat a label.
 #   2. No point touches two slots, and every slot and field corner is on
 #      screen below the question box at 16:9 and 20:9.
-#   3. A right answer smashes the planet, scores like a gate pass, keeps the
+#   3. A right answer passes the gate (lit, not broken), scores, keeps the
 #      hearts and starts the loot: the roulette lands on a gain within the
 #      stretch, asteroids fly, and a new question follows.
 #   4. A wrong planet, or none, costs a weapon step and the combo, not a heart.
@@ -216,10 +216,15 @@ func _run() -> void:
 	_fresh_run()
 	var w: Dictionary = sp.upcoming_wave()
 	var power0 := _power()
+	# Before judgement every target is a gate glowing the same colour: a
+	# colour that differed would give the answer away.
+	var glows: Array = w.planets.map(func(p): return (p.glow as StandardMaterial3D).albedo_color if p.get("gate", false) else null)
+	_check(not glows.has(null) and glows.all(func(c): return c == glows[0]),
+		"every target is a gate and they all glow alike before judgement")
 	_fly_wave_at(_correct_pos(w))
-	var smashed: bool = w.planets.any(func(p): return p.correct and not p.alive)
-	_check(smashed and m.combo == 1 and m.score >= m.SCORE_PER_COMBO and m.hearts == m.MAX_HEARTS,
-		"a right answer smashes the planet and scores, hearts kept (combo %d, score %d)" % [m.combo, m.score])
+	var passed: bool = w.planets.any(func(p): return p.correct and not p.alive and p.node.visible)
+	_check(passed and m.combo == 1 and m.score >= m.SCORE_PER_COMBO and m.hearts == m.MAX_HEARTS,
+		"a right answer passes the gate (it stays, lit) and scores, hearts kept (combo %d, score %d)" % [m.combo, m.score])
 	_check(sp.phase == sp.Phase.LOOT, "and starts the loot stretch")
 	_tick(sp.ROULETTE_SPIN + 0.1)
 	_check(sp.roulette_applied and _power() > power0, "the roulette lands on a gain (%s, power %.1f -> %.1f)" % [str(sp.roulette_result[1]), power0, _power()])

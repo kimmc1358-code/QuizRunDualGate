@@ -2559,7 +2559,7 @@ var tutorial_active: bool = false
 ##
 ## 디버그 빌드에서만 듣는다. @export 라 인스펙터에서 켜면 Main.tscn 에 저장돼
 ## 그대로 커밋될 수 있는데, 그러면 모두에게 영영 잠긴 채로 나간다 —
-## tools/check_hidden_unlock.gd 가 켜진 채로 커밋된 것을 잡는다.
+## tools/check_tutorial.gd 가 켜진 채로 커밋된 것을 잡는다.
 @export var debug_force_hidden_locked: bool = false
 ## 튜토리얼을 다시 보기 위한 스위치. 켜면 이미 본 뒤에도 게임에 들어갈 때마다
 ## 다시 돈다.
@@ -4642,7 +4642,7 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 		},
 		{
 			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
-			"text": tr("Read the question up here,\nthen ram the planet\nwith the right answer."),
+			"text": tr("Read the question up here,\nthen fly through the gate\nwith the right answer."),
 		},
 		{
 			# 게이지(10문제의 진행)와 무기 표시를 같이 밝힌다 — 맞힐수록 아래쪽

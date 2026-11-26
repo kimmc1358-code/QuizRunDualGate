@@ -53,10 +53,11 @@ like a mistake.
 A debug build ignores the lock entirely, so the actual refusal only shows in
 a release export. **To see the locked card while developing**, tick
 `debug_force_hidden_locked` on Main in the inspector — it reports 0/3 no
-matter what the save says. It only works in a debug build, and
-`check_hidden_unlock.gd` fails if it is left on, because it is an `@export`:
-ticking it in the inspector writes it into `Main.tscn`, and a commit like
-that locks MIX for everyone with the game still running perfectly.
+matter what the save says. It only works in a debug build. It is an
+`@export`, so ticking it in the inspector writes it into `Main.tscn`, and a
+commit like that locks MIX for everyone with the game still running
+perfectly, so `check_tutorial.gd` fails while it is on (the guard moved
+there from `check_hidden_unlock.gd`, which went with the gate game).
 
 The whole game is "Hard mode". There is no difficulty selector; the phase
 system (`_get_phase_index`) scales difficulty by gates passed.
@@ -81,17 +82,31 @@ The same evening the owner said plainly that **the quiz itself is not fun**,
 which is why 1.x failed. The quiz was therefore made a gate to something
 else. One run goes round a cycle (`SpaceRun.Phase`):
 
-1. **QUIZ.** A wave of planets brings one easy question. The kind is drawn
+1. **QUIZ.** A wave of gates brings one easy question. The kind is drawn
    per wave from three. Each was picked because it is answered in a glance
    and needs no translation.
-   - An arrow: fly to the planet it points at. A red arrow means the
+   - An arrow: fly to the gate it points at. A red arrow means the
      opposite one, from the second cycle on.
    - A rock-paper-scissors hand: fly to the hand that beats it.
    - A single-digit sum.
 
-   Ram the right planet to smash it. Bullets pass through question planets;
-   only ramming answers. A wrong planet, or none, costs **a weapon step and
-   the combo, not a heart**. Hearts are spent only on steering mistakes.
+   Fly through the right gate and it lights up gold. Bullets pass through
+   the gates; only flying through answers. A wrong gate, or none, costs **a
+   weapon step and the combo, not a heart**. Hearts are spent only on
+   steering mistakes.
+
+   The targets were planets to ram at first, and became gates on
+   2026-11-26 at the owner's call. The game is called Dual Gate, and the
+   Synty pack has a warp gate in the same blue-and-orange as the ship. Only
+   its inner ring and glow band are used (`GATE_RING_NODE`/`GATE_GLOW_NODE`).
+   The outer ring's spurs reach 1.8 times the hole, and neighbouring slots
+   are 2.95 apart. The hole is judged exactly as a planet's disc was
+   (`GATE_RADIUS + SHIP_HIT_RADIUS`), so the slots, reach and fairness
+   below did not move. Every gate glows the same colour until judged; a
+   colour that differed would give the answer away. A passed gate shrinks
+   away past the plane like the planets did: left at full size, the camera
+   flew through the top slot's ring and it filled the screen. Fever planets and asteroids are still
+   planets and rocks.
 2. **LOOT.** A right answer spins a roulette in the question box while an
    asteroid field flies past, so the new weapon is tried at once. Nothing
    stops. Every roulette result is a gain (`ROULETTE`); the weights are the
@@ -125,6 +140,24 @@ the plane, by which planet's disc the ship's centre is inside
 so the picture at contact is the judgement. The slots are far enough apart
 that no point touches two planets.
 
+**The answers are read off the plane, not off the planets.** A wave spawns
+eight times further from the camera than the plane, so its planets start
+bunched within about 40 px of each other with 8 px writing, and the answer
+could only be read in the last moment. The first playtest of the space game
+said exactly that. So the moment a wave appears, each slot it uses gets a
+ring and its answer plate at full size on the plane (`draw_labels`), and the
+planets fly in to fill them. The plate stays on the marker until judgement
+instead of moving onto the planet; a second plate riding the planet in sat
+beside the marker's for the last half second. The first markers — a filled
+disc, a solid ring, a plate at 0.8 of the planet — were said to hide too
+much, so the ring is now thin, faint and dashed, the plate 0.6, and the
+plate the ship is parked under goes see-through.
+
+Judged planets also used to fly on into the camera; the top slot's sits
+almost on its line of sight and swelled to cover half the screen just as
+the next markers appeared. Past the plane they now shrink away over
+`PASS_SHRINK_DISTANCE`.
+
 The camera keeps its **horizontal** field of view (`KEEP_WIDTH`). The game
 is 480 wide on every phone, so a taller phone sees more space above and
 below. With the vertical angle fixed instead, the left and right planets
@@ -147,11 +180,34 @@ Synty paints its planets with a custom shader that glTF cannot carry.
 cloud masks with a sea/ground colour pair per planet, so six meshes make
 many worlds.
 
+The backdrop is the skybox's front face, which was painted to meet its
+neighbouring cube faces rather than itself. Scrolled down as the ship flies,
+its top edge came into view as a hard line across the screen.
+`assets/shaders/space_sky.gdshader` cross-fades the picture with itself
+shifted by half a height, so neither seam is ever shown. It is done in the
+shader rather than in `sky.png` so that a kit built on another machine needs
+no rebuild.
+
 `check_space.gd` guards the rules and the framing. `capture_space.gd` shoots
-one frame of each step of the cycle. The gate checkers still
-pass because they call the gate code directly. `check_hearts` (the floor),
-`check_tutorial` (the boost button) and `check_boost_hold` (hangs) fail
-until phase 2 retires or rewrites them.
+one frame of each step of the cycle. `capture_space_wave.gd` shoots one
+wave as a strip, from appearing to flying past, with the quiz kind, the
+number of gates and the ship's route chosen on the command line. Use it for
+anything about how a wave looks.
+
+**Nine 1.x checkers were deleted on 2026-11-26**, once the gate game was
+gone from Main: `check_gate_reach`, `check_hearts`, `check_mix_mode`,
+`check_hidden_unlock`, `check_collection`, `check_boost_hold`,
+`check_speed_lines`, `check_popup_overlap` and `check_ambient_density`. Each
+called a function the rework had removed. A checker that hits a script error
+does not exit; it sits there until killed, so a full sweep cost 2.5 minutes
+per dead checker. Hearts are now covered by `check_space`. MIX's unlock and
+the collection are still in the code, waiting to be removed, but nothing
+checks them any more. The guard against
+`debug_force_hidden_locked` being committed switched on moved to `check_tutorial`. The rule used was:
+delete what can no longer run, keep what still passes.
+`check_boost_bar_range`, `check_bg_layers` and `check_sparkle_pools` still
+pass against 1.x tables Main has not yet dropped. Retire them along with
+those tables. `check_tutorial` was rewritten for the three space steps.
 
 **A run has `MAX_HEARTS` (3) hearts.** In 1.x one miss ended the run; the
 first 28 days of analytics showed about eight runs per player and roughly 12%
@@ -168,7 +224,6 @@ the correct hole's centre, the next gate could be out of reach from the wrong
 lane and cost a second heart. And for `HURT_INVULN_DURATION` after a hit the
 floor only bounces the character (the character blinks); gates are still
 judged, since each asks its own question. A revive refills the hearts.
-`check_hearts.gd` guards all of it.
 
 **The first gates are drawn with a bigger hole**, because the one thing the
 closed test said over and over was that the game is too hard to start. The
@@ -305,18 +360,14 @@ on failure.
 
 | Script | Guards | Re-run when |
 |---|---|---|
-| `check_gate_reach.gd` | every hole `_spawn_gate` places is somewhere the character can actually get to **with the boost held**, in all four modes and every phase — and that gate placement is identical on a 16:9 phone and a 21:9 one; and that the early-gate hole ramp holds its start size, eases down and ends, with the judged hole and the drawn ring on the same multiplier | `gate_hole_start_scale`/`gate_hole_hold_gates`/`gate_hole_full_size_gate`, `GATE_SPEED`, `base_gate_spacing`, `BOOST_BUTTON_MULTIPLIER`, `flap_velocity`, `gravity`, `max_fall_speed`, `reach_tap_interval`, `max_move_ratio_*`, `phase_gate_counts`, or the gate zone/lane bands change |
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the four `AdIds.LIVE_*` values and nothing in the formats the game does not use; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
 | `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it; and a device-pixel banner is converted by the axis that fits the screen — the width on a phone, the height on a pillarboxed tablet; and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_game_px_per_device_px`/`_update_banner`, `set_banner_reserve`, the stretch aspect, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `display/window/stretch/aspect`, `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
 | `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
-| `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
+| `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and neither `debug_replay_tutorial` nor `debug_force_hidden_locked` is on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`/`debug_force_hidden_locked`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
-| `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 planets a wave by cycle; every arrow, hand and sum question has exactly one right planet and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer smashes the planet, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong planet or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
-| `check_hearts.gd` | a run starts with `MAX_HEARTS`; a wrong gate and the wall each take one heart and the run goes on, with the combo broken and score and gates passed kept; after a gate hit the next gate is planned from where the character really is; the floor takes a heart and bounces the character up, is free while it blinks, and costs again after; the last heart sends the run to the revive offer; a revive and a new run refill the hearts; and the HUD hearts sit in the gate zone's top-left, clear of the combo readout | `MAX_HEARTS`, `HURT_*`/`HEART_*` constants, `_take_hit`/`_take_gate_hit`/`_update_hearts`, the floor branch of `_update_playing`, `_resolve_gate`'s failure paths, `_on_revive_continue`, `_reset_game`, or the combo readout's position |
-| `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; the mode-select screen learns about it; and an old-rule save that had opened MIX stays open (and stays open on the next launch) while the same counts saved under the new rule stay locked | `HIDDEN_UNLOCK_GATES`, `HIDDEN_UNLOCK_GATES_LEGACY`, `gates_rule`/`hidden_unlocked`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
-| `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
+| `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 gates a wave by cycle; every arrow, hand and sum question has exactly one right gate and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer passes the gate, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong gate or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
 | `check_gameover_bgm.gd` | the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
@@ -328,21 +379,16 @@ on failure.
 | `check_share.gd` | the share card, in both languages, all four modes, scores from 0 to the int maximum, record or not: every piece sits inside the white frame and the stack never overlaps; the score, label, footer and mode plate fit `CONTENT_WIDTH` — the score shrinks to fit but stops at `SCORE_MIN_SIZE`, so shrinking is no proof that it fits; the logo and character actually loaded; the share text carries the grouped score, the translated mode name and the store link with no `{placeholder}` left; and on PC a SHARE press opens nothing and leaves the button free | `ShareCard`'s layout constants or `card_layout`, the fonts, `CARD_NAMES` or their translations, `SHARE_TEXT`/`FOOTER_TEXT`, `ScoreFormat.grouped`, `ExternalLinks.STORE_URL`, or `_on_gameover_share_pressed` |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
-| `check_popup_overlap.gd` | the BOOST popup never touches the combo readout or leaves the gate zone, and its gradient-fill text texture assembles to real glyphs rather than filled boxes | popup sizes/anchors, combo tier fonts, or `_gate_zone_top` change |
-| `check_ambient_density.gd` | the fixed-size ambient particle pool stays on screen with the boost held | particle speeds, `PARTICLE_BOOST_WIND_X`, or the spawn-edge logic change |
 | `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
 | `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
 | `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
-| `check_speed_lines.gd` | the boost speed lines draw nothing at rest, stay inside their top/bottom bands AND out of the gate zone's middle half, populate both bands, outrun the gates, and recycle only once a streak's trailing edge is off screen | `BOOST_SPEEDLINE_*`, `_gate_zone_top`, `GATE_SPEED`/`BOOST_BUTTON_MULTIPLIER`, or the strip art change |
-| `check_boost_hold.gd` | the looping hold sound really loops and stops on every path (button_up, pause, death, reset), the press one-shot is a separate, shorter, NON-looping stream that fires on every press, and the boost afterimage stacks to exactly `BOOST_AFTERIMAGE_COUNT` copies and no more, carries the character's own frames, records the character's real y as it moves, and is emptied on release; and the gate-pass popup's two cues are loaded, distinct from each other and from the hold and press sounds, and the tier that puts BOOST!/TURBO! on screen sounds the matching one | `_on_boost_pressed`/`_on_boost_released`, the hidden-mid-press reset in `_process`, `_reset_game`, `_enable_stream_loop`, any `BOOST_AFTERIMAGE_*` constant or `_update_boost_afterimages`, or `BOOST_POP_SOUND_*`/`_play_boost_pop_sound` |
-| `check_collection.gd` | a missed flag is remembered as seen and a passed one collected once with a NEW mark; math counts only passes and stars land exactly on the thresholds; colour pairs collect by name; spawned gates carry `math_kind` / the Stroop indices; the collection survives save and reload; the last uncollected flag and colour pair come up more than twice as often as uniform; the game-over NEW! line shows only with news and stays above PLAY AGAIN; the collection popup covers the screen, has a cell for every flag (193) and pair (110), and a tap names what it hit; and the collection plate shares the leaderboard row | `_collection_note`, `_pick_favoring_uncollected`, `COLLECTION_UNCOLLECTED_WEIGHT`, `MATH_STAR_THRESHOLDS`, the `SAVE_SECTION_COLLECTION` keys, `MathKind` or `OCEAN_COLOR_NAMES`, `CollectionPopup.gd`, the game-over layout, or the leaderboard row in `ModeSelectScreen` |
 | `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, `collection_open`, `share`, and `unlock_achievement` only at the moment MIX unlocks | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, `_open_collection`, `_on_gameover_share_pressed`, or `_push_hidden_progress` |
 
 **A checker that plays real gates writes to the real save file.** `user://
 savegame.cfg` holds the best scores, the hidden-mode progress and the ad
 counters, and driving `_resolve_gate` or `_finish_run` updates all three on
-the machine running the check. `check_hidden_unlock.gd` and
-`check_revive_continuity.gd` therefore back the whole file up and write it
+the machine running the check. `check_revive_continuity.gd` therefore
+backs the whole file up and writes it
 back at the end. Restoring a few chosen values is not enough — that was
 tried, and a throwaway probe left this machine's SKY record sitting at the
 checker's 12600 and its hidden mode unlocked without anyone having earned
@@ -354,21 +400,6 @@ it that way — if a checker needs a calculation, extract it from the draw
 code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` and
 `check_sparkle_pools.gd` still re-derive; a copy of a table is exactly what
 passes while the game itself loads nothing.
-
-`check_gate_reach.gd` is the deliberate exception, and the reason is worth
-keeping straight: it checks a claim about **physics**, not about drawing.
-Calling `_spawn_gate`'s own reach formula would make it assert that the
-formula equals itself. So it integrates the real `gravity`/`flap_velocity`/
-`max_fall_speed` at 1/60s and compares that against where gates actually get
-placed. Both bugs it was written for — `available_time` ignoring
-`BOOST_BUTTON_MULTIPLIER`, and `up_reach` using the flap impulse as if it
-were a sustained climb rate — were live in the shipped code for months and
-show up on screen only as "a gate you sometimes just can't make", which no
-player can tell apart from their own bad play.
-
-It also fails when the margin gets too *large*: if placement never uses more
-than a quarter of the available climb, then something else is binding and
-the check is guarding nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -394,7 +425,7 @@ because tier 4 needs 76 consecutive gates and its colour animates — a value
 you cannot reach by playing and a colour one frame cannot show.
 
 `capture_mix_mode.gd` shoots one gate of each quiz kind in MIX, because
-`check_mix_mode.gd` only counts which kind came up — it cannot see a flag
+a count of which kind came up cannot show a flag
 gate drawn with the Stroop code path. `capture_language_toggle.gd` shoots the
 mode select, settings, revive, game over and about screens in both languages,
 and drives the language switch through `Main` rather than the popup so the
@@ -405,7 +436,7 @@ rebuild path is the one being photographed.
 `capture_feature_graphic.gd` renders five drafts of the Play Store feature graphic (1024x500) from the game's own art. Draft E is `store/feature_graphic_1024x500.png`: three panels — SKY, JUNGLE, OCEAN — each on that mode's blurred game background with its character flying through its own gate (the ring's right half behind, the left half in front), and the logo across the top. D is the same on the sharp backgrounds with a smaller ring; its jungle panel lost the green gate and dragon against green foliage, which is why E uses the game's `_blur` layers and a 320px ring. MIX's unicorn is left out of every draft on purpose: that mode is hidden until earned, and a store image showing it would spoil it.
 
 `capture_gate_size.gd` shoots one gate at eight points along the early-gate
-hole ramp (`--mode <n>` for another mode), because `check_gate_reach.gd` can
+hole ramp (`--mode <n>` for another mode), because a measurement can
 say the hole is 148.5px and still not answer whether 1.20x looks like enough
 room to a first-time player, or whether the shrink back to full size is
 something they would notice.
@@ -1518,7 +1549,7 @@ screen*).
   it on the unicorn's horn at 16:9, in Korean only (the Korean names are all
   five characters and narrow the plate by 44px). It is anchored to the corner
   now, and `check_mode_card_check.gd` sweeps both languages.
-- **Only `check_gate_reach.gd`, `check_mode_select_layout.gd` and
+- **Only `check_space.gd`, `check_mode_select_layout.gd` and
   `check_mode_card_check.gd` sweep aspect ratios**, and only the last of
   those sweeps languages. Every other checker reads the one resolution out of
   `ProjectSettings` in one locale, and therefore only ever sees 16:9 in

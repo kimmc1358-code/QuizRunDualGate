@@ -75,6 +75,10 @@ func _run() -> void:
 	# 그대로 커밋되면 모두가 매 판 튜토리얼을 본다.
 	if m.get("debug_replay_tutorial"):
 		_fail("debug_replay_tutorial 이 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
+	# 같은 함정의 다른 스위치. 이걸 보던 check_hidden_unlock 이 예전 게이트 판과
+	# 함께 지워져서 여기로 옮겼다 — 켜진 채 커밋되면 MIX 가 모두에게 잠긴다.
+	if m.get("debug_force_hidden_locked"):
+		_fail("debug_force_hidden_locked 가 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
 	print("check_tutorial:")
 	print("")
 
@@ -121,7 +125,7 @@ func _run() -> void:
 		await process_frame
 		print("  %.0fx%.0f — 단계 %d개" % [view.x, view.y, steps.size()])
 		if steps.size() < 3:
-			_fail("단계가 %d개다 — 캐릭터/퀴즈/가속 셋은 있어야 한다" % steps.size())
+			_fail("단계가 %d개다 — 우주선/퀴즈/게이지 셋은 있어야 한다" % steps.size())
 		for i in range(steps.size()):
 			overlay.set("_index", i)
 			var step: Dictionary = steps[i]
@@ -161,21 +165,28 @@ func _run() -> void:
 		# 자리가 게임이 실제로 그리는 데서 왔는가. 여기에 좌표를 박아 두면 HUD 를
 		# 옮겼을 때 하이라이트만 옛 자리에 남는다.
 		if steps.size() >= 3:
+			var sp = m.get("space")
+			var ship: Rect2 = sp.ship_screen_rect()
 			var quiz: Rect2 = m.call("_quiz_box_rect", view)
-			var bar: Rect2 = m.call("_boost_bar_rect", view)
+			var gauge: Rect2 = sp.gauge_rect(quiz)
+			var weapon: Rect2 = sp.weapon_label_rect()
+			var ship_hole: Rect2 = steps[0]["holes"][0]["rect"]
+			if not ship_hole.is_equal_approx(ship):
+				_fail("1단계가 밝히는 자리가 우주선과 다르다 (%s vs %s)" % [ship_hole, ship])
 			var quiz_hole: Rect2 = steps[1]["holes"][0]["rect"]
 			if not quiz_hole.is_equal_approx(quiz):
 				_fail("2단계가 밝히는 자리가 퀴즈 상자와 다르다 (%s vs %s)" % [quiz_hole, quiz])
-			var bar_hole: Rect2 = steps[2]["holes"][0]["rect"]
-			if not bar_hole.is_equal_approx(bar):
-				_fail("3단계가 밝히는 자리가 가속 바와 다르다 (%s vs %s)" % [bar_hole, bar])
-			if steps[2]["holes"].size() < 2:
-				_fail("3단계가 한 곳만 밝힌다 — 버튼과 바를 같이 밝혀야 관계가 읽힌다")
+			# 3단계는 게이지와 무기 표시를 같이 밝힌다 — 맞힐수록 아래 무기가
+			# 오르고, 위 게이지가 차면 보스가 온다. 한쪽만 밝히면 관계가 안 읽힌다.
+			var third: Array = steps[2]["holes"]
+			if third.size() < 2:
+				_fail("3단계가 한 곳만 밝힌다 — 게이지와 무기 표시를 같이 밝혀야 관계가 읽힌다")
+			else:
+				if not (third[0]["rect"] as Rect2).encloses(gauge):
+					_fail("3단계 첫 구멍이 게이지를 다 감싸지 않는다 (%s vs %s)" % [third[0]["rect"], gauge])
+				if not (third[1]["rect"] as Rect2).is_equal_approx(weapon):
+					_fail("3단계 둘째 구멍이 무기 표시와 다르다 (%s vs %s)" % [third[1]["rect"], weapon])
 	var steps_final: Array = overlay.get("_steps")
-	# 가속 버튼은 평소 PLAYING 에서만 보인다. 튜토리얼이 밝히는데 안 보이면
-	# 어두운 구멍만 남는다.
-	if not m.get("boost_button").visible:
-		_fail("튜토리얼이 도는데 가속 버튼이 안 보인다 — 밝힌 자리가 비어 있다")
 
 	# ---- 4. 끝까지 넘기면 ----
 	overlay.set("_index", 0)

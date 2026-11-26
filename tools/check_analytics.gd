@@ -10,7 +10,7 @@ extends SceneTree
 # 꺼져 있는 동안의 이벤트는 쌓지 않고 버린다.
 #
 # 판을 시작하고 끝내고 튜토리얼을 마치므로 세이브 파일에 적힌다. 파일 전체를 받아
-# 두었다가 끝에 되돌린다(check_hidden_unlock.gd 와 같은 이유).
+# 두었다가 끝에 되돌린다(check_revive_continuity.gd 와 같은 이유).
 
 const SAVE_PATH := "user://savegame.cfg"
 const FAKE_ANALYTICS := """extends Node

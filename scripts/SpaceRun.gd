@@ -4,11 +4,11 @@ extends Node
 ## The space game (2.0). A ship seen from behind, steered up/down/left/right by
 ## dragging anywhere, fires on its own while the run goes round one cycle:
 ##
-##   QUIZ   a wave of planets flies in with one easy question — an arrow, a
-##          rock-paper-scissors hand or a sum. Ram the planet that answers it.
-##          Right: the planet smashes and a roulette spins. Wrong (or no planet
-##          touched): the weapon drops one step. Bullets pass through these
-##          planets; only ramming answers.
+##   QUIZ   a wave of gates flies in with one easy question — an arrow, a
+##          rock-paper-scissors hand or a sum. Fly through the gate that answers it.
+##          Right: the gate lights up and a roulette spins. Wrong (or no gate
+##          flown through): the weapon drops one step. Bullets pass through the
+##          gates; only flying through answers.
 ##   LOOT   right after a right answer: the roulette spins at the top while an
 ##          asteroid field flies past, so there is something to try the new
 ##          weapon on. Asteroids can be shot or dodged; hitting one costs a
@@ -37,17 +37,33 @@ const KIT_PATH := "res://assets/synty_space/space_kit.glb"
 const LAND_MASK_PATH := "res://assets/synty_space/land_mask.png"
 const CLOUD_MASK_PATH := "res://assets/synty_space/cloud_mask.png"
 const SKY_PATH := "res://assets/synty_space/sky.png"
+## Hides the sky picture's top/bottom seam while it scrolls — see its header.
+const SKY_SHADER_PATH := "res://assets/shaders/space_sky.gdshader"
 const PLANET_SHADER_PATH := "res://assets/shaders/planet.gdshader"
 const SHIP_NODE := "Ship_Fighter_05"
 const BOSS_NODE := "Ship_Bomber_04"
 const PLANET_NODES := ["Planet_01", "Planet_02", "Planet_05", "Planet_08", "Planet_09", "Planet_10"]
 const ROCK_NODES := ["Asteroid_01", "Asteroid_02", "Asteroid_03", "Asteroid_05"]
+const GATE_RING_NODE := "Veh_WarpGate_Inner_01"
+const GATE_GLOW_NODE := "Veh_WarpGate_Glow_01"
 
 # ---- the field (world units, on the flight plane) ----
 const FIELD_HALF := Vector2(2.3, 3.0)
 # left, right, up, down. Far enough apart that no point touches two planets.
 const SLOTS := [Vector2(-1.85, 0.0), Vector2(1.85, 0.0), Vector2(0.0, 2.3), Vector2(0.0, -2.3)]
 const PLANET_RADIUS := 1.0
+# The quiz targets are gates, flown through rather than rammed. GATE_RADIUS
+# is the open hole, judged like a planet was: the ship's centre within
+# GATE_RADIUS + SHIP_HIT_RADIUS, so clipping the inside of the ring still
+# counts. The ring's outer edge is GATE_OUTER_OF_HOLE times the hole —
+# Synty's inner warp ring measures 175.5 inside and 235.9 outside — which
+# keeps two neighbouring slots' rings (2.95 apart) from touching.
+const GATE_RADIUS := 1.0
+const GATE_OUTER_OF_HOLE := 235.9 / 175.5
+const GATE_ROLL_SPEED := 0.35      # rad/s, each gate one way or the other
+const GATE_GLOW := Color(0.35, 0.85, 1.0, 0.55)
+const GATE_GLOW_RIGHT := Color(1.0, 0.85, 0.35, 1.0)
+const GATE_GLOW_WRONG := Color(1.0, 0.25, 0.2, 1.0)
 const SHIP_HIT_RADIUS := 0.3
 const SHIP_WIDTH := 1.7
 
@@ -56,6 +72,7 @@ const SPAWN_Z := -70.0
 const BASE_SPEED := 24.0           # 70 / 24 = 2.9 s from a wave appearing to its judgement
 const GROW_DISTANCE := 10.0
 const REMOVE_Z := 13.0
+const PASS_SHRINK_DISTANCE := 4.0  # past the plane (z = 0); the camera is at 10
 
 # ---- the cycle ----
 const QUIZ_PER_CYCLE := 10
@@ -146,6 +163,21 @@ const ROCK_PALETTE := [Color(0.32, 0.29, 0.30), Color(0.55, 0.50, 0.46)]
 const PLATE_FILL := Color(0.97, 0.93, 0.84)
 const PLATE_EDGE := Color(0.22, 0.14, 0.10)
 const PLATE_TEXT := Color(0.18, 0.11, 0.08)
+# The arrival markers (draw_labels). Fractions of approach(): the marker fades
+# in over the first MARKER_FADE_IN of the wave's flight, and its ring fades
+# across MARKER_RING_FADE as the planet arrives to fill it.
+const MARKER_FADE_IN := 0.06
+const MARKER_RING_FADE := Vector2(0.8, 0.97)
+const MARKER_RING := Color(1.0, 1.0, 1.0)
+# A thin, faint dashed ring: it marks a place without drawing a solid shape
+# over the play field. The first version, a filled disc with a solid ring
+# and a plate at 0.8 of the planet's size, was said to hide too much.
+const MARKER_RING_ALPHA := 0.4
+const MARKER_RING_WIDTH := 1.5
+const MARKER_DASHES := 16
+const MARKER_TEXT_SCALE := 0.6     # of the planet's size on the plane
+const MARKER_PLATE_ALPHA := 0.75
+const MARKER_PLATE_UNDER_SHIP := 0.35   # the ship has parked under it
 # Rock, scissors, paper. Drawn with the system's colour emoji font.
 const HANDS := ["✊", "✌", "✋"]
 const EMOJI_FONTS := ["Noto Color Emoji", "Segoe UI Emoji", "Apple Color Emoji"]
@@ -203,6 +235,11 @@ var flashes: Array = []
 
 var planet_meshes: Array = []
 var rock_meshes: Array = []
+## The gate's ring and glow band, and the transform that stands them up to
+## face down Z, scaled and centred on the ring. null without the kit.
+var gate_ring_mesh: Mesh
+var gate_glow_mesh: Mesh
+var gate_part_xform := Transform3D.IDENTITY
 var boss_mesh: Mesh
 var planet_shader: Shader
 var land_tex: Texture2D
@@ -216,7 +253,9 @@ var orb_mesh: Mesh
 var orb_material: StandardMaterial3D
 var streaks: MultiMeshInstance3D
 var streak_pos: PackedVector3Array = PackedVector3Array()
-var sky_material: StandardMaterial3D
+var sky_material: ShaderMaterial
+## How far the sky has slid, in picture heights.
+var sky_scroll := 0.0
 var kit_loaded := false
 
 
@@ -309,6 +348,7 @@ func _load_kit() -> void:
 		var boss_mi := kit.find_child(BOSS_NODE, true, false) as MeshInstance3D
 		if boss_mi != null:
 			boss_mesh = boss_mi.mesh
+		_load_gate(kit)
 		kit.free()
 		kit_loaded = not planet_meshes.is_empty()
 	if planet_meshes.is_empty():
@@ -318,6 +358,23 @@ func _load_kit() -> void:
 		rock.radial_segments = 6
 		rock.rings = 3
 		rock_meshes.append({"mesh": rock, "scale": 1.0})
+
+
+## The ring lies in the model's XZ plane (glTF is Y-up); it is stood up to
+## face down Z and scaled so its outer edge is GATE_RADIUS * GATE_OUTER_OF_HOLE.
+## The glow band is the same prefab's other half and keeps its place in it.
+func _load_gate(kit: Node) -> void:
+	var ring_mi := kit.find_child(GATE_RING_NODE, true, false) as MeshInstance3D
+	var glow_mi := kit.find_child(GATE_GLOW_NODE, true, false) as MeshInstance3D
+	if ring_mi == null or ring_mi.mesh == null:
+		return
+	var aabb := ring_mi.mesh.get_aabb()
+	var s: float = GATE_RADIUS * GATE_OUTER_OF_HOLE / (maxf(aabb.size.x, aabb.size.z) * 0.5)
+	var basis := Basis(Vector3.RIGHT, PI * 0.5).scaled(Vector3.ONE * s)
+	gate_part_xform = Transform3D(basis, basis * -aabb.get_center())
+	gate_ring_mesh = ring_mi.mesh
+	if glow_mi != null:
+		gate_glow_mesh = glow_mi.mesh
 
 
 ## A mesh scaled to `width` and centred on its own bounds, so the node's origin
@@ -424,12 +481,10 @@ func _build_sky() -> void:
 	var h: float = 2.0 * (dist + CAMERA_POS.z) * 1.4
 	q.size = Vector2(h, h)
 	sky.mesh = q
-	sky_material = StandardMaterial3D.new()
-	sky_material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	sky_material.albedo_texture = load(SKY_PATH)
-	sky_material.albedo_color = Color(1.25, 1.25, 1.25)
-	sky_material.texture_repeat = true
-	sky_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	sky_material = ShaderMaterial.new()
+	sky_material.shader = load(SKY_SHADER_PATH)
+	sky_material.set_shader_parameter("sky", load(SKY_PATH))
+	sky_material.set_shader_parameter("tint", Color(1.25, 1.25, 1.25))
 	sky.material_override = sky_material
 	root3d.add_child(sky)
 	# Square to the camera's line of sight, so it fills the view however the
@@ -631,7 +686,7 @@ func spawn_wave(kind: int = -1) -> void:
 			else:
 				label = str(wrong_labels[k % wrong_labels.size()])
 				k += 1
-		var p := _make_planet(SLOTS[s], SPAWN_Z, label, correct)
+		var p := _make_gate(SLOTS[s], SPAWN_Z, label, correct)
 		p["slot"] = s
 		p["emoji"] = kind == Kind.RPS
 		w.planets.append(p)
@@ -697,6 +752,58 @@ func _make_planet(pos: Vector2, z: float, label: String, correct: bool) -> Dicti
 	return p
 
 
+## A quiz gate: the same dictionary as a planet, so the wave code moves, places
+## and judges it the same way; "gate" marks what differs — it is flown
+## through, lights up instead of breaking, and only rolls about its own axis.
+## Every gate glows the same colour until judged: a colour that differed
+## would give the answer away.
+func _make_gate(pos: Vector2, z: float, label: String, correct: bool) -> Dictionary:
+	var node := MeshInstance3D.new()
+	var glow_mat := _add_material(GATE_GLOW)
+	glow_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	if gate_ring_mesh != null:
+		var ring := MeshInstance3D.new()
+		ring.mesh = gate_ring_mesh
+		ring.transform = gate_part_xform
+		node.add_child(ring)
+		if gate_glow_mesh != null:
+			var glow := MeshInstance3D.new()
+			glow.mesh = gate_glow_mesh
+			glow.transform = gate_part_xform
+			glow.material_override = glow_mat
+			node.add_child(glow)
+	else:
+		var torus := TorusMesh.new()
+		torus.inner_radius = GATE_RADIUS
+		torus.outer_radius = GATE_RADIUS * GATE_OUTER_OF_HOLE
+		var ring := MeshInstance3D.new()
+		ring.mesh = torus
+		ring.rotation.x = PI * 0.5
+		ring.material_override = glow_mat
+		node.add_child(ring)
+	node.rotation.z = randf() * TAU
+	root3d.add_child(node)
+	var p := {
+		"node": node, "mat": null, "glow": glow_mat, "pos": pos, "z": z, "label": label,
+		"correct": correct, "alive": true, "judged": false, "palette": PALETTES[0],
+		"base_scale": 1.0, "radius": GATE_RADIUS, "gate": true,
+		"spin": Vector3(0.0, 0.0, GATE_ROLL_SPEED * (1.0 if randf() < 0.5 else -1.0)),
+		"flash": 0.0, "flash_color": GATE_GLOW_RIGHT,
+	}
+	_place(p)
+	return p
+
+
+## The ship went through `p`: it lights up gold if right, red if wrong, with
+## the burst's flash and ring but no debris — nothing broke. It flies on past
+## the camera like the rest of its wave.
+func _pass_gate(p: Dictionary, right: bool) -> void:
+	p.alive = false
+	p.flash = 1.0
+	p.flash_color = GATE_GLOW_RIGHT if right else GATE_GLOW_WRONG
+	_burst(p.node.position, p.palette, not right, 1.0, false)
+
+
 func _planet_material(sea: Color, ground: Color) -> ShaderMaterial:
 	var m := ShaderMaterial.new()
 	m.shader = planet_shader
@@ -713,6 +820,15 @@ func _planet_material(sea: Color, ground: Color) -> ShaderMaterial:
 func _place(p: Dictionary) -> void:
 	var grow: float = clampf((p.z - SPAWN_Z) / GROW_DISTANCE, 0.0, 1.0)
 	grow = grow * grow * (3.0 - 2.0 * grow)
+	# Past the plane a planet has been judged and is only on its way out, but
+	# it is still heading for the camera, and the top slot's sits almost on
+	# the camera's line: it swelled to cover half the screen just as the next
+	# wave's markers appeared. It shrinks away over PASS_SHRINK_DISTANCE
+	# instead, which still reads as flying past.
+	# Gates too: they were let through at first, being mostly hole, but the
+	# camera passes through the top slot's ring, which then filled the whole
+	# screen for a moment, edge to edge, over the next wave's markers.
+	grow *= 1.0 - smoothstep(0.0, PASS_SHRINK_DISTANCE, p.z)
 	var node: MeshInstance3D = p.node
 	node.position = Vector3(p.pos.x, p.pos.y, p.z)
 	node.scale = Vector3.ONE * maxf(p.base_scale * grow, 0.0001)
@@ -731,14 +847,13 @@ func _resolve_wave(w: Dictionary) -> void:
 			hit = p
 			break
 	if not hit.is_empty() and hit.correct:
-		_smash(hit, false)
+		_pass_gate(hit, true)
 		main._space_correct()
 		if main.space_run_live():
 			_enter(Phase.LOOT)
 		return
 	if not hit.is_empty():
-		hit.flash = 1.0
-		_smash(hit, true)
+		_pass_gate(hit, false)
 	_weapon_down()
 	main._space_wrong()
 	if main.space_run_live():
@@ -1141,11 +1256,11 @@ func _smash(p: Dictionary, wrong: bool, size: float = 1.0) -> void:
 	_burst(node.position, p.palette, wrong, size)
 
 
-func _burst(center: Vector3, pal: Array, wrong: bool, size: float) -> void:
+func _burst(center: Vector3, pal: Array, wrong: bool, size: float, pieces: bool = true) -> void:
 	var rock_mat := _planet_material(pal[1], pal[0])
 	if wrong:
 		rock_mat.set_shader_parameter("hit_flash", 0.6)
-	for i in int(DEBRIS_COUNT * clampf(size, 0.5, 1.5)):
+	for i in (int(DEBRIS_COUNT * clampf(size, 0.5, 1.5)) if pieces else 0):
 		var entry: Dictionary = rock_meshes[randi() % rock_meshes.size()]
 		var mi := MeshInstance3D.new()
 		mi.mesh = entry.mesh
@@ -1191,7 +1306,10 @@ func _spark(at: Vector3) -> void:
 func _update_fx(delta: float, running: bool) -> void:
 	for w in waves:
 		for p in w.planets:
-			if p.alive:
+			# A passed gate is no longer alive but is still there: it flies on
+			# and its flash fades. Left out, it froze on the plane around the
+			# ship, still lit.
+			if p.alive or p.get("gate", false):
 				_animate(p, delta)
 	for p in loose:
 		if p.alive:
@@ -1253,7 +1371,8 @@ func _update_fx(delta: float, running: bool) -> void:
 			streak_pos[i] = sp
 			mm.set_instance_transform(i, Transform3D(Basis().scaled(Vector3(1.0, 1.0, 3.0 * stretch)), sp))
 	if sky_material != null:
-		sky_material.uv1_offset.y -= flow * 0.00015 * delta
+		sky_scroll -= flow * 0.00015 * delta
+		sky_material.set_shader_parameter("scroll", sky_scroll)
 	if camera != null:
 		var want: float = CAMERA_FOV + (FEVER_FOV_BOOST if phase == Phase.FEVER else 0.0)
 		camera.fov = lerpf(camera.fov, want, 1.0 - exp(-4.0 * delta))
@@ -1264,7 +1383,11 @@ func _animate(p: Dictionary, delta: float) -> void:
 	node.rotation += p.spin * delta
 	if p.flash > 0.0:
 		p.flash = maxf(0.0, p.flash - delta * 2.0)
-		p.mat.set_shader_parameter("hit_flash", p.flash)
+		if p.get("gate", false):
+			var lit: Color = p.flash_color
+			(p.glow as StandardMaterial3D).albedo_color = GATE_GLOW.lerp(Color(lit.r * 2.5, lit.g * 2.5, lit.b * 2.5, 1.0), p.flash)
+		else:
+			p.mat.set_shader_parameter("hit_flash", p.flash)
 	_place(p)
 
 
@@ -1305,34 +1428,69 @@ func project(p: Vector3) -> Vector3:
 	return Vector3(a.x, a.y, a.distance_to(b))
 
 
+## How far a planet has come, 0 at SPAWN_Z and 1 on the flight plane.
+static func approach(p: Dictionary) -> float:
+	return clampf((p.z - SPAWN_Z) / -SPAWN_Z, 0.0, 1.0)
+
+
+## The arrival markers of the next wave: where on the flight plane each planet
+## will land, with its answer. Seen from the camera a wave starts out eight
+## times further away than the plane, so its four planets begin bunched within
+## about 40 px of each other with 8 px writing — the answer could only be read
+## in the last moment. The markers show the layout at full size from the
+## instant the wave appears, and the planets fly in to fill them.
+##
+## The answer stays on the marker until the wave is judged rather than moving
+## onto the planet: a second plate riding the planet in sat beside the
+## marker's for the last half second, and the planet lands on the marker's
+## centre anyway. Only the ring fades, as the planet fills it.
 func draw_labels(ci: CanvasItem, font: Font) -> void:
-	for w in waves:
-		if w.resolved:
+	var w := upcoming_wave()
+	if w.is_empty():
+		return
+	for p in w.planets:
+		if not p.alive:
 			continue
-		for p in w.planets:
-			if not p.alive or p.label == "":
-				continue
-			var node: MeshInstance3D = p.node
-			var s := project(node.position)
-			if s.z <= 0.0:
-				continue
-			var r: float = s.z * node.scale.x / maxf(p.base_scale, 0.0001) * PLANET_RADIUS
-			if r < 4.0:
-				continue
-			var emoji: bool = p.get("emoji", false)
-			var f: Font = emoji_font if emoji else font
-			var font_size := int(clampf(r * (0.8 if emoji else 0.62), 8.0, 80.0))
-			var text_w: float = f.get_string_size(p.label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
-			var size := Vector2(maxf(text_w + font_size * 0.7, r * 0.95), font_size * 1.3)
-			var sb := StyleBoxFlat.new()
-			sb.bg_color = PLATE_FILL
-			sb.border_color = PLATE_EDGE
-			sb.set_border_width_all(maxi(1, int(font_size * 0.09)))
-			sb.set_corner_radius_all(int(font_size * 0.3))
-			sb.anti_aliasing = true
-			ci.draw_style_box(sb, Rect2(Vector2(s.x, s.y) - size * 0.5, size))
-			ci.draw_string(f, Vector2(s.x - text_w * 0.5, s.y + font_size * 0.36), p.label,
-				HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, PLATE_TEXT)
+		var t := approach(p)
+		var shown := smoothstep(0.0, MARKER_FADE_IN, t)
+		var arrived := smoothstep(MARKER_RING_FADE.x, MARKER_RING_FADE.y, t)
+		var s := project(Vector3(p.pos.x, p.pos.y, 0.0))
+		if shown <= 0.01 or s.z <= 0.0:
+			continue
+		var r: float = s.z * p.radius
+		var c := Vector2(s.x, s.y)
+		var ring := shown * (1.0 - arrived)
+		if ring > 0.01:
+			_draw_dashed_ring(ci, c, r, Color(MARKER_RING, MARKER_RING_ALPHA * ring))
+		if p.label != "":
+			# The ship parks under the plate it has chosen; let it show through.
+			var plate := shown * (MARKER_PLATE_UNDER_SHIP if _touching(p) else MARKER_PLATE_ALPHA)
+			_draw_plate(ci, font, p, c, r * MARKER_TEXT_SCALE, plate)
+
+
+func _draw_dashed_ring(ci: CanvasItem, c: Vector2, r: float, color: Color) -> void:
+	var step := TAU / MARKER_DASHES
+	for i in MARKER_DASHES:
+		var a0 := i * step
+		ci.draw_arc(c, r, a0, a0 + step * 0.55, 8, color, MARKER_RING_WIDTH, true)
+
+
+## An answer plate centred on `c`, sized for a planet `r` px across, at `alpha`.
+func _draw_plate(ci: CanvasItem, font: Font, p: Dictionary, c: Vector2, r: float, alpha: float) -> void:
+	var emoji: bool = p.get("emoji", false)
+	var f: Font = emoji_font if emoji else font
+	var font_size := int(clampf(r * (0.8 if emoji else 0.62), 8.0, 80.0))
+	var text_w: float = f.get_string_size(p.label, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var size := Vector2(maxf(text_w + font_size * 0.7, r * 0.95), font_size * 1.3)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(PLATE_FILL, alpha)
+	sb.border_color = Color(PLATE_EDGE, alpha)
+	sb.set_border_width_all(maxi(1, int(font_size * 0.09)))
+	sb.set_corner_radius_all(int(font_size * 0.3))
+	sb.anti_aliasing = true
+	ci.draw_style_box(sb, Rect2(c - size * 0.5, size))
+	ci.draw_string(f, Vector2(c.x - text_w * 0.5, c.y + font_size * 0.36), p.label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(PLATE_TEXT, minf(1.0, alpha * 1.6)))
 
 
 ## Inside the question box, the arrow or the hand; under it, the cycle's

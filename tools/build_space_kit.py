@@ -47,6 +47,10 @@ KIT = [
 	"SM_Env_Asteroid_02",
 	"SM_Env_Asteroid_03",
 	"SM_Env_Asteroid_05",
+	# The quiz gates. Only the inner ring and its glow band: the outer ring's
+	# three spurs reach 1.8x the hole, and the four slots are too close for that.
+	"SM_Veh_WarpGate_Inner_01",
+	"SM_Veh_WarpGate_Glow_01",
 ]
 SHIP_TEXTURE = "PolygonSciFiSpace_Texture_01_A.png"
 SHIP_EMISSIVE = "PolygonSciFiSpace_Emissive_01.png"
@@ -115,7 +119,10 @@ def build(prefab, mats):
 	bpy.ops.object.transform_apply(location=True, rotation=True, scale=True)
 	me = keep.data
 	me.materials.clear()
-	if prefab.startswith("SM_Ship"):
+	if "Glow" in prefab:
+		me.materials.append(mats["glow"])
+	elif prefab.startswith("SM_Ship") or "WarpGate" in prefab:
+		# The gate is painted from the same atlas, emissive lights included.
 		me.materials.append(mats["ship"])
 	elif "Planet" in prefab:
 		me.materials.append(mats["planet"])
@@ -130,7 +137,8 @@ def build(prefab, mats):
 def main():
 	os.makedirs(OUT_DIR, exist_ok=True)
 	bpy.ops.wm.read_factory_settings(use_empty=True)
-	mats = {"ship": ship_material(), "planet": plain_material("planet"), "rock": plain_material("rock")}
+	mats = {"ship": ship_material(), "planet": plain_material("planet"), "rock": plain_material("rock"),
+		"glow": plain_material("glow")}
 	for prefab in KIT:
 		build(prefab, mats)
 	out = os.path.join(OUT_DIR, "space_kit.glb")
