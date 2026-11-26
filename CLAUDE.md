@@ -226,8 +226,6 @@ on failure.
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect`/`_boost_bar_rect`/`_boost_button_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_hearts.gd` | a run starts with `MAX_HEARTS`; a wrong gate and the wall each take one heart and the run goes on, with the combo broken and score and gates passed kept; after a gate hit the next gate is planned from where the character really is; the floor takes a heart and bounces the character up, is free while it blinks, and costs again after; the last heart sends the run to the revive offer; a revive and a new run refill the hearts; and the HUD hearts sit in the gate zone's top-left, clear of the combo readout | `MAX_HEARTS`, `HURT_*`/`HEART_*` constants, `_take_hit`/`_take_gate_hit`/`_update_hearts`, the floor branch of `_update_playing`, `_resolve_gate`'s failure paths, `_on_revive_continue`, `_reset_game`, or the combo readout's position |
-| `check_slider.gd` | the reference viewport is landscape with `keep_height`; the game and the mode-select screen both open on JUNGLE; the slider spans the gate field minus half the hitbox; pressing the left column grabs it, only that finger's drag moves it, a press elsewhere, another finger and touch-emulated mouse events are ignored, and pointing past the field stops at its edge; the character never moves faster than `PLAYER_MOVE_SPEED` and does arrive; and consecutive correct holes stay within boosted reach of that speed | `display/window/*` stretch or size, `SLIDER_*`, `PLAYER_MOVE_SPEED`/`PLAYER_FOLLOW_SHARPNESS`, `_slider_input`/`_update_player_follow`/`slider_range`, `_gate_field_top`/`_bottom`, the reach maths in `_spawn_gate`, `base_gate_spacing`, `GATE_SPEED`, `BOOST_BUTTON_MULTIPLIER`, or `Main.current_mode`/`ModeSelectScreen.DEFAULT_MODE` |
-| `check_character_3d.gd` | JUNGLE draws its character from one `SubViewport` (a `ViewportTexture`, not a sprite); with `CHAR3D_TOON` on, every surface wears the toon material with its own texture and the outline pass; the model hangs from a pivot that lifts the nose when climbing, lowers it when diving and settles back at rest, and a barrel roll goes once round in `CHAR3D_ROLL_TIME` and is started by both a correct gate and a boost press; the model carries `flap`, `happy` and `sad` and `flap` loops; the pose follows the game — flap when flying, happy right after a pass, back to flap, sad at game over; SKY, which has no model, draws its sprite with no viewport left behind; and switching modes back and forth leaves exactly one viewport | `MODE_CHARACTER_3D`, `CHAR3D_*`, `_apply_toon` or `assets/shaders/toon*`, `_setup_character_3d`/`_update_character_3d`/`_update_character_3d_motion`/`_char3d_start_roll`, `_bird_draw_frame`, `_apply_mode`, or `tools/rig_jungle_dragon.py`'s export |
 | `check_hidden_unlock.gd` | MIX opens only once every other mode has passed `HIDDEN_UNLOCK_GATES` gates; missed gates and MIX's own gates do not count; the total survives a relaunch **and** an exit through pause HOME; the mode-select screen learns about it; and an old-rule save that had opened MIX stays open (and stays open on the next launch) while the same counts saved under the new rule stay locked | `HIDDEN_UNLOCK_GATES`, `HIDDEN_UNLOCK_GATES_LEGACY`, `gates_rule`/`hidden_unlocked`, `HIDDEN_MODE`, `hidden_modes_*`, `_push_hidden_progress`, `debug_force_hidden_locked`, `_resolve_gate`'s pass branch, or where `_save_best_score` is called from |
 | `check_mix_mode.gd` | the three single modes still ask exactly one quiz each, MIX rolls all three evenly with no run past 2, every gate carries a `quiz_kind` matching the colour data it holds, and MIX's difficulty measurably rides the **same** phase curve as the single modes | `_next_quiz_kind`, `MODE_QUIZ_KIND`, the shuffle bag, `_get_phase_index`, `phase_gate_counts`, or any of the three problem generators change |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
@@ -556,74 +554,6 @@ whole and are cut at load time by `_slice_spritesheet`,
 which takes a cell grid, drops fully transparent cells and rebuilds each
 cell's mipmaps. A regular grid needs no detection, so there is nothing for a
 tool to measure and nothing to commit twice.
-
-**The JUNGLE dragon is rendered from a 3D model** (since 2026-11-25), because
-AI image generation could not hold one character steady across frames. The
-source is a Meshy model with no rig, kept in
-`assets/characters/dragon_green/source/` behind a `.gdignore`. Its fly
-sheet and both faces are written by `tools/rig_jungle_dragon.py`, a Blender
-script (`blender -b --python tools/rig_jungle_dragon.py -- <repo>`). It
-weights the wings by position, rolls them about their measured root lines,
-renders the four flap frames into the 2x2 sheet and poses the two faces.
-The happy face spreads the wings and lifts the nose; the sad face folds the
-wings and lowers the nose. The model's own expression cannot change. The
-script prints the bbox centres for `MODE_DRAW_OFFSET_*`, so re-run it and
-copy those numbers rather than editing the PNGs. The first rig hinged the
-wings halfway up and its head mask caught the horns. The docstring records
-how the root line was measured instead.
-
-**In play, the JUNGLE dragon is drawn live in 3D.** The same script also
-writes `dragon_rigged.glb` with three animations: `flap` (a 0.5 s loop),
-`happy` and `sad`. `MODE_CHARACTER_3D` points at that file. `_apply_mode`
-builds a 256px transparent `SubViewport` holding the model, an orthographic
-camera and a sun, set where the Blender camera stood, so the live render
-lines up with the sprites. `_bird_draw_frame` then hands back that viewport's
-texture. `_update_character_3d` switches the animation by the same rule the
-sprites follow. A mode with no model, or a missing file, draws its sprites.
-The PNGs stay either way, because the mode-select card, the popups and the
-share card draw them.
-
-Two export details are load-bearing. First, Blender 5's `'ACTIONS'` export
-mode wrote no animations at all. The script exports one NLA track per
-action, which the game reads as an `AnimationPlayer` with three
-animations. Second, the faces' pitch is keyed on the body bone. A pitch on
-the armature object is dropped by glTF, so the live faces came out level.
-`check_character_3d.gd` guards both, along with the viewport's lifecycle
-across mode switches.
-
-**The live dragon has to move like a 3D object to read as one.** The first live
-build looked like a sprite: an orthographic camera dead side-on, a body that
-only slid up and down, and a sun next to the camera. The front light barely
-changed as faces turned, and Meshy's texture already has shading painted in.
-Three things changed that on 2026-11-25:
-
-- **Tilt.** The model hangs from a `Pivot` at `CHAR3D_TARGET`.
-  `_update_character_3d_motion` pitches the nose up when climbing and down
-  when diving, and banks slightly so the belly or back shows. It follows the
-  smoothed vertical speed and returns to the side profile at rest.
-  `CHAR3D_PITCH_MAX_DEG` 16 and `CHAR3D_BANK_MAX_DEG` 14 are the largest
-  angles that keep every flap frame inside the 256px cell (4px to spare, swept
-  in both directions). At 24 and 18 a wing tip touched the edge and was cut
-  off.
-- **Barrel roll.** A correct gate (`_play_gate_success_fx`) and a boost press
-  each spin the body once about its own axis over `CHAR3D_ROLL_TIME`. A
-  sprite cannot draw this, so it is the clearest sign the character is 3D.
-- **Light.** The key light comes from above and in front of the nose
-  (`CHAR3D_SUN_FROM`), and a second light behind (`CHAR3D_RIM_FROM`) lifts the
-  silhouette. Ambient came down from 0.9 to 0.55 so the two lights leave
-  visible shading.
-
-Everything rotates inside the SubViewport only. Judging and physics never see
-it.
-
-**A toon shader exists but is off** (`CHAR3D_TOON`). `_apply_toon` swaps
-each surface for `assets/shaders/toon.gdshader`, which cuts the light into
-three bands plus a rim on the model's own texture. Its `next_pass` is
-`toon_outline.gdshader`, an inverted hull drawn in the texture's darkened
-colour. It was tried the same day and turned off: cel shading makes 3D look
-like 2D drawing, which undid the reason for going 3D. Turning it on again
-uses `CHAR3D_TOON_AMBIENT`/`_SUN_ENERGY`. Under `--headless` it makes the
-dummy renderer print `Parameter "material" is null`, which is harmless.
 
 Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
 unconverted wav still plays and dropping the ogg beside it switches over).

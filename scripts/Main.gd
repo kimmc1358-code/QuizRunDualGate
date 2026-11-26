@@ -185,13 +185,9 @@ const FLAP_FRAME_DURATION := 1.0 / 8.0  # 8 FPS per spec
 # the 5 frames' own centers drift 3.5x6.0px, a run cycle's natural bob, well
 # under JUNGLE's 16.5px and not worth flattening — and both faces sit at
 # (126.0, 124.0).
-# JUNGLE is the rigged 3D dragon (2026-11-25), rendered by
-# tools/rig_jungle_dragon.py, which prints these numbers: fly averages
-# (126.0, 126.1) over its four flap frames, happy (128.5, 128.5), sad
-# (123.5, 110.0). The sad pose is pitched nose-down, which lifts its centre.
-const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(0.8, 0.7), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
-const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-0.2, -0.2), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
-const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(1.8, 7.0), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_FLY := [Vector2(0.4, 2.5), Vector2(-2.0, 0.7), Vector2(0.0, 0.0), Vector2(0.5, 0.4)]
+const MODE_DRAW_OFFSET_HAPPY := [Vector2(2.0, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
+const MODE_DRAW_OFFSET_SAD := [Vector2(0.4, 2.1), Vector2(-1.2, 0.6), Vector2(0.0, 0.0), Vector2(0.8, 1.6)]
 # Per-mode visual-only size tweak — multiplies PLAYER_VISUAL_SIZE's draw
 # scale, same as _bird_stretch_scale/_happy_pop_scale (see active_visual_size_scale).
 # Never touches PLAYER_SIZE/hitbox/collision, only which mode looks a hair
@@ -280,12 +276,7 @@ const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallb
 # the drawn rect IS what you see. _score_box_rect/_quiz_box_rect are the only
 # places that turn any of this into screen rects, and _gate_zone_top starts
 # the gate zone at the quiz box's bottom edge.
-# 2.0 은 가로 화면(854x480 기준)이라 세로 공간이 귀하다. 버튼·점수판·문제 상자를
-# 한 줄에 놓는다 — 세로 화면처럼 점수판 아래 문제 상자를 쌓으면 레인 두 개가
-# 들어갈 높이가 안 남는다.
-const HUD_SCORE_ROW_WIDTH := 400.0   # 버튼·점수판 크기를 정하는 가상의 줄 폭
-const QUIZ_BOX_HEIGHT_TO_SCORE := 1.15
-const SCORE_BOX_TOP := 8.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
+const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the single knob that moves the whole HUD (buttons, quiz box and the gate zone below it all derive from it)
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
@@ -2469,10 +2460,7 @@ var last_quiz_key: String = ""
 # _ocean_gate_font_size. -1 = not computed yet.
 var ocean_gate_font_size: int = -1
 
-# picked at State.MODE_SELECT — see _apply_mode. 2.0 starts on JUNGLE (math):
-# the owner's call. Flags are the hardest quiz for a first run — a player can
-# only answer the flags they already know — while arithmetic can be worked out.
-var current_mode: int = Mode.JUNGLE
+var current_mode: int = Mode.SKY  # picked at State.MODE_SELECT — see _apply_mode
 var active_draw_offset_fly := Vector2.ZERO
 var active_draw_offset_happy := Vector2.ZERO
 var active_draw_offset_sad := Vector2.ZERO
@@ -2851,7 +2839,7 @@ func _boot_load() -> void:
 	_init_boost_speedlines(view_size)
 	_init_bg_sparkles(view_size)
 	_init_cloud_mid(view_size)
-	_apply_mode(current_mode)  # loads a valid default (JUNGLE) so nothing is empty before mode-select runs _apply_mode again
+	_apply_mode(current_mode)  # loads a valid default (SKY) so nothing is empty before mode-select runs _apply_mode again
 	# 효과음과 음악을 따로 조절하려면 각자 버스를 타야 한다.
 	_setup_audio_buses()
 	fx_sound_whoosh = AudioStreamPlayer.new()
@@ -3994,13 +3982,9 @@ func _ocean_gate_font_size(icon_size: Vector2, max_font_size: int) -> int:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if state != State.PLAYING and state != State.SPLASH:
+		return
 	if paused:
-		return
-	# 카운트다운 동안에도 손잡이는 잡을 수 있다 — 시작 위치를 미리 정하게.
-	if state == State.PLAYING or state == State.COUNTDOWN:
-		_slider_input(event)
-		return
-	if state != State.SPLASH:
 		return
 	var tapped := false
 	if event is InputEventScreenTouch and event.pressed:
@@ -4027,6 +4011,11 @@ func _unhandled_input(event: InputEvent) -> void:
 				fx_sound_splash_start.play()
 			splash_exit_elapsed = 0.0
 		return
+	if tapped:
+		player_vel = flap_velocity
+		_spawn_trail_burst()
+		if fx_sound_flap.stream != null:
+			fx_sound_flap.play()
 
 
 func _process(delta: float) -> void:
@@ -4109,8 +4098,6 @@ func _process(delta: float) -> void:
 		while flap_timer >= FLAP_FRAME_DURATION and not flap_frames.is_empty():
 			flap_timer -= FLAP_FRAME_DURATION
 			flap_frame_index = (flap_frame_index + 1) % flap_frames.size()
-		_update_character_3d()
-		_update_character_3d_motion(delta)
 	queue_redraw()
 	if hud_canvas != null:
 		hud_canvas.queue_redraw()
@@ -4175,9 +4162,21 @@ func _boost_bg_multiplier() -> float:
 func _update_playing(delta: float) -> void:
 	var view_size := get_viewport_rect().size
 
-	# 2.0: 중력도 바닥도 없다. 캐릭터는 슬라이더 손잡이를 쫓고, 판 밖으로는
-	# 못 나간다 — _update_player_follow.
-	_update_player_follow(delta)
+	player_vel = min(player_vel + gravity * delta, max_fall_speed)
+	player_y += player_vel * delta
+	var half_h := PLAYER_SIZE.y * 0.5
+	var zone_top := _gate_zone_top(view_size)
+	var zone_bottom := _gate_zone_bottom(view_size)
+	if player_y - half_h < zone_top:
+		player_y = zone_top + half_h
+		player_vel = 0.0
+	elif player_y + half_h > zone_bottom:
+		player_y = zone_bottom - half_h
+		player_vel = 0.0
+		# 무적 중이면 하트 없이 튀어 오르기만 한다 — HURT_INVULN_DURATION 참고.
+		if hurt_elapsed < 0.0 and not _take_hit():
+			return
+		player_vel = flap_velocity
 	_update_hearts(delta)
 
 	if gate_speed_boost_elapsed >= 0.0:
@@ -4359,9 +4358,13 @@ func _spawn_gate(view_size: Vector2) -> void:
 	# 중 상승 가능 거리 294px 대 배치 상한 427px — 아무리 두드려도 못 닿는
 	# 윗레인 갈아타기가 실제로 나올 수 있었다.
 	var available_time: float = base_gate_spacing / (GATE_SPEED * BOOST_BUTTON_MULTIPLIER)
-	# 2.0 의 슬라이더는 위아래가 같은 속도 상한(PLAYER_MOVE_SPEED)을 가진다.
-	var up_reach: float = available_time * PLAYER_MOVE_SPEED * REACH_SAFETY_FACTOR
-	var down_reach: float = up_reach
+	# flap_velocity 는 탭 한 번이 속도를 덮어쓰는 값, 즉 순간 속도지 유지되는
+	# 상승률이 아니다. 여기에 그대로 쓰는 것은 간격 0 의 무한 연타를 가정하는
+	# 것과 같았다 — 실제 유지 상승률은 reach_tap_interval 의 표를 볼 것.
+	# 내려가는 쪽은 max_fall_speed 가 정말로 유지되는 속도라 그대로 맞다.
+	var climb_rate: float = maxf(0.0, absf(flap_velocity) - gravity * reach_tap_interval * 0.5)
+	var up_reach: float = available_time * climb_rate * REACH_SAFETY_FACTOR
+	var down_reach: float = available_time * max_fall_speed * REACH_SAFETY_FACTOR
 
 	# On top of raw physics reachability, cap consecutive-target movement to
 	# a fraction of full screen height so "top then straight to bottom"
@@ -5174,13 +5177,10 @@ func _draw_boost_pop(view_size: Vector2) -> void:
 # 가속 버튼 자리. 버튼을 놓는 쪽과 튜토리얼이 밝히는 쪽이 같은 답을 봐야 해서
 # 함수로 둔다 — 노드의 현재 위치를 읽으면 화면 크기를 넣어 계산하는 쪽과
 # 어긋난다.
-#
-# 2.0 은 왼쪽 끝이 슬라이더 자리라 가속 버튼은 늘 오른쪽이다. 1.x 의 좌우 선택
-# (boost_button_on_left)은 설정 화면을 2.0 에 맞게 다시 만들 때 정리한다.
 func _boost_button_rect(view_size: Vector2) -> Rect2:
 	var s := Vector2(BOOST_BUTTON_SIZE, BOOST_BUTTON_SIZE)
 	return Rect2(Vector2(
-		view_size.x - BOOST_BUTTON_MARGIN - s.x,
+		BOOST_BUTTON_MARGIN if boost_button_on_left else view_size.x - BOOST_BUTTON_MARGIN - s.x,
 		view_size.y - BOOST_BUTTON_MARGIN - s.y), s)
 
 
@@ -5268,7 +5268,6 @@ func _play_gate_success_fx(g: Dictionary, in_top: bool) -> void:
 	g["fx_flash_side"] = "top" if in_top else "bottom"
 	g["fx_flash_elapsed"] = 0.0
 	happy_flap_elapsed = 0.0
-	_char3d_start_roll()
 
 	var zone_top: float = g.top_zone_top if in_top else g.bottom_zone_top
 	var zone_bottom: float = g.top_zone_bottom if in_top else g.bottom_zone_bottom
@@ -5430,11 +5429,6 @@ func _gate_punch_scale(g: Dictionary, side: String) -> float:
 # 것을 써야 하는데, 한쪽만 happy/sad 를 알면 부스트 중 게이트를 지날 때 본체만
 # 표정이 바뀌고 잔상은 날갯짓으로 남는다.
 func _bird_draw_frame() -> Dictionary:
-	# 3D 캐릭터면 자세는 모델 쪽 애니메이션이 정한다(_update_character_3d).
-	# 카메라가 스프라이트를 구울 때와 같은 자리라, 오프셋은 날갯짓 것 하나다 —
-	# 자세마다 따로 맞출 수 없다(한 화면을 그대로 그리므로).
-	if char3d_viewport != null:
-		return {"texture": char3d_viewport.get_texture(), "offset": active_draw_offset_fly}
 	if state == State.GAMEOVER and sad_face_texture != null:
 		# Static — no flap cycling once the run has ended.
 		return {"texture": sad_face_texture, "offset": active_draw_offset_sad}
@@ -6271,318 +6265,6 @@ func _save_best_score(mode: int) -> void:
 
 
 # ============================================================
-# 3D 캐릭터 (2.0).
-#
-# 리깅한 3D 모델을 게임 안에서 실시간으로 그린다. 이 게임은 화면을 전부 2D 로
-# 직접 그리므로(_draw), 캐릭터 몫의 작은 SubViewport 를 하나 두고 그 안에서
-# 모델과 애니메이션을 돌린 뒤, 그 화면을 캐릭터 자리에 텍스처로 그린다. 스프라이트
-# 4장보다 날갯짓이 매끄럽고, 같은 그림을 미리 구운 PNG 와 크기·자리가 같다 —
-# 카메라를 tools/rig_jungle_dragon.py 가 스프라이트를 찍던 자리와 똑같이 둔다.
-#
-# MODE_CHARACTER_3D 가 빈 모드, 또는 파일이 없는 모드는 예전처럼 스프라이트를
-# 그린다. 스프라이트(PNG)는 지워지지 않는다: 모드 선택 카드, 팝업, 공유 카드가
-# 그것을 쓴다.
-const MODE_CHARACTER_3D := ["", "res://assets/characters/dragon_green/dragon_rigged.glb", "", ""]
-const CHAR3D_RESOLUTION := 256          # 스프라이트 한 칸과 같은 크기로 렌더한다
-# tools/rig_jungle_dragon.py 의 ORTHO / CAM_DIR / CAM_TARGET 을 Godot 축으로 옮긴 값.
-# glTF 는 Y 가 위라 Blender 의 (x, y, z) 가 여기서 (x, z, -y) 가 된다.
-const CHAR3D_ORTHO := 1.06
-const CHAR3D_CAM_DIR := Vector3(-1.0, 0.0, 0.0)   # pure side profile, as the sprites
-const CHAR3D_TARGET := Vector3(0.0, -0.03, 0.006)
-# 조명. 처음엔 스프라이트를 찍던 대로 해를 카메라 쪽에 두고 환경광을 0.9 로
-# 했는데, 정면광은 면이 돌아가도 밝기가 거의 안 바뀌어 모델이 납작한 그림으로
-# 읽혔다. 주광은 위·앞(코 쪽)에서 비스듬히 비추고, 반대편 뒤에서 테두리 빛을
-# 하나 더 넣어 실루엣을 띄운다. 환경광을 낮춰야 그 둘이 만든 명암이 남는다.
-const CHAR3D_AMBIENT := 0.55
-const CHAR3D_SUN_ENERGY := 1.7
-const CHAR3D_SUN_FROM := Vector3(-0.45, 1.0, 0.8)    # 카메라 쪽 약간, 위, 코 앞
-const CHAR3D_RIM_ENERGY := 1.4
-const CHAR3D_RIM_FROM := Vector3(1.0, 0.5, -0.5)     # 카메라 반대편, 꼬리 뒤
-const CHAR3D_BLEND := 0.15              # 날갯짓 <-> 기쁨/슬픔 자세 전환 시간(초)
-
-# 움직임에 따라 몸을 기울인다. 정면 옆모습 그대로 위아래로 미끄러지기만 하면
-# 스프라이트와 구별이 안 된다 — 몸이 돌아가며 보이는 면이 바뀌어야 입체로 읽힌다.
-# 올라가면 고개를 들고 배를 살짝 보이고, 내려가면 숙인다. 가만히 있으면 옆모습.
-const CHAR3D_PITCH_MAX_DEG := 16.0
-const CHAR3D_BANK_MAX_DEG := 14.0
-# 이 속도(px/s)에서 최대로 기운다. PLAYER_MOVE_SPEED 전부를 써야 끝까지 기울면
-# 레인을 바꿀 때 거의 기울지 않는다.
-const CHAR3D_TILT_FULL_SPEED := 520.0
-const CHAR3D_TILT_SHARPNESS := 9.0      # 기울기가 속도를 쫓는 빠르기(지수 감쇠)
-# 정답 통과와 부스트에 배럴롤 한 바퀴. 스프라이트로는 그릴 수 없는 장면이라
-# "3D 다"가 가장 분명히 보이는 순간이고, 통과의 손맛도 된다.
-const CHAR3D_ROLL_TIME := 0.55
-# 카툰 셰이더. 끄면 모델이 가져온 원래 재질(부드러운 명암)로 돌아간다 — 비교용.
-# 명암을 단계로 끊고(toon.gdshader) 어두운 외곽선을 두른다(toon_outline.gdshader).
-# 꺼 둔 이유: 셀 셰이딩은 3D 를 2D 그림처럼 보이게 하는 기법이라, 3D 로 바꾼
-# 의미를 오히려 지웠다(2026-11-25).
-const CHAR3D_TOON := false
-const CHAR3D_TOON_SHADER := "res://assets/shaders/toon.gdshader"
-const CHAR3D_TOON_OUTLINE_SHADER := "res://assets/shaders/toon_outline.gdshader"
-# 셀 셰이딩에서는 그림자 쪽 밝기 = 환경광이다. 0.9 그대로면 해가 비추는 쪽과 거의
-# 차이가 없어 단계가 안 보인다.
-const CHAR3D_TOON_AMBIENT := 0.5
-const CHAR3D_TOON_SUN_ENERGY := 1.8
-
-var char3d_viewport: SubViewport
-var char3d_anim: AnimationPlayer
-var char3d_pose := ""
-var char3d_pivot: Node3D                # 모델 중심에서 도는 손잡이
-var char3d_prev_y := NAN
-var char3d_vy := 0.0                    # 부드럽게 한 세로 속도(px/s, 아래가 +)
-var char3d_roll_t := -1.0               # 배럴롤 경과 시간, 음수면 안 도는 중
-
-
-func _setup_character_3d(mode: int) -> void:
-	if char3d_viewport != null:
-		# 바로 떼어 낸다. queue_free 만 하면 이 프레임 끝까지 남아, 같은 프레임에
-		# 다시 만든 것과 둘이 함께 렌더된다.
-		remove_child(char3d_viewport)
-		char3d_viewport.queue_free()
-		char3d_viewport = null
-		char3d_anim = null
-		char3d_pose = ""
-		char3d_pivot = null
-	char3d_prev_y = NAN
-	char3d_vy = 0.0
-	char3d_roll_t = -1.0
-	var path: String = MODE_CHARACTER_3D[mode] if mode < MODE_CHARACTER_3D.size() else ""
-	if path == "" or not ResourceLoader.exists(path):
-		return
-	var vp := SubViewport.new()
-	vp.name = "Character3D"
-	vp.size = Vector2i(CHAR3D_RESOLUTION, CHAR3D_RESOLUTION)
-	vp.transparent_bg = true
-	vp.own_world_3d = true
-	vp.render_target_update_mode = SubViewport.UPDATE_ALWAYS
-	vp.msaa_3d = Viewport.MSAA_4X
-	var env := Environment.new()
-	env.background_mode = Environment.BG_CLEAR_COLOR
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color.WHITE
-	env.ambient_light_energy = CHAR3D_TOON_AMBIENT if CHAR3D_TOON else CHAR3D_AMBIENT
-	var we := WorldEnvironment.new()
-	we.environment = env
-	vp.add_child(we)
-	var cam := Camera3D.new()
-	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = CHAR3D_ORTHO
-	vp.add_child(cam)
-	cam.position = CHAR3D_TARGET + CHAR3D_CAM_DIR.normalized() * 3.0
-	cam.look_at_from_position(cam.position, CHAR3D_TARGET, Vector3.UP)
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = CHAR3D_TOON_SUN_ENERGY if CHAR3D_TOON else CHAR3D_SUN_ENERGY
-	vp.add_child(sun)
-	sun.look_at_from_position(CHAR3D_SUN_FROM, Vector3.ZERO, Vector3.UP)
-	var rim := DirectionalLight3D.new()
-	rim.light_energy = CHAR3D_RIM_ENERGY
-	vp.add_child(rim)
-	rim.look_at_from_position(CHAR3D_RIM_FROM, Vector3.ZERO, Vector3.UP)
-	var model: Node3D = load(path).instantiate()
-	if CHAR3D_TOON:
-		_apply_toon(model)
-	# 모델 원점이 아니라 화면 가운데(CHAR3D_TARGET)를 축으로 돌려야 기울거나
-	# 구를 때 칸 밖으로 밀려나지 않는다.
-	var pivot := Node3D.new()
-	pivot.name = "Pivot"
-	pivot.position = CHAR3D_TARGET
-	vp.add_child(pivot)
-	model.position = -CHAR3D_TARGET
-	pivot.add_child(model)
-	char3d_pivot = pivot
-	add_child(vp)
-	var players := model.find_children("*", "AnimationPlayer", true, false)
-	if not players.is_empty():
-		char3d_anim = players[0]
-		if char3d_anim.has_animation("flap"):
-			char3d_anim.get_animation("flap").loop_mode = Animation.LOOP_LINEAR
-	char3d_viewport = vp
-	_update_character_3d()
-
-
-## 모델의 모든 면에 카툰 재질을 덮어씌운다. 원래 재질의 텍스처만 가져다 쓰므로
-## 모델을 바꿔도 셰이더 쪽은 손댈 것이 없다.
-func _apply_toon(model: Node) -> void:
-	var toon: Shader = load(CHAR3D_TOON_SHADER)
-	var outline: Shader = load(CHAR3D_TOON_OUTLINE_SHADER)
-	if toon == null or outline == null:
-		push_warning("toon shader missing — the 3D character keeps its own material")
-		return
-	for mi: MeshInstance3D in model.find_children("*", "MeshInstance3D", true, false):
-		for s in mi.mesh.get_surface_count():
-			var src := mi.get_active_material(s)
-			var tex: Texture2D = src.albedo_texture if src is BaseMaterial3D else null
-			var line := ShaderMaterial.new()
-			line.shader = outline
-			line.set_shader_parameter("albedo_tex", tex)
-			var mat := ShaderMaterial.new()
-			mat.shader = toon
-			mat.set_shader_parameter("albedo_tex", tex)
-			mat.next_pass = line
-			mi.set_surface_override_material(s, mat)
-
-
-## 지금 보여야 할 자세로 애니메이션을 바꾼다. 스프라이트 쪽 _bird_draw_frame 과
-## 같은 규칙이다: 게임오버면 슬픔, 통과 직후면 기쁨, 그 밖에는 날갯짓.
-func _update_character_3d() -> void:
-	if char3d_anim == null:
-		return
-	var want := "flap"
-	if state == State.GAMEOVER:
-		want = "sad"
-	elif happy_flap_elapsed >= 0.0:
-		want = "happy"
-	if want == char3d_pose or not char3d_anim.has_animation(want):
-		return
-	char3d_pose = want
-	char3d_anim.play(want, CHAR3D_BLEND)
-
-
-## 배럴롤을 시작한다. 이미 도는 중이면 무시한다 — 도중에 처음부터 다시 돌면
-## 한 바퀴가 튀어 보인다.
-func _char3d_start_roll() -> void:
-	if char3d_pivot != null and char3d_roll_t < 0.0:
-		char3d_roll_t = 0.0
-
-
-## 몸의 기울기와 배럴롤. 판정·물리에는 아무 영향이 없다 — 3D 화면 안의 모델만 돈다.
-##
-## 축: 카메라가 +x 를 보고 있어 화면 오른쪽이 +z(코), 위가 +y 다. 고개 들기는
-## x 축 회전, 몸통 축으로 구르기는 z 축 회전이다. Node3D 의 오일러 순서(YXZ)상
-## z 가 먼저 적용되므로, 구르기는 기울어진 몸통 축을 따라 돈다.
-func _update_character_3d_motion(delta: float) -> void:
-	if char3d_pivot == null or delta <= 0.0:
-		return
-	var vy := 0.0
-	if state == State.PLAYING and not is_nan(char3d_prev_y):
-		vy = (player_y - char3d_prev_y) / delta
-	char3d_prev_y = player_y
-	char3d_vy = lerpf(char3d_vy, vy, 1.0 - exp(-CHAR3D_TILT_SHARPNESS * delta))
-	var t := clampf(char3d_vy / CHAR3D_TILT_FULL_SPEED, -1.0, 1.0)   # 위로 가면 음수
-	var roll := 0.0
-	if char3d_roll_t >= 0.0:
-		char3d_roll_t += delta
-		var k := clampf(char3d_roll_t / CHAR3D_ROLL_TIME, 0.0, 1.0)
-		roll = TAU * (k * k * (3.0 - 2.0 * k))   # 천천히 시작해 천천히 멈춘다
-		if k >= 1.0:
-			char3d_roll_t = -1.0
-			roll = 0.0
-	char3d_pivot.rotation = Vector3(
-		t * deg_to_rad(CHAR3D_PITCH_MAX_DEG),
-		0.0,
-		t * deg_to_rad(CHAR3D_BANK_MAX_DEG) + roll)
-
-
-# ============================================================
-# 세로 슬라이더 (2.0).
-#
-# 1.x 의 날갯짓(탭하면 튀어 오르고 중력에 떨어짐)을 버리고, 화면 왼쪽 끝 세로
-# 슬라이더의 손잡이 높이가 곧 캐릭터 높이가 된다. 1.x 에서 테스터들이 한결같이
-# 어렵다고 한 것이 "조작과 퀴즈를 동시에 맞혀야 하는" 부담이었고, 탭 물리는 그
-# 조작 쪽의 대부분이었다. 슬라이더는 원하는 높이를 바로 가리킬 수 있어 퀴즈에
-# 집중하게 한다.
-#
-# 왼손 엄지가 왼쪽 끝 슬라이더를, 오른손이 오른쪽 아래 가속 버튼을 맡는다.
-# 트랙은 게이트 판의 위아래 끝과 정확히 같은 구간이라 손잡이 위치 = 캐릭터 높이다.
-#
-# 캐릭터는 손잡이를 순간이동으로 따라가지 않는다 — PLAYER_MOVE_SPEED 로 상한을
-# 둔 채 부드럽게 쫓는다. 상한이 없으면 레인 바꾸기에 걸리는 시간이 0 이 되어
-# 게이트 배치의 "닿을 수 있는 거리"가 의미를 잃고, 구멍 맞추기가 너무 쉬워진다.
-const SLIDER_X := 36.0
-const SLIDER_TRACK_WIDTH := 14.0
-const SLIDER_THUMB_RADIUS := 22.0
-# 이 폭 안을 누르면 슬라이더를 잡는다. 트랙보다 넓게 — 엄지는 정확하지 않다.
-const SLIDER_TOUCH_WIDTH := 110.0
-const SLIDER_TRACK_COLOR := Color(0.06, 0.10, 0.22, 0.45)
-const SLIDER_TRACK_EDGE := Color(1.0, 1.0, 1.0, 0.55)
-const SLIDER_THUMB_COLOR := Color(1.0, 0.85, 0.30, 1.0)
-const SLIDER_THUMB_EDGE := Color(0.06, 0.10, 0.22, 1.0)
-const PLAYER_MOVE_SPEED := 900.0       # 캐릭터의 세로 이동 속도 상한, px/s
-const PLAYER_FOLLOW_SHARPNESS := 14.0  # 손잡이를 쫓는 빠르기(지수 감쇠)
-const KEY_SLIDE_SPEED := 600.0         # PC 개발용 위/아래 키
-
-var slider_target_y: float = -1.0
-var _slider_touch_index: int = SLIDER_NO_TOUCH
-const SLIDER_NO_TOUCH := -2
-const SLIDER_MOUSE := -1
-
-
-## 손잡이가 움직일 수 있는 범위 — 캐릭터 히트박스가 게이트 판 안에 머무는 구간.
-func slider_range(view_size: Vector2) -> Vector2:
-	var half: float = PLAYER_SIZE.y * 0.5
-	return Vector2(_gate_field_top(view_size) + half, _gate_field_bottom(view_size) - half)
-
-
-func _slider_set_target(screen_y: float) -> void:
-	var r: Vector2 = slider_range(get_viewport_rect().size)
-	slider_target_y = clampf(screen_y, r.x, r.y)
-
-
-## 슬라이더 입력이면 처리하고 true. 마우스 이벤트는 터치를 흉내 낸 것(device -1)이면
-## 무시한다 — 안 그러면 휴대폰에서 한 번의 터치가 두 번 처리된다.
-func _slider_input(event: InputEvent) -> bool:
-	if event is InputEventScreenTouch:
-		if event.pressed and event.position.x <= SLIDER_TOUCH_WIDTH:
-			_slider_touch_index = event.index
-			_slider_set_target(event.position.y)
-			return true
-		if not event.pressed and event.index == _slider_touch_index:
-			_slider_touch_index = SLIDER_NO_TOUCH
-			return true
-	elif event is InputEventScreenDrag:
-		if event.index == _slider_touch_index:
-			_slider_set_target(event.position.y)
-			return true
-	elif event is InputEventMouseButton and event.device != InputEvent.DEVICE_ID_EMULATION \
-			and event.button_index == MOUSE_BUTTON_LEFT:
-		if event.pressed and event.position.x <= SLIDER_TOUCH_WIDTH:
-			_slider_touch_index = SLIDER_MOUSE
-			_slider_set_target(event.position.y)
-			return true
-		if not event.pressed and _slider_touch_index == SLIDER_MOUSE:
-			_slider_touch_index = SLIDER_NO_TOUCH
-			return true
-	elif event is InputEventMouseMotion and event.device != InputEvent.DEVICE_ID_EMULATION:
-		if _slider_touch_index == SLIDER_MOUSE:
-			_slider_set_target(event.position.y)
-			return true
-	return false
-
-
-## 캐릭터가 손잡이를 쫓는다. player_vel 은 트레일이 기울기를 읽으므로 실제 이동량으로 둔다.
-func _update_player_follow(delta: float) -> void:
-	var view := get_viewport_rect().size
-	var keys := Input.get_axis("ui_up", "ui_down")
-	if keys != 0.0:
-		_slider_set_target(slider_target_y + keys * KEY_SLIDE_SPEED * delta)
-	var r: Vector2 = slider_range(view)
-	if slider_target_y < 0.0:
-		slider_target_y = clampf(player_y, r.x, r.y)
-	var before: float = player_y
-	var want: float = lerpf(player_y, slider_target_y, 1.0 - exp(-PLAYER_FOLLOW_SHARPNESS * delta))
-	var step_max: float = PLAYER_MOVE_SPEED * delta
-	player_y = clampf(before + clampf(want - before, -step_max, step_max), r.x, r.y)
-	player_vel = (player_y - before) / delta if delta > 0.0 else 0.0
-
-
-func _draw_slider(ci: CanvasItem, view_size: Vector2) -> void:
-	var r: Vector2 = slider_range(view_size)
-	var track := Rect2(SLIDER_X - SLIDER_TRACK_WIDTH * 0.5, r.x - SLIDER_THUMB_RADIUS * 0.5,
-		SLIDER_TRACK_WIDTH, r.y - r.x + SLIDER_THUMB_RADIUS)
-	var box := StyleBoxFlat.new()
-	box.bg_color = SLIDER_TRACK_COLOR
-	box.border_color = SLIDER_TRACK_EDGE
-	box.set_border_width_all(2)
-	box.set_corner_radius_all(int(SLIDER_TRACK_WIDTH * 0.5))
-	box.anti_aliasing = true
-	ci.draw_style_box(box, track)
-	var y: float = slider_target_y if slider_target_y >= 0.0 else player_y
-	var c := Vector2(SLIDER_X, clampf(y, r.x, r.y))
-	ci.draw_circle(c, SLIDER_THUMB_RADIUS, SLIDER_THUMB_EDGE)
-	ci.draw_circle(c, SLIDER_THUMB_RADIUS - 3.0, SLIDER_THUMB_COLOR)
-
-
-# ============================================================
 # 하트 (2.0).
 #
 # 1.x 는 한 번 틀리면 끝이었다. 첫 28일 데이터에서 1인당 판이 8개 남짓, 하루 뒤
@@ -6671,8 +6353,7 @@ func _hurt_blink_alpha() -> float:
 ## i 번째 하트 칸의 화면 사각형. 그리기와 체커가 함께 쓴다.
 func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
 	var top: float = _gate_zone_top(view_size) + HEART_HUD_MARGIN.y
-	# 2.0: 왼쪽 끝은 슬라이더 자리라 그 오른쪽부터 놓는다.
-	var x: float = SLIDER_X + SLIDER_THUMB_RADIUS + HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
+	var x: float = HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
 	return Rect2(x, top, HEART_HUD_SIZE, HEART_HUD_SIZE)
 
 
@@ -7253,7 +6934,6 @@ func _apply_mode(mode: int) -> void:
 	active_draw_offset_happy = MODE_DRAW_OFFSET_HAPPY[mode]
 	active_draw_offset_sad = MODE_DRAW_OFFSET_SAD[mode]
 	active_visual_size_scale = MODE_VISUAL_SIZE_SCALE[mode]
-	_setup_character_3d(mode)
 
 	# 탭 소리도 모드를 따라간다. 없으면 기본 소리로 남겨 둔다.
 	var flap_path: String = _resolve_audio(MODE_FLAP_SOUND_NAME[mode])
@@ -7738,8 +7418,6 @@ func _on_boost_pressed() -> void:
 	# 맞다 — 앞선 재생의 꼬리에 삼켜지면 두 번째 누름이 무음이 된다.
 	if fx_sound_boost_start != null and fx_sound_boost_start.stream != null:
 		fx_sound_boost_start.play()
-	if state == State.PLAYING:
-		_char3d_start_roll()
 
 
 func _on_boost_released() -> void:
@@ -8114,20 +7792,11 @@ func _hud_button_mult() -> float:
 # fill the screen width inside the margins. Everything in the row is sized
 # from this, so enlarging the buttons automatically takes width back off the
 # score box instead of overflowing the screen.
-func _hud_row_scale(_view_size: Vector2) -> float:
+func _hud_row_scale(view_size: Vector2) -> float:
 	var score_src := SCORE_BOX_SRC
 	var button_src := _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC)
-	# 2.0 은 가로 화면이다. 화면 폭에 맞추면 줄 높이가 폭을 따라 커져 레인을
-	# 잡아먹으므로, 버튼·점수판은 HUD_SCORE_ROW_WIDTH 폭의 줄인 것처럼 크기를
-	# 정하고 남는 폭은 문제 상자가 가져간다(_quiz_box_rect).
-	var available: float = HUD_SCORE_ROW_WIDTH - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
+	var available: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0 - HUD_ROW_GAP * 2.0
 	return available / (score_src.x + button_src.x * 2.0 * _hud_button_mult())
-
-
-# 버튼 한 개의 크기. 버튼 배치와 점수판·문제 상자 배치가 함께 쓴다.
-func _hud_button_size(view_size: Vector2) -> Vector2:
-	return _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC) \
-		* _hud_row_scale(view_size) * _hud_button_mult()
 
 
 # Screen rect of the score box art. The art is cropped tight to its frame, so
@@ -8140,9 +7809,7 @@ func _score_box_rect(view_size: Vector2) -> Rect2:
 	# 높이는 버튼과 같은 식으로 뽑는다(HUD_BUTTON_EXTRA 한 번 더). 그래야
 	# 세 조각의 위/아래 테두리가 한 줄에 딱 맞는다.
 	var draw_size := Vector2(src.x * SCORE_BOX_WIDTH_TRIM, src.y * HUD_BUTTON_EXTRA) * _hud_row_scale(view_size)
-	# 가로 화면: 일시정지 버튼 바로 오른쪽, 한 줄의 왼쪽.
-	var left: float = HUD_ROW_SIDE_MARGIN + _hud_button_size(view_size).x + HUD_ROW_GAP
-	return Rect2(Vector2(left, SCORE_BOX_TOP), draw_size)
+	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, SCORE_BOX_TOP), draw_size)
 
 
 # Screen rect of the quiz box art, parked directly under the score box. It
@@ -8155,13 +7822,11 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 	# 화면 폭을 채우면 박스 높이가 146px이 되어 레인이 10% 짧아진다.
 	# 좌우 끝만 남기고 가운데를 늘리는 방식(_draw_horizontal_slice)으로
 	# 그리므로 아트 비율에 맞출 이유가 없다.
-	# 가로 화면: 점수판과 같은 줄, 점수판 오른쪽부터 음소거 버튼 왼쪽까지.
-	# 높이는 점수판보다 조금 크게 — 문제가 이 화면에서 가장 중요한 글자다.
-	var score := _score_box_rect(view_size)
-	var button := _hud_button_size(view_size)
-	var left: float = score.end.x + QUIZ_BOX_GAP
-	var right: float = view_size.x - HUD_ROW_SIDE_MARGIN - button.x - QUIZ_BOX_GAP
-	return Rect2(Vector2(left, SCORE_BOX_TOP), Vector2(maxf(right - left, 1.0), score.size.y * QUIZ_BOX_HEIGHT_TO_SCORE))
+	var src := QUIZ_BOX_SRC
+	var width: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0
+	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
+	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
+	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
 
 
 # Sizes and parks the pause/mute buttons off the score box, so the three of
@@ -8170,7 +7835,7 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 func _layout_hud_buttons() -> void:
 	var view_size := get_viewport_rect().size
 	var box := _score_box_rect(view_size)
-	var size: Vector2 = _hud_button_size(view_size)
+	var size: Vector2 = _hud_src(pause_button.icon, HUD_BUTTON_SRC) * _hud_row_scale(view_size) * _hud_button_mult()
 	# Bottom edge of the score box's painted art, then hang the buttons so
 	# their own painted bottoms land on the same line.
 	var score_art_bottom: float = box.position.y + box.size.y * MODE_SCORE_BOX_ART_BOTTOM_FRAC[current_mode]
@@ -8199,7 +7864,6 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 		_draw_quiz_box(view_size, ci)
 		_draw_boost_bar(ci, view_size)
 		_draw_hearts(ci, view_size)
-		_draw_slider(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
 

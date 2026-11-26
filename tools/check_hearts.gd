@@ -12,8 +12,8 @@ extends SceneTree
 #   3. 맞은 뒤 다음 게이트는 캐릭터가 실제로 있는 자리에서 닿을 수 있게 놓인다
 #      (last_zone_center 가 캐릭터 자리로 옮겨진다). 안 그러면 오답 레인에서
 #      다음 게이트에 못 닿아 하트를 연달아 잃는다.
-#   4. 바닥은 없다(2.0 슬라이더). 손잡이를 끝까지 내려도 캐릭터는 판 안에
-#      머물고 하트를 잃지 않는다.
+#   4. 바닥은 하트 하나를 가져가고 캐릭터를 튀어 올린다. 무적 동안 다시 닿으면
+#      공짜, 무적이 끝난 뒤에는 다시 하나.
 #   5. 마지막 하트를 잃는 순간이 예전의 죽음 — 부활 제안(GAMEOVER)으로 간다.
 #   6. 부활하면 하트가 다시 찬다. 새 판도 마찬가지.
 #   7. HUD 하트는 게이트 구역 안 왼쪽 위에 있고 화면 밖으로 안 나간다.
@@ -106,18 +106,24 @@ func _run() -> void:
 	_gate(m, "wall")
 	_check(m.hearts == max_h - 2 and m.state == m.State.PLAYING, "the wall costs one heart too")
 
-	# ---- 4. 바닥이 없다 ----
-	# 2.0 의 슬라이더 조작에는 중력도 바닥도 없다. 손잡이를 맨 아래까지 내려도
-	# 캐릭터는 판 안에 머물고 하트를 잃지 않는다.
+	# ---- 4. 바닥 ----
 	_start(m)
 	m.gates.clear()
-	m.slider_target_y = 99999.0
-	for i in range(120):
-		m.call("_update_playing", 1.0 / 60.0)
-		m.gates.clear()
-	var r: Vector2 = m.call("slider_range", view)
-	_check(m.hearts == max_h and absf(m.player_y - r.y) < 0.5,
-		"pushed to the bottom the character stops at the field's edge and keeps its hearts")
+	var half: float = m.PLAYER_SIZE.y * 0.5
+	m.player_y = m.call("_gate_zone_bottom", view) - half + 5.0
+	m.player_vel = 300.0
+	m.call("_update_playing", 1.0 / 60.0)
+	_check(m.hearts == max_h - 1, "hitting the floor costs one heart")
+	_check(m.player_vel == m.flap_velocity, "the floor bounces the character back up")
+	m.player_y = m.call("_gate_zone_bottom", view) - half + 5.0
+	m.player_vel = 300.0
+	m.call("_update_playing", 1.0 / 60.0)
+	_check(m.hearts == max_h - 1, "touching the floor again while blinking is free")
+	m.call("_update_hearts", m.HURT_INVULN_DURATION)
+	m.player_y = m.call("_gate_zone_bottom", view) - half + 5.0
+	m.player_vel = 300.0
+	m.call("_update_playing", 1.0 / 60.0)
+	_check(m.hearts == max_h - 2, "after the blink the floor costs a heart again")
 
 	# ---- 5. 마지막 하트 ----
 	_start(m)
