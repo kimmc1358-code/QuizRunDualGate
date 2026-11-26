@@ -13,8 +13,7 @@ extends SceneTree
 #   전면광고: 떠 있는 동안 카운트다운이 서 있다. 카운터는 광고가 실제로 보인
 #     뒤에만 비고, 준비된 것이 없거나 띄우지 못하면 그대로 남는다.
 #   소리: 전체 화면 광고 동안 Master 가 꺼지고, 닫히면 돌아온다.
-#   배너: 모드 선택 화면이 자리를 비워 줄 때만, 그 화면에서만 보인다. 16:9 는
-#     자리가 없어 거절한다.
+#   배너: 없다(2026-11-27). 다시 불러오는 길에서도 배너를 청하지 않는다.
 #
 # 판을 시작하고 끝내는 함수를 부르므로 광고 카운터가 세이브 파일에 적힌다.
 # 파일 전체를 받아 두었다가 끝에 되돌린다(check_revive_continuity.gd 와 같은 이유).
@@ -24,12 +23,9 @@ const FAKE_ADMOB := """extends Node
 var calls: Array = []
 func show_interstitial_ad(id): calls.append("show_interstitial " + id)
 func show_rewarded_ad(id): calls.append("show_rewarded " + id)
-func show_banner_ad(id): calls.append("show_banner " + id)
-func hide_banner_ad(id): calls.append("hide_banner " + id)
 func load_interstitial_ad(): calls.append("load_interstitial")
 func load_rewarded_ad(): calls.append("load_rewarded")
 func load_banner_ad(): calls.append("load_banner")
-func get_banner_dimension_in_pixels(_id): return Vector2(1080, 150)
 """
 # 동의(UMP) 쪽 가짜. status 와 form_available 을 바꿔 Google 의 답을 흉내 낸다.
 const FAKE_CONSENT := """extends Node
@@ -181,49 +177,12 @@ func _run() -> void:
 		"the interstitial failed to show -> counter kept, countdown free",
 		"a failed interstitial reset the counter or left the countdown held")
 
-	# ---- 배너 ----
-	var screen = main.get("mode_select_panel")
-	var width := float(ProjectSettings.get_setting("display/window/size/viewport_width"))
-	for case in [[width * 16.0 / 9.0, false], [width * 20.0 / 9.0, true]]:
-		screen.size = Vector2(width, case[0])
-		screen.call("_layout")
-		main.call("_set_state", main.State.MODE_SELECT)
-		fake.calls.clear()
-		ads.call("_on_banner_loaded", "b1")
-		main.call("_apply_banner_height", 150.0, Vector2(1080.0, 1080.0 * case[0] / width))
-		var label := "480x%.0f" % case[0]
-		if case[1]:
-			_expect(main.get("banner_reserved") and fake.calls.has("show_banner b1"),
-				"%s: a 50dp banner gets its space and shows on mode select" % label,
-				"%s: the banner should fit but reserved=%s calls=%s" % [label, main.get("banner_reserved"), fake.calls])
-			# 같은 상태를 다시 청하면 아무것도 보내지 않는다. 화면이 바뀔 때마다
-			# 청했더니 플러그인이 "이미 안 보인다"는 오류를 매번 남겼다.
-			fake.calls.clear()
-			main.call("_update_banner")
-			main.call("_set_state", main.State.MODE_SELECT)
-			_expect(fake.calls.is_empty(), "%s: asking again for the same banner state sends nothing" % label,
-				"%s: the same banner state was requested again (%s)" % [label, fake.calls])
-			fake.calls.clear()
-			main.call("_set_state", main.State.PLAYING)
-			_expect(fake.calls.has("hide_banner b1"), "%s: leaving mode select hides the banner" % label,
-				"%s: the banner stayed up into the game" % label)
-		else:
-			_expect(not main.get("banner_reserved") and not fake.calls.has("show_banner b1"),
-				"%s: no room, so no banner" % label,
-				"%s: the screen had no room but the banner showed" % label)
-	# 기기 픽셀 -> 게임 픽셀. 폰은 폭이 꼭 맞으니 480/1080 이고, 양옆에 띠가 생기는
-	# 태블릿은 높이가 꼭 맞으니 854/2560 이다. 폭으로만 나누던 공식은 태블릿에서
-	# 띠까지 게임 화면으로 쳐서 배너를 실제보다 작게 잡았다.
-	var height := float(ProjectSettings.get_setting("display/window/size/viewport_height"))
-	var phone: float = main.call("_game_px_per_device_px", Vector2(1080.0, 2400.0))
-	var tablet: float = main.call("_game_px_per_device_px", Vector2(1600.0, 2560.0))
-	_expect(is_equal_approx(phone, width / 1080.0),
-		"phone: the banner is converted by the width (%.4f)" % phone,
-		"phone: expected %.4f, got %.4f" % [width / 1080.0, phone])
-	_expect(is_equal_approx(tablet, height / 2560.0),
-		"pillarboxed tablet: the banner is converted by the height (%.4f)" % tablet,
-		"tablet: expected %.4f from the height, got %.4f — the side bars were counted as screen" % [height / 2560.0, tablet])
-	screen.call("set_banner_reserve", 0.0)
+	# ---- 배너는 없다 ----
+	# 2026-11-27 에 뺐다. 광고를 다시 불러오는 길에서 배너를 청하지 않아야 한다.
+	fake.calls.clear()
+	ads.call("_load_all")
+	_expect(not fake.calls.has("load_banner"), "no banner is ever requested",
+		"a banner was requested (%s)" % [fake.calls])
 
 	# ---- 광고 동의 (Google UMP) ----
 	#

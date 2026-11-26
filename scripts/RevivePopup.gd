@@ -195,13 +195,7 @@ func _build_content() -> void:
 
 # OOPS 아트도 알파 없이 흰 배경으로 저장되어 있다 (_strip_white_background 참고).
 func _load_oops() -> Texture2D:
-	var path: String = ART_DIR + OOPS_FILE
-	if not ResourceLoader.exists(path):
-		push_warning("OOPS 아트 없음: %s" % path)
-		return null
-	var img: Image = (load(path) as Texture2D).get_image()
-	if img.is_compressed():
-		img.decompress()
+	var img: Image = ArtSlot.image(ART_DIR + OOPS_FILE)
 	img.convert(Image.FORMAT_RGBA8)
 	_strip_white_background(img)
 	img.generate_mipmaps()

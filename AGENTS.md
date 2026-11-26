@@ -58,15 +58,13 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
-| `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
-| `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
 it that way — if a checker needs a calculation, extract it from the draw
-code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` and
-`check_sparkle_pools.gd` still re-derive; a copy of a table is exactly what
-passes while the game itself loads nothing.
+code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` still
+re-derives; a copy of a table is exactly what passes while the game itself
+loads nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by

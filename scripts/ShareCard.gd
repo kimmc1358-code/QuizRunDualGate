@@ -51,7 +51,7 @@ const LABEL_NEW_BEST := "NEW BEST!"
 const FOOTER_TEXT := "Can you beat me?"
 # {score} 와 {mode} 는 이름으로 넣는다. 한국어는 모드가 먼저, 점수가 나중에
 # 오는데 % 는 순서를 바꿀 수 없다.
-const SHARE_TEXT := "I scored {score} in {mode} on QuizRun: Dual Gate! Can you beat me?"
+const SHARE_TEXT := "I scored {score} in {mode} on QuizRun: Warp Gate! Can you beat me?"
 const CHOOSER_TITLE := "Share your score"
 
 var _bold: Font
@@ -75,11 +75,7 @@ func chooser_title() -> String:
 
 
 func logo_texture() -> Texture2D:
-	var path: String = MSS.ART_DIR + MSS.TITLE_FILE
-	if not ResourceLoader.exists(path):
-		push_warning("share card: missing %s" % path)
-		return null
-	return load(path)
+	return ArtSlot.texture(MSS.ART_DIR + MSS.TITLE_FILE)
 
 
 ## 카드 위 조각들의 자리와 글자. 그리는 쪽과 체커가 같은 답을 보도록 계산은

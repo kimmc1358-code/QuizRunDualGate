@@ -412,13 +412,7 @@ func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.Z
 		np.patch_margin_top = bm
 		np.patch_margin_bottom = bm
 		return np
-	var path: String = ART_DIR + file
-	if not ResourceLoader.exists(path):
-		push_warning("팝업 아트 없음: %s" % path)
-		return np
-	var img: Image = (load(path) as Texture2D).get_image()
-	if img.is_compressed():
-		img.decompress()
+	var img: Image = ArtSlot.image(ART_DIR + file)
 	# 그림 바깥의 여백은 잘라 낸다. 여백을 그대로 두면 NinePatchRect가 그
 	# 여백까지 포함해 늘리므로, 그림이 노드 크기보다 작게 그려지고 여백이
 	# 위아래로 다르면 가운데도 어긋난다.
@@ -818,12 +812,7 @@ func _load_icon_from(sheet_path: String, grid: Vector2i, index: int, target_h :=
 	var baked := _baked(key)
 	if not baked.is_empty():
 		return baked["texture"]
-	if not ResourceLoader.exists(sheet_path):
-		push_warning("아이콘 시트 없음: %s" % sheet_path)
-		return null
-	var sheet: Image = (load(sheet_path) as Texture2D).get_image()
-	if sheet.is_compressed():
-		sheet.decompress()
+	var sheet: Image = ArtSlot.image(sheet_path)
 	sheet.convert(Image.FORMAT_RGBA8)
 	# 칸 경계는 반올림해서 잡는다. 시트가 칸 수로 딱 나누어떨어지지 않는
 	# 경우가 있어서다 — icon_sheet는 1536x1024인데 5칸 x 3줄이라 한 칸이

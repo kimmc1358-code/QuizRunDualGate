@@ -80,9 +80,13 @@ func _run() -> void:
 
 	var quiet: float = float(main.get("gameover_bgm_db"))
 	var over_path: String = main.call("_resolve_audio", main.get("BGM_GAMEOVER_NAME"))
-	_ok(over_path != "", "게임오버 곡 파일이 있다 (%s)" % over_path)
 	_ok(quiet < -0.5, "낮추는 값이 실제로 낮다 (%.1f dB)" % quiet)
+	# 2026-11-27 에 1.x 곡을 모두 지웠다 — 2.0 곡은 새로 만든다. 곡이 없는 동안
+	# 재생 코드는 조용히 아무것도 안 하므로(_resolve_audio 가 "" 를 준다) 볼 것이
+	# 없다. 실패로 두면 곡이 올 때까지 검사 묶음이 늘 빨갛고, 그러면 진짜 실패가
+	# 묻힌다. 곡이 들어오면 아래가 그대로 다시 돈다.
 	if over_path == "":
+		print("  건너뜀 — 게임오버 곡(%s)이 아직 없다" % main.get("BGM_GAMEOVER_NAME"))
 		_finish()
 		return
 

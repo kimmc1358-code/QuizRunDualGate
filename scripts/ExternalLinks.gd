@@ -26,7 +26,7 @@ const CONTACT_EMAIL := "janiju.studio@gmail.com"
 
 ## 메일 앱이 미리 채워 줄 제목. 여러 앱에서 온 문의가 섞이지 않게 앱 이름을
 ## 넣어 둔다.
-const CONTACT_SUBJECT := "QuizRun: Dual Gate - Feedback"
+const CONTACT_SUBJECT := "QuizRun: Warp Gate - Feedback"
 
 ## Play 스토어 페이지. 공유 문구 끝에 붙는다(ShareCard.share_text). 패키지
 ## 이름으로 정해지는 주소라 지금 적어 둘 수 있지만, 스토어에 공개되기 전까지는

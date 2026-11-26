@@ -265,7 +265,8 @@ const SMOOTH_WORLD_FILTER := true
 const HUD_BAR_HEIGHT := 100.0        # fallback-only: the plain bar drawn when the score box art is missing
 const HUD_BAR_COLOR := Color(1.0, 1.0, 1.0, 0.3)
 const QUIZ_BOX_MARGIN := 24.0        # left/right inset from screen edges (fallback draw only)
-# Top HUD: one row of pause | score box | mute, with the quiz box directly
+# Top HUD: one row of pause | score box (the mute button left on 2026-11-26;
+# sound lives in settings), with the quiz box directly
 # under it. The row is laid out at a single shared scale so it keeps the
 # proportions of the source sheet the art was cut from — the buttons stay in
 # the same size relationship to the score box that they were drawn in.
@@ -280,6 +281,11 @@ const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the singl
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause/mute button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
+# 둘째 줄 양옆 칸(체력 | 룰렛)의 폭 — 둘이 같은 크기라 문제 박스가 가운데에
+# 온다(_quiz_box_rect). 룰렛 결과는 아이콘으로 보일 것이라 체력 칸만 하면
+# 된다(2026-11-26). 문제 박스는 그 나머지 — 480 폭에서 약 316px.
+const SIDE_SLOT_WIDTH := 70.0
+const HUD_SLOT_GAP := 6.0
 # Pause/mute are scaled so their height matches the score box's exactly,
 # which is what makes the top row read as one flush band rather than three
 # loosely stacked pieces. Derived from the art rather than hard-coded, so it
@@ -340,13 +346,13 @@ const QUIZ_BOX_CORNER_RADIUS := 12.0
 # 모드의 균일 구간 안에 들어와야 한다.
 const QUIZ_BOX_CAP := 185.0
 # Blank writing area inside the quiz box art, right of the painted "QUIZ"
-# label. Measured off the shared crop canvas (see MODE_QUIZ_BOX_PATH), so
+# label. Measured off the shared crop canvas (see HUD_QUIZ_BOX_PATH), so
 # one set of fractions covers all three modes.
 # 새 아트에는 "QUIZ" 라벨이 없어 글자가 박스 전체를 쓴다. 양 끝 장식만
 # 피하면 되는데, 그 장식은 늘어나지 않고 고정 폭으로 그려지므로 비율도
 # 박스 폭에 대한 그 폭으로 잡는다.
-const QUIZ_TEXT_LEFT_FRAC := 0.055        # of width
-const QUIZ_TEXT_RIGHT_FRAC := 0.945       # of width
+const QUIZ_TEXT_LEFT_FRAC := 0.14         # of width — clear of the frame's orange end caps
+const QUIZ_TEXT_RIGHT_FRAC := 0.86
 const QUIZ_TEXT_SIDE_PAD_FRAC := 0.020    # of width — keeps text off both edges
 # 슬라이서가 네 모드의 "안쪽 면" 세로 가운데를 캔버스의 한 지점(184px 중 94)에
 # 모아 두었으므로, 한 값으로 네 모드가 다 맞는다. 예전 0.480 은 안쪽 면이
@@ -1933,26 +1939,47 @@ const LOGO_BLOCK_CENTER_FRAC := 0.46  # of view height
 
 # ============================================================
 # Splash / title screen — the first thing shown on boot, before the mode
-# picker. Just the painted title art plus a prompt; a tap anywhere moves on.
+# picker; a tap anywhere moves on.
+#
+# Built 2026-11-27 after the Synty INTERFACE Sci-Fi Menus pack's own banner,
+# turned for a portrait screen. It is made from the pack's pieces, baked by
+# tools/build_ui_kit.gd into assets/synty_ui/ (gitignored), and the pack's
+# banner itself is not used.
+#   - The live space world, dimmed to a deep blue.
+#   - A horizontal band of blue light across the title.
+#   - "WARP" and "GATE" either side of a gold star on a wreath, in Zen Dots:
+#     pale letters, a bright cyan rim and a soft cyan glow.
+#   - The metal bar under them, then QUIZ RUN in gold to match the star.
+# Without the kit the pieces are ArtSlot placeholders and the letters fall
+# back to the game's own font.
 # ============================================================
-const SPLASH_TEXTURE_PATH := "res://assets/ui_assets/title/splash_v3.png"
-# The title is its own piece of art now. The v3 painting is a plain sky, so
-# the wordmark can be moved, resized or replaced without repainting the
-# background — and it is the same file the mode picker uses, so the two
-# screens can never drift apart.
-const SPLASH_TITLE_PATH := "res://assets/ui_assets/main/title_main_v2.png"
-# Matched to how wide the row of three characters below it reads, so the
-# title and the characters share one column rather than sitting at two
-# unrelated widths.
-const SPLASH_TITLE_WIDTH_FRAC := 0.84   # of view width
-const SPLASH_TITLE_MID_Y_FRAC := 0.30   # of view height — centre of the art
-# The art is a taller aspect than the viewport, so it is scaled to COVER and
-# centred — the overflow is cropped rather than letterboxed. The title and
-# the three characters sit in the upper-middle of the painting, so an even
-# centre crop keeps them all and only trims sky and sea-floor.
+const TITLE_BAR_PATH := "res://assets/synty_ui/title_bar.png"
+const TITLE_SUBTITLE := "QUIZ RUN"
+const TITLE_MID_Y_FRAC := 0.31          # of view height — the band, star and words
+const TITLE_STAR_HEIGHT := 150.0         # px at 480 wide (190 until 2026-11-27: the words needed the room)
+const TITLE_WREATH_HEIGHT := 100.0
+const TITLE_WORD_SIZE := 56              # px; shrinks to fit the side
+const TITLE_SUBTITLE_SIZE := 30
+const TITLE_BAR_Y := 54.0                # below the middle line
+const TITLE_SUBTITLE_Y := 112.0          # below the middle line — clear of the star's lower tip
+const TITLE_BAND_HEIGHT := 128.0
+const TITLE_BAND_COLOR := Color(0.10, 0.42, 0.95, 0.62)
+const TITLE_DIM := Color(0.01, 0.05, 0.16, 0.62)
+# The subtitle: gold metal to match the star. The fill is graded from pale gold
+# to deep orange (title_subtitle.gdshader), with an orange rim over a dark
+# one, a warm glow, and gold rules with diamonds either side.
+const TITLE_SUBTITLE_SHADER_PATH := "res://assets/shaders/title_subtitle.gdshader"
+const TITLE_SUBTITLE_TOP := Color(1.0, 0.96, 0.66)
+const TITLE_SUBTITLE_BOTTOM := Color(1.0, 0.56, 0.08)
+const TITLE_SUBTITLE_RIM := Color(0.86, 0.38, 0.04)
+const TITLE_SUBTITLE_OUTLINE := Color(0.16, 0.07, 0.01)
+const TITLE_SUBTITLE_GLOW := Color(1.0, 0.62, 0.15, 0.10)
+const TITLE_SUBTITLE_GLOW_RADII := [5.0, 10.0]
+const TITLE_SUBTITLE_RULE_GAP := 14.0
+const TITLE_SUBTITLE_RULE_LENGTH := 46.0
 const SPLASH_PROMPT_TEXT := "Tap to START"
 const SPLASH_PROMPT_BOTTOM_FRAC := 0.135   # of view height — distance from the bottom edge to the prompt's centre
-const SPLASH_PROMPT_FONT_SCALE := 0.055    # of view height
+const SPLASH_PROMPT_FONT_SCALE := 0.036    # of view height — Zen Dots runs wide
 const SPLASH_PROMPT_PULSE_PERIOD := 1.2    # seconds per breath cycle
 # Alpha, scale and glow all ride the SAME pulse, in phase: three separate
 # rhythms would read as clutter, one shared rhythm reads as breathing. The
@@ -1963,12 +1990,12 @@ const SPLASH_PROMPT_SCALE_RANGE := Vector2(1.0, 1.05)
 # Faked bloom: the same string redrawn in rings around itself, each ring
 # fainter than the last. draw_string has no blur, and a real shader would be
 # a lot of machinery for one line of text on one screen.
-const SPLASH_PROMPT_GLOW_COLOR := Color(1.0, 0.84, 0.32)  # gold
+const SPLASH_PROMPT_GLOW_COLOR := Color(0.35, 0.86, 1.0)  # the title's cyan (2026-11-27; was gold)
 const SPLASH_PROMPT_GLOW_RADII := [3.0, 7.0, 12.0]        # px, at scale 1.0
 const SPLASH_PROMPT_GLOW_STEPS := 8                       # samples per ring
 const SPLASH_PROMPT_GLOW_ALPHA := 0.14                    # per sample at full pulse — kept low on purpose
 const SPLASH_PROMPT_COLOR := Color(1.0, 1.0, 1.0, 1.0)
-const SPLASH_PROMPT_OUTLINE := Color(0.09, 0.16, 0.33, 1.0)  # deep navy, matching the title art's own outline
+const SPLASH_PROMPT_OUTLINE := Color(0.03, 0.10, 0.25, 1.0)  # deep navy
 # Tap feedback: the prompt swells and fades out, and the handover to the
 # mode picker waits for it. Without the wait the title would simply cut
 # away and the effect would never be seen. Scaling is done with a draw
@@ -1976,18 +2003,6 @@ const SPLASH_PROMPT_OUTLINE := Color(0.09, 0.16, 0.33, 1.0)  # deep navy, matchi
 # the glyphs every frame and shimmer.
 const SPLASH_EXIT_DURATION := 0.32
 const SPLASH_EXIT_SCALE := 1.55
-# The three playable characters fly under the title, using the same sheets
-# and frame rate the game itself runs them at rather than a painted copy.
-# Order is left to right on screen, so JUNGLE's dragon lands in the middle.
-const SPLASH_CHARACTER_MODES := [Mode.SKY, Mode.JUNGLE, Mode.OCEAN]
-const SPLASH_CHARACTER_MID_Y_FRAC := 0.600   # of view height — below the title, clear of the prompt
-const SPLASH_CHARACTER_SIZE_FRAC := 0.260    # of view width, per character
-const SPLASH_CHARACTER_SPACING_FRAC := 0.300 # of view width, centre to centre
-# Each drifts on its own phase, so the three never rise and fall as a block.
-# Amplitude is a fraction of the drawn size, so it tracks the size above.
-const SPLASH_BOB_AMPLITUDE_FRAC := 0.06
-const SPLASH_BOB_PERIOD := 2.1
-const SPLASH_BOB_PHASE := [0.0, 0.7, 1.35]   # seconds of lead per character
 
 var state: int = State.READY
 
@@ -2058,7 +2073,7 @@ const COUNTDOWN_ART_OVERSAMPLE := 1.2
 # Pause / mute / quiz box come out of one hand-authored sheet,
 # assets/ui_assets/hud_sheet_v7.png, cut by tools/slice_hud_sheet_v7.gd into
 # the *_v3 pieces below. The score box no longer does — it borrows the gate's
-# flag panel art (see MODE_SCORE_BOX_PATH).
+# flag panel art (see HUD_SCORE_BAR_PATH).
 #
 # The slicer is what makes the modes interchangeable here: rather than
 # cropping each mode to its own tight bounding box (which lands the writing
@@ -2073,36 +2088,21 @@ const COUNTDOWN_ART_OVERSAMPLE := 1.2
 # per-mode arrays this used to need, and the score number and quiz text now
 # land in exactly the same place at exactly the same size in all three modes.
 # Re-run the slicer if the sheet is ever redrawn; it prints the fractions.
-const MODE_PAUSE_ICON_PATH := [
-	"res://assets/ui_assets/sky/pause_v3.png",
-	"res://assets/ui_assets/jungle/pause_v3.png",
-	"res://assets/ui_assets/ocean/pause_v3.png",
-	"res://assets/ui_assets/dream/pause_v3.png",
-]
-const MODE_MUTE_ICON_PATH := [
-	"res://assets/ui_assets/sky/mute_v3.png",
-	"res://assets/ui_assets/jungle/mute_v3.png",
-	"res://assets/ui_assets/ocean/mute_v3.png",
-	"res://assets/ui_assets/dream/mute_v3.png",
-]
-# 스코어 박스는 게이트 위 보기답 패널과 같은 아트를 9-slice로 늘려 쓴다.
-# 예전 아트에는 "SCORE"·"BEST"·왕관·구분선이 그려져 있었지만 이 패널은
-# 빈 상자라, 그 넷을 아래 _draw_hud_bar가 직접 그린다.
-const MODE_SCORE_BOX_PATH := [
-	"res://assets/gates/flag_panel/panel_sky.png",
-	"res://assets/gates/flag_panel/panel_jungle.png",
-	"res://assets/gates/flag_panel/panel_ocean.png",
-	"res://assets/gates/flag_panel/panel_dream.png",
-]
-# 퀴즈 박스는 모드마다 자기 아트를 쓴다(hud_quizbox.png에서 잘라 냄). 양 끝에
-# 보석 장식이 박혀 있어 9-slice로 늘리면 그 장식이 늘어나므로, 통째로 그려
-# 아트 비율을 그대로 지킨다.
-const MODE_QUIZ_BOX_PATH := [
-	"res://assets/ui_assets/sky/quiz_box_v3.png",
-	"res://assets/ui_assets/jungle/quiz_box_v3.png",
-	"res://assets/ui_assets/ocean/quiz_box_v3.png",
-	"res://assets/ui_assets/dream/quiz_box_v3.png",
-]
+# Play-screen HUD art (2026-11-27): Synty's INTERFACE Sci-Fi Menus pieces,
+# baked by tools/build_ui_kit.gd into assets/synty_ui/ — gitignored, like the
+# space kit, because the pack may not be redistributed. One set for every
+# mode; without the kit each is an ArtSlot placeholder. The bars are drawn
+# with their ends kept whole and the middle stretched (_draw_horizontal_slice;
+# the caps are in baked pixels), the square frames as nine-patches.
+const HUD_SCORE_BAR_PATH := "res://assets/synty_ui/score_bar.png"
+const HUD_QUIZ_BOX_PATH := "res://assets/synty_ui/quiz_box.png"
+const HUD_PAUSE_PATH := "res://assets/synty_ui/pause.png"
+const HUD_SIDE_SLOT_PATH := "res://assets/synty_ui/side_slot.png"
+const HUD_SCORE_BAR_CAP := 60.0
+const HUD_QUIZ_BOX_CAP := 95.0
+const HUD_SIDE_SLOT_MARGIN := 34.0
+## Text on the HUD frames: their insides are dark.
+const HUD_TEXT_COLOR := Color(0.93, 0.96, 1.0)
 const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
 # 점수 숫자의 속만 칠하는 캔버스에 씌우는 셰이더. draw_string 은 한 가지
 # 색밖에 못 받으므로, 글리프의 알파는 그대로 두고 RGB 만 세로 위치에 따라
@@ -2291,7 +2291,7 @@ const VOLUME_MIN_DB := -32.0
 # "BEST"라고 쓰지 않는다 — 왕관이 그 뜻을 대신한다.
 const SCORE_LABEL_TEXT := "SCORE"
 const SCORE_LABEL_FONT_FRAC := 0.485     # 박스 높이 대비
-const SCORE_LABEL_LEFT_FRAC := 0.0428     # 박스 너비 대비 — 왼쪽 여백
+const SCORE_LABEL_LEFT_FRAC := 0.065      # 박스 너비 대비 — UI 킷 점수판의 왼쪽 끝 장식을 비켜서
 # 박스를 걷어 내고 배경 위에 바로 얹으므로, 글자는 스스로 읽히게 꾸민다.
 # 바깥부터 음영 -> 검은 테두리 -> 속 순서로 겹쳐 그린다.
 const SCORE_LABEL_FILL := Color(1.0, 1.0, 1.0, 1.0)
@@ -2320,7 +2320,8 @@ const TEXT_OUTLINE_RING: Array[Vector2] = [
 const SCORE_DIVIDER_COLOR := Color(0.55, 0.47, 0.36, 0.55)
 const SCORE_DIVIDER_WIDTH := 2.0
 const SCORE_DIVIDER_INSET_FRAC := 0.20   # 박스 높이 대비 위아래 여백
-const BEST_CROWN_PATH := "res://assets/ui_assets/popup/icon_crown.png"
+# The BEST mark: the UI kit's trophy, tinted gold (tools/build_ui_kit.gd).
+const BEST_CROWN_PATH := "res://assets/synty_ui/best_icon.png"
 const BEST_CROWN_LEFT_FRAC := 0.016      # 구분선에서 왕관까지(박스 너비 대비)
 const BEST_CROWN_HEIGHT_FRAC := 0.40     # 박스 높이 대비
 # 오른쪽 칸은 왕관 + "BEST" + 최고 점수 셋이 한 줄에 들어간다. 칸 폭이
@@ -2333,7 +2334,7 @@ const BEST_LABEL_GAP_FRAC := 0.011       # 박스 너비 대비 — 왕관과 "B
 # 가운데를 맞추면 내려앉아 보인다.
 const BEST_CROWN_Y_OFFSET_FRAC := -0.055 # 박스 높이 대비
 # 최고 점수는 오른쪽 끝자리를 박스 오른쪽 테두리 가까이에 붙여 오른쪽 정렬한다.
-const BEST_NUMBER_RIGHT_INSET_FRAC := 0.0377   # 박스 너비 대비
+const BEST_NUMBER_RIGHT_INSET_FRAC := 0.075    # 박스 너비 대비 — UI 킷 점수판(2026-11-27)의 오른쪽 끝 장식을 비켜서
 # 스코어 박스 테두리는 일시정지/음소거 버튼과 비슷한 두께로. 패널 아트를
 # 9-slice로 그릴 때의 배수이고, 게이트 위 보기답 패널과는 따로 둔다.
 const SCORE_PANEL_SCALE := 0.877
@@ -2341,7 +2342,9 @@ const SCORE_PANEL_SCALE := 0.877
 const SCORE_BOX_WIDTH_TRIM := 0.96
 # 패널 그림을 깔지 않고 글자만 배경 위에 얹는다. 자리와 크기는 그대로
 # _score_box_rect 에서 나오므로, 다시 켜면 예전 모습으로 돌아온다.
-const SCORE_BOX_PANEL_VISIBLE := false
+# 2026-11-26: 다시 켰다 — 2.0 아트가 올 때까지 HUD 를 임시 박스로 채우는
+# 동안, 점수판이 어디까지인지 보여야 배치를 정할 수 있다.
+const SCORE_BOX_PANEL_VISIBLE := true
 # panel_*.png 는 가장자리에 투명 여백이 2px 있다(잉크 y 2..50 of 53). 9-slice
 # 모서리 조각째로 그려지니 화면에서도 SCORE_PANEL_SCALE 배만큼 안쪽으로
 # 밀려 들어가, 같은 rect 를 줘도 버튼보다 4px 작아 보였다. 그만큼 넓혀서
@@ -2504,13 +2507,6 @@ var _last_hidden_cleared: int = -1
 # 전면광고가 떠 있는 동안 카운트다운을 붙잡는다. 광고 뒤에서 READY -> START 가
 # 흘러가 버리면, 광고를 닫았을 때 판이 이미 시작돼 있다.
 var ad_hold_countdown: bool = false
-# 모드 선택 화면이 배너 자리를 실제로 비워 주었는가(set_banner_reserve). 16:9
-# 처럼 자리가 없는 화면은 거절하고, 그러면 배너를 띄우지 않는다.
-var banner_reserved: bool = false
-# 마지막으로 받은 배너 높이와 그때의 기기 화면 크기(둘 다 기기 픽셀). 광고 제거가
-# 환불로 풀렸을 때 배너 자리를 다시 비우려면 필요하다 — 배너는 한 번만 불러온다.
-var _banner_height_device_px: float = 0.0
-var _banner_device_size := Vector2.ZERO
 # 광고 제거. Store 가 Google Play 결제를 감싼다 — PC 에서는 available 이 false 다.
 var store: Store
 var ads_removed: bool = false
@@ -2580,17 +2576,8 @@ var logo_texture: Texture2D
 var logo_elapsed: float = 0.0
 # 무거운 부팅이 아직 남아 있는가. 로고가 다 밝아진 뒤 한 번 돈다.
 var boot_pending := false
-var splash_texture: Texture2D
-var splash_title_texture: Texture2D
 var splash_elapsed: float = 0.0   # free-running clock for the prompt pulse
 var splash_exit_elapsed: float = -1.0  # -1 = not leaving yet; see SPLASH_EXIT_DURATION
-# One Array[Texture2D] of flight frames per entry in SPLASH_CHARACTER_MODES,
-# loaded once in _ready and independent of the game's own flap_frames, which
-# only ever holds the mode currently being played.
-var splash_character_frames: Array = []
-# Own CanvasItem so the title characters can use a smooth minification filter
-# without the rest of the game inheriting it — see _draw_splash_characters.
-var splash_char_layer: Node2D
 # Child canvas the top HUD is drawn on, so it can use a texture filter of
 # its own (see scripts/HudCanvas.gd). Created in _ready.
 var hud_canvas: Node2D
@@ -2605,7 +2592,6 @@ var flag_records: Array = []          # [{code, name, image, tier}, ...] — see
 var flag_textures: Dictionary = {}    # code (String) -> Texture2D, preloaded from flag_records
 var flag_records_by_tier: Dictionary = {}  # recognition_tier (int 1-4) -> Array of records, picks the ANSWER
 var flag_records_by_cluster: Dictionary = {}  # confusion_cluster_id -> Array of records, picks the DECOY
-var muted: bool = false
 
 var gate_left_pillar_texture: Texture2D
 var gate_right_pillar_texture: Texture2D
@@ -2700,7 +2686,6 @@ var boost_alpha_tween: Tween  # see _tween_boost_alpha — kept so it can be kil
 @onready var play_button: Button = $UI/ReadyPanel/PlayButton
 @onready var restart_button: Button = $UI/GameOverPanel/RestartButton
 @onready var pause_button: Button = $UI/PauseButton
-@onready var mute_button: Button = $UI/MuteButton
 @onready var pause_panel: Control = $UI/PausePanel
 @onready var revive_panel: Control = $UI/RevivePanel
 # 도감. 씬에 두지 않고 _boot_load 가 만든다 — 모드 선택 화면에서만 열리고,
@@ -2726,8 +2711,7 @@ func _ready() -> void:
 	# own node to differ. See SMOOTH_WORLD_FILTER to revert this.
 	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS if SMOOTH_WORLD_FILTER else CanvasItem.TEXTURE_FILTER_NEAREST
 	_setup_fonts()
-	if ResourceLoader.exists(LOGO_TEXTURE_PATH):
-		logo_texture = load(LOGO_TEXTURE_PATH)
+	logo_texture = ArtSlot.texture(LOGO_TEXTURE_PATH)
 	if logo_texture != null:
 		boot_pending = true
 		_set_state(State.LOGO)
@@ -2792,13 +2776,11 @@ func _boot_load() -> void:
 	# only the parts that never change per mode are set up here.
 	pause_button.text = ""
 	pause_button.expand_icon = true
-	mute_button.text = ""
-	mute_button.expand_icon = true
 	# flat=true 라도 Button 은 기본 테마 스타일박스의 content margin(사방 4px)을
 	# 그대로 써서 아이콘을 그 안쪽에 맞춘다. 57.5px 버튼이면 그림은 49.5px 밖에
 	# 안 되고, 그래서 옆의 스코어박스보다 눈에 띄게 작아 보였다. 여백 0 인
 	# 스타일박스를 씌워 아이콘이 버튼 사각형을 그대로 채우게 한다.
-	for b: Button in [pause_button, mute_button]:
+	for b: Button in [pause_button]:
 		var empty := StyleBoxEmpty.new()
 		for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
 			b.add_theme_stylebox_override(slot, empty)
@@ -2919,7 +2901,6 @@ func _boot_load() -> void:
 	ads.name = "Ads"
 	add_child(ads)
 	ads.fullscreen_changed.connect(_on_ads_fullscreen)
-	ads.banner_ready.connect(_on_banner_ready)
 	ads.consent_changed.connect(_on_ads_consent_changed)
 	ads.start()
 	# 광고 제거 결제. 저장해 둔 답을 먼저 화면에 걸고, Google Play 의 답이 오면
@@ -2939,33 +2920,19 @@ func _boot_load() -> void:
 	pause_panel.music_volume_changed.connect(set_music_volume)
 	revive_panel.watch_ad_pressed.connect(_on_revive_watch_ad)
 	revive_panel.decline_pressed.connect(_on_revive_decline)
-	mute_button.pressed.connect(_on_mute_pressed)
 	# pivot_offset is set in _layout_hud_buttons instead — it resizes the
 	# buttons deferred, so reading .size here would still give the scene's
 	# pre-layout value and the press animation would scale off-center.
 	pause_button.button_down.connect(_animate_button_press.bind(pause_button))
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
-	mute_button.button_down.connect(_animate_button_press.bind(mute_button))
-	mute_button.button_up.connect(_animate_button_release.bind(mute_button))
-	splash_char_layer = Node2D.new()
-	splash_char_layer.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	splash_char_layer.draw.connect(_draw_splash_characters)
-	add_child(splash_char_layer)
-	if ResourceLoader.exists(SPLASH_TEXTURE_PATH):
-		splash_texture = load(SPLASH_TEXTURE_PATH)
-	splash_title_texture = _load_trimmed(SPLASH_TITLE_PATH)
-	splash_character_frames.clear()
-	for mode in SPLASH_CHARACTER_MODES:
-		var grid: Vector2i = MODE_CHARACTER_SHEET_GRID[mode]
-		splash_character_frames.append(
-			_slice_spritesheet(MODE_CHARACTER_DIR[mode] + MODE_CHARACTER_FLY_FILE[mode], grid.x, grid.y))
+	_load_title_art()
 	_reset_game()
 	# 로고를 이미 띄우고 있으면 그대로 두고, 로고가 끝날 때 스플래시로 간다.
 	# 다만 방금 만든 노드들의 보이기 상태는 지금 화면 기준으로 다시 잡아 준다.
 	if state == State.LOGO:
 		_apply_screen_visibility()
 	else:
-		_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
+		_set_state(State.SPLASH)
 
 
 # Slices a cols x rows spritesheet (equal-size cells) into individual
@@ -3075,13 +3042,7 @@ func _unpremultiplied(img: Image) -> Image:
 
 
 func _load_trimmed(path: String, by_ink := false) -> Texture2D:
-	if not ResourceLoader.exists(path):
-		push_warning("missing art: %s" % path)
-		return null
-	var img: Image = (load(path) as Texture2D).get_image()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
+	var img: Image = ArtSlot.image(path)
 	img.clear_mipmaps()
 	var used := _ink_rect(img) if by_ink else img.get_used_rect()
 	if used.size.x > 0 and used.size.y > 0 and used.size != img.get_size():
@@ -3146,20 +3107,15 @@ func _edge_color(img: Image) -> Color:
 	return Color(r / n, g / n, b / n)
 
 func _load_face(path: String, fallback_path: String) -> Texture2D:
-	if ResourceLoader.exists(path):
-		return load(path)
-	if fallback_path != path and ResourceLoader.exists(fallback_path):
+	if not ResourceLoader.exists(path) and fallback_path != path and ResourceLoader.exists(fallback_path):
 		push_warning("No face at %s — falling back to %s." % [path, fallback_path])
 		return load(fallback_path)
-	return null
+	return ArtSlot.texture(path)
 
 
 func _slice_spritesheet(path: String, cols: int, rows: int) -> Array[Texture2D]:
 	var frames: Array[Texture2D] = []
-	if not ResourceLoader.exists(path):
-		return frames
-	var sheet_texture: Texture2D = load(path)
-	var full_image: Image = sheet_texture.get_image()
+	var full_image: Image = ArtSlot.image(path)
 	var cell_w: int = full_image.get_width() / cols
 	var cell_h: int = full_image.get_height() / rows
 	for row in range(rows):
@@ -3436,12 +3392,16 @@ func _process(delta: float) -> void:
 			return
 		logo_elapsed += delta
 		if not boot_pending and logo_elapsed >= LOGO_FADE_IN + LOGO_HOLD + LOGO_FADE_OUT:
-			_set_state(State.SPLASH if splash_texture != null else State.MODE_SELECT)
+			_set_state(State.SPLASH)
 		queue_redraw()
 		return
 	if state == State.SPLASH:
 		splash_elapsed += delta
-		splash_char_layer.queue_redraw()
+		# The title sits over the space world, so keep it flowing (no run).
+		if space != null:
+			space.tick(delta, false, false)
+		if title_sub_layer != null:
+			title_sub_layer.queue_redraw()
 		if splash_exit_elapsed >= 0.0:
 			splash_exit_elapsed += delta
 			if splash_exit_elapsed >= SPLASH_EXIT_DURATION:
@@ -3449,10 +3409,6 @@ func _process(delta: float) -> void:
 		queue_redraw()
 		return
 	pause_button.visible = state == State.PLAYING or state == State.COUNTDOWN
-	# Re-derived every frame rather than only on state changes: the revive
-	# popup opens without one (see _update_mute_button_visibility). LOGO and
-	# SPLASH return above, and _apply_screen_visibility covers those on entry.
-	_update_mute_button_visibility()
 	# 우주 판(SpaceRun) — 세계는 모든 화면에서 흐르고, 판의 규칙은 PLAYING 에서만.
 	space.tick(delta, state == State.PLAYING and not paused,
 		(state == State.PLAYING or state == State.COUNTDOWN) and not paused)
@@ -3973,14 +3929,17 @@ const HURT_INVULN_DURATION := 1.2
 const HURT_BLINK_PERIOD := 0.12
 const HURT_BLINK_ALPHA := 0.25
 const HURT_FLASH_COLOR := Color(0.85, 0.12, 0.12, 0.35)
-# HUD 하트 — 게이트 구역 왼쪽 위, 콤보 표시(오른쪽 위)와 마주 본다.
-const HEART_HUD_SIZE := 26.0
-const HEART_HUD_GAP := 6.0
-const HEART_HUD_MARGIN := Vector2(16.0, 14.0)
+# HUD 체력 — 문제 박스 왼쪽 칸(_health_rect)의 세로 3칸 게이지(2026-11-26).
+# 하트 아이콘이 게이지 아래 왼쪽에 있던 것을 문제 박스 옆으로 올리면서 칸으로
+# 바꿨다. 칸으로 나눈 것은 "몇 번 남았나"가 하트처럼 한눈에 세어지게 하려는 것 —
+# 이어진 막대면 그게 흐려진다. 칸 테두리 안쪽 여백과 칸 사이 간격(px).
+
+const HEALTH_INSET := Vector2(14.0, 12.0)   # inside the side_slot frame's bevel
+const HEALTH_CELL_GAP := 4.0
 const HEART_FILL := Color(0.93, 0.16, 0.24, 1.0)
 const HEART_EMPTY := Color(0.10, 0.12, 0.20, 0.45)
 const HEART_EDGE := Color(1.0, 1.0, 1.0, 0.95)
-# 잃은 하트가 부풀며 사라지는 시간과 최대 배율.
+# 잃은 칸이 하얗게 번쩍이며 사라지는 시간과 최대 배율.
 const HEART_LOSS_POP_DURATION := 0.45
 const HEART_LOSS_POP_SCALE := 1.9
 
@@ -4034,9 +3993,10 @@ func _space_points(points: int) -> void:
 	score += points
 
 
-## 룰렛이 멈춰 무기가 올랐을 때. 화면 가운데에 무엇을 얻었는지 띄운다.
-func _space_powered_up(label: String) -> void:
-	_spawn_space_banner(label, Color(0.35, 0.85, 1.0))
+## 룰렛이 멈춰 무기가 올랐을 때. 무엇을 얻었는지는 룰렛 칸이 이미 보여 주므로
+## (SpaceRun.roulette_rect, 2026-11-26) 알림 문구는 따로 띄우지 않는다 — 띄우면
+## 같은 글자가 룰렛 칸 뒤에 겹쳐 나왔다. 소리만 낸다.
+func _space_powered_up(_label: String) -> void:
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
 		fx_sound_chime.play()
 
@@ -4049,7 +4009,7 @@ func _space_boss_down(points: int) -> void:
 	_spawn_space_banner("+%d" % points, Color(1.0, 0.85, 0.3))
 
 
-# 룰렛 결과·보스 처치 점수를 화면 가운데에 잠깐 띄운다.
+# 보스 처치 점수를 화면 가운데에 잠깐 띄운다(룰렛 결과는 룰렛 칸이 보여 준다).
 const SPACE_BANNER_TIME := 1.1
 var space_banner_text := ""
 var space_banner_color := Color.WHITE
@@ -4129,44 +4089,32 @@ func _hurt_blink_alpha() -> float:
 	return 1.0 if int(hurt_elapsed / HURT_BLINK_PERIOD) % 2 == 0 else HURT_BLINK_ALPHA
 
 
-## i 번째 하트 칸의 화면 사각형. 그리기와 체커가 함께 쓴다.
+## i 번째 체력 칸의 화면 사각형 — 아래부터 쌓는다(0 이 맨 아래). 칸을 잃는
+## 순서가 위에서부터라, 남은 체력이 바닥부터 차 있는 게이지로 읽힌다.
 func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
-	var top: float = _gate_zone_top(view_size) + HEART_HUD_MARGIN.y
-	var x: float = HEART_HUD_MARGIN.x + i * (HEART_HUD_SIZE + HEART_HUD_GAP)
-	return Rect2(x, top, HEART_HUD_SIZE, HEART_HUD_SIZE)
-
-
-func _heart_polygon(rect: Rect2) -> PackedVector2Array:
-	# 하트 곡선 x=16sin³t, y=13cos t-5cos2t-2cos3t-cos4t 를 칸에 맞춘다.
-	var pts := PackedVector2Array()
-	var c: Vector2 = rect.get_center()
-	var s: float = rect.size.x / 34.0
-	for k in range(40):
-		var t: float = TAU * k / 40.0
-		var x: float = 16.0 * pow(sin(t), 3)
-		var y: float = 13.0 * cos(t) - 5.0 * cos(2.0 * t) - 2.0 * cos(3.0 * t) - cos(4.0 * t)
-		pts.append(c + Vector2(x, -y - 2.0) * s)
-	return pts
+	var inner := _health_rect(view_size).grow_individual(-HEALTH_INSET.x, -HEALTH_INSET.y, -HEALTH_INSET.x, -HEALTH_INSET.y)
+	var h: float = (inner.size.y - HEALTH_CELL_GAP * (MAX_HEARTS - 1)) / MAX_HEARTS
+	var y: float = inner.end.y - h - i * (h + HEALTH_CELL_GAP)
+	return Rect2(inner.position.x, y, inner.size.x, h)
 
 
 func _draw_hearts(ci: CanvasItem, view_size: Vector2) -> void:
+	var slot_tex := ArtSlot.texture(HUD_SIDE_SLOT_PATH)
+	_draw_nine_patch(slot_tex, _health_rect(view_size), HUD_SIDE_SLOT_MARGIN,
+		_health_rect(view_size).size.y / slot_tex.get_height(), ci)
 	for i in range(MAX_HEARTS):
 		var rect: Rect2 = heart_hud_rect(i, view_size)
-		var full: bool = i < hearts
-		var poly := _heart_polygon(rect)
-		ci.draw_colored_polygon(poly, HEART_FILL if full else HEART_EMPTY)
-		var ring := poly.duplicate()
-		ring.append(poly[0])
-		ci.draw_polyline(ring, HEART_EDGE, 2.0, true)
-	# 방금 잃은 하트는 빈 칸 위에서 부풀며 사라진다.
+		ci.draw_rect(rect, HEART_FILL if i < hearts else HEART_EMPTY)
+		ci.draw_rect(rect, HEART_EDGE, false, 1.5)
+	# 방금 잃은 칸은 빈 칸 위에서 부풀며 사라진다.
 	if heart_lost_elapsed >= 0.0 and hearts < MAX_HEARTS:
 		var t: float = heart_lost_elapsed / HEART_LOSS_POP_DURATION
 		var rect2: Rect2 = heart_hud_rect(hearts, view_size)
 		var grow: float = lerpf(1.0, HEART_LOSS_POP_SCALE, t)
-		var popped := rect2.grow((rect2.size.x * grow - rect2.size.x) * 0.5)
 		var col := HEART_FILL
 		col.a = 1.0 - t
-		ci.draw_colored_polygon(_heart_polygon(popped), col)
+		ci.draw_rect(rect2.grow_individual(rect2.size.x * (grow - 1.0) * 0.25, rect2.size.y * (grow - 1.0) * 0.5,
+			rect2.size.x * (grow - 1.0) * 0.25, rect2.size.y * (grow - 1.0) * 0.5), col)
 
 
 # 실패한 순간. 곧바로 게임오버 화면으로 가지 않고 부활 제안을 먼저 띄운다 —
@@ -4256,49 +4204,6 @@ func _on_interstitial_finished(shown: bool) -> void:
 # 겹친다. Master 음소거는 게임이 달리 쓰는 곳이 없어 설정의 음량과 부딪치지 않는다.
 func _on_ads_fullscreen(showing: bool) -> void:
 	AudioServer.set_bus_mute(0, showing)
-
-
-# 배너가 준비되면 그 높이만큼 모드 선택 화면의 아래를 비운다. 플러그인은 기기
-# 픽셀로 주므로 게임 픽셀로 바꿔서 넘긴다(_game_px_per_device_px).
-func _on_banner_ready(height_device_px: float) -> void:
-	_apply_banner_height(height_device_px, Vector2(DisplayServer.window_get_size()))
-
-
-# 기기 화면 크기를 따로 받는 것은 체커 때문이다 — 헤드리스의 창 크기는 폰이 아니다.
-func _apply_banner_height(height_device_px: float, device_size: Vector2) -> void:
-	_banner_height_device_px = height_device_px
-	_banner_device_size = device_size
-	if ads_removed:
-		# 광고를 없앤 사람에게 배너 자리를 비워 둘 까닭이 없다.
-		banner_reserved = false
-		mode_select_panel.set_banner_reserve(0.0)
-		_update_banner()
-		return
-	var game_px: float = height_device_px * _game_px_per_device_px(device_size)
-	banner_reserved = float(mode_select_panel.set_banner_reserve(game_px)) > 0.0
-	if not banner_reserved:
-		print("[광고] 배너 %.0f px 을 비울 자리가 없는 화면이라 배너를 띄우지 않는다" % game_px)
-	_update_banner()
-
-
-# 기기 1px 이 게임 몇 px 인가. canvas_items 스트레치는 화면에 꼭 맞는 쪽 축 하나로
-# 고르게 키우므로, 그 배율은 두 축 비 가운데 작은 쪽이다 — expand 든 keep_width 든
-# 같다. 폰(9:16 보다 길다)에서는 그게 폭이라 예전 공식 "480 / 기기 폭" 과 같은
-# 값이 나오고, 태블릿(더 뚱뚱하다)에서는 높이가 꼭 맞고 양옆에 띠가 생기므로
-# "854 / 기기 높이" 가 된다. 폭으로만 나누던 시절의 공식은 태블릿에서 띠까지
-# 게임 화면인 줄 알고 배너를 작게 잡았다.
-func _game_px_per_device_px(device_size: Vector2) -> float:
-	var base := Vector2(
-		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
-		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
-	var stretch: float = minf(device_size.x / base.x, device_size.y / base.y)
-	return 1.0 / maxf(stretch, 0.0001)
-
-
-# 배너는 모드 선택 화면에만. 게임 중과 스플래시에는 숨긴다.
-func _update_banner() -> void:
-	if ads != null:
-		ads.set_banner_visible(banner_reserved and state == State.MODE_SELECT and not ads_removed)
 
 
 func _finish_run() -> void:
@@ -4575,15 +4480,11 @@ func _on_store_ownership(owned: bool) -> void:
 	_apply_ads_removed()
 
 
-# 광고 제거 여부를 화면 곳곳에 건다. 배너는 자리까지 돌려준다.
+# 광고 제거 여부를 화면 곳곳에 건다.
 func _apply_ads_removed() -> void:
 	settings_popup.set_ads_removed(ads_removed)
 	mode_select_panel.set_ads_removed(ads_removed)
 	revive_panel.set_ad_free(ads_removed)
-	if _banner_height_device_px > 0.0:
-		_apply_banner_height(_banner_height_device_px, _banner_device_size)
-	else:
-		_update_banner()
 
 
 func _on_mode_selected(mode: int) -> void:
@@ -4749,12 +4650,8 @@ func _apply_mode(mode: int) -> void:
 	if ResourceLoader.exists(panel_path):
 		gate_flag_panel_texture = load(panel_path)
 
-	ready_texture = null
-	if ResourceLoader.exists(MODE_READY_TEXTURE_PATH[mode]):
-		ready_texture = _softened_word_art(load(MODE_READY_TEXTURE_PATH[mode]), COUNTDOWN_READY_WIDTH)
-	start_texture = null
-	if ResourceLoader.exists(MODE_START_TEXTURE_PATH[mode]):
-		start_texture = _softened_word_art(load(MODE_START_TEXTURE_PATH[mode]), COUNTDOWN_START_WIDTH)
+	ready_texture = _softened_word_art(ArtSlot.texture(MODE_READY_TEXTURE_PATH[mode]), COUNTDOWN_READY_WIDTH)
+	start_texture = _softened_word_art(ArtSlot.texture(MODE_START_TEXTURE_PATH[mode]), COUNTDOWN_START_WIDTH)
 	# TRY AGAIN is a node in the game-over panel rather than something
 	# _draw() paints, so it is assigned rather than cached.
 	if ResourceLoader.exists(MODE_TRY_AGAIN_TEXTURE_PATH[mode]):
@@ -4767,16 +4664,9 @@ func _apply_mode(mode: int) -> void:
 		# 아이콘 캔버스에 투명 여백이 넉넉히 붙어 있어, 잘라 내지 않으면 같은
 		# 높이로 그려도 왕관만 작아 보인다.
 		score_crown_texture = _load_trimmed(BEST_CROWN_PATH, true)
-	score_box_texture = null
-	if ResourceLoader.exists(MODE_SCORE_BOX_PATH[mode]):
-		score_box_texture = load(MODE_SCORE_BOX_PATH[mode])
-	quiz_box_texture = null
-	if ResourceLoader.exists(MODE_QUIZ_BOX_PATH[mode]):
-		quiz_box_texture = load(MODE_QUIZ_BOX_PATH[mode])
-	if ResourceLoader.exists(MODE_PAUSE_ICON_PATH[mode]):
-		pause_button.icon = load(MODE_PAUSE_ICON_PATH[mode])
-	if ResourceLoader.exists(MODE_MUTE_ICON_PATH[mode]):
-		mute_button.icon = load(MODE_MUTE_ICON_PATH[mode])
+	score_box_texture = ArtSlot.texture(HUD_SCORE_BAR_PATH)
+	quiz_box_texture = ArtSlot.texture(HUD_QUIZ_BOX_PATH)
+	pause_button.icon = ArtSlot.texture(HUD_PAUSE_PATH)
 	# Re-run now that the icons are loaded: _ready lays the row out before
 	# any mode is applied, so it sizes off the HUD_BUTTON_SRC fallback.
 	_layout_hud_buttons()
@@ -5105,12 +4995,6 @@ func _save_audio_settings() -> void:
 	cfg.save(SAVE_PATH)
 
 
-func _on_mute_pressed() -> void:
-	muted = not muted
-	AudioServer.set_bus_mute(AudioServer.get_bus_index("Master"), muted)
-	mute_button.modulate = Color(1.0, 1.0, 1.0, 0.5) if muted else Color(1.0, 1.0, 1.0, 1.0)
-
-
 func _animate_button_press(button: Button) -> void:
 	var tween := create_tween()
 	tween.tween_property(button, "scale", Vector2.ONE * BUTTON_PRESS_SCALE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
@@ -5121,12 +5005,6 @@ func _animate_button_release(button: Button) -> void:
 	tween.tween_property(button, "scale", Vector2.ONE, BUTTON_PRESS_ANIM_DURATION).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 
-# Drawn into splash_char_layer rather than here. The frames are 256px drawn
-# at about half that, and this project renders with nearest filtering — right
-# for the pixel-art sprites in play, but it stair-steps a sprite this heavily
-# minified. The layer is a child CanvasItem carrying its own filter, so the
-# title screen gets smooth minification without changing how the game itself
-# draws a single pixel.
 # 로고 화면. 검은 바탕에 로고 한 장, 페이드 인/아웃.
 func _draw_logo(view_size: Vector2) -> void:
 	draw_rect(Rect2(Vector2.ZERO, view_size), LOGO_BACKGROUND)
@@ -5149,62 +5027,115 @@ func _draw_logo(view_size: Vector2) -> void:
 		false, Color(1.0, 1.0, 1.0, alpha))
 
 
-func _draw_splash_characters() -> void:
+var title_font: Font
+## WARP GATE's fill: its own CanvasItem so it can carry the gradient shader
+## (draw_string has no gradient), drawn over the rims Main lays down. Where
+## and how big come from _draw_splash, which is what places everything else.
+var title_sub_layer: Node2D
+var title_sub_pos := Vector2.ZERO
+var title_sub_size := 0
 
-	var view_size := get_viewport_rect().size
-	if splash_character_frames.is_empty():
-		return
-	var draw_size: float = view_size.x * SPLASH_CHARACTER_SIZE_FRAC
-	var spacing: float = view_size.x * SPLASH_CHARACTER_SPACING_FRAC
-	var mid_x: float = view_size.x * 0.5
-	var mid_y: float = view_size.y * SPLASH_CHARACTER_MID_Y_FRAC
-	# The per-mode draw offsets are measured against PLAYER_VISUAL_SIZE, so
-	# they have to be rescaled to whatever size the title screen draws at or
-	# the three end up misaligned against each other.
-	var offset_scale: float = draw_size / PLAYER_VISUAL_SIZE.x
-	var span: float = spacing * (splash_character_frames.size() - 1)
-	for i in range(splash_character_frames.size()):
-		var frames: Array = splash_character_frames[i]
-		if frames.is_empty():
-			continue
-		var mode: int = SPLASH_CHARACTER_MODES[i]
-		# Frame index straight off the clock — the splash runs its own
-		# animation rather than borrowing the gameplay flap timer, which does
-		# not tick on this screen.
-		var frame: int = int(splash_elapsed / FLAP_FRAME_DURATION) % frames.size()
-		var texture: Texture2D = frames[frame]
-		if texture == null:
-			continue
-		var phase: float = SPLASH_BOB_PHASE[i] if i < SPLASH_BOB_PHASE.size() else 0.0
-		var bob: float = sin((splash_elapsed + phase) / SPLASH_BOB_PERIOD * TAU) * draw_size * SPLASH_BOB_AMPLITUDE_FRAC
-		var centre := Vector2(mid_x - span * 0.5 + spacing * i, mid_y + bob)
-		var size_scale: float = MODE_VISUAL_SIZE_SCALE[mode]
-		var size := Vector2(draw_size, draw_size) * size_scale
-		var offset: Vector2 = MODE_DRAW_OFFSET_FLY[mode] * offset_scale
-		splash_char_layer.draw_texture_rect(texture, Rect2(centre - size * 0.5 + offset, size), false)
+
+## The title screen's art and face. Kept on Main, not read inside the draw —
+## see ArtSlot.texture for why a texture loaded there would draw white.
+func _load_title_art() -> void:
+	for p in [TitleArt.STAR_PATH, TitleArt.WREATH_PATH, TITLE_BAR_PATH]:
+		ArtSlot.texture(p)
+	title_font = TitleArt.font(combo_font)
+	if title_sub_layer == null:
+		title_sub_layer = Node2D.new()
+		title_sub_layer.name = "TitleSubtitle"
+		var mat := ShaderMaterial.new()
+		mat.shader = load(TITLE_SUBTITLE_SHADER_PATH)
+		mat.set_shader_parameter("top_color", TITLE_SUBTITLE_TOP)
+		mat.set_shader_parameter("bottom_color", TITLE_SUBTITLE_BOTTOM)
+		title_sub_layer.material = mat
+		title_sub_layer.draw.connect(_draw_title_subtitle_fill)
+		add_child(title_sub_layer)
 
 
 func _draw_splash(view_size: Vector2) -> void:
-	if splash_texture == null:
+	# The world keeps flowing behind the title, dimmed to the banner's blue.
+	var world: Texture2D = space.texture() if space != null else null
+	if world != null:
+		draw_texture_rect(world, Rect2(Vector2.ZERO, view_size), false)
+	draw_rect(Rect2(Vector2.ZERO, view_size), TITLE_DIM)
+	var k: float = view_size.x / 480.0
+	var mid := Vector2(view_size.x * 0.5, view_size.y * TITLE_MID_Y_FRAC)
+
+	# The band of light: clear at its edges, strongest through the middle.
+	var bh: float = TITLE_BAND_HEIGHT * k
+	var clear := Color(TITLE_BAND_COLOR, 0.0)
+	for half in [-1.0, 1.0]:
+		var edge_y: float = mid.y + half * bh * 0.5
+		draw_polygon(PackedVector2Array([Vector2(0, mid.y), Vector2(view_size.x, mid.y),
+			Vector2(view_size.x, edge_y), Vector2(0, edge_y)]),
+			PackedColorArray([TITLE_BAND_COLOR, TITLE_BAND_COLOR, clear, clear]))
+
+	# The bar, across the screen at its own proportions (its linework would
+	# warp if stretched) — drawn before the crest, which stands in front of it
+	# as the banner's does.
+	var bar_tex := ArtSlot.texture(TITLE_BAR_PATH)
+	var bar_w: float = view_size.x - 12.0 * k
+	var bar_h: float = bar_w * bar_tex.get_height() / bar_tex.get_width()
+	draw_texture_rect(bar_tex, Rect2(6.0 * k, mid.y + TITLE_BAR_Y * k, bar_w, bar_h), false)
+
+	# The crest and WARP / GATE either side of it — TitleArt, shared with the
+	# mode select.
+	var font: Font = title_font if title_font != null else combo_font
+	TitleArt.draw_emblem(self, mid, TITLE_STAR_HEIGHT * k, TITLE_WREATH_HEIGHT * k,
+		view_size.x, 6.0 * k, int(TITLE_WORD_SIZE * k), font, k)
+
+	_draw_title_subtitle(font, Vector2(mid.x, mid.y + TITLE_SUBTITLE_Y * k), k)
+	_draw_splash_prompt(view_size)
+
+
+## WARP GATE, dressed: a warm glow, a dark rim under an orange one, gold
+## rules with diamonds either side. The gradient fill itself goes on
+## title_sub_layer, over all of this.
+func _draw_title_subtitle(font: Font, centre: Vector2, k: float) -> void:
+	var size := int(TITLE_SUBTITLE_SIZE * k)
+	var w: float = font.get_string_size(TITLE_SUBTITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, size).x
+	var pos := Vector2(centre.x - w * 0.5, centre.y + size * 0.36)
+	title_sub_pos = pos
+	title_sub_size = size
+	for r: float in TITLE_SUBTITLE_GLOW_RADII:
+		for i in 8:
+			var o := Vector2.from_angle(i * TAU / 8.0) * r * k
+			draw_string_outline(font, pos + o, TITLE_SUBTITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, size, 4, TITLE_SUBTITLE_GLOW)
+	draw_string_outline(font, pos, TITLE_SUBTITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(6, size / 4), TITLE_SUBTITLE_OUTLINE)
+	draw_string_outline(font, pos, TITLE_SUBTITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, size, maxi(3, size / 9), TITLE_SUBTITLE_RIM)
+	# The rules: a line from just off the word outward, a diamond at each end.
+	for side in [-1.0, 1.0]:
+		var inner_x: float = centre.x + side * (w * 0.5 + TITLE_SUBTITLE_RULE_GAP * k)
+		var outer_x: float = inner_x + side * TITLE_SUBTITLE_RULE_LENGTH * k
+		var y: float = centre.y
+		draw_line(Vector2(inner_x, y), Vector2(outer_x, y), TITLE_SUBTITLE_OUTLINE, 5.0 * k, true)
+		draw_line(Vector2(inner_x, y), Vector2(outer_x, y), TITLE_SUBTITLE_BOTTOM, 2.0 * k, true)
+		_draw_title_diamond(Vector2(outer_x, y), 7.0 * k)
+		_draw_title_diamond(Vector2(inner_x, y), 4.0 * k)
+
+
+func _draw_title_diamond(c: Vector2, r: float) -> void:
+	var pts := PackedVector2Array([c + Vector2(0, -r), c + Vector2(r, 0), c + Vector2(0, r), c + Vector2(-r, 0)])
+	var rim := PackedVector2Array([c + Vector2(0, -r - 2), c + Vector2(r + 2, 0), c + Vector2(0, r + 2), c + Vector2(-r - 2, 0)])
+	draw_colored_polygon(rim, TITLE_SUBTITLE_OUTLINE)
+	draw_polygon(pts, PackedColorArray([TITLE_SUBTITLE_TOP, TITLE_SUBTITLE_BOTTOM, TITLE_SUBTITLE_BOTTOM, TITLE_SUBTITLE_TOP]))
+
+
+## The fill, on title_sub_layer: white glyphs that the shader paints from
+## TITLE_SUBTITLE_TOP at the cap line to TITLE_SUBTITLE_BOTTOM at the baseline.
+func _draw_title_subtitle_fill() -> void:
+	if state != State.SPLASH or title_sub_size <= 0:
 		return
-	# Scale to cover, then centre: whichever axis is proportionally shorter
-	# decides the scale, and the surplus on the other axis is cropped evenly.
-	var tex_size := Vector2(splash_texture.get_width(), splash_texture.get_height())
-	var scale: float = maxf(view_size.x / tex_size.x, view_size.y / tex_size.y)
-	var draw_size: Vector2 = tex_size * scale
-	var top_left: Vector2 = (view_size - draw_size) * 0.5
-	draw_texture_rect(splash_texture, Rect2(top_left, draw_size), false)
-
-	if splash_title_texture != null:
-		var tw: float = view_size.x * SPLASH_TITLE_WIDTH_FRAC
-		var th: float = tw * (float(splash_title_texture.get_height())
-			/ float(splash_title_texture.get_width()))
-		draw_texture_rect(splash_title_texture, Rect2(
-			(view_size.x - tw) * 0.5,
-			view_size.y * SPLASH_TITLE_MID_Y_FRAC - th * 0.5,
-			tw, th), false)
+	var font: Font = title_font if title_font != null else combo_font
+	var mat := title_sub_layer.material as ShaderMaterial
+	mat.set_shader_parameter("top_y", title_sub_pos.y - title_sub_size * 0.74)
+	mat.set_shader_parameter("bottom_y", title_sub_pos.y)
+	title_sub_layer.draw_string(font, title_sub_pos, TITLE_SUBTITLE, HORIZONTAL_ALIGNMENT_LEFT, -1, title_sub_size, Color.WHITE)
 
 
+func _draw_splash_prompt(view_size: Vector2) -> void:
 	var alpha: float
 	var prompt_scale := 1.0
 	var glow_pulse := 0.0   # 0 at the trough, 1 at the peak of the breath
@@ -5237,7 +5168,7 @@ func _draw_splash(view_size: Vector2) -> void:
 	draw_set_transform(centre, 0.0, Vector2(prompt_scale, prompt_scale))
 	# Glow first, so the text sits on top of its own bloom rather than under it.
 	_draw_splash_prompt_glow(font_size, glow_pulse * alpha)
-	_draw_centered_text(SPLASH_PROMPT_TEXT, Vector2.ZERO, font_size, fill, outline, combo_font)
+	_draw_centered_text(SPLASH_PROMPT_TEXT, Vector2.ZERO, font_size, fill, outline, title_font if title_font != null else combo_font)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
@@ -5247,7 +5178,7 @@ func _draw_splash(view_size: Vector2) -> void:
 func _draw_splash_prompt_glow(font_size: int, strength: float) -> void:
 	if strength <= 0.001:
 		return
-	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var font: Font = title_font if title_font != null else (combo_font if combo_font != null else ThemeDB.fallback_font)
 	var text_size := font.get_string_size(SPLASH_PROMPT_TEXT, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 	# Same baseline _draw_centered_text uses with no baseline_frac, so the
 	# bloom lands exactly under the glyphs instead of offset from them.
@@ -5401,11 +5332,9 @@ func _set_state(new_state: int) -> void:
 # 로고가 떠 있는 동안 만들어진 노드(스플래시 캐릭터 층 등)는 기본값이 "보임"이라,
 # 다시 적용하지 않으면 로고 위로 튀어나온다.
 func _apply_screen_visibility() -> void:
-	if splash_char_layer != null:
-		splash_char_layer.visible = state == State.SPLASH
-	_update_mute_button_visibility()
+	if title_sub_layer != null:
+		title_sub_layer.visible = state == State.SPLASH
 	mode_select_panel.visible = state == State.MODE_SELECT
-	_update_banner()
 	ready_panel.visible = state == State.READY
 	gameover_panel.visible = state == State.GAMEOVER
 	# 띄우는 쪽은 _finish_run(어느 갈래인지 아는 쪽)이라, 여기서는 끄기만 한다.
@@ -5418,28 +5347,6 @@ func _apply_screen_visibility() -> void:
 		about_popup.visible = false
 	if collection_popup != null:
 		collection_popup.visible = false
-
-
-# 음소거 버튼이 사라져야 하는 경우는 두 가지다.
-#
-# 하나는 화면 — 메뉴 화면들은 자체 음량 조절이 있고, 음소거 버튼은 모드 선택
-# 화면이 설정 아이콘을 놓는 자리와 정확히 겹친다. 그래서 게임 화면 전용이다.
-#
-# 다른 하나는 팝업 — 부활 제안과 게임오버가 떠 있는 동안에는 뒤에 남아 있으면
-# 안 된다. 이건 화면 상태만으로는 판별할 수 없다. 두 팝업 모두 GAMEOVER 상태에서
-# 뜨지만, _offer_revive 는 게임오버 화면이 먼저 나타나지 않도록 _set_state 를
-# 일부러 우회하고 state 를 직접 넣기 때문에 _apply_screen_visibility 가 아예
-# 호출되지 않는다. 그래서 상태 대신 팝업 노드의 실제 표시 여부를 본다.
-#
-# 일시정지 버튼이 이미 두 팝업에서 알아서 사라지는 건 별개 이유다 — _process 가
-# 매 프레임 PLAYING/COUNTDOWN 일 때만 켜는데 두 팝업은 GAMEOVER 라서 걸러진다.
-func _update_mute_button_visibility() -> void:
-	if mute_button == null:
-		return
-	var popup_open: bool = (revive_panel != null and revive_panel.visible) \
-		or (gameover_popup != null and gameover_popup.visible)
-	mute_button.visible = state != State.SPLASH and state != State.MODE_SELECT \
-		and state != State.LOGO and not popup_open
 
 
 # ---- Layer 3: HUD bar + quiz box (always drawn above the background/gate
@@ -5481,13 +5388,20 @@ func _score_box_rect(view_size: Vector2) -> Rect2:
 	# 높이는 버튼과 같은 식으로 뽑는다(HUD_BUTTON_EXTRA 한 번 더). 그래야
 	# 세 조각의 위/아래 테두리가 한 줄에 딱 맞는다.
 	var draw_size := Vector2(src.x * SCORE_BOX_WIDTH_TRIM, src.y * HUD_BUTTON_EXTRA) * _hud_row_scale(view_size)
-	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, SCORE_BOX_TOP), draw_size)
+	# 소리 끄기 버튼이 빠진 뒤로는(2026-11-26, 설정으로 옮겨 감) 일시정지 버튼
+	# 오른쪽부터 화면 오른쪽 여백까지가 점수판이다. 높이는 그대로 두고 폭만
+	# 그 자리를 채운다 — SCORE 는 왼쪽 칸, 최고 점수는 오른쪽 칸.
+	var button_w: float = _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC).x \
+		* _hud_row_scale(view_size) * _hud_button_mult()
+	var left: float = HUD_ROW_SIDE_MARGIN + button_w + HUD_ROW_GAP
+	draw_size.x = view_size.x - HUD_ROW_SIDE_MARGIN - left
+	return Rect2(Vector2(left, SCORE_BOX_TOP), draw_size)
 
 
 # Screen rect of the quiz box art, parked directly under the score box. It
 # spans the full width inside the margins rather than following the row
 # scale — it has no neighbours to share the line with.
-func _quiz_box_rect(view_size: Vector2) -> Rect2:
+func _quiz_row_rect(view_size: Vector2) -> Rect2:
 	# 크기는 아트가 아니라 QUIZ_BOX_SRC 비율로 정한다.
 	#
 	# 새 아트는 테두리가 두꺼워 3.2:1인데(예전 아트는 10:1), 그 비율대로
@@ -5499,6 +5413,28 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
 	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
 	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
+
+
+# 두 번째 줄은 세 칸이다(2026-11-26): 체력 | 문제 박스 | 룰렛. 줄 전체의 자리와
+# 높이는 예전 문제 박스 그대로(_quiz_row_rect) 두고 폭만 나눈다 — 그래야 그
+# 아래 게이트 구역(_gate_zone_top)이 한 픽셀도 안 움직인다. 하트가 게이지 아래,
+# 룰렛이 그 가운데에 따로 있던 것을 문제 박스 양옆으로 올려, 게이트가 날아오는
+# 판 위에는 아무것도 걸리지 않게 했다.
+func _quiz_box_rect(view_size: Vector2) -> Rect2:
+	var row := _quiz_row_rect(view_size)
+	var left: float = row.position.x + SIDE_SLOT_WIDTH + HUD_SLOT_GAP
+	var right: float = row.end.x - SIDE_SLOT_WIDTH - HUD_SLOT_GAP
+	return Rect2(Vector2(left, row.position.y), Vector2(right - left, row.size.y))
+
+
+func _health_rect(view_size: Vector2) -> Rect2:
+	var row := _quiz_row_rect(view_size)
+	return Rect2(row.position, Vector2(SIDE_SLOT_WIDTH, row.size.y))
+
+
+func _roulette_rect(view_size: Vector2) -> Rect2:
+	var row := _quiz_row_rect(view_size)
+	return Rect2(Vector2(row.end.x - SIDE_SLOT_WIDTH, row.position.y), Vector2(SIDE_SLOT_WIDTH, row.size.y))
 
 
 # Sizes and parks the pause/mute buttons off the score box, so the three of
@@ -5515,9 +5451,6 @@ func _layout_hud_buttons() -> void:
 	pause_button.set_deferred("size", size)
 	pause_button.set_deferred("position", Vector2(HUD_ROW_SIDE_MARGIN, top))
 	pause_button.set_deferred("pivot_offset", size * 0.5)
-	mute_button.set_deferred("size", size)
-	mute_button.set_deferred("position", Vector2(view_size.x - HUD_ROW_SIDE_MARGIN - size.x, top))
-	mute_button.set_deferred("pivot_offset", size * 0.5)
 
 
 # Called from HudCanvas._draw. Everything here draws onto `ci` (the HUD's
@@ -5527,7 +5460,7 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
-		space.draw_hud(ci, _quiz_box_rect(view_size))
+		space.draw_hud(ci, _quiz_box_rect(view_size), _roulette_rect(view_size))
 		_draw_hearts(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
@@ -5588,8 +5521,7 @@ func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if score_box_texture != null:
 		var rect := _score_box_rect(view_size)
 		if SCORE_BOX_PANEL_VISIBLE:
-			_draw_nine_patch(score_box_texture, rect.grow(SCORE_PANEL_ART_PAD * SCORE_PANEL_SCALE),
-				GATE_PANEL_CORNER + GATE_PANEL_PAD, SCORE_PANEL_SCALE, ci)
+			_draw_horizontal_slice(score_box_texture, rect, HUD_SCORE_BAR_CAP, ci)
 		_draw_score_box_labels(rect, ci)
 		# Two halves of the same box, each number matched to its own painted
 		# label rather than sharing one size and line: the live score is the
@@ -5632,19 +5564,23 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 		var rect := _quiz_box_rect(view_size)
 		var draw_size: Vector2 = rect.size
 		var top_left: Vector2 = rect.position
-		_draw_horizontal_slice(quiz_box_texture, rect, QUIZ_BOX_CAP, ci)
+		_draw_horizontal_slice(quiz_box_texture, rect, HUD_QUIZ_BOX_CAP, ci)
 		var pad: float = draw_size.x * QUIZ_TEXT_SIDE_PAD_FRAC
 		var area_left: float = top_left.x + draw_size.x * QUIZ_TEXT_LEFT_FRAC + pad
 		var area_right: float = top_left.x + draw_size.x * QUIZ_TEXT_RIGHT_FRAC - pad
 		var max_width: float = area_right - area_left
-		# Sized off the box WIDTH on purpose — see QUIZ_TEXT_MAX_FONT_FRAC.
-		var max_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MAX_FONT_FRAC))
-		var min_font_size: int = int(round(draw_size.x * QUIZ_TEXT_MIN_FONT_FRAC))
+		# Sized off the WIDTH on purpose — see QUIZ_TEXT_MAX_FONT_FRAC — and off the
+		# whole row's, not the box's: since the health and roulette slots took
+		# the box's sides (2026-11-26) the box is narrower, and the question
+		# should not shrink with it. _fit_font_size still shrinks a long one.
+		var row_w: float = _quiz_row_rect(view_size).size.x
+		var max_font_size: int = int(round(row_w * QUIZ_TEXT_MAX_FONT_FRAC))
+		var min_font_size: int = int(round(row_w * QUIZ_TEXT_MIN_FONT_FRAC))
 		var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, combo_font)
 		# Centred within the writing area — the part of the box left over once
 		# the painted "QUIZ" pill is excluded — not within the box as a whole.
 		var text_center := Vector2((area_left + area_right) * 0.5, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
-		_draw_centered_text(text, text_center, font_size, Color(0.0, 0.0, 0.0, 1.0), Color(0.0, 0.0, 0.0, 0.0), combo_font, ci, QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
+		_draw_centered_text(text, text_center, font_size, HUD_TEXT_COLOR, Color(0.0, 0.0, 0.0, 0.0), combo_font, ci, QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
 	else:
 		var box_rect := Rect2(Vector2(QUIZ_BOX_MARGIN, box_top), Vector2(view_size.x - QUIZ_BOX_MARGIN * 2.0, _quiz_box_rect(view_size).size.y))
 		var style := StyleBoxFlat.new()
@@ -5694,7 +5630,7 @@ func _draw_ocean_quiz_box(view_size: Vector2, ci: CanvasItem) -> void:
 		return
 	var rect := _quiz_box_rect(view_size)
 	if quiz_box_texture != null:
-		_draw_horizontal_slice(quiz_box_texture, rect, QUIZ_BOX_CAP, ci)
+		_draw_horizontal_slice(quiz_box_texture, rect, HUD_QUIZ_BOX_CAP, ci)
 	else:
 		var style := StyleBoxFlat.new()
 		style.bg_color = QUIZ_BOX_COLOR

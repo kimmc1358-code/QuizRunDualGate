@@ -51,6 +51,7 @@ const ENGLISH_ON_PURPOSE := {
 	"BEST": "HUD 와 모드 카드의 BEST 와 같은 단어다. 셋이 같아 보여야 한다",
 	"LOGIN WITH": "구글 마크에 붙어 있는 글자라 함께 다시 그려야 바뀐다",
 	"© 2026 JANIJU STUDIO": "옮길 것이 없다",
+	"PLAY": "메인 화면의 PLAY — 타이틀의 WARP GATE 와 같은 Zen Dots 글자로 그린 버튼 문구라, START 처럼 영어로 둔다",
 }
 
 # 이 상수만은 번역을 거치지 않는다. 값이 우연히 번역 키와 같아졌을 뿐이거나
@@ -61,6 +62,7 @@ const LEAVE_ALONE := {
 	"BUS_MUSIC": "오디오 버스 이름",
 	"BUTTON_SOUND_BUS": "오디오 버스 이름",
 	"SCORE_LABEL_TEXT": "게임 화면 HUD 의 SCORE. 한글화 범위는 메뉴·팝업까지고 HUD 는 빠져 있다 — 옆의 BEST 와도 짝이 맞아야 한다",
+	"TITLE_SUBTITLE": "타이틀 화면의 금색 QUIZ RUN — 타이틀 글자는 그림처럼 영어로 둔다. 같은 글자의 메인 화면 카드 이름은 번역한다",
 }
 
 # 원문 그대로 들고 다녀야 하는 것. 이 프로젝트는 퀴즈 정답 맞추기와 중복

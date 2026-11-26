@@ -108,8 +108,7 @@ func _build_content() -> void:
 	_body.add_theme_constant_override("separation", 0)
 	_scroll.add_child(_body)
 
-	if ResourceLoader.exists(LOGO_FILE):
-		_logo_texture = _outlined_logo(load(LOGO_FILE))
+	_logo_texture = _outlined_logo(ArtSlot.texture(LOGO_FILE))
 	_add_row("logo", [])
 	_spacer(PAD_AFTER_LOGO)
 

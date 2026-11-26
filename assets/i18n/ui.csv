@@ -1,13 +1,4 @@
 keys,en,ko
-FLAG MODE,FLAG MODE,국기 모드
-MATH MODE,MATH MODE,연산 모드
-COLOR MODE,COLOR MODE,색깔 모드
-MIX MODE,MIX MODE,믹스 모드
-Find the flag that matches the country!,Find the flag that matches the country!,나라 이름에 맞는 국기를 찾으세요!
-Solve the math problem and find the answer!,Solve the math problem and find the answer!,계산을 풀고 정답을 찾으세요!
-"Choose the COLOR, not the word!","Choose the COLOR, not the word!",글자가 아니라 '색'을 고르세요!
-"All three quizzes, one after another!","All three quizzes, one after another!",세 가지 퀴즈가 번갈아 나옵니다!
-Pass %d gates in every mode to unlock!  %d/%d,Pass %d gates in every mode to unlock!  %d/%d,모든 모드에서 %d게이트씩 통과하면 열립니다!  %d/%d
 LEADERBOARD,LEADERBOARD,리더보드
 "DRAG anywhere to steer the ship.
 It fires on its own.","DRAG anywhere to steer the ship.
@@ -85,7 +76,7 @@ Music,Music,음악
 Sound Effects,Sound Effects,효과음
 Thank you for playing!,Thank you for playing!,플레이해 주셔서 고맙습니다!
 Can you beat me?,Can you beat me?,나를 이길 수 있을까?
-I scored {score} in {mode} on QuizRun: Dual Gate! Can you beat me?,I scored {score} in {mode} on QuizRun: Dual Gate! Can you beat me?,QuizRun: Dual Gate {mode}에서 {score}점! 나를 이길 수 있을까?
+I scored {score} in {mode} on QuizRun: Warp Gate! Can you beat me?,I scored {score} in {mode} on QuizRun: Warp Gate! Can you beat me?,QuizRun: Warp Gate {mode}에서 {score}점! 나를 이길 수 있을까?
 Share your score,Share your score,점수 공유하기
 ADS REMOVED,ADS REMOVED,광고 제거됨
 CONTINUE,CONTINUE,이어하기
@@ -114,3 +105,14 @@ NEW!,NEW!,새로 수집!
 Flags +%d,Flags +%d,국기 +%d
 Colors +%d,Colors +%d,색 +%d
 Math stars +%d,Math stars +%d,연산 별 +%d
+QUIZ RUN,QUIZ RUN,퀴즈 런
+BATTLE,BATTLE,배틀
+DAILY,DAILY,데일리
+Answer quizzes to win random weapons and earn stardust!,Answer quizzes to win random weapons and earn stardust!,문제를 맞혀 랜덤 무기를 얻고 스타더스트를 모으세요!
+Your upgraded ship against enemies and bosses. No quiz.,Your upgraded ship against enemies and bosses. No quiz.,강화한 비행기로 적과 보스를 물리치세요. 퀴즈는 없어요.
+"One quiz run a day, the same for everyone. Bonus stardust!","One quiz run a day, the same for everyone. Bonus stardust!","하루 한 판, 모두 같은 문제! 보너스 스타더스트!"
+COMING SOON,COMING SOON,준비 중
+STARDUST,STARDUST,스타더스트
+Hangar,Hangar,격납고
+Upgrade,Upgrade,강화
+Leaderboard,Leaderboard,순위표

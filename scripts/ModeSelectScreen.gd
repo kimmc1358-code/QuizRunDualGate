@@ -1,17 +1,30 @@
 extends Control
-
-## Main menu / mode picker, built from the painted art in
-## assets/ui_assets/main/.
+## The mode select — 2.0's main menu (2026-11-27).
 ##
-## Laid out in code rather than as scene nodes because the viewport is a
-## fixed 480 wide but a height that varies with the device — 854 on 16:9, up
-## to ~1066 on 20:9, since the project stretches with aspect "expand". Every
-## piece is sized from its own aspect ratio against the screen width, and the
-## leftover height is shared out between them, so the column stays put at the
-## top and bottom on any phone instead of drifting or overflowing.
+## Built over the live space world (Main draws it underneath), from the
+## Synty UI kit (tools/build_ui_kit.gd, gitignored; ArtSlot placeholders
+## without it), in the same frames as the play-screen HUD so the menu and the
+## game read as one set:
 ##
-## Only the cards and START act. The leaderboard logs "[미구현]" so a tap is
-## visibly registered rather than silently ignored.
+##   [login]      [stardust]      [settings]
+##                WARP ✦ GATE
+##   [           QUIZ RUN            ]   the main mode, large
+##   [   BATTLE    ]  [    DAILY     ]
+##   [  what the chosen mode is  ]
+##   [             PLAY              ]
+##   [hangar]   [upgrade]   [leaderboard]
+##                Remove Ads
+##
+## There is no banner ad (dropped 2026-11-27), so nothing is reserved at the
+## bottom.
+##
+## The modes and their rules are in CLAUDE.md ("Modes and meta progression").
+## BATTLE and DAILY, the hangar and the upgrades are decided but not built,
+## so they show locked and COMING SOON.
+##
+## Laid out in code because the viewport is 480 wide but its height follows
+## the phone (854 at 16:9, ~1067 at 20:9): the blocks keep their sizes and the
+## leftover height is shared between the gaps, so nothing drifts or spills.
 
 signal start_pressed(mode: int)
 signal login_pressed
@@ -19,511 +32,151 @@ signal settings_pressed
 # 고른 카드의 모드를 실어 보낸다 — 어느 순위표를 열지는 그 모드가 정한다.
 signal leaderboard_pressed(mode: int)
 signal remove_ads_pressed
+## Nothing sends this since the 2.0 menu: the 1.x collection is being removed
+## and the hangar will take its place. Kept until Main stops connecting it.
 signal collection_pressed
 
-# Mirrors Main.gd's Mode enum. The mode-select sheet's quadrants are read in
-# reading order, so top-left is SKY and the fourth is the hidden slot.
-const MODE_SKY := 0
-const MODE_JUNGLE := 1
-const MODE_OCEAN := 2
-const MODE_HIDDEN := 3
-const CARD_MODES := [MODE_SKY, MODE_JUNGLE, MODE_OCEAN, MODE_HIDDEN]
-# Which quadrant of the sheet each slot draws. The sheet reads blue, green,
-# cyan, pink; the left column is flipped so the mint card sits on top, which
-# is why this is a mapping rather than a straight 0,1,2,3.
-
-# Characters shown on the cards, in slot order. The fourth is the hidden
-# mode and has no art yet — an empty path leaves that card blank.
-const CARD_CHARACTER_SHEET := [
-	"res://assets/characters/bird_v2/bird_fly.png",
-	"res://assets/characters/dragon_green/dragon_fly.png",
-	"res://assets/characters/shark_blue/shark_swim.png",
-	"res://assets/characters/unicorn_dream/unicorn_run.png",
+# ---- the modes ----
+const MODE_QUIZ := 0
+const MODE_BATTLE := 1
+const MODE_DAILY := 2
+const CARD_MODES := [MODE_QUIZ, MODE_BATTLE, MODE_DAILY]
+const CARD_NAMES := ["QUIZ RUN", "BATTLE", "DAILY"]
+## Which modes can be played yet. A locked card can be chosen to read what
+## it will be, but PLAY does nothing for it.
+const CARD_READY := [true, false, false]
+const CARD_EXPLAIN := [
+	"Answer quizzes to win random weapons and earn stardust!",
+	"Your upgraded ship against enemies and bosses. No quiz.",
+	"One quiz run a day, the same for everyone. Bonus stardust!",
 ]
-# 칸 나눔은 시트마다 다르다 — 유니콘만 3x2(6프레임)다. Main.gd 의
-# MODE_CHARACTER_SHEET_GRID 와 같은 값을 써야 게임 안팎이 같은 동작을 보인다.
-const CARD_CHARACTER_GRID := [Vector2i(2, 2), Vector2i(2, 2), Vector2i(2, 2), Vector2i(3, 2)]
-const CARD_CHARACTER_FPS := 8.0
-# Main.gd 의 MODE_VISUAL_SIZE_SCALE 과 같은 값. 이게 없으면 네 캐릭터가
-# 카드에서 모두 같은 칸에 그려져, 게임 안에서 맞춰 둔 서로의 크기 관계가
-# 깨진다 — 특히 유니콘은 게임에서 드래곤과 같은 높이로 읽히도록 1.20 배를
-# 주는데, 그게 빠지면 카드에서만 눈에 띄게 작아진다.
-#
-# 칸 한 변을 art_h * 이 배수로 잡으면, 화면에 보이는 크기의 게임 대비 비율이
-# 모드와 무관하게 art_h / PLAYER_VISUAL_SIZE.y 로 같아진다.
-const CARD_CHARACTER_SCALE := [0.92, 1.0, 1.0, 1.20]
-# Measured off each sheet the same way Main.gd's MODE_DRAW_OFFSET_FLY is,
-# and scaled to whatever size the card draws the sprite at.
+const COMING_SOON := "COMING SOON"
+const EXPLAIN_FONT := 15.0
+const EXPLAIN_FONT_MIN := 11.0
+const PLAY_TEXT := "PLAY"
+const STARDUST_TEXT := "STARDUST"
+const BEST_TEXT := "BEST"
+const HANGAR_TEXT := "Hangar"
+const UPGRADE_TEXT := "Upgrade"
+const LEADERBOARD_TEXT := "Leaderboard"
+const REMOVE_ADS_TEXT := "Remove Ads"
 
-# Space inside a card, as fractions of its height: a name across the top, the
-# character in the middle, the best score along the bottom.
-const CARD_NAME_HEIGHT_FRAC := 0.17
-const CARD_BEST_HEIGHT_FRAC := 0.15
-const CARD_ART_HEIGHT_FRAC := 0.58
-const CARD_TEXT_INSET_FRAC := 0.06     # of card height, kept clear of the border
-const CARD_NAMES := ["FLAG MODE", "MATH MODE", "COLOR MODE", "MIX MODE"]
-# Sized so the longest name fits its card, then used for all of them, so the
-# titles do not step up and down from card to card.
-const CARD_NAME_WIDTH_FRAC := 0.90     # of the card's inner width
-const CARD_NAME_MAX_SIZE := 22
-const CARD_NAME_MIN_SIZE := 9
-const CARD_NAME_COLOR := Color(1.0, 1.0, 1.0, 1.0)
-const CARD_NAME_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
-const CARD_NAME_OUTLINE_FRAC := 0.18   # of the font size
-# The title sits on its own rounded plate. Its width is taken from the
-# longest name — COLOR MODE — and then used on every card, so the plates
-# line up as a set rather than each hugging its own text.
-const CARD_NAME_PLATE_COLOR := Color(0.16, 0.17, 0.20, 0.55)
-const CARD_NAME_PLATE_RADIUS := 6
-const CARD_NAME_PLATE_PAD_FRAC := 0.32   # of the plate's height, at each end
-
-# 최고 점수는 둥근 흰 판 위에 얹힌다. 판 너비는 카드 너비 비율(CARD_BEST_PLATE_WIDTH_FRAC)
-# 로만 정해지므로 숫자가 길어져도 판은 그대로다 — 숫자를 다섯 자리로 채워
-# 넣던 시절이 있었지만, 판을 붙잡고 있던 것은 그 자리 채우기가 아니라
-# 이 비율이었다. 표기는 ScoreFormat.compact 를 따른다.
-const CARD_BEST_PLATE_COLOR := Color(1.0, 1.0, 1.0, 0.92)
-const CARD_BEST_PLATE_RADIUS := 6
-const CARD_BEST_PLATE_WIDTH_FRAC := 0.86   # of the card's inner width
-# "BEST" 글자는 게임 화면 상단의 BEST 와 같은 노랑 + 검정 테두리다. 같은 것을
-# 가리키는 두 자리라 같아 보여야 한다 — 예전에는 여기만 남색 민글자였다.
-#
-# 값은 Main.gd 의 BEST_LABEL_FILL / SCORE_TEXT_OUTLINE 과 같아야 하고,
-# tools/check_score_format.gd 가 두 값이 갈라지지 않았는지 본다. 여기서
-# Main 을 참조할 수는 없다 — 이 화면은 Main 을 모르는 쪽이다.
+# ShareCard draws its card from these: the mode's name and colours, the
+# BEST colours, the font weights and the logo slot.
+const CARD_FILL_TOP := [Color(0.10, 0.32, 0.66), Color(0.44, 0.15, 0.20), Color(0.12, 0.38, 0.32)]
+const CARD_FILL_BOTTOM := [Color(0.04, 0.12, 0.30), Color(0.20, 0.05, 0.09), Color(0.04, 0.16, 0.14)]
 const CARD_BEST_COLOR := Color(0.99, 0.80, 0.22, 1.0)
 const CARD_BEST_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
-const CARD_BEST_OUTLINE_FRAC := 0.16   # 글자 크기 대비 — 옆 숫자와 같은 굵기
-# "BEST" 만 숫자보다 한 뼘 크게 잡는다. 같은 크기로 두면 옆 숫자에 묻힌다 —
-# 숫자는 속칠과 같은 색 테두리로 굵기를 더 얻고 있어서(CARD_SCORE_OUTLINE_FRAC),
-# font_size 가 같아도 눈에는 BEST 쪽이 작아 보인다. 판 안에 왕관·BEST·숫자가
-# 한 줄로 들어가야 하므로 마음대로 키울 수는 없다 — check_mode_card_check 가
-# 가장 긴 점수로 그 줄을 재 본다.
-const CARD_BEST_LABEL_SCALE := 1.14
-# The plate holds three things in a row — crown, the word BEST, the number —
-# centred as a group. The number is styled like the card titles rather than
-# like the word beside it, so the score is what the eye lands on.
-# 게임 화면 HUD 와 같은 왕관을 쓴다. ART_DIR 바깥이라 전체 경로로 준다.
-const CARD_BEST_CROWN_FILE := "res://assets/ui_assets/popup/icon_crown.png"
-const CARD_BEST_CROWN_HEIGHT_FRAC := 0.78   # of the plate's height
-# 잘라 낸 그림 둘레에 두르는 투명 여백(그림 크기 대비)과 미리 줄여 둘 높이.
-const TRIM_INK_PAD_FRAC := 0.06
-const TRIM_INK_BAKE_H := 128
-const CARD_BEST_ROW_SEPARATION_FRAC := 0.22 # of the plate's height, between items
-const CARD_SCORE_COLOR := Color(0.0, 0.0, 0.0, 1.0)
-const CARD_SCORE_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
-# Extra px between the BEST digits. Fredoka sets figures tight, and at this
-# size the five zeros run together into one block; a single pixel is enough
-# to read them as separate digits without the number looking spaced out.
-const CARD_SCORE_TRACKING := 1
-# 속색과 같은 검정 테두리라 "테두리"로 보이지 않고 글자가 그만큼 굵어진다.
-# Fredoka 는 wght 700 이 끝이라, 더 굵게 하려면 이 방법밖에 없다.
-const CARD_SCORE_OUTLINE_FRAC := 0.16
-
-# Fredoka is variable on a wght axis (300-700). Main.gd uses 600 for text and
-# 700 for the score digits; the same two weights are used here.
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
-
-# One line each, sized so the longest of them fits — every mode then reads at
-# the same size, which a per-string fit would not give.
-#
-# 네 번째 줄은 MIX 가 잠겨 있을 때의 안내다. 열려 있으면
-# CARD_EXPLAIN_HIDDEN_OPEN 이 대신 나간다 — hidden_mode_open 을 볼 것.
-const CARD_EXPLAIN := [
-	"Find the flag that matches the country!",
-	"Solve the math problem and find the answer!",
-	"Choose the COLOR, not the word!",
-	"",   # 히든 모드는 잠금 상태에 따라 두 문장이다 — 아래 두 상수를 볼 것
-]
-const CARD_EXPLAIN_HIDDEN_OPEN := "All three quizzes, one after another!"
-# 잠겼을 때. 조건과 함께 어디까지 왔는지도 보인다 — 조건만 적으면 이미 두
-# 모드를 채운 사람과 하나도 안 한 사람에게 같은 문장이 나가고, 얼마나 남았는지
-# 알 방법이 게임 안에 없다. 인자는 (게이트 수, 채운 모드, 필요한 모드).
-const CARD_EXPLAIN_HIDDEN_LOCKED := "Pass %d gates in every mode to unlock!  %d/%d"
-
-## 히든 모드(MIX)가 열려 있는지. Main 이 저장된 진행도를 보고 정해서
-## set_hidden_progress 로 넘긴다 — 이 화면은 세이브 파일을 모른다.
-##
-## 기본값이 false 인 것이 맞다. 진행도가 아직 안 넘어온 순간(부팅 중 한두
-## 프레임)에 열린 것으로 그렸다가 잠기면, 열렸던 것이 도로 잠긴 것처럼 보인다.
-##
-## 카드 설명문도 이 값을 따라간다. 둘을 따로 두면 반드시 어긋난다: 잠긴 채로
-## "세 퀴즈가 번갈아 나온다"고 적으면 눌러도 안 되는 카드를 광고하는 꼴이고,
-## 열린 채로 "게이트를 더 지나면 열린다"고 적으면 이미 열린 것을 못 연 것처럼
-## 안내한다. tools/check_mode_card_check.gd 가 두 상태 모두에서 짝이 맞는지
-## 본다.
-@export var hidden_mode_open: bool = false
-# 잠금 안내에 들어가는 숫자. Main 의 HIDDEN_UNLOCK_GATES 와 모드 수가 그대로
-# 넘어온다 — 여기에 같은 값을 또 적어 두면 한쪽만 고쳤을 때 안내문이 거짓말을
-# 한다.
-var hidden_gates_needed: int = 20
-var hidden_modes_cleared: int = 0
-var hidden_modes_required: int = 3
-# The explain bar's ends are round, and their radius is a large fraction of
-# its height. Nine-slice cannot shorten a shape like that: it draws corners
-# at native size, so the caps would either overlap or, stretched, turn into
-# ellipses.
-#
-# Drawn in three horizontal pieces instead. Each cap is scaled uniformly, so
-# it keeps its shape at any height, and only the middle — flat horizontal
-# bands — is stretched across the gap. Height is then free to change without
-# distorting anything, and the border thickness scales with it, which is what
-# keeps it reading as the same bar rather than a thinner one with a heavy
-# outline.
-#
-# The cap width and the art's own bounds are measured off the file rather
-# than written down. The bar has already been swapped once — from a pill in
-# a tight canvas to a rounded rectangle sitting in a lot of transparent
-# padding — and fixed numbers would have quietly drawn that padding as if it
-# were the bar.
-const EXPLAIN_HEIGHT_SCALE := 0.80      # squash against the height its width would imply
-const EXPLAIN_TEXT_WIDTH_FRAC := 0.86   # of the bar, keeping the text off its border
-const EXPLAIN_TEXT_MAX_SIZE := 20
-const EXPLAIN_TEXT_MIN_SIZE := 9
-const EXPLAIN_TEXT_COLOR := Color(0.12, 0.18, 0.30, 1.0)
-
-# 선택된 카드는 테두리가 아니라 "들려 있음"으로 표시한다: 살짝 커지고,
-# 그림자가 깊어지고, 왼쪽 위 구석에 초록 체크가 붙는다.
-#
-# 예전에는 카드 가장자리를 따라 도는 노란 링과 그 바깥의 후광이었다. 링은
-# 카드의 흰 테두리 바로 위에 앉는데, 그때는 네 장을 시트에서 잘라 쓰느라
-# 카드마다 칸 안 위치가 조금씩 달라서, 어느 카드를 고르냐에 따라 테두리가
-# 두꺼워 보이거나 어긋나 보였다.
-const CARD_SELECTED_SCALE := 1.05
-const CARD_SELECT_ANIM := 0.12          # seconds, 크기가 옮겨 가는 시간
-
-# 그림자는 카드 뒤에 따로 그린다(_card_shadow_overlay). TextureButton 에는
-# 그림자가 없고, 카드 아트에 구워 넣으면 선택에 따라 깊어질 수가 없다.
-# 고른 카드에만 그린다 — 안 고른 카드까지 바뀌는 것은 요청이 아니었고,
-# 하나만 떠 있는 편이 "이게 골라졌다"를 더 분명히 말한다.
-const SELECT_CORNER_NATIVE := 70.0
-const SELECT_SHEET_WIDTH_NATIVE := 706.0
-const SELECT_SHEET_HEIGHT_NATIVE := 557.0
-# 처음에 14 / (0,7) / 0.62 로 잡았다가 화면에서 보고 낮췄다. 카드가 105% 로
-# 커지는 것과 체크가 이미 "골랐다"를 말하고 있어서, 그 위에 짙은 그림자까지
-# 얹으니 카드가 들린 게 아니라 화면에서 떨어져 나온 것처럼 보였다.
-const SELECT_SHADOW_SIZE := 9
-const SELECT_SHADOW_OFFSET := Vector2(0, 4)
-const SELECT_SHADOW_COLOR := Color(0.16, 0.10, 0.02, 0.34)
-
-# 고른 카드의 왼쪽 위 구석에 붙는 초록 체크. tools/slice_popup_icons_2.ps1 이
-# icon_popup_2.png 에서 잘라 낸다.
-#
-# 그 구석이 비어 있는 것은 우연이 아니라 배치의 결과다: 이름판은 가운데
-# 정렬이라 양옆에 여백이 남고(_layout_card 의 name_plate_w), 캐릭터는 이름
-# 줄 아래에서 시작한다. 그래도 카드마다 이름 길이와 캐릭터 배율(유니콘 1.20)이
-# 달라 여백이 같지 않으므로, 네 카드 전부에서 글자와 캐릭터를 안 가리는지는
-# tools/check_mode_card_check.gd 가 실제 사각형으로 확인한다.
-const CARD_CHECK_FILE := "res://assets/ui_assets/popup/icon_check.png"
-const CARD_CHECK_SIZE_FRAC := 0.19      # of the card art's width
-const CARD_CHECK_MARGIN_FRAC := 0.015   # of the card art's width, in from the corner
-
-# 잠긴 히든 모드 카드를 덮는 판.
-#
-# 구석에 배지 하나를 붙이는 대신 카드를 통째로 덮는다. 배지는 "이 카드에 뭔가
-# 표시가 있다"까지만 말하고, 왜 못 들어가는지는 눌러서 설명 바를 읽어야 알 수
-# 있었다. 덮으면 못 들어간다는 것 자체가 그림으로 읽힌다.
-#
-# 안에는 자물쇠 하나만 두고, 이름판과 점수판 사이를 통째로 채운다. 자물쇠
-# 아래에 LOCKED 와 더 짙은 판에 얹은 "Unlock to play!" 가 있었는데 걷어 냈다
-# — 잠겼다는 말은 자물쇠가 이미 하고 있어서, 글자 두 줄이 자물쇠를 자리의
-# 54% 로 눌러 두는 값을 못 했다. 여는 조건은 이제 카드를 누르면 나오는 설명
-# 바에만 있다.
-const CARD_LOCK_FILE := "res://assets/ui_assets/popup/locked.png"
-# 아직 locked.png 가 없을 때 쓸 그림. 조용히 대신 쓰지 않고 경고를 남긴다 —
-# 자물쇠가 "그럴듯하게 다른 그림"으로 나와 있으면 빠진 줄 모른다.
-const CARD_LOCK_FALLBACK_FILE := "res://assets/ui_assets/popup/icon_lock.png"
-# 카드 전체를 덮는 반투명. 카드마다 바탕색이 달라(민트/연두/하늘/분홍) 흰
-# 계열로 덮으면 원래 색에 따라 흐려지는 정도가 제각각이라, 어두운 쪽으로 덮어
-# 넷을 같은 밝기로 눌러 준다.
-const CARD_LOCK_VEIL_COLOR := Color(0.05, 0.07, 0.13, 0.70)
-# 덮개는 카드의 흰 테두리 **안쪽까지만** 덮는다. 테두리는 원래 밝기로 남는다.
-#
-# 흰 띠를 반투명으로 덮으면 254,254,254 이 117 로만 내려가, 어두워진 속
-# 둘레에 어중간하게 밝은 링이 생긴다 — 덮다 만 것으로 보인다. 그렇다고 그
-# 자리에 불투명한 띠를 얹으면 이번엔 검은 테두리가 새로 생긴다. 아예 손대지
-# 않으면 카드는 다른 세 장과 같은 흰 테두리를 그대로 두른 채 속만 어두워져서,
-# 세 방법 중 유일하게 "원래 그런 카드"처럼 보인다.
-#
-# 두께는 아트에서 잰 값이다: 706px 폭 원본에서 흰 테두리가 14px. 카드가 그려지는
-# 배율은 모서리 반지름과 같은 식으로 구한다(_card_corner_radius).
-const CARD_LOCK_VEIL_BORDER_NATIVE := 14.0
-# 그려지는 크기에 맞춰 굽는다 — CARD_LOCK_FILE 을 읽는 곳의 설명을 볼 것.
-const CARD_LOCK_BAKE_H := 112
-const CARD_LOCK_ICON_MAX_WIDTH_FRAC := 0.52  # 카드 너비 대비 — 가로로 넓은 그림 대비
-# 이름판·점수판에서 띄울 여백. 0 이면 자물쇠가 두 판에 딱 붙는다.
-const CARD_LOCK_BODY_INSET_FRAC := 0.030   # 카드 높이 대비, 위아래 각각
-
-# START gets the same halo treatment as the selected card. Its plate is a
-# rounded rectangle of radius 120 in a 1024-wide source, measured the same
-# way the card's was.
-const START_CORNER_NATIVE := 120.0
-const START_SHEET_WIDTH_NATIVE := 1024.0
-const START_GLOW_COLOR := Color(1.0, 0.88, 0.35, 0.16)
-const START_GLOW_RINGS := 10
-const START_GLOW_BORDER := 5.0        # ring thickness in screen pixels
-const START_GLOW_SPREAD := 2.2        # how far out the halo reaches, in ring widths
-
-# The chosen card's character drifts, so the selection reads as alive even
-# before the flap cycle registers.
-const CARD_BOB_AMPLITUDE_FRAC := 0.045  # of the art area's height
-# bob 한 주기 = 날갯짓 몇 바퀴. 고정 초로 두면 안 된다 — 날갯짓 한 바퀴는
-# 프레임 수에 달려 있어서(8 FPS 기준 4장이면 0.5초, 유니콘은 5장이라 0.625초),
-# bob 을 1.5초로 못박으면 4장짜리는 정확히 3바퀴에 맞물리지만 유니콘만
-# 2.4바퀴로 어긋난다. 그러면 날갯짓이 매번 bob 의 다른 지점에서 일어나
-# 유니콘 카드만 툭툭 튀는 것처럼 보인다. 바퀴 수로 잡으면 다 맞물린다.
-const CARD_BOB_LOOPS := 3.0
-
 const ART_DIR := "res://assets/ui_assets/main/"
-const BACKGROUND_FILE := "background_main.png"
 const TITLE_FILE := "title_main_v2.png"
-# ---- 카드 판때기 ----
-#
-# 아트가 아니라 직접 그린다. 예전에는 modeselect_main.png 한 장을 네 칸으로
-# 잘라 썼는데, 그림에서 온 판이라 세 가지가 따라왔다:
-#
-#   - 네 칸의 모서리 곡률과 흰 테두리 두께가 조금씩 달랐다. 손으로 그린
-#     그림이니 당연한 것이고, 붙여 놓으면 눈에 띈다.
-#   - 카드를 세로로 늘리면서(CARD_HEIGHT_SCALE) 원형 모서리가 타원이 됐다.
-#     비트맵을 늘리는 이상 피할 수 없다.
-#   - 그래서 잠금 덮개의 둥근 모서리가 카드와 안 맞았다. 덮개는 정원으로
-#     그려지는데 카드는 눌린 타원이라, 어느 값을 넣어도 어긋난다.
-#
-# 그려서 만들면 셋 다 없어진다. 아래 색은 원래 아트에서 뽑은 값이라 보이는
-# 것은 거의 그대로고, 달라지는 것은 정확도뿐이다.
-#
-# 세로 그라데이션. 카드마다 위/아래 한 쌍.
-# 원래 아트에서 뽑았다. 카드 높이의 10~92% 를 가로로 평균 내어 다섯 군데를
-# 재고, 거기서 위끝과 아래끝으로 외삽한 값이다 — 가장자리에서 바로 집으면
-# 흰 테두리 안쪽 하이라이트를 뜨게 되고, 실제로 처음에 그렇게 재서 네 장이 다
-# 물 빠진 색으로 나왔다.
-const CARD_FILL_TOP := [
-	Color(0.491, 0.935, 0.918),   # SKY    민트
-	Color(0.728, 0.953, 0.355),   # JUNGLE 연두
-	Color(0.590, 0.810, 0.987),   # OCEAN  하늘
-	Color(0.991, 0.624, 0.833),   # DREAM  분홍
-]
-const CARD_FILL_BOTTOM := [
-	Color(0.249, 0.878, 0.839),
-	Color(0.483, 0.840, 0.273),
-	Color(0.314, 0.712, 0.991),
-	Color(0.991, 0.455, 0.714),
-]
-const CARD_BORDER_COLOR := Color(1.0, 1.0, 1.0, 1.0)
-# 흰 테두리 두께. 모서리 반지름과 같은 기준(706px 폭)이라 SELECT_* 상수와
-# 같은 식으로 배율을 잡는다. 둘 다 원래 아트에서 잰 값이다.
-const CARD_BORDER_NATIVE := 14.0
-# 그라데이션 띠는 테두리보다 이만큼 안쪽까지만 채운다. 띠는 안티에일리어싱이
-# 없어 가장자리가 계단인데, 테두리의 불투명한 부분 밑으로 밀어 넣으면 안 보인다.
-const CARD_FILL_TUCK_PX := 1.0
-const EXPLAIN_FILE := "explain_box.png"
-const LEADERBOARD_FILE := "leaderboard_v2.png"
-const START_FILE := "start_main.png"
 
-# Icon sheet, 5 across and 3 down. The icons are dark navy on transparent —
-# invisible against a dark backdrop, which is only a preview problem: on the
-# gold leaderboard plate they read clearly. Reading order, so the trophy on
-# the top row's fourth column is index 3.
-const ICON_SHEET_FILE := "icon_sheet.png"
-const ICON_SHEET_GRID := Vector2i(5, 3)
-const ICON_TROPHY_INDEX := 3
-# Each icon sits in a lot of empty cell, so it is trimmed to its own art
-# before placing — otherwise the padding, not the trophy, gets centred.
-const TROPHY_HEIGHT_FRAC := 0.52      # of the leaderboard button's height
-const TROPHY_LEFT_FRAC := 0.09        # of the button's width, from its left edge
+# ---- art (the Synty UI kit) ----
+const KIT := "res://assets/synty_ui/"
+const CARD_FRAME_PATH := KIT + "card_frame.png"
+const CARD_FRAME_MARGIN := 80.0          # baked px
+# The selected card's face is lit from inside (2026-11-27) instead of a cyan
+# ring around the card: the same frame baked with a see-through cyan face,
+# then scanlines and a band of light sweeping down it. CARD_FACE_INSET is
+# where the face sits in the baked frame (left, top, right, bottom, in its
+# pixels), measured off card_frame.png; the lines stop there so they do not
+# run over the metal.
+const CARD_FRAME_ON_PATH := KIT + "card_frame_on.png"
+const CARD_FACE_INSET := [40.0, 50.0, 36.0, 38.0]
+const SCANLINE_STEP := 3.0               # px at 480 wide
+const SCANLINE := Color(0.55, 0.95, 1.0, 0.07)
+const SWEEP := Color(0.60, 0.97, 1.0, 0.16)
+const SWEEP_H := 0.22                    # share of the face's height
+const SWEEP_PERIOD := 2.6                # s, top to bottom
+const BUTTON_FRAME_PATH := KIT + "side_slot.png"
+const BUTTON_FRAME_MARGIN := 34.0
+# The menu's own PLAY button and explain bar (2026-11-27): the question box
+# and score bar they used to borrow made the menu read as the play screen.
+const PLAY_FRAME_PATH := KIT + "play_button.png"
+const PLAY_FRAME_CAP := 62.0             # baked px: the V-notched ends
+const EXPLAIN_FRAME_PATH := KIT + "explain_bar.png"
+const EXPLAIN_FRAME_CAP := 40.0
+const PLAY_TEXT_COLOR := Color(1.0, 0.98, 0.92)
+const PLAY_TEXT_RIM := Color(0.36, 0.12, 0.02)
+const BAR_FRAME_PATH := KIT + "score_bar.png"
+const BAR_FRAME_CAP := 60.0
+const PERSON_ICON := KIT + "icon_person.png"
+const SETTINGS_ICON := KIT + "icon_settings.png"
+const TROPHY_ICON := KIT + "icon_trophy.png"
+const UPGRADE_ICON := KIT + "icon_upgrade.png"
+const HANGAR_ICON := KIT + "icon_hangar.png"
+const LOCK_ICON := KIT + "icon_lock.png"
+const STARDUST_ICON := KIT + "icon_stardust.png"
+const BEST_ICON := KIT + "best_icon.png"
 
-# Label on the leaderboard plate, styled like START's. It is centred in the
-# space left of it by the trophy rather than on the whole plate, so the icon
-# and the word read as one balanced group instead of the word sitting off to
-# one side of centre.
-const LEADERBOARD_LABEL := "LEADERBOARD"
-const LEADERBOARD_LABEL_HEIGHT_FRAC := 0.40   # of the plate's height
-const LEADERBOARD_LABEL_MIN_SIZE := 8
-const LEADERBOARD_LABEL_PAD_FRAC := 0.05      # of the plate's width, kept off its right edge
+# ---- layout, in px at 480 wide ----
+const MARGIN := 14.0                     # screen edge -> content
+const TOP_PAD := 12.0
+const BOTTOM_PAD := 8.0
+const TOP_BAR_H := 52.0
+const EMBLEM_H := 100.0                  # star height; the words fit beside it
+const EMBLEM_WREATH_H := 66.0
+const EMBLEM_WORD_MAX := 36
+const BIG_CARD_H := 150.0
+const SMALL_CARD_H := 112.0
+const CARD_GAP := 10.0                   # between the cards, both ways
+const EXPLAIN_H := 46.0
+const PLAY_W := 320.0
+const PLAY_H := 86.0                    # 66 until 2026-11-27: it read as squat
+const TOOL_SIZE := 64.0
+const TOOL_LABEL_H := 18.0
+const TOOL_SPACING := 110.0              # centre to centre
+const REMOVE_ADS_H := 26.0
+const STARDUST_W := 170.0
+const STARDUST_H := 40.0
+## The gaps that take the leftover height, and their bounds.
+const FLEX_GAPS := 5
+const MIN_GAP := 8.0
+const MAX_GAP := 60.0
 
-# 도감 버튼. 리더보드와 같은 판을 쓰고 한 줄에 나란히 선다 — 각자 카드 한
-# 열 아래에 오도록 폭이 카드 폭과 같다. 새 줄을 만들지 않은 까닭은 이 화면에
-# 놀고 있는 세로가 없어서다(16:9 에서 블록 간격이 2px 남짓 — CARD_HEIGHT_SCALE
-# 참고). 둘로 나누면 판이 낮아져 오히려 세로가 조금 남는다.
-#
-# 판 높이. 판 그림 자체는 약 4.8:1 이라 비율대로 그리면 카드 한 열 폭에서
-# 35px 남짓이었고, 누르기에도 글자에도 얇았다. 그래서 판을 9-slice 로 그려
-# (_make_plate_button) 양 끝 반원은 지키고 가운데만 늘이며, 높이는 이 비율로
-# 정한다 — 3.8 이면 16:9 에서 51px, 글자와 아이콘은 판 높이를 따라 함께 큰다.
-# 늘어난 높이는 예전에 버튼이 끌어안고 있던 투명 여백(캔버스 65px)보다 작아서,
-# 세로 흐름에는 오히려 자리가 남는다.
-const PLATE_ASPECT := 3.8
-const PLATE_BAKE_H := 128        # 판 그림을 미리 줄여 둘 높이(px). 화면의 2 배 남짓
-const PLATE_ICON_GAP_FRAC := 0.14   # 판 높이 대비, 아이콘과 글자 사이
+# ---- look ----
+const DIM := Color(0.01, 0.05, 0.16, 0.42)
+const NAME_COLOR := Color(0.88, 0.97, 1.0)
+const NAME_RIM := Color(0.20, 0.55, 0.95)
+const TEXT_COLOR := Color(0.90, 0.95, 1.0)
+const SUB_TEXT := Color(0.70, 0.80, 0.95)
+const STARDUST_COLOR := Color(0.55, 0.92, 1.0)
+const LOCK_VEIL := Color(0.02, 0.04, 0.10, 0.62)
+const LOCK_TEXT := Color(0.75, 0.82, 0.95)
+const REMOVE_ADS_COLOR := Color(1.0, 1.0, 1.0, 0.85)
 
-# 책 아이콘은 시트에 없어서 그린다(_draw_book). 트로피와 같은 크기, 같은 자리.
-#
-# 트로피와 같은 옷을 입힌다 — 속이 찬 네이비 실루엣. 처음에는 흰 면에 검은
-# 선으로 그렸는데, 옆의 트로피는 선이 없는 덩어리라 둘이 다른 세트에서 온
-# 것처럼 보였고, 20px 남짓에서 선들이 뭉개졌다. 트로피의 흰 별 자리에 흰
-# 책갈피도 얹어 봤지만 그 크기에서는 긁힌 자국으로 읽혀 뺐다.
-const COLLECTION_LABEL := "COLLECTION"
-const BOOK_FILL := Color(0.094, 0.196, 0.40, 1.0)   # 화면에 그려진 트로피에서 잰 색
-const BOOK_CURVE_STEPS := 10
-# 새로 모은 것이 있을 때 버튼 오른쪽 위에 뜨는 점. 도감을 닫으면 꺼진다.
-const COLLECTION_DOT_COLOR := Color(0.93, 0.20, 0.20, 1.0)
-const COLLECTION_DOT_RING := Color(1.0, 1.0, 1.0, 1.0)
-const COLLECTION_DOT_FRAC := 0.20               # 판 높이 대비 지름
-
-# Tap cues. Loaded only if present and played only if loaded, the same
-# defensive shape as the sounds in Main.gd — removing a file leaves a silent
-# button rather than a crash.
+# ---- sound ----
 const SFX_DIR := "res://assets/audio/"
 const SFX_SELECT_FILE := "modeselection.wav"
 const SFX_START_FILE := "start_main.wav"
-# 팝업의 크림 버튼과 같은 소리 — 위쪽 구석 버튼 둘이 쓴다.
 const SFX_CREAM_FILE := "button_cream.wav"
 
-# The START art is a blank plate, so the word is drawn on top of it.
-const START_LABEL := "START"
-const START_LABEL_HEIGHT_FRAC := 0.44   # of the button's height
-const START_LABEL_COLOR := Color(1.0, 1.0, 1.0, 1.0)
-const START_LABEL_OUTLINE := Color(0.0, 0.0, 0.0, 1.0)
-const START_LABEL_OUTLINE_SIZE_FRAC := 0.16  # of the font size
+var selected_index := 0
+var _ads_removed := false
+var _best := PackedInt32Array()
+var _built := false
 
-# Press feedback, matching the pause/mute buttons in Main.gd: a quick squash
-# in, then a springy return that slightly overshoots.
-const PRESS_SCALE := 0.94
-const PRESS_ANIM_DURATION := 0.08
-
-# Widths as a fraction of the screen; each piece's height follows from its
-# own aspect ratio.
-const TITLE_WIDTH_FRAC := 0.70
-# 화면 맨 위 두 구석의 작은 버튼 — 왼쪽 로그인, 오른쪽 설정.
-# tools/slice_login_setting.gd 가 한 시트에서 잘라 낸 것이라 둘의 캔버스가
-# 같고, 그래서 같은 크기로 그려진다.
-const LOGIN_FILE := "login.png"
-const SETTING_FILE := "setting.png"
-const TOP_ICON_HEIGHT_FRAC := 0.055   # of screen height
-const TOP_ICON_MARGIN_X_FRAC := 0.030 # of screen width
-const TOP_ICON_MARGIN_Y_FRAC := 0.022 # of screen height
-const CARDS_WIDTH_FRAC := 0.84
-const CARD_GAP_FRAC := 0.030      # of screen width, between the two columns
-# 카드는 아트가 그려진 비율보다 세로로 늘려 그린다. 폭과 카드 사이 간격은
-# 그대로다.
-#
-# 늘어난 몫은 블록 사이 간격에서 나온다 — 이 화면에 놀고 있는 세로는 없다.
-# 남는 높이는 전부 간격으로 가고 MAX_GAP_FRAC 상한에도 안 닿기 때문에(21:9
-# 에서도 49px 대 상한 62px), "안 쓰는 자리를 가져온다"는 방법은 한 픽셀도 못
-# 얻는다. 재 봤다.
-#
-# 그래서 간격을 줄여 가며 늘리되, CARD_GROW_MIN_GAP_FRAC 밑으로는 안 내려간다.
-# 화면이 짧을수록 덜 늘어나고, 16:9 는 원래 간격이 1.9px 뿐이라 그대로다 —
-# 거기서 억지로 늘리면 제목과 카드가 서로 파고든다.
-const CARD_HEIGHT_SCALE := 1.18
-const CARD_GROW_MIN_GAP_FRAC := 0.014   # of screen height
-# The explain bar takes its width from the cards rather than a fraction of
-# its own, so its ends line up exactly with the outer edges of the left and
-# right columns however the cards are sized. The leaderboard and collection
-# plates do the same, one under each card column — see COLLECTION_LABEL.
-const START_WIDTH_FRAC := 0.72
-
-# Ad removal — emits remove_ads_pressed, and Main opens the Play purchase sheet
-# (Store). Hidden once bought (set_ads_removed). Underlined to read as a link
-# rather than as a caption; Label has no underline, so it is drawn.
-const REMOVE_ADS_TEXT := "Remove Ads"
-const REMOVE_ADS_FONT_FRAC := 0.022    # of screen height
-const REMOVE_ADS_BLOCK_FRAC := 0.040   # of screen height, the tappable band
-const REMOVE_ADS_COLOR := Color(1.0, 1.0, 1.0, 0.85)
-const REMOVE_ADS_UNDERLINE_GAP := 2.0
-const REMOVE_ADS_UNDERLINE_WIDTH := 1.5
-# ---- 하단 배너 자리 ----
-#
-# AdMob 배너는 Godot 뷰포트 밖에 얹히는 안드로이드 View 라, 화면이 그만큼
-# 아래를 비워 주지 않으면 그냥 덮는다. 여기서 비우는 것은 "배너가 앉을 자리"
-# 뿐이고, 배너 자체를 그리지는 않는다 — 플러그인이 붙으면 실제 배너 높이를
-# set_banner_reserve 로 넘겨 주면 된다.
-#
-# 픽셀 단위이고 게임 좌표다. 플러그인이 주는 값은 기기 픽셀이므로
-# (480 / 실제 화면 폭) 을 곱해 넘겨야 한다 — 뷰포트 폭은 480 으로 고정이고
-# 기기 폭은 제각각이라, 그대로 넘기면 기기마다 어긋난다.
-#
-# 넣고도 최소 간격이 남는 화면에서만 실제로 비운다. 실측(480 폭 기준)으로
-# 겹치기 직전까지 쓸 수 있는 높이가 16:9 에서 11px, 18:9 에서 118px,
-# 20:9 에서 225px 다. 50dp 배너가 20:9 에서 약 67 게임 px 이니 긴 화면은
-# 넉넉하고 16:9 는 애초에 자리가 없다. 억지로 비우면 START 가 카드를 덮는다.
-@export var banner_reserve_px: float = 0.0
-# 배너를 비우고도 블록 사이에 남아야 할 최소 간격, 화면 픽셀.
-#
-# 화면 높이 비율이 아니라 절대값이다. 처음에 0.012 로 잡았더니 18:9 에서
-# 11.5px 을 요구했는데, 정작 이 화면은 배너 없이도 16:9 에서 1.8px 간격으로
-# 돈다 — 기준이 게임이 이미 굴러가는 상태보다 엄격했고, 자리가 118px 이나
-# 남는 18:9 가 거부됐다. 여기서 막고 싶은 것은 "빽빽함"이 아니라 겹침이므로,
-# 0 을 조금 넘는 값이면 된다.
-const BANNER_MIN_GAP_PX := 6.0
-
-const TOP_MARGIN_FRAC := 0.035    # of screen height
-const BOTTOM_MARGIN_FRAC := 0.035
-const MAX_GAP_FRAC := 0.055       # cap, so a tall screen spreads rather than sprawls
-
-var selected_index: int = 0
-
-var _background: TextureRect
-var _title: TextureRect
-var _explain: Control
-var _explain_texture: Texture2D
-var _start_glow: Control
-var _start_bounds := Rect2(0, 0, 1, 1)
-var _explain_src := Rect2(0, 0, 1, 1)   # the bar's art within its file, in pixels
-var _explain_cap := 1.0                 # corner radius in those same pixels
-var _cards: Array[TextureButton] = []
-var _login: TextureButton
-var _setting: TextureButton
-var _leaderboard: TextureButton
-var _start: TextureButton
-var _select_overlay: Control
-var _card_shadow_overlay: Control       # 카드 뒤 — 고른 카드의 그림자
-var _check_texture: Texture2D
-var _lock_texture: Texture2D
-# 카드마다 scale 트윈 하나 — _tween_scale 이 소유자다.
-var _card_scale_tweens: Array[Tween] = []
+var _font: Font            # body text (the game's own face)
+var _title_font: Font      # names and PLAY (Zen Dots, from the kit)
 var _sfx_select: AudioStreamPlayer
 var _sfx_start: AudioStreamPlayer
 var _sfx_cream: AudioStreamPlayer
-var _start_label: Label
+
+# Rects from _layout, read by _draw.
+var _r := {}
+var _cards: Array[Button] = []
+var _login: Button
+var _setting: Button
+var _play: Button
+var _hangar: Button
+var _upgrade: Button
+var _leaderboard: Button
 var _remove_ads: Button
-var _remove_ads_rule: Control
-var _ads_removed: bool = false
-var _card_characters: Array = []   # one Array[Texture2D] of flight frames per slot
-var _card_art: Array[TextureRect] = []
-var _card_name: Array[Label] = []
-var _card_best: Array[Label] = []
-var _card_anim_elapsed: float = 0.0
-var _card_art_rest_y: Array[float] = []      # where the layout put each sprite, before the bob
-var _card_face: Array[Control] = []          # 카드 판때기 — _draw_card_face 가 그린다
 var _explain_label: Label
-var _card_best_plate: Array[Panel] = []
-var _card_name_plate: Array[Panel] = []
-var _card_best_row: Array[HBoxContainer] = []
-var _card_crown: Array[TextureRect] = []
-var _card_score: Array[Label] = []
-var _crown_texture: Texture2D
-var _font_bold: Font
-var _font_heavy: Font
-var _trophy: TextureRect
-var _plate_texture: Texture2D           # _bake_plate — 리더보드와 도감이 함께 쓴다
-var _leaderboard_label: Label
-var _collection: TextureButton
-var _collection_label: Label
-var _book: Control
-var _collection_dot: Control
-var _collection_new := false
-# 직전 배치에서 실제로 비운 배너 높이. 요청한 값과 다를 수 있다 — 자리가
-# 없으면 0 이다. banner_applied_px 로 읽는다.
-var _banner_applied := 0.0
 
 
-# 조립이 끝났는가. Main 이 로고가 뜬 뒤에 ensure_built() 로 켠다.
-var _built := false
-
-
-# 카드 아트 자르기/굽기는 1초 가까이 걸린다. 첫 프레임을 붙잡지 않도록
-# 로고 화면 뒤로 미룬다. 두 번 불러도 한 번만 돈다.
+# 조립은 로고가 뜬 뒤에 Main 이 ensure_built() 로 켠다. 두 번 불러도 한 번만.
 func ensure_built() -> void:
 	if _built:
 		return
@@ -531,1678 +184,402 @@ func ensure_built() -> void:
 	_ready()
 
 
-## 처음부터 다시 짓는다 — 언어가 바뀌었을 때 Main 이 부른다. _build 가 이미
-## 자식을 비우므로(소리 재생기는 남긴다) 그대로 다시 부르면 된다. 다만 고른
-## 카드는 _build 가 모르는 상태다 — 다시 걸어 주지 않으면 언어를 바꾼 순간
-## 고르지도 않은 첫 카드가 커진다.
+## 처음부터 다시 짓는다 — 언어가 바뀌었을 때 Main 이 부른다.
 func rebuild() -> void:
 	if not _built:
 		return
 	_build()
-	_select(selected_index, false)
+	_select(selected_index)
 	_layout()
 
 
 func _ready() -> void:
 	if not _built:
 		return
-	_load_fonts()
+	mouse_filter = Control.MOUSE_FILTER_STOP
+	_font = AppFont.base()
+	_title_font = TitleArt.font(_font)
+	for p in [CARD_FRAME_PATH, CARD_FRAME_ON_PATH, BUTTON_FRAME_PATH, PLAY_FRAME_PATH, EXPLAIN_FRAME_PATH, BAR_FRAME_PATH, PERSON_ICON, SETTINGS_ICON,
+			TROPHY_ICON, UPGRADE_ICON, HANGAR_ICON, LOCK_ICON, STARDUST_ICON, BEST_ICON,
+			TitleArt.STAR_PATH, TitleArt.WREATH_PATH]:
+		ArtSlot.texture(p)
 	_sfx_select = _make_sfx(SFX_SELECT_FILE)
 	_sfx_start = _make_sfx(SFX_START_FILE)
 	_sfx_cream = _make_sfx(SFX_CREAM_FILE)
 	_build()
-	# Straight to _select, not _on_card_pressed: this is the opening state,
-	# not a tap, and should not make a sound — and for the same reason it
-	# snaps to the selected size instead of growing into it.
-	_select(0, false)
-	resized.connect(_layout)
-
-
-# Two weights off the one variable font. The axis is keyed by its integer
-# OpenType tag rather than the string "wght" — a string key is silently
-# ignored, which is the same trap Main.gd documents.
-func _load_fonts() -> void:
-	var base: Font = AppFont.base()
-	var wght: int = TextServerManager.get_primary_interface().name_to_tag("wght")
-	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
-	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)
-
-
-func _weighted(base: Font, wght_tag: int, weight: int) -> Font:
-	var fv := FontVariation.new()
-	fv.base_font = base
-	fv.variation_opentype = {wght_tag: weight}
-	return fv
-
-
-# Same face with extra space between glyphs. Wrapping rather than mutating,
-# because the base is shared with several other labels that must not shift.
-func _tracked(base: Font, extra_px: int) -> Font:
-	if extra_px == 0:
-		return base
-	var fv := FontVariation.new()
-	fv.base_font = base
-	fv.spacing_glyph = extra_px
-	return fv
-
-
-func _make_sfx(file_name: String) -> AudioStreamPlayer:
-	var player := AudioStreamPlayer.new()
-	add_child(player)
-	var path: String = SFX_DIR + file_name
-	if ResourceLoader.exists(path):
-		player.stream = load(path)
-	else:
-		push_warning("main menu: missing %s" % path)
-	return player
-
-
-func _play(player: AudioStreamPlayer) -> void:
-	if player != null and player.stream != null:
-		player.play()
-
-
-func _notification(what: int) -> void:
-	if what == NOTIFICATION_RESIZED:
-		_layout()
-
-
-func _process(delta: float) -> void:
-	# Only the chosen card animates; the rest hold their first frame, so the
-	# selection reads as "this one is alive" without needing another cue.
-	if not visible:
-		return
-	_card_anim_elapsed += delta
-	for i in range(_card_art.size()):
-		var frames: Array = _card_characters[i]
-		if frames.is_empty():
-			continue
-		var frame: int = 0
-		var bob := 0.0
-		if i == selected_index:
-			frame = int(_card_anim_elapsed * CARD_CHARACTER_FPS) % frames.size()
-			var period: float = frames.size() / CARD_CHARACTER_FPS * CARD_BOB_LOOPS
-			bob = sin(_card_anim_elapsed / period * TAU) \
-				* _card_art[i].size.y * CARD_BOB_AMPLITUDE_FRAC
-		_card_art[i].texture = frames[frame]
-		# Offset from the resting position the layout gave it, so a re-layout
-		# does not accumulate the drift.
-		_card_art[i].position.y = _card_art_rest_y[i] + bob
-
-
-# ---------------------------------------------------------------- art loading
-
-# The project draws with nearest filtering, which is right for the pixel-art
-# sprites but wrong here: this art is smooth and painted at 3-4x the size it
-# appears at, and nearest minification just samples every third pixel, which
-# is what shreds the rounded borders. These nodes opt into linear filtering
-# with mipmaps instead (the .import files for assets/ui_assets/main carry
-# mipmaps/generate=true so the levels exist to sample).
-func _use_smooth_filter(control: CanvasItem) -> void:
-	control.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-
-
-func _load_art(file_name: String) -> Texture2D:
-	# 다른 폴더의 파일은 전체 경로로 준다.
-	var path: String = file_name if file_name.begins_with("res://") else ART_DIR + file_name
-	if not ResourceLoader.exists(path):
-		push_warning("main menu: missing %s" % path)
-		return null
-	return load(path)
-
-
-# Cuts the sheet into equal cells in reading order and lifts each off its
-# black backdrop. Done here rather than as four pre-cut files so the sheet
-# stays the only asset to manage — the same reasoning as _slice_spritesheet
-# in Main.gd.
-# 카드 한 장. 세로 그라데이션을 채운 둥근 사각형에 흰 테두리.
-#
-# 그라데이션과 둥근 모서리를 한 번에 주는 그리기 함수가 없어서 두 겹으로 나눈다:
-# 가로 한 줄씩 색을 바꿔 가며 채워 모양을 만들고, 그 위에 StyleBoxFlat 으로
-# 테두리만 얹는다. 줄 채우기에는 안티에일리어싱이 없지만 StyleBoxFlat 에는
-# 있으므로, 줄을 테두리 밑으로 CARD_FILL_TUCK_PX 만큼 밀어 넣으면 계단진
-# 가장자리가 전부 불투명한 테두리에 덮인다.
-func _draw_card_face(index: int) -> void:
-	if index < 0 or index >= _card_face.size():
-		return
-	var face: Control = _card_face[index]
-	var w: float = face.size.x
-	var h: float = face.size.y
-	if w <= 0.0 or h <= 0.0:
-		return
-	var scale: float = w / SELECT_SHEET_WIDTH_NATIVE
-	var radius: float = SELECT_CORNER_NATIVE * scale
-	var border: float = CARD_BORDER_NATIVE * scale
-	var top: Color = CARD_FILL_TOP[index] if index < CARD_FILL_TOP.size() else Color.WHITE
-	var bottom: Color = CARD_FILL_BOTTOM[index] if index < CARD_FILL_BOTTOM.size() else top
-
-	# 줄 채우기. 모서리 구간에서는 원의 식으로 좌우를 파고든다.
-	var tuck: float = CARD_FILL_TUCK_PX
-	var r: float = maxf(0.0, radius - tuck)
-	var y: float = tuck
-	while y < h - tuck:
-		var dy: float = 0.0
-		if y < tuck + r:
-			dy = (tuck + r) - (y + 0.5)
-		elif y > h - tuck - r:
-			dy = (y + 0.5) - (h - tuck - r)
-		var cut: float = 0.0
-		if dy > 0.0:
-			cut = r - sqrt(maxf(0.0, r * r - dy * dy))
-		var x0: float = tuck + cut
-		var row_w: float = w - (tuck + cut) * 2.0
-		if row_w > 0.0:
-			face.draw_rect(Rect2(x0, y, row_w, 1.0),
-				top.lerp(bottom, clampf(y / maxf(1.0, h - 1.0), 0.0, 1.0)), true)
-		y += 1.0
-
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.0, 0.0, 0.0, 0.0)
-	box.set_corner_radius_all(int(round(radius)))
-	box.set_border_width_all(maxi(1, int(round(border))))
-	box.border_color = CARD_BORDER_COLOR
-	box.anti_aliasing = true
-	face.draw_style_box(box, Rect2(Vector2.ZERO, face.size))
-
-
-# The opaque box of an image, as fractions of its size.
-func _opaque_bounds(image: Image) -> Rect2:
-	var w: int = image.get_width()
-	var h: int = image.get_height()
-	var data: PackedByteArray = image.get_data()
-	var x0: int = w
-	var x1: int = -1
-	var y0: int = h
-	var y1: int = -1
-	for y in range(h):
-		for x in range(w):
-			if data[(y * w + x) * 4 + 3] > 24:
-				if x < x0: x0 = x
-				if x > x1: x1 = x
-				if y < y0: y0 = y
-				if y > y1: y1 = y
-	if x1 < 0:
-		return Rect2(0, 0, 1, 1)
-	return Rect2(float(x0) / w, float(y0) / h, float(x1 - x0 + 1) / w, float(y1 - y0 + 1) / h)
-
-
-
-
-func _build() -> void:
-	for child in get_children():
-		# The cue players are not part of the layout and must survive a
-		# rebuild — they are created before this runs.
-		if child is AudioStreamPlayer:
-			continue
-		# 떼고 나서 지운다. queue_free 만 하면 이번 프레임이 끝날 때까지 트리에
-		# 남아, 다시 지은 카드 위에서 탭을 한 번 더 받아 낸다.
-		remove_child(child)
-		child.queue_free()
-	_cards.clear()
-
-	_background = TextureRect.new()
-	_background.texture = _load_art(BACKGROUND_FILE)
-	_background.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	# Without this a TextureRect reports its texture size as its minimum, and
-	# the layout below cannot shrink it — the title would draw at 1056 wide
-	# and simply clip.
-	_background.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_background.set_anchors_preset(Control.PRESET_FULL_RECT)
-	_background.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_use_smooth_filter(_background)
-	add_child(_background)
-
-	_title = _make_image(_load_art(TITLE_FILE))
-	add_child(_title)
-
-	# 카드보다 먼저 붙는다 — 그림자는 카드 뒤에 있어야 한다. 체크를 그리는
-	# _select_overlay 는 반대로 카드 뒤에 붙으면 안 되므로 카드 다음에 붙는다.
-	_card_shadow_overlay = Control.new()
-	_card_shadow_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_card_shadow_overlay.draw.connect(_draw_card_shadow)
-	add_child(_card_shadow_overlay)
-
-	_card_face.clear()
-	_card_characters.clear()
-	_card_art.clear()
-	_card_art_rest_y.clear()
-	_card_name.clear()
-	_card_best.clear()
-	_card_best_plate.clear()
-	_card_name_plate.clear()
-	_card_best_row.clear()
-	_card_crown.clear()
-	_card_score.clear()
-	_crown_texture = _load_trimmed(CARD_BEST_CROWN_FILE)
-	# 이미 원형으로 잘려 나온 파일이라 _load_trimmed 로 또 다듬지 않는다 —
-	# 잘라 둔 투명 여백까지 걷어내면 원의 안티에일리어싱된 테두리가 텍스처
-	# 가장자리에 붙어 한쪽이 납작해 보인다(slice_popup_icons_2.ps1 의 Margin).
-	_check_texture = _load_art(CARD_CHECK_FILE)
-	# locked.png 가 아직 없으면 예전 자물쇠 아이콘으로 버틴다. 조용히 넘어가지
-	# 않는 것이 중요하다 — 대신 나온 그림도 자물쇠라 화면만 봐서는 파일이
-	# 빠졌는지 알 수 없다.
-	# _load_trimmed 로 읽는다. 자물쇠 아트는 1240px 캔버스에 그림이 가운데만
-	# 차지하고 있어서, 캔버스째 40px 로 줄이면 요청한 크기보다 한참 작게 보인다.
-	# 잘라 내고 미리 구운 뒤 ink_frac 로 되돌리는 것이 왕관과 같은 길이다.
-	# 굽는 높이를 그려지는 크기에 맞춘다. 자물쇠는 이름판과 점수판 사이를
-	# 채우므로 비율에 따라 77px(16:9) ~ 108px(20:9) 로 그려지고, 21:9 가 조금
-	# 더 크다 — 그래서 가장 큰 쪽에 맞춰 112. 모자라게 구우면 늘려 그리면서
-	# 가는 갈색 외곽선이 뭉개지고, 한참 크게 구우면(1240 -> 128 -> 45 였던
-	# 때처럼) 두 번째 축소에서 외곽선이 계단으로 남는다. 16:9 에서 0.69 배로
-	# 줄이는 정도는 밉맵이 받아 낸다.
-	if ResourceLoader.exists(CARD_LOCK_FILE):
-		_lock_texture = _load_trimmed(CARD_LOCK_FILE, CARD_LOCK_BAKE_H)
-	else:
-		push_warning("%s 가 없어 %s 로 대신 그린다" % [CARD_LOCK_FILE, CARD_LOCK_FALLBACK_FILE])
-		_lock_texture = _load_trimmed(CARD_LOCK_FALLBACK_FILE, CARD_LOCK_BAKE_H)
-	for i in range(CARD_MODES.size()):
-		var card := TextureButton.new()
-		# 그림은 안 넣는다 — 판때기는 _draw_card_face 가 그린다. 버튼은 자리와
-		# 입력, 그리고 고를 때의 확대만 맡는다.
-		card.ignore_texture_size = true
-		card.stretch_mode = TextureButton.STRETCH_SCALE
-		card.focus_mode = Control.FOCUS_NONE
-		_use_smooth_filter(card)
-		card.pressed.connect(_on_card_pressed.bind(i))
-		add_child(card)
-		_cards.append(card)
-
-		# 판때기. 카드의 첫 자식이라 이름판·캐릭터·점수판 아래에 깔린다.
-		var face := Control.new()
-		face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		face.set_anchors_preset(Control.PRESET_FULL_RECT)
-		face.resized.connect(face.queue_redraw)
-		face.draw.connect(_draw_card_face.bind(i))
-		card.add_child(face)
-		_card_face.append(face)
-
-		# Contents ride inside the card so the press animation scales them
-		# along with it; none of them take clicks.
-		_card_characters.append(_slice_character(CARD_CHARACTER_SHEET[i], CARD_CHARACTER_GRID[i]))
-		var art := TextureRect.new()
-		art.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		art.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		art.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_use_smooth_filter(art)
-		card.add_child(art)
-		_card_art.append(art)
-		_card_art_rest_y.append(0.0)
-
-		var name_plate := Panel.new()
-		name_plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var name_style := StyleBoxFlat.new()
-		name_style.bg_color = CARD_NAME_PLATE_COLOR
-		name_style.set_corner_radius_all(CARD_NAME_PLATE_RADIUS)
-		name_style.anti_aliasing = true
-		name_plate.add_theme_stylebox_override("panel", name_style)
-		card.add_child(name_plate)
-		_card_name_plate.append(name_plate)
-
-		var name_label := _add_card_text(name_plate, tr(CARD_NAMES[i]), CARD_NAME_COLOR)
-		name_label.add_theme_color_override("font_outline_color", CARD_NAME_OUTLINE)
-		if _font_heavy != null:
-			name_label.add_theme_font_override("font", _font_heavy)
-		_card_name.append(name_label)
-
-		# White plate behind the score, with the label riding inside it.
-		var plate := Panel.new()
-		plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var plate_style := StyleBoxFlat.new()
-		plate_style.bg_color = CARD_BEST_PLATE_COLOR
-		plate_style.set_corner_radius_all(CARD_BEST_PLATE_RADIUS)
-		plate_style.anti_aliasing = true
-		plate.add_theme_stylebox_override("panel", plate_style)
-		card.add_child(plate)
-		_card_best_plate.append(plate)
-
-		# A row so the three pieces stay centred as a group however wide the
-		# number's font ends up.
-		var row := HBoxContainer.new()
-		row.alignment = BoxContainer.ALIGNMENT_CENTER
-		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		plate.add_child(row)
-		_card_best_row.append(row)
-
-		var crown := TextureRect.new()
-		crown.texture = _crown_texture
-		crown.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		crown.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		crown.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_use_smooth_filter(crown)
-		row.add_child(crown)
-		_card_crown.append(crown)
-
-		var best_label := _add_card_text(row, "BEST", CARD_BEST_COLOR)
-		best_label.add_theme_color_override("font_outline_color", CARD_BEST_OUTLINE)
-		if _font_bold != null:
-			best_label.add_theme_font_override("font", _font_bold)
-		_card_best.append(best_label)
-
-		# set_best_scores 가 곧바로 덮어쓴다. 기록이 아직 없는 카드의 값이기도 하다.
-		var score_label := _add_card_text(row, "0", CARD_SCORE_COLOR)
-		score_label.add_theme_color_override("font_outline_color", CARD_SCORE_OUTLINE)
-		if _font_heavy != null:
-			# Its own face rather than _font_heavy directly: the extra
-			# tracking is for the digits only, and _font_heavy is shared with
-			# the card name, START and the leaderboard label.
-			score_label.add_theme_font_override("font", _tracked(_font_heavy, CARD_SCORE_TRACKING))
-		_card_score.append(score_label)
-
-	# Drawn after the cards so the check lands on top of the chosen one.
-	#
-	# 필터를 반드시 걸어야 한다. 프로젝트 기본값이 Nearest 라(project.godot 의
-	# default_texture_filter=0) 그냥 두면 128px 로 구운 체크를 26px 로 점
-	# 샘플링해서, 동그란 테두리가 계단처럼 씹힌다.
-	_select_overlay = Control.new()
-	_select_overlay.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_use_smooth_filter(_select_overlay)
-	_select_overlay.draw.connect(_draw_selection)
-	add_child(_select_overlay)
-
-	# Not a TextureRect: the bar is drawn in three pieces so its height can be
-	# set independently of its width — see _draw_explain_bar.
-	_explain_texture = _load_art(EXPLAIN_FILE)
-	_measure_explain_art()
-	_explain = Control.new()
-	_explain.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_use_smooth_filter(_explain)
-	_explain.draw.connect(_draw_explain_bar)
-	add_child(_explain)
-	_explain_label = Label.new()
-	_explain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_explain_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_explain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_explain_label.add_theme_font_override("font", _font_bold if _font_bold != null else AppFont.base())
-	_explain_label.add_theme_color_override("font_color", EXPLAIN_TEXT_COLOR)
-	_explain.add_child(_explain_label)
-
-	_login = _make_button(_load_art(LOGIN_FILE))
-	_login.pressed.connect(func(): _play(_sfx_cream); login_pressed.emit())
-	add_child(_login)
-	_setting = _make_button(_load_art(SETTING_FILE))
-	_setting.pressed.connect(func(): _play(_sfx_cream); settings_pressed.emit())
-	add_child(_setting)
-
-	_plate_texture = _bake_plate(_load_art(LEADERBOARD_FILE))
-	_leaderboard = _make_plate_button()
-	_leaderboard.pressed.connect(func(): _play(_sfx_cream); leaderboard_pressed.emit(CARD_MODES[selected_index]))
-	add_child(_leaderboard)
-	_trophy = TextureRect.new()
-	_trophy.texture = _load_icon(ICON_TROPHY_INDEX)
-	_trophy.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_trophy.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_trophy.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_use_smooth_filter(_trophy)
-	_leaderboard.add_child(_trophy)
-
-	_leaderboard_label = Label.new()
-	_leaderboard_label.text = tr(LEADERBOARD_LABEL)
-	_leaderboard_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_leaderboard_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_leaderboard_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if _font_heavy != null:
-		_leaderboard_label.add_theme_font_override("font", _font_heavy)
-	_leaderboard_label.add_theme_color_override("font_color", START_LABEL_COLOR)
-	_leaderboard_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
-	_leaderboard.add_child(_leaderboard_label)
-
-	_collection = _make_plate_button()
-	_collection.pressed.connect(func(): _play(_sfx_cream); collection_pressed.emit())
-	add_child(_collection)
-	_book = Control.new()
-	_book.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_book.draw.connect(_draw_book)
-	_collection.add_child(_book)
-	_collection_label = Label.new()
-	_collection_label.text = tr(COLLECTION_LABEL)
-	_collection_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_collection_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_collection_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	if _font_heavy != null:
-		_collection_label.add_theme_font_override("font", _font_heavy)
-	_collection_label.add_theme_color_override("font_color", START_LABEL_COLOR)
-	_collection_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
-	_collection.add_child(_collection_label)
-	_collection_dot = Control.new()
-	_collection_dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_collection_dot.draw.connect(_draw_collection_dot)
-	_collection_dot.visible = _collection_new
-	_collection.add_child(_collection_dot)
-
-	# Added before the button so it draws underneath — children render in
-	# order, and a halo on top would sit over the plate.
-	_start_glow = Control.new()
-	_start_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_start_glow.draw.connect(_draw_start_glow)
-	add_child(_start_glow)
-
-	_start = _make_button(_load_art(START_FILE))
-	_start.pressed.connect(_on_start_pressed)
-	add_child(_start)
-	_start_bounds = _texture_bounds(_start.texture_normal)
-
-	# A child of the button, so the press animation below scales the word
-	# along with the plate instead of leaving it floating still.
-	_start_label = Label.new()
-	_start_label.text = START_LABEL
-	_start_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_start_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	_start_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_start_label.add_theme_font_override("font", _font_heavy if _font_heavy != null else AppFont.base())
-	_start_label.add_theme_color_override("font_color", START_LABEL_COLOR)
-	_start_label.add_theme_color_override("font_outline_color", START_LABEL_OUTLINE)
-	_start.add_child(_start_label)
-
-	_remove_ads = Button.new()
-	_remove_ads.text = tr(REMOVE_ADS_TEXT)
-	_remove_ads.flat = true
-	_remove_ads.focus_mode = Control.FOCUS_NONE
-	_remove_ads.add_theme_font_override("font", AppFont.base())
-	for state in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
-		_remove_ads.add_theme_color_override(state, REMOVE_ADS_COLOR)
-	_remove_ads.pressed.connect(func(): remove_ads_pressed.emit())
-	# 산 사람에게는 이 줄이 할 일이 없다. 언어를 바꿔 다시 지어도 따르도록 여기서 건다.
-	_remove_ads.visible = not _ads_removed
-	add_child(_remove_ads)
-	# Its own child so the rule sits under the text and moves with it.
-	_remove_ads_rule = Control.new()
-	_remove_ads_rule.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_remove_ads_rule.draw.connect(_draw_remove_ads_rule)
-	_remove_ads.add_child(_remove_ads_rule)
-
-	# Every button gets the same press feedback.
-	for button in [_start, _leaderboard, _collection, _login, _setting] + _cards:
-		button.button_down.connect(_animate_press.bind(button))
-		button.button_up.connect(_animate_release.bind(button))
-
+	_select(0)
 	_layout()
 
 
-func _add_card_text(card: Control, text: String, color: Color) -> Label:
-	var label := Label.new()
-	label.text = text
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.add_theme_font_override("font", AppFont.base())
-	label.add_theme_color_override("font_color", color)
-	card.add_child(label)
-	return label
+# Only the sweep moves on this screen; redrawn while it is up.
+func _process(_delta: float) -> void:
+	if _built and is_visible_in_tree():
+		queue_redraw()
 
 
-# The opaque box of a texture, as fractions of its size — art rarely fills
-# its own canvas, and anything positioned against it needs the real bounds.
-func _texture_bounds(texture: Texture2D) -> Rect2:
-	if texture == null:
-		return Rect2(0, 0, 1, 1)
-	var image: Image = texture.get_image()
-	if image == null:
-		return Rect2(0, 0, 1, 1)
-	image.convert(Image.FORMAT_RGBA8)
-	image.clear_mipmaps()
-	return _opaque_bounds(image)
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_RESIZED and _built:
+		_layout()
 
 
-# A whole file, cropped to its art. The crown is generated pixel art and
-# carries empty margin around the shape; centring the untrimmed image would
-# centre that margin instead.
-func _load_trimmed(file_name: String, bake_h: int = TRIM_INK_BAKE_H) -> Texture2D:
-	var texture := _load_art(file_name)
-	if texture == null:
-		return null
-	var image: Image = texture.get_image()
-	if image == null:
-		return null
-	image.convert(Image.FORMAT_RGBA8)
-	image.clear_mipmaps()
-	var w: int = image.get_width()
-	var h: int = image.get_height()
-	var bounds: Rect2 = _opaque_bounds(image)
-	var trimmed: Image = image.get_region(Rect2i(
-		int(bounds.position.x * w), int(bounds.position.y * h),
-		maxi(1, int(bounds.size.x * w)), maxi(1, int(bounds.size.y * h))))
-	# 505px 짜리 왕관이 14px 로 그려진다. 그 축소를 GPU 밉맵 체인에 통째로
-	# 맡기면 홀수 크기에서 마지막 열이 버려져 오른쪽이 깎여 보인다. 미리
-	# 짝수 크기로 줄여 굽고 투명 여백을 둘러 가장자리가 흐려질 자리를 만든다.
-	trimmed = _bake_small(trimmed, bake_h)
-	var ink := trimmed.get_size()
-	var pad: int = maxi(4, int(round(maxi(ink.x, ink.y) * TRIM_INK_PAD_FRAC)))
-	var pw: int = ink.x + pad * 2
-	var ph: int = ink.y + pad * 2
-	pw += pw % 2
-	ph += ph % 2
-	var padded := Image.create_empty(pw, ph, false, Image.FORMAT_RGBA8)
-	# 여백의 RGB 는 검정이 아니라 실루엣 테두리 색 — 검정이면 줄일 때
-	# 그 색이 끌려 들어와 가장자리가 어두워진다.
-	padded.fill(Color(_edge_color(trimmed), 0.0))
-	padded.blit_rect(trimmed, Rect2i(Vector2i.ZERO, ink), Vector2i(pad, pad))
-	padded.generate_mipmaps()
-	var texture_out := ImageTexture.create_from_image(padded)
-	# 크기를 정할 때 여백을 빼고 실제 그림에 맞출 수 있도록 남겨 둔다.
-	texture_out.set_meta("ink_frac", Vector2(float(ink.x) / pw, float(ink.y) / ph))
-	return texture_out
+# ---------------------------------------------------------------- build
+
+func _build() -> void:
+	for child in get_children():
+		if not child is AudioStreamPlayer:
+			child.queue_free()
+	_cards.clear()
+	_explain_label = null
+	for i in CARD_MODES.size():
+		var b := _hit_button()
+		b.pressed.connect(_on_card_pressed.bind(i))
+		_cards.append(b)
+	_login = _hit_button()
+	_login.pressed.connect(func(): _play_sfx(_sfx_cream); login_pressed.emit())
+	_setting = _hit_button()
+	_setting.pressed.connect(func(): _play_sfx(_sfx_cream); settings_pressed.emit())
+	_play = _hit_button()
+	_play.pressed.connect(_on_start_pressed)
+	_hangar = _hit_button()
+	_hangar.pressed.connect(_on_coming_soon)
+	_upgrade = _hit_button()
+	_upgrade.pressed.connect(_on_coming_soon)
+	_leaderboard = _hit_button()
+	_leaderboard.pressed.connect(func(): _play_sfx(_sfx_cream); leaderboard_pressed.emit(CARD_MODES[selected_index]))
+	_remove_ads = _hit_button()
+	_remove_ads.text = tr(REMOVE_ADS_TEXT)
+	_remove_ads.add_theme_font_override("font", _font)
+	_remove_ads.add_theme_color_override("font_color", REMOVE_ADS_COLOR)
+	_remove_ads.add_theme_color_override("font_pressed_color", REMOVE_ADS_COLOR)
+	_remove_ads.add_theme_color_override("font_hover_color", REMOVE_ADS_COLOR)
+	_remove_ads.visible = not _ads_removed
+	_remove_ads.pressed.connect(func(): _play_sfx(_sfx_cream); remove_ads_pressed.emit())
+	_explain_label = Label.new()
+	_explain_label.add_theme_font_override("font", _font)
+	_explain_label.add_theme_color_override("font_color", TEXT_COLOR)
+	_explain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_explain_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_explain_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_explain_label.max_lines_visible = 2
+	_explain_label.clip_text = true
+	_explain_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_explain_label)
 
 
-# 그릴 크기에 가깝게 미리 줄인다. 알파를 곱한 채로 줄여야 투명한 쪽 RGB 가
-# 끌려 들어오지 않는다.
-func _bake_small(image: Image, bake_h: int = TRIM_INK_BAKE_H) -> Image:
-	if image.get_height() <= bake_h:
-		return image
-	var w: int = maxi(2, int(round(image.get_width() * float(bake_h) / float(image.get_height()))))
-	var out := image.duplicate() as Image
-	out.premultiply_alpha()
-	out.resize(w + w % 2, bake_h, Image.INTERPOLATE_LANCZOS)
-	for y in range(out.get_height()):
-		for x in range(out.get_width()):
-			var c: Color = out.get_pixel(x, y)
-			if c.a > 0.0:
-				out.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
-	return out
-
-
-# 실루엣 가장자리(알파가 반쯤 있는 픽셀)의 평균 색.
-func _edge_color(image: Image) -> Color:
-	var r := 0.0
-	var g := 0.0
-	var b := 0.0
-	var n := 0
-	for y in range(image.get_height()):
-		for x in range(image.get_width()):
-			var c: Color = image.get_pixel(x, y)
-			if c.a > 0.35 and c.a < 0.95:
-				r += c.r
-				g += c.g
-				b += c.b
-				n += 1
-	if n == 0:
-		return Color(0, 0, 0)
-	return Color(r / n, g / n, b / n)
-
-
-# One icon out of the sheet, trimmed to its own art. The cells carry a lot of
-# empty space around each glyph, and centring the untrimmed cell would centre
-# that padding instead of the icon.
-func _load_icon(index: int) -> Texture2D:
-	var texture := _load_art(ICON_SHEET_FILE)
-	if texture == null:
-		return null
-	var sheet: Image = texture.get_image()
-	if sheet == null:
-		return null
-	sheet.convert(Image.FORMAT_RGBA8)
-	sheet.clear_mipmaps()
-	var cell_w: int = sheet.get_width() / ICON_SHEET_GRID.x
-	var cell_h: int = sheet.get_height() / ICON_SHEET_GRID.y
-	var col: int = index % ICON_SHEET_GRID.x
-	var row: int = index / ICON_SHEET_GRID.x
-	var cell: Image = sheet.get_region(Rect2i(col * cell_w, row * cell_h, cell_w, cell_h))
-	var bounds: Rect2 = _opaque_bounds(cell)
-	var trimmed: Image = cell.get_region(Rect2i(
-		int(bounds.position.x * cell_w), int(bounds.position.y * cell_h),
-		maxi(1, int(bounds.size.x * cell_w)), maxi(1, int(bounds.size.y * cell_h))))
-	trimmed.generate_mipmaps()
-	return ImageTexture.create_from_image(trimmed)
-
-
-# The character sheets are the same 2x2 grids the game plays, so the cards
-# show the real animation rather than a separate still.
-func _slice_character(path: String, grid: Vector2i) -> Array:
-	var frames: Array = []
-	if path == "" or not ResourceLoader.exists(path):
-		return frames
-	var texture: Texture2D = load(path)
-	var sheet: Image = texture.get_image()
-	if sheet == null:
-		return frames
-	sheet.convert(Image.FORMAT_RGBA8)
-	sheet.clear_mipmaps()
-	var cell_w: int = sheet.get_width() / grid.x
-	var cell_h: int = sheet.get_height() / grid.y
-	for row in range(grid.y):
-		for col in range(grid.x):
-			var cell: Image = sheet.get_region(Rect2i(col * cell_w, row * cell_h, cell_w, cell_h))
-			# 칸 수가 프레임 수와 딱 맞아떨어지지 않는 시트가 있다 — 유니콘의
-			# 달리기는 3x2 칸에 5프레임이라 마지막 칸이 비어 있다. 그대로 넣으면
-			# 한 바퀴에 한 번 캐릭터가 사라져 깜빡인다. Main.gd 의
-			# _slice_spritesheet 도 같은 이유로 빈 칸을 건너뛴다.
-			if cell.is_invisible():
-				continue
-			# The card draws a 256px frame at about 89, so it needs mip levels
-			# for the same reason the menu art does — see _use_smooth_filter.
-			cell.generate_mipmaps()
-			frames.append(ImageTexture.create_from_image(cell))
-	return frames
-
-
-func _make_image(texture: Texture2D) -> TextureRect:
-	var rect := TextureRect.new()
-	rect.texture = texture
-	rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_use_smooth_filter(rect)
-	return rect
-
-
-func _make_button(texture: Texture2D) -> TextureButton:
-	var button := TextureButton.new()
-	button.texture_normal = texture
-	button.ignore_texture_size = true
-	button.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
-	button.focus_mode = Control.FOCUS_NONE
-	_use_smooth_filter(button)
-	return button
+## A transparent button: the art is drawn by _draw, the button only takes the tap.
+func _hit_button() -> Button:
+	var b := Button.new()
+	b.flat = true
+	b.focus_mode = Control.FOCUS_NONE
+	var empty := StyleBoxEmpty.new()
+	for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(slot, empty)
+	add_child(b)
+	return b
 
 
 # ---------------------------------------------------------------- layout
 
-func _aspect(control: Control) -> float:
-	var texture: Texture2D
-	if control is TextureRect:
-		texture = (control as TextureRect).texture
-	elif control is TextureButton:
-		texture = (control as TextureButton).texture_normal
-	if texture == null or texture.get_height() == 0:
-		return 4.0  # harmless stand-in so a missing file cannot divide by zero
-	return float(texture.get_width()) / float(texture.get_height())
-
-
 func _layout() -> void:
-	if _title == null or _start == null:
+	if not _built or _play == null:
 		return
-	var view: Vector2 = size
-	if view.x <= 0.0 or view.y <= 0.0:
+	var w: float = size.x
+	var h: float = size.y
+	var k: float = w / 480.0
+	var fixed: float = (TOP_PAD + BOTTOM_PAD + TOP_BAR_H + EMBLEM_H + BIG_CARD_H + CARD_GAP
+		+ SMALL_CARD_H + CARD_GAP + EXPLAIN_H + PLAY_H + TOOL_SIZE + TOOL_LABEL_H + REMOVE_ADS_H) * k
+	var gap: float = clampf((h - fixed) / FLEX_GAPS, MIN_GAP * k, MAX_GAP * k)
+
+	var y: float = TOP_PAD * k
+	var m: float = MARGIN * k
+	var inner_w: float = w - m * 2.0
+	_r.login = Rect2(m, y, TOP_BAR_H * k, TOP_BAR_H * k)
+	_r.setting = Rect2(w - m - TOP_BAR_H * k, y, TOP_BAR_H * k, TOP_BAR_H * k)
+	_r.stardust = Rect2((w - STARDUST_W * k) * 0.5, y + (TOP_BAR_H - STARDUST_H) * 0.5 * k, STARDUST_W * k, STARDUST_H * k)
+	y += TOP_BAR_H * k + gap
+	_r.emblem_mid = Vector2(w * 0.5, y + EMBLEM_H * 0.5 * k)
+	y += EMBLEM_H * k + gap
+	_r.card0 = Rect2(m, y, inner_w, BIG_CARD_H * k)
+	y += BIG_CARD_H * k + CARD_GAP * k
+	var half_w: float = (inner_w - CARD_GAP * k) * 0.5
+	_r.card1 = Rect2(m, y, half_w, SMALL_CARD_H * k)
+	_r.card2 = Rect2(m + half_w + CARD_GAP * k, y, half_w, SMALL_CARD_H * k)
+	y += SMALL_CARD_H * k + CARD_GAP * k
+	_r.explain = Rect2(m, y, inner_w, EXPLAIN_H * k)
+	y += EXPLAIN_H * k + gap
+	_r.play = Rect2((w - PLAY_W * k) * 0.5, y, PLAY_W * k, PLAY_H * k)
+	y += PLAY_H * k + gap
+	for i in 3:
+		var cx: float = w * 0.5 + (i - 1) * TOOL_SPACING * k
+		_r["tool%d" % i] = Rect2(cx - TOOL_SIZE * 0.5 * k, y, TOOL_SIZE * k, TOOL_SIZE * k)
+	y += (TOOL_SIZE + TOOL_LABEL_H) * k + gap
+	_r.remove_ads = Rect2(m, y, inner_w, REMOVE_ADS_H * k)
+
+	for i in _cards.size():
+		_place(_cards[i], _r["card%d" % i])
+	_place(_login, _r.login)
+	_place(_setting, _r.setting)
+	_place(_play, _r.play)
+	_place(_hangar, _r.tool0)
+	_place(_upgrade, _r.tool1)
+	_place(_leaderboard, _r.tool2)
+	_place(_remove_ads, _r.remove_ads)
+	_remove_ads.add_theme_font_size_override("font_size", int(16 * k))
+	# Font size before size: an autowrapped Label measured at its first, zero
+	# width wraps every word onto its own line and keeps that height (it came
+	# out 597px tall and centred its text far below the bar).
+	_explain_label.add_theme_font_size_override("font_size", int(EXPLAIN_FONT * k))
+	_explain_label.position = _r.explain.position + Vector2(24.0, 4.0) * k
+	_explain_label.size = _r.explain.size - Vector2(48.0, 8.0) * k
+	_fit_explain()
+	queue_redraw()
+
+
+func _place(c: Control, r: Rect2) -> void:
+	c.position = r.position
+	c.size = r.size
+
+
+## Every rect the layout produced, for the layout check.
+func layout_rects() -> Dictionary:
+	return _r.duplicate()
+
+
+# ---------------------------------------------------------------- draw
+
+func _draw() -> void:
+	if _r.is_empty():
 		return
-
-	var title_w: float = view.x * TITLE_WIDTH_FRAC
-	var title_h: float = title_w / _aspect(_title)
-	var cards_w: float = view.x * CARDS_WIDTH_FRAC
-	var card_gap: float = view.x * CARD_GAP_FRAC
-	var card_w: float = (cards_w - card_gap) * 0.5
-	# 판을 직접 그리므로 비율도 상수에서 온다 — 예전에는 카드 텍스처에서 읽었다.
-	var card_h: float = card_w * SELECT_SHEET_HEIGHT_NATIVE / SELECT_SHEET_WIDTH_NATIVE
-	var cards_h: float = card_h * 2.0 + card_gap
-	# Matched to the cards block, so the bar's ends sit exactly under the outer
-	# edges of the left and right columns.
-	var explain_w: float = cards_w
-	# Height comes from the art's own proportions, then squashed — the three-
-	# piece draw below keeps the caps circular at whatever height results.
-	# Proportions come from the art itself, not its canvas — the current file
-	# carries a lot of transparent padding, and using the canvas would make
-	# the bar far too tall for the shape actually drawn in it.
-	var explain_native: Vector2 = _explain_src.size
-	var explain_h: float = explain_w * (explain_native.y / explain_native.x) * EXPLAIN_HEIGHT_SCALE
-	var leaderboard_w: float = card_w
-	var leaderboard_h: float = leaderboard_w / PLATE_ASPECT
-	var start_w: float = view.x * START_WIDTH_FRAC
-	var start_h: float = start_w / _aspect(_start)
-
-	# Share whatever height is left between the five blocks, capped so a tall
-	# screen does not scatter them; anything beyond the cap stays at the
-	# bottom rather than stretching the column.
-	var remove_ads_h: float = view.y * REMOVE_ADS_BLOCK_FRAC
-
-	# 설명 바는 카드에 붙는다 — 카드끼리의 세로 간격을 그대로 쓴다. 넷과 한
-	# 덩어리로 읽혀야 하는 것이지 따로 떠 있을 것이 아니다.
-	#
-	# 예전에는 여기에 EXPLAIN_TOP_EXTRA_FRAC 을 더 얹었다. 선택된 카드가 테두리
-	# 밖으로 번지는 후광을 쓰던 시절, 그게 설명 바에 닿아서 띄운 것이다. 선택
-	# 표시가 확대+그림자+체크로 바뀌면서 후광은 사라졌는데 이 여백만 남아,
-	# 20:9 에서 카드 간격 14px 대 카드-설명 60px 으로 벌어져 있었다.
-	var board_gap: float = card_gap
-	var content_h: float = title_h + cards_h + explain_h + leaderboard_h + start_h + remove_ads_h
-	var top: float = view.y * TOP_MARGIN_FRAC
-	var bottom: float = view.y * BOTTOM_MARGIN_FRAC
-	# 남는 세로를 다섯 몫으로 나눈다: 제목 위 / 제목-카드 / 설명-리더보드 /
-	# 리더보드-START / START-광고제거. 카드-설명은 board_gap 으로 고정이라 이
-	# 나눗셈에 끼지 않는다.
-	#
-	# "제목 위"가 한 몫을 받는 것이 이번에 달라진 점이다. 예전에는 남는 세로가
-	# 전부 블록 사이로만 갔고 위쪽 여백은 TOP_MARGIN_FRAC 에 묶여 있어서, 화면이
-	# 길수록 제목·카드는 위에 붙고 리더보드 둘레만 휑했다.
-	# 배너 자리는 전부 비우거나 아예 안 비운다. 절반만 비우면 배너가 그만큼
-	# START 를 덮는데, 그건 안 비운 것보다 나쁘다 — 화면은 좁아졌는데 가려지기까지
-	# 한다. 그래서 넣고도 최소 간격이 남을 때만 받아들이고, 아니면 0 을 돌려
-	# 부르는 쪽이 배너를 아예 띄우지 않게 한다.
-	_banner_applied = 0.0
-	if banner_reserve_px > 0.0:
-		var gap_with_banner: float = (view.y - top - (bottom + banner_reserve_px)
-			- content_h - board_gap) / 5.0
-		if gap_with_banner >= BANNER_MIN_GAP_PX:
-			_banner_applied = banner_reserve_px
-	bottom += _banner_applied
-
-	# ---- 카드 세로 늘리기 ----
-	# 배너 판정이 끝난 뒤다. 배너는 카드보다 우선이라, 배너를 받아들인 화면에서는
-	# 그만큼 덜 늘어난다 — 순서를 뒤집으면 늘어난 카드가 배너 자리를 먹고 배너가
-	# 거절당한다.
-	var gap_now: float = clampf(
-		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
-	var grow_budget: float = maxf(0.0,
-		(gap_now - view.y * CARD_GROW_MIN_GAP_FRAC) * 5.0)
-	# 늘리기 전 높이. 카드 안의 이름판·점수판·글자 크기가 이 값을 기준으로
-	# 잡히므로, 카드가 커져도 그것들은 안 부푼다 — _layout_card_contents 참고.
-	var card_base_h: float = card_h
-	var grow: float = minf(card_h * 2.0 * (CARD_HEIGHT_SCALE - 1.0), grow_budget)
-	if grow > 0.0:
-		card_h += grow * 0.5
-		cards_h += grow
-		content_h += grow
-
-	var gap: float = clampf(
-		(view.y - top - bottom - content_h - board_gap) / 5.0, 0.0, view.y * MAX_GAP_FRAC)
-
-	var y: float = top + gap
-	# 두 구석 버튼은 세로 흐름에 끼지 않는다 — 화면 맨 위에 그대로 붙인다.
-	if _login != null and _setting != null:
-		var icon: float = view.y * TOP_ICON_HEIGHT_FRAC
-		var mx: float = view.x * TOP_ICON_MARGIN_X_FRAC
-		var my: float = view.y * TOP_ICON_MARGIN_Y_FRAC
-		_login.position = Vector2(mx, my)
-		_login.size = Vector2(icon, icon)
-		_setting.position = Vector2(view.x - mx - icon, my)
-		_setting.size = Vector2(icon, icon)
-
-	_place(_title, title_w, title_h, y)
-	y += title_h + gap
-
-	var cards_left: float = (view.x - cards_w) * 0.5
-	for i in range(_cards.size()):
-		var col: int = i % 2
-		var row: int = i / 2
-		_cards[i].position = Vector2(cards_left + col * (card_w + card_gap), y + row * (card_h + card_gap))
-		_cards[i].size = Vector2(card_w, card_h)
-		_layout_card_contents(i, card_w, card_h, card_base_h)
-	_select_overlay.position = Vector2.ZERO
-	_select_overlay.size = view
-	_select_overlay.queue_redraw()
-	_card_shadow_overlay.position = Vector2.ZERO
-	_card_shadow_overlay.size = view
-	_card_shadow_overlay.queue_redraw()
-	y += cards_h + board_gap
-
-	_place(_explain, explain_w, explain_h, y)
-	if _explain_label != null:
-		_explain_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-		_explain_label.offset_left = 0.0
-		_explain_label.offset_top = 0.0
-		_explain_label.offset_right = 0.0
-		_explain_label.offset_bottom = 0.0
-		_explain.queue_redraw()
-		_explain_label.add_theme_font_size_override(
-			"font_size", _fit_explain_size(explain_w * EXPLAIN_TEXT_WIDTH_FRAC))
-	# From here the column is laid out from the bottom up — Remove Ads sits on
-	# the bottom margin, START above it — so the leaderboard can then be
-	# centred in whatever is left between the explain bar and START, rather
-	# than following the explain bar at a fixed gap and leaving the space
-	# below it uneven.
-	var explain_bottom: float = y + explain_h
-	var remove_ads_y: float = view.y - bottom - remove_ads_h
-	var start_y: float = remove_ads_y - gap - start_h
-	var leaderboard_y: float = explain_bottom + (start_y - explain_bottom - leaderboard_h) * 0.5
-
-	# 리더보드는 왼쪽 카드 열, 도감은 오른쪽 카드 열 아래.
-	_leaderboard.position = Vector2(cards_left, leaderboard_y)
-	_leaderboard.size = Vector2(leaderboard_w, leaderboard_h)
-	_layout_plate(_leaderboard, _trophy, _leaderboard_label, tr(LEADERBOARD_LABEL))
-	if _collection != null:
-		_collection.position = Vector2(cards_left + card_w + card_gap, leaderboard_y)
-		_collection.size = Vector2(leaderboard_w, leaderboard_h)
-		_layout_plate(_collection, _book, _collection_label, tr(COLLECTION_LABEL))
-		var plate: Rect2 = _plate_rect(_collection)
-		var dot: float = plate.size.y * COLLECTION_DOT_FRAC
-		# 판의 오른쪽 위 모서리에 반쯤 걸친다 — 알림 점의 흔한 자리.
-		_collection_dot.position = plate.position + Vector2(plate.size.x - dot * 0.9, -dot * 0.1)
-		_collection_dot.size = Vector2(dot, dot)
-		_collection_dot.queue_redraw()
-	# START and Remove Ads use the bottom-up positions computed above.
-	_place(_start, start_w, start_h, start_y)
-	# The plate is scaled on press, so the label is anchored to fill it and
-	# rides along rather than being positioned in screen space.
-	if _start_label != null:
-		_start_label.set_anchors_preset(Control.PRESET_FULL_RECT)
-		_start_label.offset_left = 0.0
-		_start_label.offset_top = 0.0
-		_start_label.offset_right = 0.0
-		_start_label.offset_bottom = 0.0
-		var font_size: int = int(round(start_h * START_LABEL_HEIGHT_FRAC))
-		_start_label.add_theme_font_size_override("font_size", font_size)
-		_start_glow.position = Vector2.ZERO
-		_start_glow.size = view
-		_start_glow.queue_redraw()
-		_start_label.add_theme_constant_override(
-			"outline_size", int(round(font_size * START_LABEL_OUTLINE_SIZE_FRAC)))
-
-	if _remove_ads != null:
-		_remove_ads.add_theme_font_size_override(
-			"font_size", int(round(view.y * REMOVE_ADS_FONT_FRAC)))
-		_place(_remove_ads, start_w, remove_ads_h, remove_ads_y)
-		_remove_ads_rule.set_anchors_preset(Control.PRESET_FULL_RECT)
-		_remove_ads_rule.offset_left = 0.0
-		_remove_ads_rule.offset_top = 0.0
-		_remove_ads_rule.offset_right = 0.0
-		_remove_ads_rule.offset_bottom = 0.0
-		_remove_ads_rule.queue_redraw()
-
-	# Scaling happens about the middle, not the top-left corner.
-	for button in [_start, _leaderboard, _collection] + _cards:
-		button.pivot_offset = button.size * 0.5
-
-
-# The plate art, cropped to its opaque shape and shrunk to PLATE_BAKE_H so a
-# 9-slice can use it — NinePatchRect draws its margins at texture pixel size,
-# so the 724px source would give caps the size of the screen.
-#
-# The transparent pixels around the plate are black, and a straight resize
-# drags that black into the rim as a dark fringe. fix_alpha_edges first
-# copies the rim colour outward into them — native, where an unpremultiply
-# loop in GDScript would cost boot time this screen has been cut down to save.
-func _bake_plate(texture: Texture2D) -> Texture2D:
-	if texture == null:
-		return null
-	var img: Image = texture.get_image()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
-	img.clear_mipmaps()
-	var b: Rect2 = _opaque_bounds(img)
-	var region := Rect2i(
-		int(b.position.x * img.get_width()), int(b.position.y * img.get_height()),
-		int(ceil(b.size.x * img.get_width())), int(ceil(b.size.y * img.get_height())))
-	img = img.get_region(region)
-	var w: int = int(round(img.get_width() * float(PLATE_BAKE_H) / img.get_height()))
-	img.fix_alpha_edges()
-	img.resize(w, PLATE_BAKE_H, Image.INTERPOLATE_LANCZOS)
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
-
-
-# A plain TextureButton (for the shared press animation) whose face is a
-# 9-slice of the plate, so it can be made taller than the art's own aspect
-# without squashing its round ends. _size_plate fits it after layout.
-func _make_plate_button() -> TextureButton:
-	var button := TextureButton.new()
-	button.ignore_texture_size = true
-	button.focus_mode = Control.FOCUS_NONE
-	_use_smooth_filter(button)
-	var face := NinePatchRect.new()
-	face.name = "Plate"
-	face.texture = _plate_texture
-	face.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	# 둥근 양 끝만 고정하고 가운데만 가로로 늘인다. 위아래는 늘릴 일이 없다 —
-	# _size_plate 가 높이를 텍스처 높이에 맞춰 두기 때문이다.
-	face.patch_margin_left = int(PLATE_BAKE_H * 0.5)
-	face.patch_margin_right = int(PLATE_BAKE_H * 0.5)
-	button.add_child(face)
-	return button
-
-
-# Draw the baked plate at the button's height: the node is made texture-sized
-# tall and scaled back down, so each cap stays an exact half-circle.
-func _size_plate(button: Control) -> void:
-	var face: NinePatchRect = button.get_node_or_null("Plate")
-	if face == null or button.size.y <= 0.0:
-		return
-	var s: float = PLATE_BAKE_H / button.size.y
-	face.position = Vector2.ZERO
-	face.size = button.size * s
-	face.scale = Vector2.ONE / s
-
-
-# The gold plate, in the button's own coordinates — the whole button now that
-# the face is a cropped 9-slice with no transparent padding around it.
-func _plate_rect(button: Control) -> Rect2:
-	return Rect2(Vector2.ZERO, button.size)
-
-
-# Icon at the left of the plate, label centred in what is left of it — the
-# same for the leaderboard and the collection plate, so the pair reads as one.
-# `text` arrives already translated.
-func _layout_plate(button: Control, icon: Control, label: Label, text: String) -> void:
-	if icon == null:
-		return
-	_size_plate(button)
-	var plate: Rect2 = _plate_rect(button)
-	var icon_h: float = plate.size.y * TROPHY_HEIGHT_FRAC
-	icon.size = Vector2(icon_h, icon_h)
-	icon.position = plate.position + Vector2(
-		plate.size.x * TROPHY_LEFT_FRAC, (plate.size.y - icon_h) * 0.5)
-	icon.queue_redraw()
-	if label == null:
-		return
-	# From just past the icon's right edge to the plate's right padding. The
-	# gap matters in English: "LEADERBOARD" fills its room and, with none,
-	# its L sat flush against the trophy.
-	var text_left: float = icon.position.x + icon_h + plate.size.y * PLATE_ICON_GAP_FRAC
-	var text_right: float = plate.position.x + plate.size.x * (1.0 - LEADERBOARD_LABEL_PAD_FRAC)
-	label.position = Vector2(text_left, plate.position.y)
-	label.size = Vector2(maxf(1.0, text_right - text_left), plate.size.y)
-	var wanted: int = int(round(plate.size.y * LEADERBOARD_LABEL_HEIGHT_FRAC))
-	var font_size: int = _fit_text_size(label, text, label.size.x, wanted)
-	label.add_theme_font_size_override("font_size", font_size)
-	label.add_theme_constant_override(
-		"outline_size", maxi(1, int(round(font_size * START_LABEL_OUTLINE_SIZE_FRAC))))
-
-
-# An open book as one solid silhouette: two pages bowed down toward the spine,
-# with a thin gap for the spine itself.
-func _draw_book() -> void:
-	var s: Vector2 = _book.size
-	if s.x <= 0.0:
-		return
-	var cx: float = s.x * 0.5
-	var half: float = s.x * 0.50          # 한쪽 페이지 폭(책등에서 바깥 끝까지)
-	var gap: float = s.x * 0.055          # 책등 틈의 절반 — 20px 에서도 틈이 보이는 폭
-	var top: float = s.y * 0.14           # 바깥 끝의 위
-	var bottom: float = s.y * 0.72        # 바깥 끝의 아래
-	var sag: float = s.y * 0.18           # 책등 쪽으로 처지는 깊이 — 이보다 얕으면 네모로 읽힌다
-	for side in [-1.0, 1.0]:
-		var inner: float = cx + side * gap
-		var outer: float = cx + side * half
-		var page := PackedVector2Array()
-		# 윗변: 책등(처짐)에서 바깥 끝(높음)으로 부드럽게.
-		for i in range(BOOK_CURVE_STEPS + 1):
-			var t: float = float(i) / BOOK_CURVE_STEPS
-			page.append(Vector2(lerpf(inner, outer, t), top + sag * (1.0 - t) * (1.0 - t)))
-		# 아랫변: 바깥 끝에서 책등으로, 같은 곡선을 아래로 옮겨.
-		for i in range(BOOK_CURVE_STEPS, -1, -1):
-			var t: float = float(i) / BOOK_CURVE_STEPS
-			page.append(Vector2(lerpf(inner, outer, t), bottom + sag * (1.0 - t) * (1.0 - t)))
-		_book.draw_colored_polygon(page, BOOK_FILL)
-		# 폴리곤 가장자리는 안티앨리어싱이 안 된다 — 같은 색 선을 한 번 둘러
-		# 트로피(텍스처)의 부드러운 가장자리와 맞춘다.
-		var ring := page.duplicate()
-		ring.append(page[0])
-		_book.draw_polyline(ring, BOOK_FILL, 1.0, true)
-
-
-func _draw_collection_dot() -> void:
-	var r: float = _collection_dot.size.x * 0.5
-	var c := Vector2(r, r)
-	_collection_dot.draw_circle(c, r, COLLECTION_DOT_RING)
-	_collection_dot.draw_circle(c, r * 0.72, COLLECTION_DOT_COLOR)
-
-
-## 도감에 아직 안 본 새 항목이 있는지. Main 이 모드 선택으로 들어올 때와
-## 도감을 닫을 때 넘긴다.
-func set_collection_new(has_new: bool) -> void:
-	_collection_new = has_new
-	if _collection_dot != null:
-		_collection_dot.visible = has_new
-
-
-# Name across the top, character in the middle, best score along the bottom.
-# Positions are relative to the card, so they scale with the press animation.
-func _layout_card_contents(index: int, card_w: float, card_h: float, base_h: float) -> void:
-	if index >= _card_art.size():
-		return
-	# 판을 직접 그리므로 카드 사각형이 곧 판이다. 예전에는 네 장이 시트 칸 안에서
-	# 저마다 2px 쯤 어긋나 있어 아트의 불투명 경계를 따로 재야 했다.
-	var origin := Vector2.ZERO
-	var art_w_total: float = card_w
-	var art_h_total: float = card_h
-
-	# 이름판·점수판·여백은 **늘리기 전** 높이로 잡는다. 늘어난 몫은 전부
-	# 캐릭터 자리로 간다.
-	#
-	# 전부 art_h_total 비율로 두었더니 카드를 세로로 키우는 순간 판과 글자까지
-	# 같이 부풀었다. 그중 점수판이 특히 나빴는데, 여백(inset)도 높이 비율이라
-	# 같이 커지면서 가로를 먹어 세로 22.8 -> 26.9, 가로 149.9 -> 147.1 이 됐다.
-	# 커진 것이 아니라 눌린 것이고, 그렇게 보였다.
-	var base_total: float = base_h
-	var inset: float = base_total * CARD_TEXT_INSET_FRAC
-	var inner_w: float = art_w_total - inset * 2.0
-	var name_h: float = base_total * CARD_NAME_HEIGHT_FRAC
-	var best_h: float = base_total * CARD_BEST_HEIGHT_FRAC
-	# 늘어난 높이는 여기로만 들어온다. 캐릭터는 정사각 스프라이트라 커져도
-	# 찌그러지지 않는 유일한 요소이기도 하다.
-	var art_h: float = base_total * CARD_ART_HEIGHT_FRAC + (art_h_total - base_total)
-
-	var name_size: int = _fit_card_name_size(inner_w * CARD_NAME_WIDTH_FRAC, name_h)
-	var outline_size: int = maxi(1, int(round(name_size * CARD_NAME_OUTLINE_FRAC)))
-	_card_name[index].add_theme_font_size_override("font_size", name_size)
-	_card_name[index].add_theme_constant_override("outline_size", outline_size)
-
-	# One width for every card, from the longest name at the size just fitted.
-	# The outline spreads the glyphs on both sides, so it counts toward the
-	# room the text needs inside the plate.
-	var widest := 0.0
-	var name_font: Font = _card_name[index].get_theme_font("font")
-	if name_font != null:
-		for text in CARD_NAMES:
-			widest = maxf(widest, name_font.get_string_size(tr(text), HORIZONTAL_ALIGNMENT_CENTER, -1, name_size).x)
-	var plate_pad: float = name_h * CARD_NAME_PLATE_PAD_FRAC
-	var name_plate_w: float = minf(inner_w, widest + outline_size * 2.0 + plate_pad * 2.0)
-	_card_name_plate[index].position = origin + Vector2((art_w_total - name_plate_w) * 0.5, inset)
-	_card_name_plate[index].size = Vector2(name_plate_w, name_h)
-	_card_name[index].set_anchors_preset(Control.PRESET_FULL_RECT)
-	_card_name[index].offset_left = 0.0
-	_card_name[index].offset_top = 0.0
-	_card_name[index].offset_right = 0.0
-	_card_name[index].offset_bottom = 0.0
-
-	# 칸은 정사각형이다 — 스프라이트 시트가 256x256 이라, 게임 쪽과 같은
-	# "칸 한 변" 개념으로 맞춰야 크기가 비교된다. 세로로 넘치는 몫은 투명
-	# 여백이라(유니콘 1.20 배면 칸이 art_h 를 넘는다) 이름/점수 판을 가리지 않는다.
-	# 캐릭터도 늘리기 전 높이 기준이다. 늘어난 만큼 키워 봤더니 20:9 에서
-	# 유니콘의 그림이 111 -> 145px 로 퍼지면서 왼쪽 위 초록 체크를 덮었다.
-	# 체크가 캐릭터를 가리면 안 된다는 조건이 카드마다 여유가 다른 조건이라,
-	# 캐릭터 크기를 화면 비율에 맡기면 어느 비율에서 깨지는지 알 수 없다.
-	# 늘어난 높이는 캐릭터 위아래 여백으로 간다.
-	var char_side: float = base_total * CARD_ART_HEIGHT_FRAC * CARD_CHARACTER_SCALE[index]
-	_card_art[index].size = Vector2(char_side, char_side)
-	_card_art[index].position = origin + Vector2(
-		inset + (inner_w - char_side) * 0.5,
-		inset + name_h + (art_h - char_side) * 0.5)
-	_card_art_rest_y[index] = _card_art[index].position.y
-
-	var plate_w: float = inner_w * CARD_BEST_PLATE_WIDTH_FRAC
-	_card_best_plate[index].position = origin + Vector2(
-		(art_w_total - plate_w) * 0.5, art_h_total - inset - best_h)
-	_card_best_plate[index].size = Vector2(plate_w, best_h)
-	var score_size: int = int(round(best_h * 0.62))
-	var best_size: int = int(round(score_size * CARD_BEST_LABEL_SCALE))
-	_card_best[index].add_theme_font_size_override("font_size", best_size)
-	_card_best[index].add_theme_constant_override(
-		"outline_size", int(round(best_size * CARD_BEST_OUTLINE_FRAC)))
-	_card_score[index].add_theme_font_size_override("font_size", score_size)
-	_card_score[index].add_theme_constant_override(
-		"outline_size", int(round(score_size * CARD_SCORE_OUTLINE_FRAC)))
-
-	# 높이를 기준으로 잡고 가로는 그림 비율대로. 정사각으로 두면 가로로 넓은
-	# 왕관이 그 안에 눕혀지면서 요청한 높이보다 낮게 나온다.
-	var crown_h: float = best_h * CARD_BEST_CROWN_HEIGHT_FRAC
-	var crown_ratio := 1.0
-	var crown_ink := Vector2.ONE
-	if _crown_texture != null and _crown_texture.get_height() > 0:
-		crown_ratio = float(_crown_texture.get_width()) / float(_crown_texture.get_height())
-		crown_ink = _crown_texture.get_meta("ink_frac", Vector2.ONE)
-	# CARD_BEST_CROWN_HEIGHT_FRAC 은 "눈에 보이는 왕관" 기준이다. 텍스처에
-	# 두른 투명 여백만큼 상자를 키우고, 가로는 그림 비율대로 잡는다 — 정사각에
-	# 넣으면 가로로 넓은 왕관이 그 안에 눕혀져 요청한 높이보다 낮게 나온다.
-	var box_h: float = crown_h / maxf(crown_ink.y, 0.01)
-	_card_crown[index].custom_minimum_size = Vector2(box_h * crown_ratio, box_h)
-	_card_best_row[index].add_theme_constant_override(
-		"separation", int(round(best_h * CARD_BEST_ROW_SEPARATION_FRAC)))
-	_card_best_row[index].set_anchors_preset(Control.PRESET_FULL_RECT)
-	_card_best_row[index].offset_left = 0.0
-	_card_best_row[index].offset_top = 0.0
-	_card_best_row[index].offset_right = 0.0
-	_card_best_row[index].offset_bottom = 0.0
-
-
-# Starts from the size the layout would like and steps down only if the text
-# would overrun the width it has been given.
-func _fit_text_size(label: Label, text: String, max_width: float, wanted: int) -> int:
-	var font: Font = label.get_theme_font("font")
-	if font == null:
-		return wanted
-	var size: int = wanted
-	while size > LEADERBOARD_LABEL_MIN_SIZE:
-		if font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x <= max_width:
-			break
-		size -= 1
-	return size
-
-
-# The largest size at which every card name fits its card — width and height
-# both — so all four render at one size and none spills over its border.
-func _fit_card_name_size(max_width: float, max_height: float) -> int:
-	if _card_name.is_empty():
-		return CARD_NAME_MIN_SIZE
-	var font: Font = _card_name[0].get_theme_font("font")
-	if font == null:
-		return CARD_NAME_MIN_SIZE
-	var size: int = CARD_NAME_MAX_SIZE
-	while size > CARD_NAME_MIN_SIZE:
-		var widest := 0.0
-		var tallest := 0.0
-		for text in CARD_NAMES:
-			var measured: Vector2 = font.get_string_size(tr(text), HORIZONTAL_ALIGNMENT_CENTER, -1, size)
-			widest = maxf(widest, measured.x)
-			tallest = maxf(tallest, measured.y)
-		# The outline grows the glyphs on every side, so it counts toward the
-		# space the name actually needs.
-		var outline: float = size * CARD_NAME_OUTLINE_FRAC * 2.0
-		if widest + outline <= max_width and tallest + outline <= max_height:
-			break
-		size -= 1
-	return size
-
-
-# The largest size at which *every* description still fits on one line, so
-# they all render at the same size instead of each shrinking to its own fit.
-# 이 카드에 지금 나갈 설명문. 히든 모드는 잠금 상태에 따라 두 가지다.
-func _explain_text(index: int) -> String:
-	if index < 0 or index >= CARD_EXPLAIN.size():
-		return ""
-	if CARD_MODES[index] != MODE_HIDDEN:
-		return tr(CARD_EXPLAIN[index])
-	if hidden_mode_open:
-		return tr(CARD_EXPLAIN_HIDDEN_OPEN)
-	return _hidden_locked_text(hidden_modes_cleared)
-
-
-func _hidden_locked_text(cleared: int) -> String:
-	return tr(CARD_EXPLAIN_HIDDEN_LOCKED) % [
-		hidden_gates_needed, cleared, hidden_modes_required]
-
-
-# 나갈 수 있는 모든 문구. 지금 안 쓰는 쪽까지 재야 한다 — 해금되는 순간 다른
-# 문구가 곧바로 이 자리에 들어오는데, 그때 글자 크기를 다시 잡을 계기가 없어서
-# 그 한 판에서만 문장이 잘린다.
-#
-# 잠금 안내는 진행도가 박혀 있으므로 0/3 부터 전부 재야 한다. 자릿수가 같아
-# 폭도 같을 것 같지만, 폰트가 고정폭이 아니라 실제로 다르다.
-func _explain_candidates() -> Array:
-	var out: Array = []
-	for i in range(CARD_MODES.size()):
-		if CARD_MODES[i] != MODE_HIDDEN and i < CARD_EXPLAIN.size():
-			out.append(tr(CARD_EXPLAIN[i]))
-	out.append(tr(CARD_EXPLAIN_HIDDEN_OPEN))
-	for n in range(hidden_modes_required + 1):
-		out.append(_hidden_locked_text(n))
-	return out
-
-
-func _fit_explain_size(max_width: float) -> int:
-	var font: Font = _explain_label.get_theme_font("font")
-	if font == null:
-		return EXPLAIN_TEXT_MIN_SIZE
-	var size: int = EXPLAIN_TEXT_MAX_SIZE
-	while size > EXPLAIN_TEXT_MIN_SIZE:
-		var widest := 0.0
-		for text in _explain_candidates():
-			widest = maxf(widest, font.get_string_size(text, HORIZONTAL_ALIGNMENT_CENTER, -1, size).x)
-		if widest <= max_width:
-			break
-		size -= 1
-	return size
-
-
-func _place(control: Control, w: float, h: float, y: float) -> void:
-	control.position = Vector2((size.x - w) * 0.5, y)
-	control.size = Vector2(w, h)
-
-
-# Godot's Label and Button have no underline, so the rule is measured off the
-# text and drawn under it — which also keeps it exactly as wide as the words.
-# Same concentric-ring halo as the selected card, around START's plate.
-func _draw_start_glow() -> void:
-	if _start == null:
-		return
-	var plate := Rect2(
-		_start.position + Vector2(
-			_start_bounds.position.x * _start.size.x,
-			_start_bounds.position.y * _start.size.y),
-		Vector2(_start_bounds.size.x * _start.size.x, _start_bounds.size.y * _start.size.y))
-	# The halo lives on its own node, so it does not inherit the button's
-	# press scale the way a child would — without this it stayed full size
-	# while the button shrank under it, and the button looked like it was
-	# sinking out of its own glow. Reproduce the button's transform by hand:
-	# scale about its pivot, which _layout parks at the button's centre.
-	var press: float = _start.scale.x
-	if not is_equal_approx(press, 1.0):
-		var pivot: Vector2 = _start.position + _start.pivot_offset
-		plate = Rect2(pivot + (plate.position - pivot) * press, plate.size * press)
-	var radius: int = int(round(START_CORNER_NATIVE * (_start.size.x / START_SHEET_WIDTH_NATIVE) * press))
-	for i in range(START_GLOW_RINGS):
-		var t: float = float(i + 1) / float(START_GLOW_RINGS)
-		# Spread scales too, so the halo tightens with the button instead of
-		# hanging at its resting width around a smaller plate.
-		var grow: float = START_GLOW_BORDER * START_GLOW_SPREAD * t * press
-		var glow := StyleBoxFlat.new()
-		glow.draw_center = false
-		glow.set_corner_radius_all(radius + int(round(grow)))
-		glow.set_border_width_all(maxi(1, int(round(START_GLOW_BORDER))))
-		glow.border_color = Color(
-			START_GLOW_COLOR.r, START_GLOW_COLOR.g, START_GLOW_COLOR.b,
-			START_GLOW_COLOR.a * (1.0 - t * 0.75))
-		glow.anti_aliasing = true
-		_start_glow.draw_style_box(glow, plate.grow(grow))
-
-
-# Measures the bar in its file: where the art actually sits, and how deep the
-# left edge runs before it stops curving inward. That depth is the corner
-# radius, and so also how wide a slice has to be to contain a whole cap.
-func _measure_explain_art() -> void:
-	_explain_src = Rect2(0, 0, 1, 1)
-	_explain_cap = 1.0
-	if _explain_texture == null:
-		return
-	var image: Image = _explain_texture.get_image()
-	if image == null:
-		return
-	image.convert(Image.FORMAT_RGBA8)
-	image.clear_mipmaps()
-	var w: int = image.get_width()
-	var h: int = image.get_height()
-	var bounds: Rect2 = _opaque_bounds(image)
-	_explain_src = Rect2(
-		round(bounds.position.x * w), round(bounds.position.y * h),
-		maxf(1.0, round(bounds.size.x * w)), maxf(1.0, round(bounds.size.y * h)))
-
-	var data: PackedByteArray = image.get_data()
-	var left: int = int(_explain_src.position.x)
-	var top: int = int(_explain_src.position.y)
-	var art_h: int = int(_explain_src.size.y)
-	var art_w: int = int(_explain_src.size.x)
-	for row in range(art_h):
-		var y: int = top + row
-		var inset: int = art_w
-		for col in range(art_w):
-			if data[(y * w + left + col) * 4 + 3] > 24:
-				inset = col
-				break
-		if inset <= 0:
-			# First row whose edge has straightened out — the curve above it
-			# is the corner, and its depth is the radius.
-			_explain_cap = maxf(1.0, float(row))
-			return
-	_explain_cap = _explain_src.size.y * 0.5
-
-
-func _draw_explain_bar() -> void:
-	if _explain_texture == null or _explain_src.size.x <= 0.0:
-		return
-	var box: Vector2 = _explain.size
-	var src: Rect2 = _explain_src
-	# Caps keep the art's own proportions at this height; the middle takes
-	# whatever width is left. A bar narrower than two caps would have them
-	# overlap, so they are clamped to half each.
-	var scale: float = box.y / src.size.y
-	var cap: float = minf(_explain_cap * scale, box.x * 0.5)
-	var cap_src: float = minf(_explain_cap, src.size.x * 0.5)
-	_explain.draw_texture_rect_region(
-		_explain_texture, Rect2(0, 0, cap, box.y),
-		Rect2(src.position, Vector2(cap_src, src.size.y)))
-	_explain.draw_texture_rect_region(
-		_explain_texture, Rect2(box.x - cap, 0, cap, box.y),
-		Rect2(Vector2(src.position.x + src.size.x - cap_src, src.position.y),
-			Vector2(cap_src, src.size.y)))
-	var middle: float = box.x - cap * 2.0
-	if middle > 0.0:
-		_explain.draw_texture_rect_region(
-			_explain_texture, Rect2(cap, 0, middle, box.y),
-			Rect2(Vector2(src.position.x + cap_src, src.position.y),
-				Vector2(src.size.x - cap_src * 2.0, src.size.y)))
-
-
-func _draw_remove_ads_rule() -> void:
-	if _remove_ads == null:
-		return
-	var font: Font = _remove_ads.get_theme_font("font")
-	if font == null:
-		return
-	var font_size: int = _remove_ads.get_theme_font_size("font_size")
-	var text_size: Vector2 = font.get_string_size(tr(REMOVE_ADS_TEXT), HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
-	var centre: Vector2 = _remove_ads.size * 0.5
-	# The baseline sits below the visual middle by roughly a quarter of the
-	# line box, the same approximation the text drawing elsewhere uses.
-	var baseline_y: float = centre.y + text_size.y * 0.25 + REMOVE_ADS_UNDERLINE_GAP
-	var half: float = text_size.x * 0.5
-	_remove_ads_rule.draw_line(
-		Vector2(centre.x - half, baseline_y),
-		Vector2(centre.x + half, baseline_y),
-		REMOVE_ADS_COLOR, REMOVE_ADS_UNDERLINE_WIDTH)
-
-
-func _selected_card_rect() -> Rect2:
-	return _card_rect(selected_index)
-
-
-# 한 카드가 화면에서 실제로 차지하는 사각형. 고른 카드만이 아니라 아무 카드나 —
-# 잠금 덮개는 고르지 않은 카드에도 씌워야 해서 일반화했다.
-#
-# 판때기를 직접 그리게 되면서 이 함수가 짧아졌다. 예전에는 아트의 불투명 경계를
-# 재서(_card_art_bounds) 카드마다 다른 오프셋을 보정하고, 아래쪽이 흐려지며
-# 끝나는 만큼(SELECT_BOTTOM_EXTEND_FRAC) 더 늘려야 했다. 지금은 그린 판이
-# 버튼을 정확히 채우므로 버튼 사각형이 곧 카드다.
-func _card_rect(index: int) -> Rect2:
-	if index < 0 or index >= _cards.size():
-		return Rect2()
-	var card: TextureButton = _cards[index]
-	var rect := Rect2(card.position, card.size)
-	# pivot_offset 이 카드 한가운데라 scale 은 그 점을 중심으로 커진다.
-	var pivot: Vector2 = card.position + card.pivot_offset
-	rect.position = pivot + (rect.position - pivot) * card.scale.x
-	rect.size *= card.scale.x
-	return rect
-
-
-# 덮개가 실제로 칠하는 사각형 — 카드에서 흰 테두리만큼 안으로 들어온 자리.
-# 체커가 같은 답을 봐야 하므로 함수로 둔다.
-func _lock_veil_rect(index: int, card_rect: Rect2) -> Rect2:
-	return card_rect.grow(-float(_card_lock_border_width(index)))
-
-
-# 카드 아트의 흰 테두리 두께를 그려지는 배율로 옮긴 값. 덮개는 이만큼 안쪽에서
-# 시작한다.
-func _card_lock_border_width(index: int) -> int:
-	if index < 0 or index >= _cards.size():
-		return 0
-	var card: TextureButton = _cards[index]
-	var art_scale: float = card.size.x * card.scale.x / SELECT_SHEET_WIDTH_NATIVE
-	# ceil 이 아니라 round 다. 올림하면 카드 속의 밝은 띠가 1px 안 덮인 채
-	# 남고, 그게 흰 링이 반쯤 남은 것과 똑같이 보인다.
-	return maxi(1, int(round(CARD_LOCK_VEIL_BORDER_NATIVE * art_scale)))
-
-
-func _card_corner_radius(index: int = -1) -> int:
-	var at: int = selected_index if index < 0 else index
-	if at < 0 or at >= _cards.size():
-		return 0
-	var card: TextureButton = _cards[at]
-	var art_scale: float = card.size.x * card.scale.x / SELECT_SHEET_WIDTH_NATIVE
-	return int(round(SELECT_CORNER_NATIVE * art_scale))
-
-
-# 카드 뒤. 고른 카드 하나에만 그림자를 깐다.
-func _draw_card_shadow() -> void:
-	var rect: Rect2 = _selected_card_rect()
-	if rect.size.x <= 0.0:
-		return
-	# 배경은 투명하고 그림자만 남는다 — StyleBoxFlat 은 그림자를 상자 모양
-	# 바깥으로 따로 칠하므로, 속을 비워도 그림자는 그려진다. 카드가 이 위에
-	# 통째로 덮이니 속을 칠할 이유도 없다.
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.0, 0.0, 0.0, 0.0)
-	box.set_corner_radius_all(_card_corner_radius())
-	box.shadow_color = SELECT_SHADOW_COLOR
-	box.shadow_size = SELECT_SHADOW_SIZE
-	box.shadow_offset = SELECT_SHADOW_OFFSET
-	box.anti_aliasing = true
-	_card_shadow_overlay.draw_style_box(box, rect)
-
-
-# 카드 위. 왼쪽 위 구석의 초록 체크.
-func _draw_selection() -> void:
-	# 덮개가 먼저. 잠긴 카드도 고를 수 있어서 둘이 같이 뜨는데, 체크는 덮개
-	# 위에 있어야 "고른 것"이 계속 읽힌다.
-	var lock_card: Rect2 = _lock_draw_rect()
-	if lock_card.size.x > 0.0:
-		_draw_card_lock(lock_card)
-	if _check_texture != null:
-		var rect: Rect2 = _selected_card_rect()
-		if rect.size.x > 0.0:
-			_select_overlay.draw_texture_rect(
-				_check_texture, _check_rect(selected_index, rect), false)
-
-
-# 잠긴 카드 위에 덮개와 자물쇠를 그린다. 자물쇠 자리는 _lock_layout 이 정한다.
-func _draw_card_lock(card_rect: Rect2) -> void:
-	var index: int = CARD_MODES.find(MODE_HIDDEN)
-	var veil := StyleBoxFlat.new()
-	veil.bg_color = CARD_LOCK_VEIL_COLOR
-	var inset: int = _card_lock_border_width(index)
-	veil.set_corner_radius_all(maxi(0, _card_corner_radius(index) - inset))
-	veil.anti_aliasing = true
-	_select_overlay.draw_style_box(veil, _lock_veil_rect(index, card_rect))
-
-	if _lock_texture != null:
-		_select_overlay.draw_texture_rect(
-			_lock_texture, _lock_layout(index, card_rect)["icon"], false)
-
-
-# 자식은 부모의 scale 로 그려지지만 size 는 로컬 그대로다. 그린 자리를 보려면
-# 전역 변환을 통과시켜야 한다 — global_position 과 size 를 그냥 붙이면 카드가
-# 105% 일 때 판이 실제보다 작게 잡힌다.
-func _drawn_rect(node: Control) -> Rect2:
-	return node.get_global_transform() * Rect2(Vector2.ZERO, node.size)
-
-
-# 체크가 놓일 자리. 체커가 같은 답을 봐야 하므로 함수로 빼 둔다 — 여기에
-# 계산을 복사해 두면 배치가 바뀌어도 체커는 옛 자리를 검사하며 통과한다.
-func _check_rect(index: int, card_rect: Rect2) -> Rect2:
-	var margin: float = card_rect.size.x * CARD_CHECK_MARGIN_FRAC
-	var side: float = card_rect.size.x * CARD_CHECK_SIZE_FRAC
-	if index < 0 or index >= _card_name_plate.size():
-		return Rect2(card_rect.position + Vector2(margin, margin), Vector2(side, side))
-	# 이름판은 가운데 정렬이라 그 왼쪽 위에 빈 구석이 남고, 체크는 그 구석
-	# '안'에 들어가야 한다. 구석의 크기는 고정이 아니다 — 판은 네 이름 중
-	# 가장 긴 것에 맞춰 한 번에 정해지므로, 이름이 하나라도 길어지면 판이
-	# 넓어지고 구석이 줄어든다. 그래서 CARD_CHECK_SIZE_FRAC 은 상한일 뿐이고
-	# 실제 크기는 구석에서 나온다.
-	#
-	# 비율만 믿었을 때는 38px 짜리가 32px 짜리 구석에 들어가 네 카드 모두
-	# 이름을 물었다. 480x854 에서 이 구석은 약 32x39 라, 여기 들어갈 수 있는
-	# 가장 큰 체크가 26px 다 — 카드 폭의 13%. 더 키우려면 이름판을 좁히거나
-	# 체크를 카드 밖으로 걸치게 해야 하고, 둘 다 이 요청의 범위 밖이다.
-	var plate: Rect2 = _drawn_rect(_card_name_plate[index])
-	var box := Rect2(
-		card_rect.position + Vector2(margin, margin),
-		Vector2(plate.position.x - margin - (card_rect.position.x + margin),
-			plate.end.y - (card_rect.position.y + margin)))
-	side = minf(side, minf(maxf(0.0, box.size.x), maxf(0.0, box.size.y)))
-	# 구석에 붙인다. 세로는 남는 만큼 가운데로 — 대개 판 높이가 그대로
-	# 한도라 움직일 자리도 없다 — 지만 가로는 왼쪽에 딱 붙인다.
-	#
-	# 한때 가로도 가운데였는데, 그러면 구석이 넓어질수록 체크가 오른쪽
-	# 아래 캐릭터 쪽으로 걸어 나간다. 판 너비는 네 이름 중 가장 긴 것이
-	# 정하므로 이름 하나만 짧아져도 넷 다 그렇게 되고, 실제로 STROOP MODE
-	# 를 COLOR MODE 로 줄였을 때 16:9 에서 유니콘의 뿔을 물었다. 왼쪽에
-	# 붙여 두면 구석이 넓어지든 좁아지든 갈 데가 없다.
-	return Rect2(
-		Vector2(box.position.x, box.position.y + (box.size.y - side) * 0.5),
-		Vector2(side, side))
-
-
-# 덮개를 지금 씌울 카드, 안 씌울 상황이면 빈 사각형.
-#
-# "씌울지 말지"까지 여기서 답한다. _draw_selection 은 이 값이 비었는지만 보므로
-# 판단이 한 군데에만 있고, 체커가 그 판단을 그대로 부를 수 있다 — 그리는 쪽에
-# if 를 두면 체커는 그 if 를 못 보고, 해금된 뒤에도 덮개가 남는 회귀를 사각형
-# 검사만으로는 잡을 수 없다. 고른 카드인지는 상관없다: 잠긴 것은 고르든 말든
-# 잠긴 것이고, 누르기 전에 보여야 뜻이 있다.
-func _lock_draw_rect() -> Rect2:
-	if hidden_mode_open:
-		return Rect2()
-	var index: int = CARD_MODES.find(MODE_HIDDEN)
-	if index < 0:
-		return Rect2()
-	return _card_rect(index)
-
-
-# 덮개 안의 자물쇠가 놓일 자리. 그리는 쪽과 체커가 같은 답을 봐야 하므로
-# 계산은 여기 한 번만 있다.
-#
-# "icon" 은 텍스처를 그릴 사각형이고, "ink" 는 그중 실제 그림이 있는 부분이다.
-# _load_trimmed 가 가장자리 흐림용으로 두른 투명 여백 때문에 둘이 다르다 —
-# 그림을 자리에 꽉 채우면 여백은 두 판 위로 삐져나가지만 보이는 것은 없으므로,
-# 판에 닿는지는 ink 로 재야 한다.
-func _lock_layout(index: int, card_rect: Rect2) -> Dictionary:
-	var w: float = card_rect.size.x
-	# 자물쇠가 앉을 자리는 카드 전체가 아니라 이름판 아래 ~ 점수판 위다.
-	# 카드 한가운데에 놓았더니 안내판이 BEST 판에 걸터앉았다 — 덮개가 깔려
-	# 있어 가리는 것으로는 안 잡히지만, 두 판이 맞닿아 있으면 실수로 보인다.
-	var body_top: float = card_rect.position.y
-	var body_bottom: float = card_rect.end.y
-	if index >= 0 and index < _card_name_plate.size():
-		body_top = _drawn_rect(_card_name_plate[index]).end.y
-	if index >= 0 and index < _card_best_plate.size():
-		body_bottom = _drawn_rect(_card_best_plate[index]).position.y
-	var inset: float = card_rect.size.y * CARD_LOCK_BODY_INSET_FRAC
-	body_top += inset
-	body_bottom -= inset
-	var room: float = maxf(1.0, body_bottom - body_top)
-
-	# 이 자리 높이를 통째로 자물쇠에 준다. 카드 높이 기준으로 잡으면 카드가
-	# 길어질 때 자리보다 자물쇠가 더 빨리 커진다 — 이름판과 점수판은 카드가
-	# 늘어나도 그대로이므로(_layout_card_contents) 자리는 카드만큼 안 늘어난다.
-	# 위아래 숨 쉴 틈은 CARD_LOCK_BODY_INSET_FRAC 이 이미 두었다.
-	#
-	# 채우는 것은 "눈에 보이는 자물쇠"다. 투명 여백만큼 상자를 키워 그려야
-	# 요청한 크기가 실제로 나온다 — 왕관과 같은 방식(ink_frac).
-	var ink := Vector2.ONE
-	var ratio := 1.0
-	if _lock_texture != null and _lock_texture.get_height() > 0:
-		ink = _lock_texture.get_meta("ink_frac", Vector2.ONE)
-		ratio = float(_lock_texture.get_width()) / float(_lock_texture.get_height())
-	var icon_h: float = room / maxf(ink.y, 0.01)
-	var icon_w: float = icon_h * ratio
-	var max_w: float = w * CARD_LOCK_ICON_MAX_WIDTH_FRAC / maxf(ink.x, 0.01)
-	if icon_w > max_w:
-		icon_h *= max_w / icon_w
-		icon_w = max_w
-
-	var center := Vector2(card_rect.position.x + w * 0.5, body_top + room * 0.5)
-	var icon_size := Vector2(icon_w, icon_h)
-	# 여백은 _load_trimmed 가 사방에 같은 폭으로 두른다(짝수 맞춤으로 오른쪽·
-	# 아래에 한 텍셀이 더 붙을 수 있을 뿐이다). 그래서 그림은 상자 한가운데다.
-	var ink_size := icon_size * ink
-	return {
-		"icon": Rect2(center - icon_size * 0.5, icon_size),
-		"ink": Rect2(center - ink_size * 0.5, ink_size),
-	}
-
-
-# ---------------------------------------------------------------- behaviour
-
-# 버튼이 눌리지 않았을 때 있어야 할 크기. 고른 카드만 크다.
-#
-# 누름 애니메이션이 Vector2.ONE 으로 돌아가면 안 되는 이유가 이것이다 —
-# 고른 카드를 한 번 더 누르면 105% 가 100% 로 풀려 버리고, 다시 커질 계기가
-# 없다. 두 크기는 곱해서 쓴다.
-func _rest_scale(button: Control) -> Vector2:
-	var i: int = _cards.find(button)
-	if i < 0:
-		return Vector2.ONE
-	return Vector2.ONE * (CARD_SELECTED_SCALE if i == selected_index else 1.0)
-
-
-# 한 버튼의 scale 을 움직이는 트윈은 언제나 하나뿐이다.
-#
-# 누름, 놓음, 선택 이동이 전부 같은 속성을 건드리는데, 카드를 탭하면 셋이 거의
-# 동시에 일어난다: button_up 이 옛 크기로 되돌리는 트윈을 걸고, 바로 뒤에 오는
-# pressed 가 새 크기로 가는 트윈을 건다. 이전 것을 죽이지 않으면 두 트윈이 같은
-# 값을 서로 다른 목표로 밀며 카드가 떤다.
-func _tween_scale(button: Control, want: Vector2, seconds: float, trans: int) -> void:
-	var idx: int = _cards.find(button)
-	if idx >= 0:
-		while _card_scale_tweens.size() <= idx:
-			_card_scale_tweens.append(null)
-		var old: Tween = _card_scale_tweens[idx]
-		if old != null and old.is_valid():
-			old.kill()
-	var tween := create_tween()
-	tween.tween_property(button, "scale", want, seconds) \
-		.set_trans(trans).set_ease(Tween.EASE_OUT)
-	if idx >= 0:
-		_card_scale_tweens[idx] = tween
-	_follow_with_glow(tween, button, seconds)
-
-
-func _animate_press(button: Control) -> void:
-	_tween_scale(button, _rest_scale(button) * PRESS_SCALE, PRESS_ANIM_DURATION, Tween.TRANS_SINE)
-
-
-func _animate_release(button: Control) -> void:
-	# TRANS_BACK overshoots slightly on the way home, which is what makes the
-	# button feel like it springs rather than merely returning.
-	_tween_scale(button, _rest_scale(button), PRESS_ANIM_DURATION, Tween.TRANS_BACK)
-
-
-# START's halo is a sibling node, so nothing repaints it when the button's
-# scale animates — it would hold its old shape until the next layout pass.
-# Drive a redraw alongside the scale tween so the two move together. The
-# overshoot at the end of a release is included, which is the point: the
-# halo springs with the button rather than snapping after it.
-func _follow_with_glow(tween: Tween, button: Control, seconds: float = PRESS_ANIM_DURATION) -> void:
-	# 카드의 그림자와 체크도 같은 문제를 가진다. 둘은 형제 노드에 그려지므로
-	# 카드가 커지는 동안 아무도 다시 그려 주지 않아, 트윈이 끝날 때까지 옛
-	# 크기의 그림자가 새 크기의 카드 밑에 어긋난 채 남는다.
-	if _cards.has(button):
-		tween.parallel().tween_method(
-			func(_t: float) -> void: _redraw_selection(), 0.0, 1.0, seconds)
-		return
-	if button != _start or _start_glow == null:
-		return
-	tween.parallel().tween_method(
-		func(_t: float) -> void: _start_glow.queue_redraw(), 0.0, 1.0, seconds)
-
-
-## Fills each card's BEST plate. The array is indexed by mode, and the
-## cards are built in CARD_MODES order, so index i belongs to CARD_MODES[i].
-##
-## 숫자는 ScoreFormat.compact 로 줄여 쓴다. 판 자체는 카드 너비 비율로
-## 잡히므로(plate_w) 글자 길이와 무관하게 고정이고, 왕관+"BEST"+숫자 줄만
-## 그 안에서 가운데로 다시 모인다.
-func set_best_scores(values: PackedInt32Array) -> void:
-	for i in range(_card_score.size()):
-		var mode: int = CARD_MODES[i]
-		var value: int = values[mode] if mode < values.size() else 0
-		_card_score[i].text = ScoreFormat.compact(value)
-
-
-## 히든 모드 해금 진행도. Main 이 저장된 값에서 뽑아 넘긴다.
-##
-## 잠금 여부를 따로 받지 않고 여기서 계산한다. 진행도와 잠금을 둘 다 받으면
-## 서로 어긋난 조합("3/3 인데 잠김")을 넘길 수 있게 되는데, 그런 상태는 화면을
-## 봐도 어느 쪽이 틀렸는지 알 수 없다.
-func set_hidden_progress(cleared: int, required: int, gates_needed: int) -> void:
-	hidden_modes_required = maxi(1, required)
-	hidden_modes_cleared = clampi(cleared, 0, hidden_modes_required)
-	hidden_gates_needed = maxi(1, gates_needed)
-	hidden_mode_open = hidden_modes_cleared >= hidden_modes_required
-	# 글자 크기는 나갈 수 있는 문구 전체에서 한 번에 정해지고, 그 목록이 방금
-	# 바뀌었다. 다시 배치해야 새 문구가 잘리지 않는다.
-	_layout()
-	if _explain_label != null:
-		_explain_label.text = _explain_text(selected_index)
-
+	var k: float = size.x / 480.0
+	draw_rect(Rect2(Vector2.ZERO, size), DIM)
+
+	_draw_square_button(_r.login, PERSON_ICON, false)
+	_draw_square_button(_r.setting, SETTINGS_ICON, false)
+	_draw_bar(_r.stardust, BAR_FRAME_PATH, BAR_FRAME_CAP)
+	var sd_icon := ArtSlot.texture(STARDUST_ICON)
+	var ih: float = _r.stardust.size.y * 0.55
+	var iw: float = ih * sd_icon.get_width() / sd_icon.get_height()
+	draw_texture_rect(sd_icon, Rect2(_r.stardust.position + Vector2(20.0 * k, (_r.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
+	# No currency is earned yet; the readout holds its place.
+	_text_right(_font, "0", Vector2(_r.stardust.end.x - 22.0 * k, _r.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
+
+	TitleArt.draw_emblem(self, _r.emblem_mid, EMBLEM_H * k, EMBLEM_WREATH_H * k,
+		size.x, MARGIN * k, int(EMBLEM_WORD_MAX * k), _title_font, k * EMBLEM_WORD_MAX / 44.0)
+
+	for i in CARD_MODES.size():
+		_draw_card(i, _r["card%d" % i], k)
+
+	_draw_bar(_r.explain, EXPLAIN_FRAME_PATH, EXPLAIN_FRAME_CAP)
+
+	var ready: bool = CARD_READY[selected_index]
+	_draw_bar(_r.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color.WHITE if ready else Color(1, 1, 1, 0.45))
+	_text_center(_title_font, tr(PLAY_TEXT) if ready else tr(COMING_SOON), _r.play.get_center(),
+		int((36 if ready else 22) * k), PLAY_TEXT_COLOR if ready else LOCK_TEXT, PLAY_TEXT_RIM if ready else NAME_RIM)
+
+	var tools := [[_r.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true], [_r.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true],
+		[_r.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false]]
+	for t in tools:
+		var rect: Rect2 = t[0]
+		_draw_square_button(rect, t[1], t[3])
+		_text_center(_font, t[2], Vector2(rect.get_center().x, rect.end.y + TOOL_LABEL_H * 0.6 * k),
+			int(13 * k), SUB_TEXT, Color(0, 0, 0, 0))
+
+	if _remove_ads.visible:
+		var tw: float = _font.get_string_size(_remove_ads.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * k)).x
+		var uy: float = _r.remove_ads.get_center().y + 10.0 * k
+		draw_line(Vector2(_r.remove_ads.get_center().x - tw * 0.5, uy), Vector2(_r.remove_ads.get_center().x + tw * 0.5, uy), REMOVE_ADS_COLOR, 1.5)
+
+
+func _draw_card(i: int, r: Rect2, k: float) -> void:
+	var on := i == selected_index
+	var tex := ArtSlot.texture(CARD_FRAME_ON_PATH if on else CARD_FRAME_PATH)
+	_nine(tex, r, CARD_FRAME_MARGIN)
+	if on:
+		_draw_card_face(r, tex, k)
+	var name: String = tr(CARD_NAMES[i])
+	if i == MODE_QUIZ:
+		# The main mode: its name large on the left, where stardust comes
+		# from on the right, its record along the bottom.
+		_text_left(_title_font, name, Vector2(r.position.x + 30.0 * k, r.position.y + 52.0 * k), int(30 * k), NAME_COLOR, NAME_RIM)
+		var sd := ArtSlot.texture(STARDUST_ICON)
+		var sh: float = 20.0 * k
+		var sw: float = sh * sd.get_width() / sd.get_height()
+		var tag_w: float = _font.get_string_size(tr(STARDUST_TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * k)).x
+		var tag_x: float = r.end.x - 30.0 * k - tag_w
+		draw_texture_rect(sd, Rect2(tag_x - sw - 6.0 * k, r.position.y + 40.0 * k, sw, sh), false)
+		_text_left(_font, tr(STARDUST_TEXT), Vector2(tag_x, r.position.y + 50.0 * k), int(14 * k), STARDUST_COLOR, Color(0, 0, 0, 0))
+		var best := ArtSlot.texture(BEST_ICON)
+		var by: float = r.end.y - 44.0 * k
+		draw_texture_rect(best, Rect2(r.position.x + 30.0 * k, by - 12.0 * k, 24.0 * k, 24.0 * k), false)
+		_text_left(_font, BEST_TEXT, Vector2(r.position.x + 62.0 * k, by), int(17 * k), CARD_BEST_COLOR, CARD_BEST_OUTLINE)
+		var value: int = _best[MODE_QUIZ] if _best.size() > MODE_QUIZ else 0
+		_text_left(_title_font, ScoreFormat.grouped(value) if value > 0 else "-", Vector2(r.position.x + 122.0 * k, by), int(22 * k), CARD_BEST_COLOR, CARD_BEST_OUTLINE)
+	else:
+		# Veil first, so the name of a mode still to come reads over it.
+		# Not over the selected one, whose lit face would go dark under it;
+		# its lock and COMING SOON still say it is closed.
+		if not CARD_READY[i] and not on:
+			draw_rect(r.grow(-12.0 * k), LOCK_VEIL)
+		_text_center(_title_font, name, Vector2(r.get_center().x, r.position.y + 40.0 * k), int(20 * k), NAME_COLOR, NAME_RIM)
+	if not CARD_READY[i]:
+		var lock := ArtSlot.texture(LOCK_ICON)
+		var lh: float = 26.0 * k
+		var lw: float = lh * lock.get_width() / lock.get_height()
+		draw_texture_rect(lock, Rect2(r.get_center().x - lw * 0.5, r.get_center().y - 2.0 * k, lw, lh), false, Color(1, 1, 1, 0.85))
+		_text_center(_font, tr(COMING_SOON), Vector2(r.get_center().x, r.end.y - 22.0 * k), int(12 * k), LOCK_TEXT, Color(0, 0, 0, 0))
+
+
+## Scanlines and the sweeping band over the selected card's face.
+func _draw_card_face(r: Rect2, tex: Texture2D, k: float) -> void:
+	var s: float = minf(r.size.y / tex.get_height(), r.size.x / tex.get_width() * 2.0)
+	var face := Rect2(r.position + Vector2(CARD_FACE_INSET[0], CARD_FACE_INSET[1]) * s,
+		r.size - Vector2(CARD_FACE_INSET[0] + CARD_FACE_INSET[2], CARD_FACE_INSET[1] + CARD_FACE_INSET[3]) * s)
+	var y: float = face.position.y
+	while y < face.end.y:
+		draw_line(Vector2(face.position.x, y), Vector2(face.end.x, y), SCANLINE, 1.0)
+		y += SCANLINE_STEP * k
+	# The band enters above the face and leaves below it, clipped to it,
+	# brightest in its middle.
+	var t: float = fmod(Time.get_ticks_msec() / 1000.0, SWEEP_PERIOD) / SWEEP_PERIOD
+	var bh: float = face.size.y * SWEEP_H
+	var mid: float = face.position.y - bh + (face.size.y + bh * 2.0) * t
+	var rows := 12
+	for j in rows:
+		var y0: float = mid - bh * 0.5 + bh * j / rows
+		var y1: float = y0 + bh / rows
+		var top: float = maxf(y0, face.position.y)
+		var bottom: float = minf(y1, face.end.y)
+		if bottom <= top:
+			continue
+		var a: float = 1.0 - absf((j + 0.5) / rows * 2.0 - 1.0)
+		draw_rect(Rect2(face.position.x, top, face.size.x, bottom - top), Color(SWEEP, SWEEP.a * a))
+
+
+func _draw_square_button(r: Rect2, icon_path: String, locked: bool) -> void:
+	_nine(ArtSlot.texture(BUTTON_FRAME_PATH), r, BUTTON_FRAME_MARGIN)
+	var icon := ArtSlot.texture(icon_path)
+	var ih: float = r.size.y * 0.46
+	var iw: float = ih * icon.get_width() / icon.get_height()
+	if iw > r.size.x * 0.6:
+		iw = r.size.x * 0.6
+		ih = iw * icon.get_height() / icon.get_width()
+	var tint := Color(1, 1, 1, 0.35) if locked else Color.WHITE
+	draw_texture_rect(icon, Rect2(r.get_center() - Vector2(iw, ih) * 0.5, Vector2(iw, ih)), false, tint)
+	if locked:
+		var lock := ArtSlot.texture(LOCK_ICON)
+		var lh: float = r.size.y * 0.30
+		var lw: float = lh * lock.get_width() / lock.get_height()
+		draw_texture_rect(lock, Rect2(r.end - Vector2(lw + r.size.x * 0.16, lh + r.size.y * 0.16), Vector2(lw, lh)), false)
+
+
+## A frame stretched to `r` with its corners kept, `margin` in the texture's
+## own pixels: drawn at the scale that maps the texture's height to r's, so
+## a corner is the same share of the frame however big it is drawn.
+func _nine(tex: Texture2D, r: Rect2, margin: float) -> void:
+	var s: float = minf(r.size.y / tex.get_height(), r.size.x / tex.get_width() * 2.0)
+	var sb := StyleBoxTexture.new()
+	sb.texture = tex
+	sb.set_texture_margin_all(margin)
+	draw_set_transform(r.position, 0.0, Vector2(s, s))
+	draw_style_box(sb, Rect2(Vector2.ZERO, r.size / s))
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+## A bar with its ends kept whole and only the middle stretched — the same
+## cut as Main._draw_horizontal_slice; `cap` is in the texture's pixels.
+func _draw_bar(r: Rect2, path: String, cap: float, tint := Color.WHITE) -> void:
+	var tex := ArtSlot.texture(path)
+	var s: float = r.size.y / tex.get_height()
+	var c: float = minf(cap * s, r.size.x * 0.5)
+	var tw: float = tex.get_width()
+	var th: float = tex.get_height()
+	draw_texture_rect_region(tex, Rect2(r.position, Vector2(c, r.size.y)), Rect2(0, 0, cap, th), tint)
+	draw_texture_rect_region(tex, Rect2(Vector2(r.end.x - c, r.position.y), Vector2(c, r.size.y)), Rect2(tw - cap, 0, cap, th), tint)
+	if r.size.x > c * 2.0:
+		draw_texture_rect_region(tex, Rect2(Vector2(r.position.x + c, r.position.y), Vector2(r.size.x - c * 2.0, r.size.y)), Rect2(cap, 0, tw - cap * 2.0, th), tint)
+
+
+func _text_left(f: Font, text: String, mid_left: Vector2, fs: int, col: Color, rim: Color) -> void:
+	var pos := Vector2(mid_left.x, mid_left.y + fs * 0.36)
+	if rim.a > 0.0:
+		draw_string_outline(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, maxi(2, fs / 7), rim)
+	draw_string(f, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+
+
+func _text_right(f: Font, text: String, mid_right: Vector2, fs: int, col: Color) -> void:
+	var tw: float = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	draw_string(f, Vector2(mid_right.x - tw, mid_right.y + fs * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, col)
+
+
+func _text_center(f: Font, text: String, centre: Vector2, fs: int, col: Color, rim: Color) -> void:
+	var tw: float = f.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	_text_left(f, text, Vector2(centre.x - tw * 0.5, centre.y), fs, col, rim)
+
+
+# ---------------------------------------------------------------- input
 
 func _on_card_pressed(index: int) -> void:
-	# The cue fires on every tap, including one on the already-selected card:
-	# it is feedback for the press, not for the selection changing.
-	_play(_sfx_select)
+	_play_sfx(_sfx_select)
 	_select(index)
 
 
-func _select(index: int, animate: bool = true) -> void:
-	selected_index = index
-	if _explain_label != null and index < CARD_EXPLAIN.size():
-		_explain_label.text = _explain_text(index)
-	for i in range(_cards.size()):
-		var card: TextureButton = _cards[i]
-		var want: Vector2 = _rest_scale(card)
-		if card.scale.is_equal_approx(want):
-			continue
-		if animate:
-			_tween_scale(card, want, CARD_SELECT_ANIM, Tween.TRANS_SINE)
-		else:
-			# 첫 화면. 여는 상태는 이미 그 크기여야지, 커지는 게 보이면
-			# 사용자가 고르지도 않은 것을 고른 것처럼 연출된다.
-			card.scale = want
-	_redraw_selection()
+func _select(index: int) -> void:
+	selected_index = clampi(index, 0, CARD_MODES.size() - 1)
+	if _explain_label != null:
+		# No "(COMING SOON)" after a locked mode's line: the card and PLAY
+		# already say it, and the suffix pushed BATTLE's line out of the bar.
+		_explain_label.text = tr(CARD_EXPLAIN[selected_index])
+		_fit_explain()
+	queue_redraw()
 
 
-# 그림자와 체크는 카드 크기를 따라가므로 늘 함께 다시 그린다.
-func _redraw_selection() -> void:
-	if _select_overlay != null:
-		_select_overlay.queue_redraw()
-	if _card_shadow_overlay != null:
-		_card_shadow_overlay.queue_redraw()
+## One line in the bar: the font steps down from EXPLAIN_FONT until the line
+## fits, to EXPLAIN_FONT_MIN at the least. The bar has room for one line of
+## 15px and not two, so a wrapped second line was simply cut off.
+func _fit_explain() -> void:
+	if _explain_label == null or _r.is_empty():
+		return
+	var k: float = size.x / 480.0
+	var room: float = _r.explain.size.x - 48.0 * k
+	var fs := int(EXPLAIN_FONT * k)
+	while fs > int(EXPLAIN_FONT_MIN * k) and _font.get_string_size(_explain_label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x > room:
+		fs -= 1
+	_explain_label.add_theme_font_size_override("font_size", fs)
 
 
 func _on_start_pressed() -> void:
-	if selected_index < 0 or selected_index >= CARD_MODES.size():
+	if not CARD_READY[selected_index]:
+		_play_sfx(_sfx_select)
 		return
-	var mode: int = CARD_MODES[selected_index]
-	# Started before the mode is handed over: emitting swaps the screen and
-	# crossfades the music, and the cue should be underway before that.
-	_play(_sfx_start)
-	# The fourth slot is the hidden mode. It opens once every other mode has
-	# been played far enough — Main owns that record and hands the answer over
-	# through set_hidden_progress.
-	#
-	# 디버그 빌드에서는 조건과 상관없이 열린다. 매번 30 게이트를 지나야 MIX 를
-	# 한 번 볼 수 있으면 그 모드를 손볼 때마다 그 값을 치러야 한다. 릴리스
-	# 빌드에는 이 예외가 없으므로 실제 잠김은 릴리스로 내보내 눌러 봐야 한다.
-	if mode == MODE_HIDDEN and not hidden_mode_open and not OS.is_debug_build():
-		print("[잠김] 히든 모드 — %d/%d 모드에서 %d 게이트씩" % [
-			hidden_modes_cleared, hidden_modes_required, hidden_gates_needed])
-		return
-	start_pressed.emit(mode)
+	# Started before the mode is handed over: emitting swaps the screen, and
+	# the cue should be underway before that.
+	_play_sfx(_sfx_start)
+	start_pressed.emit(CARD_MODES[selected_index])
+
+
+func _on_coming_soon() -> void:
+	_play_sfx(_sfx_select)
+	if _explain_label != null:
+		_explain_label.text = tr(COMING_SOON)
+
+
+# ---------------------------------------------------------------- from Main
+
+## Each mode's stored best, indexed by mode.
+func set_best_scores(values: PackedInt32Array) -> void:
+	_best = values
+	queue_redraw()
+
+
+## The 1.x MIX unlock. There is no hidden card in the 2.0 menu; Main still
+## reports progress until that system is removed.
+func set_hidden_progress(_cleared: int, _required: int, _gates_needed: int) -> void:
+	pass
+
+
+## The 1.x collection's NEW dot. The collection has no button any more.
+func set_collection_new(_has_new: bool) -> void:
+	pass
 
 
 ## 광고 제거를 샀는가. 샀으면 아래의 "광고 제거" 줄을 숨긴다.
@@ -2210,19 +587,20 @@ func set_ads_removed(removed: bool) -> void:
 	_ads_removed = removed
 	if _remove_ads != null:
 		_remove_ads.visible = not removed
+	queue_redraw()
 
 
-## 하단에 비워 둘 배너 높이(게임 픽셀)를 정하고 다시 배치한다.
-##
-## 돌려주는 값은 **실제로 비운 높이**다. 화면이 짧아 자리가 안 나면 0 을
-## 돌려주므로, 부르는 쪽은 그때 배너를 띄우지 않아야 한다. 요청한 만큼
-## 비웠는지 되묻지 않고 돌려받은 값을 그대로 믿으면 된다.
-func set_banner_reserve(px: float) -> float:
-	banner_reserve_px = maxf(0.0, px)
-	_layout()
-	return _banner_applied
+# ---------------------------------------------------------------- sound
+
+func _make_sfx(file_name: String) -> AudioStreamPlayer:
+	var player := AudioStreamPlayer.new()
+	add_child(player)
+	var path: String = SFX_DIR + file_name
+	if ResourceLoader.exists(path):
+		player.stream = load(path)
+	return player
 
 
-## 직전 배치에서 실제로 비운 높이.
-func banner_applied_px() -> float:
-	return _banner_applied
+func _play_sfx(player: AudioStreamPlayer) -> void:
+	if player != null and player.stream != null:
+		player.play()

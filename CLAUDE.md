@@ -175,6 +175,58 @@ committed:
 - Without the kit the game still plays on plain spheres and a wedge ship.
   A release build must be exported from a machine that has the kit.
 
+**The play-screen HUD comes from Synty's INTERFACE Sci-Fi Menus pack**
+(2026-11-27), under the same rule:
+
+- `tools/build_ui_kit.gd` (headless Godot) reads the unzipped
+  `INTERFACE_SciFi_Menus_SourceSprites_v1` zip's `SourceFiles/` and writes
+  `assets/synty_ui/`, which is gitignored. Run it as `... --headless --path .
+  --script res://tools/build_ui_kit.gd -- <SourceFiles>`, then `--import`.
+- Without the kit, every HUD slot is an ArtSlot placeholder. A release must
+  be exported from a machine that has both kits.
+- The pieces were picked to match the ship's grey metal with orange accents:
+
+  | Slot | Sprite |
+  |---|---|
+  | Score bar | `Bar_Frame_01` |
+  | Question box | `Button_Frame_01`, orange end caps; the most important panel gets the loudest frame |
+  | Health and roulette slots | `Frame_Box_Small_07`, one frame for both, so the question box sits centred between twins |
+  | Pause | `Frame_Box_Small_10`, with the II bars drawn on at build time; the pack has no pause icon |
+  | Progress gauge | `Bar_Frame_08` |
+  | Weapon readout's backing | `Menu_Item_Background_03_Blue` |
+  | BEST mark | `Trophy_01`, tinted gold |
+
+- Each frame is laid over its own `_Background` sprite, tinted dark, so
+  white text on it reads against the space behind.
+- Each piece is baked at 2.25x its on-screen size, about a phone's scale.
+  The bars are drawn with their ends whole and the middle stretched
+  (`_draw_horizontal_slice`), the square frames as nine-patches.
+- The caps and margins (`HUD_*_CAP`, `HUD_SIDE_SLOT_MARGIN`) are in baked
+  pixels.
+
+**The title screen is built from the same kit** (2026-11-27). It follows the
+pack's own promotional banner, turned for a portrait screen; the banner
+image itself is Synty's branding and is not used. The live space world
+(still ticking behind the title) is dimmed to a deep blue, and a band of
+blue light crosses it. "WARP" and "GATE" sit either side of a gold star
+(`Crest_Star_01_Gold`) on a wreath (`Crest_Wreath_02`), in **Zen Dots**, the
+pack's rounded tech face. The thin angled bar `Bar_11_Bottom` (picked on 2026-11-27 over `Bar_02` and `Bar_09`) runs under
+them, with QUIZ RUN in gold beneath. The screen leads with WARP GATE
+(option A, 2026-11-27), because a Korean player reads "런" as running, and
+the ship does not run; QuizRun stays the store name. Zen Dots is SIL OFL and could be
+committed, but it travels with the kit and its licence is copied beside it.
+The words stay English, like all title art.
+
+- The glow behind the crest is drawn as rings. The pack's glow sprite is
+  meant to be added on, and laid on normally it showed as a square.
+- The 1.x splash painting, its separate wordmark and the three flying
+  characters are gone.
+
+The first draw of these came out as white boxes. A texture `load()`ed inside
+`_draw` and kept by nothing is freed when the draw returns, and the canvas
+draws white where it was. `ArtSlot.texture` therefore keeps every texture it
+hands out.
+
 Synty paints its planets with a custom shader that glTF cannot carry.
 `assets/shaders/planet.gdshader` rebuilds the look from the pack's land and
 cloud masks with a sea/ground colour pair per planet, so six meshes make
@@ -194,6 +246,67 @@ wave as a strip, from appearing to flying past, with the quiz kind, the
 number of gates and the ship's route chosen on the command line. Use it for
 anything about how a wave looks.
 
+**Modes and meta progression, decided 2026-11-27.** Only the menu is built
+so far: `ModeSelectScreen.gd` was rewritten the same day (see its header for
+the layout) and shows BATTLE, DAILY, the hangar and the upgrades locked as
+COMING SOON. Everything this file says about the 1.x mode cards — four of
+them, the MIX lock and its veil, the green check, the card characters — is
+history.
+
+The selected card shows it **on its face, not around it** (owner's call,
+2026-11-27). The kit bakes a second frame, `card_frame_on.png`, whose face
+is a see-through cyan gradient, and the menu draws scanlines and a band of
+light sweeping down it (`_draw_card_face`), so the menu redraws every frame
+while it is up. A locked card loses its dark veil while it is selected, or
+the lit face would go dark under it. The explain bar holds one line and
+shrinks its font to fit (`_fit_explain`); the "(COMING SOON)" it used to add
+after a locked mode's line ran BATTLE's sentence out of the bar.
+
+| Mode | What it is | Currency |
+|---|---|---|
+| **QUIZ RUN**, the main mode | The game as it is: quiz gates, a roulette weapon on every right answer | The **only** source of currency |
+| **BATTLE** | No quiz. The ship the player has upgraded fights enemies and bosses: a plain shooter | None |
+| **DAILY** | One quiz run a day, the same for everyone | A once-a-day bonus |
+
+Boss rush was considered and dropped.
+
+- **Currency** is earned by answering, so the quiz is how the player grows
+  and never becomes the side mode. A shooter-only mode that paid out would
+  let players skip the quiz, which is the game's identity and its title.
+- **Upgrades** apply in full in BATTLE and only slightly in QUIZ RUN (health
+  and base attack), so growth is felt in the main mode too. QUIZ RUN's
+  weapons still come from the roulette alone.
+- **DAILY uses no upgrades**, so its board ranks skill.
+- The mode select shows **three cards**: QUIZ RUN large, BATTLE and DAILY
+  smaller beneath it.
+- Still to come: the hangar (Synty ships to collect), the upgrade shop, and
+  more roulette weapons. Three is too few for a random pick to stay exciting.
+
+**The play-screen HUD, as laid out on 2026-11-26**, is meant to be redrawn
+around these slots:
+
+- The top row is the pause button, then one score bar running to the right
+  edge: SCORE on the left, the best score on the right.
+- The second row has three slots, health | question box | roulette
+  (`_health_rect`, `_quiz_box_rect`, `_roulette_rect`). The row keeps the
+  old question box's position and height (`_quiz_row_rect`), so the gate
+  zone under it did not move.
+  - **Health** is three stacked cells instead of three hearts, so how many
+    hits are left can still be counted at a glance.
+  - **The roulette slot** is always on screen. It spins only during LOOT;
+    it used to spin as text inside the question box, which now stays up,
+    empty, while it does. It is the same size as the health slot, so the
+    question box is centred; its result will be an icon once the art exists.
+  - **The question** keeps its old font size, which comes from the row's
+    width rather than the narrower box's.
+- The progress gauge sits under the question box: questions to the boss,
+  then the boss's health, then fever time. The combo sits on the right
+  under the row, and the weapon readout bottom right.
+
+So nothing is drawn over the middle of the field where the gates fly. The
+mute button is gone, because sound belongs in settings. With it went the
+"won a power-up" banner, which drew the roulette's result a second time.
+
 **Nine 1.x checkers were deleted on 2026-11-26**, once the gate game was
 gone from Main: `check_gate_reach`, `check_hearts`, `check_mix_mode`,
 `check_hidden_unlock`, `check_collection`, `check_boost_hold`,
@@ -205,9 +318,12 @@ the collection are still in the code, waiting to be removed, but nothing
 checks them any more. The guard against
 `debug_force_hidden_locked` being committed switched on moved to `check_tutorial`. The rule used was:
 delete what can no longer run, keep what still passes.
-`check_boost_bar_range`, `check_bg_layers` and `check_sparkle_pools` still
-pass against 1.x tables Main has not yet dropped. Retire them along with
-those tables. `check_tutorial` was rewritten for the three space steps.
+`check_boost_bar_range` still passes against a 1.x table Main has not yet
+dropped; retire it with that table. `check_tutorial` was rewritten for the
+three space steps. Once the 1.x art was deleted the same day, three more
+went: `check_bg_layers` and `check_sparkle_pools` (no art left to check)
+and `check_ocean_prompt`. The Stroop quiz it measured is unreachable in the
+space game, and it failed only because the question box got narrower.
 
 **A run has `MAX_HEARTS` (3) hearts.** In 1.x one miss ended the run; the
 first 28 days of analytics showed about eight runs per player and roughly 12%
@@ -361,27 +477,23 @@ on failure.
 | Script | Guards | Re-run when |
 |---|---|---|
 | `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
-| `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the four `AdIds.LIVE_*` values and nothing in the formats the game does not use; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
-| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; the banner shows on mode select only where `set_banner_reserve` made room (20:9 yes, 16:9 no) and hides on leaving it; and a device-pixel banner is converted by the axis that fits the screen — the width on a phone, the height on a pillarboxed tablet; and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_apply_banner_height`/`_game_px_per_device_px`/`_update_banner`, `set_banner_reserve`, the stretch aspect, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
-| `check_mode_select_layout.gd` | the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting: no two blocks on the mode-select screen overlap, nothing leaves the screen, the explain bar stays glued to the cards at the card gap, the top block takes a share of a tall screen's extra height, and a requested bottom banner is either reserved **whole** with no content under it or refused outright | `display/window/stretch/aspect`, `ModeSelectScreen` layout constants, `CARD_HEIGHT_SCALE`/`CARD_GROW_MIN_GAP_FRAC`, `banner_reserve_px`/`BANNER_MIN_GAP_PX`, the title/card/explain/START art proportions, or `LINK_TEXTS` change |
-| `check_mode_card_check.gd` | on **all four** cards at both 16:9 and 20:9 **and in both languages**: the selected card's green check clears the name plate, the character's ink and the card's own edge and is big enough to read; the BEST plate's crown + "BEST" + widest possible score fits inside the plate, and the two font sizes and the plate are identical on all four cards; the selected card is at `CARD_SELECTED_SCALE`; the name and BEST plates are the **same size at both ratios**; the card's "BEST" wears the HUD's yellow and outline, on the labels and not just in the constants; the locked hidden card's lock stays inside the card and clear of both plates at either ratio while still filling most of the gap between them, with the selection check clear of it; the veil stops exactly at the inner edge of the card's white border, equally on all four sides; and the whole panel is gone the moment the mode unlocks; and the hidden card's blurb tracks its lock at every step of the unlock, with every blurb that can appear still fitting the bar | `CARD_CHECK_*`, any `CARD_LOCK_*` constant or `_lock_layout`/`_lock_draw_rect`, `CARD_SELECTED_SCALE`, `CARD_HEIGHT_SCALE`, `CARD_BEST_COLOR`/`CARD_BEST_OUTLINE`/`CARD_BEST_LABEL_SCALE` or the HUD's `BEST_LABEL_FILL`/`SCORE_TEXT_OUTLINE`, the card name plate/character layout, `CARD_NAMES` **or their translations**, `CARD_CHARACTER_SCALE`, or any `CARD_EXPLAIN*` string change |
+| `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the three `AdIds.LIVE_*` values and nothing in the formats the game does not use, the banner included; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
+| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
+| `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and neither `debug_replay_tutorial` nor `debug_force_hidden_locked` is on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`/`debug_force_hidden_locked`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 gates a wave by cycle; every arrow, hand and sum question has exactly one right gate and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer passes the gate, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong gate or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
-| `check_gameover_bgm.gd` | the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
+| `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
 | `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
 | `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; a sign-in that completes while the game over popup is open flips it to LEADERBOARD on the spot; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score, and for a revived run the pre-revive score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, `GameOverPopup.set_logged_in`, or `debug_fake_sign_in` |
-| `check_store.gd` | with a fake BillingClient feeding Google Play's answers: the constants `Store` copied from the plugin's enums still match it; on PC the store is unavailable and the button grants nothing; on connect it asks for the product and the purchases, and will not open the sheet before the product details arrive; cancelled and pending purchases grant nothing; a completed one is **acknowledged** (or Google refunds it after three days) and removes the ads, and the save remembers it; afterwards no interstitial fires and its counter is untouched, the banner's space is given back, the revive continues with no rewarded ad, settings shows a disabled ADS REMOVED, mode select hides its line and the revive button reads CONTINUE with no ad icon; a relaunch reads it back, a failed query changes nothing, an unacknowledged purchase found by a query is acknowledged again, a purchase gone from the query (a refund) brings the ads, the banner and the line back, and "already owned" asks again | `Store.gd`, `REMOVE_ADS_PRODUCT_ID`, `_on_remove_ads_pressed`/`_on_store_ownership`/`_apply_ads_removed`, any `ads_removed` branch in Main, `SettingsPopup.set_ads_removed`, `RevivePopup.set_ad_free`, `ModeSelectScreen.set_ads_removed`, or an update of the billing plugin |
+| `check_store.gd` | with a fake BillingClient feeding Google Play's answers: the constants `Store` copied from the plugin's enums still match it; on PC the store is unavailable and the button grants nothing; on connect it asks for the product and the purchases, and will not open the sheet before the product details arrive; cancelled and pending purchases grant nothing; a completed one is **acknowledged** (or Google refunds it after three days) and removes the ads, and the save remembers it; afterwards no interstitial fires and its counter is untouched, the revive continues with no rewarded ad, settings shows a disabled ADS REMOVED, mode select hides its line and the revive button reads CONTINUE with no ad icon; a relaunch reads it back, a failed query changes nothing, an unacknowledged purchase found by a query is acknowledged again, a purchase gone from the query (a refund) brings the ads and the line back, and "already owned" asks again | `Store.gd`, `REMOVE_ADS_PRODUCT_ID`, `_on_remove_ads_pressed`/`_on_store_ownership`/`_apply_ads_removed`, any `ads_removed` branch in Main, `SettingsPopup.set_ads_removed`, `RevivePopup.set_ad_free`, `ModeSelectScreen.set_ads_removed`, or an update of the billing plugin |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
-| `check_ocean_prompt.gd` | for every Stroop colour word, in both languages, at 16:9 and 20:9: the question-and-word row fits the quiz box's writing area, the question is at least `OCEAN_PROMPT_READABLE_PX` (17px at the 480 reference width), and the word keeps its full size — the question takes empty space, never the word's; it used to come out at 13px with most of the box empty, and a check for overflow alone passes even at 0.90, because the layout shrinks the word to fit | `OCEAN_PROMPT_SIZE_RATIO`, `OCEAN_PROMPT_READABLE_PX`, `OCEAN_PROMPT_GAP_FRAC`, `_ocean_quiz_layout`, any `QUIZ_TEXT_*` constant, the quiz box art, the font, or a colour word's translation |
 | `check_share.gd` | the share card, in both languages, all four modes, scores from 0 to the int maximum, record or not: every piece sits inside the white frame and the stack never overlaps; the score, label, footer and mode plate fit `CONTENT_WIDTH` — the score shrinks to fit but stops at `SCORE_MIN_SIZE`, so shrinking is no proof that it fits; the logo and character actually loaded; the share text carries the grouped score, the translated mode name and the store link with no `{placeholder}` left; and on PC a SHARE press opens nothing and leaves the button free | `ShareCard`'s layout constants or `card_layout`, the fonts, `CARD_NAMES` or their translations, `SHARE_TEXT`/`FOOTER_TEXT`, `ScoreFormat.grouped`, `ExternalLinks.STORE_URL`, or `_on_gameover_share_pressed` |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
 | `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
 | `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
-| `check_sparkle_pools.gd` | every sparkle sprite loads and the per-mode colour mix is right | `TRAIL_COLORS_PER_MODE` or `FX_BURST_COLOR_WEIGHTS_PER_MODE` change |
-| `check_bg_layers.gd` | every mode's background layers load, a near layer is a real cut-out, and it outruns its far layer | `MODE_BG_TEXTURE_PATH`, `MODE_BG_NEAR_TEXTURE_PATH`, `bg_speed_ratio`, `bg_near_speed_ratio`, or a background is re-cut/re-blurred |
 | `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, `collection_open`, `share`, and `unlock_achievement` only at the moment MIX unlocks | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, `_open_collection`, `_on_gameover_share_pressed`, or `_push_hidden_progress` |
 
 **A checker that plays real gates writes to the real save file.** `user://
@@ -397,9 +509,9 @@ it. Any new checker that runs gates copies that backup/restore pair.
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
 it that way — if a checker needs a calculation, extract it from the draw
-code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` and
-`check_sparkle_pools.gd` still re-derive; a copy of a table is exactly what
-passes while the game itself loads nothing.
+code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` still
+re-derives; a copy of a table is exactly what passes while the game itself
+loads nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -565,6 +677,47 @@ fit the real number.
 
 ## Asset pipeline
 
+**All 1.x art was deleted on 2026-11-26, and every screen draws
+placeholders.** The title screens, mode select, play-screen HUD and popups
+are all being redrawn for 2.0. That is 400 images, counting flags,
+backgrounds, characters, gates, effects and references. Only the launcher
+icons (`assets/ui_assets/icon/`) and the Synty kit are left, plus the JANIJU
+STUDIO logo (`ui_assets/title/logo.png`). The logo went with the rest and was
+restored the next day at the owner's request: it is the studio's mark, not
+1.x art, and it opens every launch and the About popup. Every load of
+a screen image goes through `scripts/ArtSlot.gd`. A file that exists is used
+as before; a missing one comes back as a placeholder at the size the old art
+had, so layouts that size themselves off their art keep their proportions:
+
+- Pictures (logo, characters, icons) get a blue-grey box with an X.
+- Art stretched into a panel, button or bar gets a solid grey frame
+  (`ArtSlot.FRAMES`). An X across a popup ran through all its text, and a
+  see-through panel let the screen behind show through the words.
+
+The path constants in Main, ModeSelectScreen and the popups are therefore
+slots. New art dropped at one of those paths shows up with no code change.
+Art at a new path or size needs its loader pointed there; delete the slot's
+row in `ArtSlot.SIZES` once nothing should fall back to it.
+
+The slicers and blur/bake tools that cut the deleted sheets went with them
+(`slice_*`, `blur_background.ps1`, `bake_speed_line.ps1`,
+`fit_gate_ring.ps1`, `validate_flags_data.ps1`). `bake_popup_art.gd` stays:
+it bakes whatever popup art is in `ui_assets/popup/`, and its index and
+output were deleted with the art. Without a bake the popups cut their art at
+runtime, as they always could. `build_app_icon.ps1` also stays, but its
+character sprites are gone, so the launcher icons can only be rebuilt from
+git history or new art. Much of what follows describes the 1.x art and its
+tools; it is history until new art arrives.
+
+The other code that loads 1.x art checks `ResourceLoader.exists` first, so
+those slots just stay null: the 2D gate rings, backgrounds and ambient
+particles, which are never drawn and are part of the phase-2 removal, and
+the tap sparkles. The sparkles were still drawn as the combo burst, which
+now draws nothing until it gets new art or a drawn effect. The score box
+gets a placeholder even though its panel is hidden
+(`SCORE_BOX_PANEL_VISIBLE`), because the SCORE/BEST labels are drawn only
+while `score_box_texture` is set.
+
 Art arrives as a **sheet**, is cut by a script in `tools/`, and both the
 sheet and the cut pieces are committed. Never hand-edit a cut piece — change
 the slicer's parameters and re-run, so the result is reproducible on another
@@ -685,6 +838,16 @@ ffmpeg -i gameover_bgm.wav -c:a libvorbis -b:a 160k -ar 48000 assets/audio/gameo
 ```
 
 The wavs are not committed; they are the raw export and nothing reads them.
+
+**There is no music at the moment.** All six 1.x tracks were deleted on
+2026-11-27, because 2.0's will be made new. The tracks were
+`splash_main_bgm`, `gameover_bgm`, and `sky_`/`jungle_`/`ocean_`/`dream_bgm`.
+The player code is untouched and plays nothing while they are missing:
+`_resolve_audio` returns "", `_play_bgm` ignores that, and game over stops
+the music. A new track dropped into `assets/audio/` under one of those names
+(`BGM_MENU_NAME`, `BGM_GAMEOVER_NAME`, `MODE_BGM_NAME`) plays with no code
+change. `check_gameover_bgm` reports "skipped" and passes until the game
+over track exists. The sound effects were kept.
 
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:
@@ -827,8 +990,15 @@ The game answers to three different names and they are not meant to match.
 The **launcher label** is the one under the icon on the home screen, where
 roughly ten characters survive before truncation — hence `QuizRun` rather
 than the full title. The **Play Store title** is `QuizRun: Dual Gate`, set in
-the Play Console and not in this repo at all. The **in-game title art** is
-its own painted asset. Left empty, `package/name` falls back to
+the Play Console and not in this repo at all. **2.0 is titled `QuizRun: Warp
+Gate`** (decided 2026-11-27, after the warp gate the ship flies through). The
+Play Console title changes when 2.0 ships. The share text and the feedback
+mail subject already say Warp Gate. The **in-game title art** is its own
+painted asset, still a placeholder.
+
+`application/config/name` stays `QuizRunDualGate` on purpose. It also names
+the `user://` folder, so changing it would start every player on an empty
+save. Left empty, `package/name` falls back to
 `application/config/name`, which is `QuizRunDualGate` — the Godot project
 folder name leaking out as a product name.
 
@@ -1135,7 +1305,7 @@ one thing an ad would buy back that is worth real points rather than time,
 and the run did miss the gate. Do not "fix" it — the checker asserts the
 reset, so changing it means changing that assertion on purpose.
 | Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, shown through `Ads.show_interstitial` |
-| Banner | Mode-select bottom only, never in gameplay | Yes — and only where the screen can make room; see below |
+| Banner | None. Dropped on 2026-11-27 | Removed; see *Banner ads — removed* |
 | App-open | Not used | n/a |
 
 Three things about the interstitial counter are deliberate and each was
@@ -1191,10 +1361,10 @@ the first friend to install a build serves a real impression. `check_ad_ids.gd`
 keeps a copy of Google's values as an outside reference — editing `AdIds`
 alone is *supposed* to fail it.
 
-The live IDs are in `AdIds.LIVE_*`, all four from one account
-(`ca-app-pub-6214282306800929`): the app, `Banner - Main menu`,
-`Interstitial - Restart` and `Rewarded - Revive`, named as in the AdMob
-console. They are public — they ship inside every APK — so they live in code.
+The live IDs are in `AdIds.LIVE_*`, all three from one account
+(`ca-app-pub-6214282306800929`): the app, `Interstitial - Restart` and
+`Rewarded - Revive`, named as in the AdMob console. The fourth, `Banner -
+Main menu`, went with the banner on 2026-11-27. They are public — they ship inside every APK — so they live in code.
 
 `AdIds` is read in two places: `Ads.make_admob_node`, which fills the plugin's
 unit fields, and the unit ID printed by `_ad_try_interstitial`, so that the
@@ -1256,10 +1426,8 @@ What each format does:
   for; with nothing loaded it stays due and the next exit tries again. On PC
   the old "count it as shown" path remains, because `check_ad_policy.gd`
   measures the policy there.
-- **Banner** — loaded once, its device-pixel height converted to game pixels by
-  `_game_px_per_device_px` and passed to `set_banner_reserve`, and shown only on
-  mode select and only when the reserve came back non-zero. 16:9 phones and
-  pillarboxed tablets get no banner.
+- **Banner**: none since 2026-11-27. It is never loaded and its unit fields
+  are empty.
 - Game audio is muted on the Master bus while a full-screen ad is up.
 
 A failed load retries after 30 seconds. The test units have been seen
@@ -1373,8 +1541,8 @@ the line under START on mode select. `scripts/Store.gd` wraps the Play Billing
 plugin the same way `Ads.gd` and `PlayGames.gd` wrap theirs: on PC it is
 unavailable and `buy()` answers false at once.
 
-Owning it removes the banner (and gives its space back to the mode-select
-layout), stops interstitials without touching their counter, and makes the
+Owning it stops interstitials without touching their counter (there has
+been no banner to remove since 2026-11-27), and makes the
 revive button continue with no rewarded ad — the owner's call: someone who
 paid should never be shown an ad, and the revive stays once per run with its
 leaderboard score frozen regardless. Settings keeps the button but disabled,
@@ -1385,7 +1553,7 @@ same path a language change takes.
 **Google Play decides who owns it.** `Store` asks for the purchases on
 connecting and every time the app comes back to the foreground, and
 `ownership_changed` carries the answer. The last answer is also saved in
-`[ads] removed`, so a buyer sees no banner in the first seconds after launch or
+`[ads] removed`, so a buyer sees no interstitial in the first seconds after launch or
 while offline. A purchase that disappears from a successful query — a refund —
 brings the ads back; a query that **fails** changes nothing, because losing
 the connection must not take away what someone paid for.
@@ -1408,38 +1576,28 @@ created and active, and the phone's account is a licence tester, the product
 query fails and the button does nothing visible (it logs why). The flow has
 been driven only by `check_store.gd` with a fake client.
 
-## The bottom banner slot
+## Banner ads — removed
 
-An AdMob banner is an Android View laid **over** the Godot surface, not
-something drawn inside the viewport. It does not push anything; it covers
-whatever is under it. So the game reserves the space and the banner sits in
-the hole.
+The bottom banner on the mode select was dropped on 2026-11-27 (owner's
+call). Ads.gd no longer loads, shows or hides one, `make_admob_node` leaves
+both banner unit fields empty, Main has no banner reserve, and the 2.0 mode
+select lays out its full height. `check_ads_wiring` asserts that no banner
+is requested, and `check_ad_ids` that the banner fields stay empty. The
+`Banner - Main menu` unit still exists in the AdMob console and serves
+nothing; it can be archived there.
 
-`ModeSelectScreen.set_banner_reserve(px)` takes that height **in game
-pixels** and returns what it actually reserved. Two things follow from that
-signature:
+If a banner ever comes back, git history has the whole design (in the
+commits before its removal): `set_banner_reserve`/`banner_applied_px`
+on the menu, `_apply_banner_height` and `_game_px_per_device_px` in Main.
+Two rules from that design are worth keeping:
 
-- **The caller must convert.** A plugin reports the banner in device pixels,
-  and the stretch scales the game by whichever axis fits the screen exactly —
-  the width on a phone, the height on a pillarboxed tablet — so the value is
-  multiplied by `_game_px_per_device_px` (one over the smaller of the two axis
-  ratios) before being passed in. It used to divide by the screen width alone,
-  which is right on every phone and counts a tablet's side bars as screen.
-- **The return value is the decision.** It is all-or-nothing: reserving half
-  a banner is worse than reserving none, because the screen loses the space
-  *and* still gets covered. If the reserve would leave less than
-  `BANNER_MIN_GAP_PX` between blocks the screen refuses and returns 0, which
-  means "do not show a banner on this device" — not an error.
+- **An AdMob banner is an Android View laid over the Godot surface.** It
+  covers whatever is under it, so the screen has to reserve its space.
+- **Reserve it whole or not at all.** Half a banner costs the space and still
+  covers the content.
 
-Measured at 480 wide, the space available before blocks collide is 11px at
-16:9, 118px at 18:9 and 225px at 20:9. A 50dp banner is roughly 67 game px on
-a 1080-wide phone, so everything from 18:9 up takes it and 16:9 has never had
-the room. A tablet presents that same 16:9 viewport with bars beside it, so it
-is refused too. That is why the refusal path exists rather than being a bug.
-
-`Ads` fills this hole: `Main._apply_banner_height` converts the banner's height
-and shows it only when the reserve came back non-zero (see *How ads reach the
-screen*).
+Convert the plugin's device pixels by the axis the stretch actually fits:
+the width on a phone, the height on a pillarboxed tablet.
 
 ## Gotchas
 
@@ -1541,22 +1699,14 @@ screen*).
   `check_popup_fit.gd` measures the bottom edge at both ratios. Watch for it
   whenever a row is added — the settings popup went over when the language row
   arrived, and it is the version line at the very bottom that disappears.
-- **The mode card names are translated, and their length is load-bearing.**
-  One shared name plate is sized from the longest of the four, so shortening
-  one name narrows all four plates and widens the free corner the green check
-  sits in. That check used to be centred in the corner, so it walked right as
-  the corner grew — renaming `STROOP MODE` to `COLOR MODE` was enough to put
-  it on the unicorn's horn at 16:9, in Korean only (the Korean names are all
-  five characters and narrow the plate by 44px). It is anchored to the corner
-  now, and `check_mode_card_check.gd` sweeps both languages.
-- **Only `check_space.gd`, `check_mode_select_layout.gd` and
-  `check_mode_card_check.gd` sweep aspect ratios**, and only the last of
-  those sweeps languages. Every other checker reads the one resolution out of
-  `ProjectSettings` in one locale, and therefore only ever sees 16:9 in
-  whatever language the machine is set to. The START overlap above was found
-  by taking a screenshot, not by a checker. Before trusting a green suite
-  about anything layout-shaped, check whether the thing in question is
-  actually measured at more than one ratio.
+- **Only `check_space.gd` and `check_mode_select_layout.gd` sweep aspect
+  ratios**, and neither sweeps languages (the 1.x mode-card check that did
+  went with the 1.x cards on 2026-11-27). Every other checker reads the one
+  resolution out of `ProjectSettings` in one locale, and therefore only ever
+  sees 16:9 in whatever language the machine is set to. Before trusting a
+  green suite about anything layout-shaped, check whether the thing in
+  question is actually measured at more than one ratio — and in Korean,
+  where the mode names and the explain line are a different length.
 - Anything set against the world's scroll rate is set against `GATE_SPEED`
   **in the same breath**, and stops being true when it changes. The one that
   bites is `PARTICLE_DRIFT_X_RATIO`: DREAM's petals are only perceived as

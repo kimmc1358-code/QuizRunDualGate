@@ -34,11 +34,11 @@ extends SceneTree
 # https://developers.google.com/admob/android/test-ads
 const GOOGLE_DEMO := {
 	"app": "ca-app-pub-3940256099942544~3347511713",
-	"banner": "ca-app-pub-3940256099942544/6300978111",
 	"interstitial": "ca-app-pub-3940256099942544/1033173712",
 	"rewarded": "ca-app-pub-3940256099942544/5224354917",
 }
-const KEYS := ["app", "banner", "interstitial", "rewarded"]
+# No banner since 2026-11-27: 2.0 shows none, and its unit fields must be empty.
+const KEYS := ["app", "interstitial", "rewarded"]
 
 var fails := 0
 
@@ -69,7 +69,6 @@ func _publisher(id: String) -> String:
 func _live() -> Dictionary:
 	return {
 		"app": AdIds.LIVE_APP_ID.strip_edges(),
-		"banner": AdIds.LIVE_BANNER.strip_edges(),
 		"interstitial": AdIds.LIVE_INTERSTITIAL.strip_edges(),
 		"rewarded": AdIds.LIVE_REWARDED.strip_edges(),
 	}
@@ -146,7 +145,6 @@ func _check_admob_nodes() -> void:
 		var live := _live()
 		var want := {
 			"android_real_application_id": live["app"],
-			"android_real_banner_id": live["banner"],
 			"android_real_interstitial_id": live["interstitial"],
 			"android_real_rewarded_id": live["rewarded"],
 		}
@@ -158,9 +156,9 @@ func _check_admob_nodes() -> void:
 				if got != want[name]:
 					_fail("릴리스 빌드의 %s 가 AdIds 의 실제 값과 다르다: '%s'" % [name, got])
 			elif got != "":
-				# 안 쓰는 형식(보상형 전면, 앱 오픈, 네이티브)은 비어 있어야 한다.
+				# 안 쓰는 형식(배너, 보상형 전면, 앱 오픈, 네이티브)은 비어 있어야 한다.
 				_fail("릴리스 빌드에서 안 쓰는 %s 에 값이 있다: '%s'" % [name, got])
-		print("  release node  is_real=true, banner/interstitial/rewarded/app = AdIds.LIVE_*")
+		print("  release node  is_real=true, interstitial/rewarded/app = AdIds.LIVE_*, banner empty")
 	debug_node.free()
 	release_node.free()
 	ads.free()
@@ -173,7 +171,9 @@ func _expect_test_node(label: String, node: Node, reals: Array) -> void:
 	for name in reals:
 		if str(node.get(name)) != "":
 			_fail("%s 의 광고 노드 %s 에 값이 있다: '%s'" % [label, name, node.get(name)])
-	for pair in [["android_debug_banner_id", "banner"], ["android_debug_interstitial_id", "interstitial"],
+	if str(node.get("android_debug_banner_id")) != "":
+		_fail("%s 의 광고 노드에 배너 단위가 남아 있다: '%s' — 배너는 쓰지 않는다" % [label, node.get("android_debug_banner_id")])
+	for pair in [["android_debug_interstitial_id", "interstitial"],
 			["android_debug_rewarded_id", "rewarded"], ["android_debug_application_id", "app"]]:
 		if str(node.get(pair[0])) != GOOGLE_DEMO[pair[1]]:
 			_fail("%s 의 광고 노드 %s 가 Google 데모 값이 아니다: '%s'" % [label, pair[0], node.get(pair[0])])
@@ -215,7 +215,6 @@ func _init() -> void:
 
 	var test := {
 		"app": AdIds.TEST_APP_ID,
-		"banner": AdIds.TEST_BANNER,
 		"interstitial": AdIds.TEST_INTERSTITIAL,
 		"rewarded": AdIds.TEST_REWARDED,
 	}
@@ -237,7 +236,6 @@ func _init() -> void:
 	# 빌드가 쓰는 값이다.
 	var got := {
 		"app": AdIds.app_id(),
-		"banner": AdIds.banner_id(),
 		"interstitial": AdIds.interstitial_id(),
 		"rewarded": AdIds.rewarded_id(),
 	}

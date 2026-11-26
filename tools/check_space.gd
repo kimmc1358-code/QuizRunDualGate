@@ -245,6 +245,12 @@ func _run() -> void:
 	for r in sp.rocks:
 		r.node.queue_free()
 	sp.rocks.clear()
+	# The roulette in step 3 is random: a DRONE or a new weapon from it would be
+	# what _weapon_down takes first (drones, then levels, then the weapon), and
+	# this step failed about one run in five. Pin the loadout.
+	sp.drones = 0
+	sp._sync_drones()
+	sp.weapon = sp.Weapon.BLASTER
 	sp.level = 4
 	var hearts_before: int = m.hearts
 	w = sp.upcoming_wave()
@@ -310,6 +316,8 @@ func _run() -> void:
 		guard += 1
 	_check(m.hearts == hearts_b - 1, "a boss shot that reaches the ship costs a heart")
 	m.hearts = m.MAX_HEARTS
+	# Pinned for the same reason: the roulette leaves any weapon behind.
+	sp.weapon = sp.Weapon.SPREAD
 	sp.level = 10
 	sp.fire_timer = 0.0
 	sp.drones = 2

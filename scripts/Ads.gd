@@ -21,13 +21,10 @@ extends Node
 ## 매니페스트에 넣는다. tools/check_ad_ids.gd 가 둘 다 AdIds 와 맞춰 본다.
 
 signal fullscreen_changed(showing: bool)
-## 배너가 준비됐을 때. 높이는 기기 픽셀이다 — 게임 좌표로 바꾸는 것은 받는 쪽.
-signal banner_ready(height_device_px: float)
 ## 동의 상태가 새로 읽혔을 때. 설정의 "광고 개인정보 설정" 줄을 살릴지가 바뀔 수 있다.
 signal consent_changed
 
 const ADMOB_SCRIPT := "res://addons/AdmobPlugin/Admob.gd"
-const LOAD_AD_REQUEST_SCRIPT := "res://addons/AdmobPlugin/model/LoadAdRequest.gd"
 const SINGLETON := "AdmobPlugin"
 # 불러오기에 실패한 뒤 다시 청하기까지. 인터넷이 끊긴 채 몇 초마다 두드리면
 # 요청만 쌓이고, 광고 재고가 없는 날은 오래 기다려도 같다.
@@ -40,11 +37,6 @@ var available: bool = false
 var _admob: Object
 var _interstitial_id := ""
 var _rewarded_id := ""
-var _banner_id := ""
-var _banner_wanted: bool = false
-# 배너가 지금 어떤 상태인지: -1 모름, 0 숨김, 1 보임. 같은 상태를 다시 청하지
-# 않으려고 들고 있다(_apply_banner).
-var _banner_state: int = -1
 var _showing: bool = false
 var _reward_done: Callable
 var _reward_earned: bool = false
@@ -87,26 +79,20 @@ func make_admob_node(script: Script, live: bool = not AdIds.use_test_ads()) -> N
 	# 늘 테스트 노드만 나오고, 릴리스 빌드가 만들 노드를 볼 길이 없다.
 	node.set("is_real", live)
 	node.set("android_debug_application_id", AdIds.TEST_APP_ID)
-	node.set("android_debug_banner_id", AdIds.TEST_BANNER)
 	node.set("android_debug_interstitial_id", AdIds.TEST_INTERSTITIAL)
 	node.set("android_debug_rewarded_id", AdIds.TEST_REWARDED)
 	node.set("android_real_application_id", AdIds.LIVE_APP_ID.strip_edges() if live else "")
-	node.set("android_real_banner_id", AdIds.LIVE_BANNER.strip_edges() if live else "")
 	node.set("android_real_interstitial_id", AdIds.LIVE_INTERSTITIAL.strip_edges() if live else "")
 	node.set("android_real_rewarded_id", AdIds.LIVE_REWARDED.strip_edges() if live else "")
 	# 안 쓰는 형식은 비운다. 플러그인은 데모 단위를 기본값으로 채워 두는데,
 	# 쓰지도 않을 단위가 남아 있으면 "무엇이 나갈 수 있는가"를 볼 때 헷갈린다.
-	for format in ["rewarded_interstitial", "app_open", "native"]:
+	# 배너도 2026-11-27 부터 여기에 든다 — 2.0 은 배너를 띄우지 않는다.
+	for format in ["banner", "rewarded_interstitial", "app_open", "native"]:
 		node.set("android_debug_%s_id" % format, "")
 		node.set("android_real_%s_id" % format, "")
 	# 전면광고는 한 번 보여 준 것을 다시 못 쓴다. 기본값(false)이면 캐시에 남는다.
 	node.set("remove_interstitial_ads_after_displayed", true)
 	node.set("remove_rewarded_ads_after_displayed", true)
-	var request_script: Script = load(LOAD_AD_REQUEST_SCRIPT)
-	if request_script != null:
-		var positions: Dictionary = request_script.get_script_constant_map().get("AdPosition", {})
-		if positions.has("BOTTOM"):
-			node.set("banner_position", positions["BOTTOM"])
 	return node
 
 
@@ -137,12 +123,6 @@ func show_rewarded(done: Callable) -> bool:
 	return true
 
 
-## 배너를 보일지. 아직 안 불러왔으면 기억해 두었다가 불러오는 대로 따른다.
-func set_banner_visible(wanted: bool) -> void:
-	_banner_wanted = wanted
-	_apply_banner()
-
-
 func _connect() -> void:
 	_admob.connect("initialization_completed", func(_status): _on_initialized())
 	_admob.connect("interstitial_ad_loaded", func(info, _response): _on_interstitial_loaded(info.get_ad_id()))
@@ -156,8 +136,6 @@ func _connect() -> void:
 	_admob.connect("rewarded_ad_user_earned_reward", func(_info, _reward): _reward_earned = true)
 	_admob.connect("rewarded_ad_failed_to_show_full_screen_content", func(_info, _error): _on_rewarded_finished(false))
 	_admob.connect("rewarded_ad_dismissed_full_screen_content", func(_info): _on_rewarded_finished(true))
-	_admob.connect("banner_ad_loaded", func(info, _response): _on_banner_loaded(info.get_ad_id()))
-	_admob.connect("banner_ad_failed_to_load", func(_info, error): _retry(_load_banner, "banner", error))
 	_admob.connect("consent_info_updated", func(): _on_consent_info_updated())
 	_admob.connect("consent_info_update_failed", func(_error): _on_consent_info_update_failed())
 	_admob.connect("consent_form_loaded", func(): _on_consent_form_loaded())
@@ -166,7 +144,7 @@ func _connect() -> void:
 
 
 func _on_initialized() -> void:
-	print("[광고] 초기화 완료 — 전면, 보상형, 배너를 불러온다")
+	print("[광고] 초기화 완료 — 전면과 보상형을 불러온다")
 	_load_all()
 
 
@@ -183,7 +161,6 @@ func _on_rewarded_loaded(id: String) -> void:
 func _load_all() -> void:
 	_load_interstitial()
 	_load_rewarded()
-	_load_banner()
 
 
 func _load_interstitial() -> void:
@@ -192,10 +169,6 @@ func _load_interstitial() -> void:
 
 func _load_rewarded() -> void:
 	_admob.call("load_rewarded_ad")
-
-
-func _load_banner() -> void:
-	_admob.call("load_banner_ad")
 
 
 func _retry(what: Callable, label: String, error: Object) -> void:
@@ -234,33 +207,6 @@ func _on_rewarded_finished(shown: bool) -> void:
 	_load_rewarded()
 	if done.is_valid():
 		done.call(result)
-
-
-func _on_banner_loaded(id: String) -> void:
-	_banner_id = id
-	# 새 배너가 불러와진 직후에는 보이는지 알 수 없다 — 폰에서 불러오자마자 보인
-	# 적도 있고("already visible"), 안 보인 적도 있다. 첫 요청은 반드시 보낸다.
-	_banner_state = -1
-	var size: Vector2 = _admob.call("get_banner_dimension_in_pixels", id)
-	print("[광고] 배너 준비됨 (%.0fx%.0f 기기 px)" % [size.x, size.y])
-	banner_ready.emit(size.y)
-	_apply_banner()
-
-
-func _apply_banner() -> void:
-	if not available or _banner_id.is_empty():
-		return
-	# 이미 그 상태면 다시 청하지 않는다. 화면이 바뀔 때마다 숨김을 청했더니,
-	# 광고 제거 상태에서 플러그인이 "배너가 안 보여서 숨길 수 없다"는 오류를
-	# 매번 남겼다.
-	var want: int = 1 if _banner_wanted else 0
-	if want == _banner_state:
-		return
-	_banner_state = want
-	if _banner_wanted:
-		_admob.call("show_banner_ad", _banner_id)
-	else:
-		_admob.call("hide_banner_ad", _banner_id)
 
 
 ## ---- 광고 동의 (Google UMP) ----

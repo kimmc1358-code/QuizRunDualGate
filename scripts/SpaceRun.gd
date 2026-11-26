@@ -84,6 +84,13 @@ const ARROW_REVERSE_CHANCE := 0.3
 # ---- loot: roulette + asteroids ----
 const LOOT_DURATION := 3.8
 const ROULETTE_SPIN := 1.3
+# HUD art from the Synty UI kit (see Main.HUD_SCORE_BAR_PATH): the gauge's
+# track, and the backing under the weapon readout. The roulette slot wears
+# the same frame as the health slot, Main.HUD_SIDE_SLOT_PATH.
+const HUD_GAUGE_PATH := "res://assets/synty_ui/gauge.png"
+const HUD_GAUGE_CAP := 18.0            # baked px: the pill's round end
+const HUD_GAUGE_INSET := Vector2(9.0, 5.0)   # track -> fill, on screen
+const HUD_WEAPON_BACK_PATH := "res://assets/synty_ui/weapon_back.png"
 const ASTEROID_INTERVAL := 0.42
 const ASTEROID_RADIUS := Vector2(0.45, 0.8)
 const ASTEROID_HP := 3.0
@@ -618,7 +625,9 @@ func question() -> String:
 		Phase.BOSS:
 			return "BOSS!"
 		Phase.LOOT:
-			return roulette_text()
+			# The roulette has its own slot beside the box (Main._roulette_rect); the
+			# question box stays up, empty, so the HUD does not jump.
+			return " "
 	var w := upcoming_wave()
 	if w.is_empty():
 		return ""
@@ -1495,7 +1504,9 @@ func _draw_plate(ci: CanvasItem, font: Font, p: Dictionary, c: Vector2, r: float
 
 ## Inside the question box, the arrow or the hand; under it, the cycle's
 ## progress, the boss's health or fever's time; and the weapon, bottom left.
-func draw_hud(ci: CanvasItem, box: Rect2) -> void:
+## `box` is the question box, `roulette` the roulette slot beside it — both
+## laid out by Main (_quiz_box_rect, _roulette_rect).
+func draw_hud(ci: CanvasItem, box: Rect2, roulette: Rect2) -> void:
 	var font: Font = main.combo_font if main.combo_font != null else ThemeDB.fallback_font
 	var w := upcoming_wave()
 	var c := box.get_center()
@@ -1509,14 +1520,9 @@ func draw_hud(ci: CanvasItem, box: Rect2) -> void:
 			ci.draw_string(emoji_font, Vector2(c.x - tw - 6.0, c.y + fs * 0.36), hand, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 			ci.draw_string(font, Vector2(c.x + 8.0, c.y + fs * 0.3), "WIN!", HORIZONTAL_ALIGNMENT_LEFT, -1, int(fs * 0.7), Color(0.85, 0.15, 0.1))
 	var rect := gauge_rect(box)
-	var gh: float = rect.size.y
-	var back := StyleBoxFlat.new()
-	back.bg_color = Color(0.05, 0.04, 0.12, 0.7)
-	back.border_color = Color(1, 1, 1, 0.85)
-	back.set_border_width_all(2)
-	back.set_corner_radius_all(int(gh * 0.5))
-	back.anti_aliasing = true
-	ci.draw_style_box(back, rect)
+	main._draw_horizontal_slice(ArtSlot.texture(HUD_GAUGE_PATH), rect, HUD_GAUGE_CAP, ci)
+	var inner := rect.grow_individual(-HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y, -HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y)
+	var gh: float = inner.size.y
 	var frac := 0.0
 	var col := Color(0.35, 0.85, 1.0)
 	match phase:
@@ -1531,15 +1537,40 @@ func draw_hud(ci: CanvasItem, box: Rect2) -> void:
 	if frac > 0.0:
 		var fill := StyleBoxFlat.new()
 		fill.bg_color = col
-		fill.set_corner_radius_all(int((gh - 4.0) * 0.5))
+		fill.set_corner_radius_all(int(gh * 0.5))
 		fill.anti_aliasing = true
-		ci.draw_style_box(fill, Rect2(rect.position + Vector2(2, 2), Vector2((rect.size.x - 4.0) * frac, gh - 4.0)))
+		ci.draw_style_box(fill, Rect2(inner.position, Vector2(inner.size.x * frac, gh)))
+	# The slot stays on screen so the row does not change shape; it spins only
+	# in LOOT, right after a right answer.
+	var slot_tex := ArtSlot.texture(main.HUD_SIDE_SLOT_PATH)
+	main._draw_nine_patch(slot_tex, roulette, main.HUD_SIDE_SLOT_MARGIN, roulette.size.y / slot_tex.get_height(), ci)
+	if phase == Phase.LOOT:
+		_draw_roulette(ci, font, roulette)
 	var wname: String = ["BLASTER", "SPREAD", "LASER"][weapon]
 	var txt := "%s  Lv%d%s" % [wname, level, ("  +%d DRONE" % drones) if drones > 0 else ""]
-	var pos := Vector2(14.0, view_size.y - 18.0)
+	# Bottom right (2026-11-26; the health gauge took the top-left side).
+	var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+	var pos := Vector2(view_size.x - 14.0 - tw, view_size.y - 18.0)
+	var back_w: float = tw + 46.0
+	ci.draw_texture_rect(ArtSlot.texture(HUD_WEAPON_BACK_PATH),
+		Rect2(Vector2(view_size.x - 6.0 - back_w, view_size.y - 44.0), Vector2(back_w, 34.0)), false)
 	for o in [Vector2(-2, 0), Vector2(2, 0), Vector2(0, -2), Vector2(0, 2)]:
 		ci.draw_string(font, pos + o, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.05, 0.04, 0.12))
 	ci.draw_string(font, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.86, 0.3))
+
+
+## The roulette's label: spinning through the table, then landed on the
+## result for the rest of LOOT.
+func _draw_roulette(ci: CanvasItem, font: Font, rect: Rect2) -> void:
+	var text := roulette_text()
+	var fs := int(rect.size.y * 0.36)
+	var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	if tw > rect.size.x * 0.86:
+		fs = int(fs * rect.size.x * 0.86 / tw)
+		tw = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var pos := Vector2(rect.get_center().x - tw * 0.5, rect.get_center().y + fs * 0.36)
+	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, maxi(2, fs / 6), Color(0.05, 0.04, 0.12))
+	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(1.0, 0.86, 0.3))
 
 
 func _draw_arrow(ci: CanvasItem, c: Vector2, size: float, dir: int, color: Color) -> void:
@@ -1570,10 +1601,10 @@ func ship_screen_rect() -> Rect2:
 
 ## The progress gauge under the question box (draw_hud draws it here).
 func gauge_rect(box: Rect2) -> Rect2:
-	var gw: float = box.size.x * 0.62
-	return Rect2(Vector2(box.get_center().x - gw * 0.5, box.end.y + 8.0), Vector2(gw, 10.0))
+	var gw: float = box.size.x * 0.9
+	return Rect2(Vector2(box.get_center().x - gw * 0.5, box.end.y + 6.0), Vector2(gw, 16.0))
 
 
-## The weapon readout, bottom left (draw_hud writes it here).
+## The weapon readout, bottom right (draw_hud writes it here).
 func weapon_label_rect() -> Rect2:
-	return Rect2(Vector2(8.0, view_size.y - 40.0), Vector2(230.0, 30.0))
+	return Rect2(Vector2(view_size.x - 238.0, view_size.y - 40.0), Vector2(230.0, 30.0))

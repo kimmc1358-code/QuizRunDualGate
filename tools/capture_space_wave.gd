@@ -92,6 +92,9 @@ func _go() -> void:
 	m.call("_set_state", m.State.PLAYING)
 	m.tutorial_active = false
 	m.set_process(false)
+	# Main._process is what shows the pause button during a run; with it
+	# stopped, show it here so the shot has the whole HUD.
+	m.pause_button.visible = true
 
 	sp.cycle = int(_opt(args, "--cycle", "2"))
 	var kind: int = {"math": sp.Kind.MATH, "arrow": sp.Kind.ARROW, "rps": sp.Kind.RPS}.get(kind_name, sp.Kind.MATH)

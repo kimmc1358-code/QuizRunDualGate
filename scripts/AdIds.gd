@@ -35,14 +35,15 @@ extends RefCounted
 ## 흔한 실수인데, 증상이 "광고가 그냥 안 나온다" 라서 원인을 찾기 어렵다.
 ## check_ad_ids.gd 가 이 모양을 검사한다.
 const TEST_APP_ID := "ca-app-pub-3940256099942544~3347511713"
-const TEST_BANNER := "ca-app-pub-3940256099942544/6300978111"
 const TEST_INTERSTITIAL := "ca-app-pub-3940256099942544/1033173712"
 const TEST_REWARDED := "ca-app-pub-3940256099942544/5224354917"
 
 ## AdMob 콘솔에서 만든 실제 단위. 채우고 나서도 FORCE_TEST_ADS 가 켜져 있는 한
 ## 아무 데도 쓰이지 않는다 — 미리 채워 둬도 안전하다는 뜻이다.
 const LIVE_APP_ID := "ca-app-pub-6214282306800929~2199640508"
-const LIVE_BANNER := "ca-app-pub-6214282306800929/8486576208"          # Banner - Main menu
+# The banner (Banner - Main menu, ca-app-pub-6214282306800929/8486576208) was
+# dropped on 2026-11-27: 2.0 shows no banner. The unit still exists in the
+# AdMob console and serves nothing.
 const LIVE_INTERSTITIAL := "ca-app-pub-6214282306800929/6083045191"    # Interstitial - Restart
 const LIVE_REWARDED := "ca-app-pub-6214282306800929/1433353747"        # Rewarded - Revive
 
@@ -74,11 +75,6 @@ static func app_id() -> String:
 	return TEST_APP_ID if use_test_ads() else LIVE_APP_ID.strip_edges()
 
 
-## 하단 배너 단위.
-static func banner_id() -> String:
-	return TEST_BANNER if use_test_ads() else LIVE_BANNER.strip_edges()
-
-
 ## 재시작 N 회마다 나가는 전면광고 단위.
 static func interstitial_id() -> String:
 	return TEST_INTERSTITIAL if use_test_ads() else LIVE_INTERSTITIAL.strip_edges()
@@ -89,13 +85,13 @@ static func rewarded_id() -> String:
 	return TEST_REWARDED if use_test_ads() else LIVE_REWARDED.strip_edges()
 
 
-## 광고를 띄울 수 있는 상태인가 — 네 값이 모두 채워져 있어야 한다.
+## 광고를 띄울 수 있는 상태인가 — 세 값이 모두 채워져 있어야 한다.
 ##
 ## 실제 모드인데 값이 비어 있으면 광고를 아예 띄우지 않는다. 그 자리에 테스트
 ## 광고를 대신 내보내는 선택지도 있지만, 그러면 실제 사용자에게 "Test Ad" 가
 ## 보이면서도 아무도 눈치채지 못한 채 수익만 0 이 된다. 안 나오는 편이 낫다.
 static func is_configured() -> bool:
-	for id in [app_id(), banner_id(), interstitial_id(), rewarded_id()]:
+	for id in [app_id(), interstitial_id(), rewarded_id()]:
 		if id.strip_edges().is_empty():
 			return false
 	return true

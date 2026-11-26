@@ -384,13 +384,7 @@ func _build_content() -> void:
 # (_strip_white_background 참고). 배경을 지우면 실루엣 둘레가 알파 0 아니면
 # 1인 딱딱한 경계라, 줄여 그릴 때 계단이 진다 — _smoothed가 1px 경사를 만든다.
 func _load_tryagain() -> Texture2D:
-	var path: String = ART_DIR + TRYAGAIN_FILE
-	if not ResourceLoader.exists(path):
-		push_warning("TRY AGAIN 아트 없음: %s" % path)
-		return null
-	var img: Image = (load(path) as Texture2D).get_image()
-	if img.is_compressed():
-		img.decompress()
+	var img: Image = ArtSlot.image(ART_DIR + TRYAGAIN_FILE)
 	img.convert(Image.FORMAT_RGBA8)
 	img.clear_mipmaps()
 	_strip_white_background(img)

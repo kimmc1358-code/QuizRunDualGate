@@ -13,7 +13,7 @@ extends SceneTree
 #     (acknowledge)을 하고 광고를 없앤다 — 확인을 빠뜨리면 3일 뒤 자동 환불이다.
 #   복원과 환불: 저장된 답은 다시 켜도 남는다. 조회 결과에 상품이 없으면 풀리고
 #     (환불), 조회가 실패하면 그대로 둔다. "이미 산 상품"이면 내역을 다시 묻는다.
-#   광고: 없앤 뒤에는 전면광고가 안 뜨고 카운터도 그대로, 배너는 자리까지 돌려주고,
+#   광고: 없앤 뒤에는 전면광고가 안 뜨고 카운터도 그대로(배너는 2026-11-27 에 빠졌다),
 #     부활은 보상형 광고 없이 곧장 이어 간다.
 #   화면: 설정의 버튼은 "ADS REMOVED" 로 눌리지 않고, 모드 선택의 줄은 숨는다.
 #   값: Store 가 옮겨 적은 열거형 값이 플러그인의 BillingClient 와 같다.
@@ -42,12 +42,9 @@ const FAKE_ADMOB := """extends Node
 var calls: Array = []
 func show_interstitial_ad(id): calls.append("show_interstitial " + id)
 func show_rewarded_ad(id): calls.append("show_rewarded " + id)
-func show_banner_ad(id): calls.append("show_banner " + id)
-func hide_banner_ad(id): calls.append("hide_banner " + id)
 func load_interstitial_ad(): calls.append("load_interstitial")
 func load_rewarded_ad(): calls.append("load_rewarded")
 func load_banner_ad(): calls.append("load_banner")
-func get_banner_dimension_in_pixels(_id): return Vector2(1080, 150)
 """
 
 var fails := 0
@@ -152,14 +149,7 @@ func _run() -> void:
 	var admob := _fake(FAKE_ADMOB)
 	ads.set("_admob", admob)
 	ads.set("available", true)
-	var screen = main.get("mode_select_panel")
-	var width := float(ProjectSettings.get_setting("display/window/size/viewport_width"))
-	screen.size = Vector2(width, width * 20.0 / 9.0)
-	screen.call("_layout")
 	main.call("_set_state", main.State.MODE_SELECT)
-	ads.call("_on_banner_loaded", "b1")
-	main.call("_apply_banner_height", 150.0, Vector2(1080.0, 2400.0))
-	_expect(main.get("banner_reserved"), "before buying, 20:9 reserves the banner", "the banner had no room even before buying")
 
 	admob.calls.clear()
 	store.call("_on_purchase_updated", {"response_code": 0, "purchases": [_purchase(Store.PURCHASE_STATE_PURCHASED, false, "t1")]})
@@ -168,15 +158,6 @@ func _run() -> void:
 	_expect(_saved_removed(), "the save file remembers it", "ads_removed was not written to the save")
 
 	# ---- 광고가 정말 없는가 ----
-	_expect(not main.get("banner_reserved") and float(screen.get("banner_reserve_px")) == 0.0,
-		"the banner's space is given back", "the banner space is still reserved (%s)" % screen.get("banner_reserve_px"))
-	# 배너는 같은 상태를 두 번 청하지 않으므로(Ads._apply_banner), 숨김 요청은
-	# 산 순간에 한 번 나간다. 그 뒤로는 무엇을 해도 다시 보이면 안 된다.
-	_expect(admob.calls.has("hide_banner b1") and not admob.calls.has("show_banner b1"),
-		"buying hides the banner on mode select", "the banner was not hidden when the purchase came in (%s)" % [admob.calls])
-	admob.calls.clear()
-	main.call("_update_banner")
-	_expect(not admob.calls.has("show_banner b1"), "and it stays hidden", "the banner showed again after buying")
 	var every: int = main.get("interstitial_every_restarts")
 	main.set("games_played_total", int(main.get("interstitial_free_games")) + 10)
 	main.set("restarts_since_interstitial", every + 5)
@@ -200,7 +181,7 @@ func _run() -> void:
 	_expect(button != null and button.disabled and caption != null and caption.text == settings.tr("ADS REMOVED"),
 		"settings shows a disabled ADS REMOVED", "settings button: disabled=%s text=%s" % [
 			button.disabled if button != null else "?", caption.text if caption != null else "?"])
-	var link: Button = screen.get("_remove_ads")
+	var link: Button = main.get("mode_select_panel").get("_remove_ads")
 	_expect(link != null and not link.visible, "mode select hides its remove-ads line", "the mode select line is still showing")
 	var revive = main.get("revive_panel")
 	revive.call("ensure_built")
@@ -224,13 +205,11 @@ func _run() -> void:
 	store.call("_on_purchases_queried", {"response_code": 0, "purchases": []})
 	_expect(not main.get("ads_removed") and not _saved_removed(), "refunded (gone from the query) -> ads come back",
 		"a refund left the ads removed")
-	_expect(main.get("banner_reserved"), "and the banner gets its space again", "the banner did not come back after a refund")
 	_expect(link.visible, "and the mode select line shows again", "the mode select line stayed hidden after a refund")
 	client.calls.clear()
 	store.call("_on_purchase_updated", {"response_code": Store.RESPONSE_ITEM_ALREADY_OWNED})
 	_expect(client.calls.has("purchases"), "'already owned' asks for the purchases again", "'already owned' did nothing")
 
-	screen.call("set_banner_reserve", 0.0)
 	_finish()
 
 

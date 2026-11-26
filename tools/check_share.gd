@@ -53,7 +53,7 @@ func _run() -> void:
 	var dirs: Array = main.get("MODE_CHARACTER_DIR")
 	var happy: Array = main.get("MODE_CHARACTER_HAPPY_FILE")
 	for m in range(dirs.size()):
-		faces.append(load(str(dirs[m]) + str(happy[m])))
+		faces.append(ArtSlot.texture(str(dirs[m]) + str(happy[m])))
 
 	var content_w: float = float(card.get("CONTENT_WIDTH"))
 	var min_size: int = int(card.get("SCORE_MIN_SIZE"))
@@ -66,7 +66,9 @@ func _run() -> void:
 		TranslationServer.set_locale(loc)
 		var smallest_score := 9999
 		var tightest := 9999.0
-		for mode in range(faces.size()):
+		# Every mode the menu offers (2.0 has three; Main still carries four 1.x
+		# character slots, so faces can be the longer list).
+		for mode in range(mini(faces.size(), names.size())):
 			for s in SCORES:
 				for rec in [false, true]:
 					var lay: Dictionary = card.card_layout(mode, s, rec, logo, faces[mode])
