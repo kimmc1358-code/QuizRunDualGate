@@ -1350,9 +1350,8 @@ func draw_hud(ci: CanvasItem, box: Rect2) -> void:
 			var tw: float = emoji_font.get_string_size(hand, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 			ci.draw_string(emoji_font, Vector2(c.x - tw - 6.0, c.y + fs * 0.36), hand, HORIZONTAL_ALIGNMENT_LEFT, -1, fs)
 			ci.draw_string(font, Vector2(c.x + 8.0, c.y + fs * 0.3), "WIN!", HORIZONTAL_ALIGNMENT_LEFT, -1, int(fs * 0.7), Color(0.85, 0.15, 0.1))
-	var gw: float = box.size.x * 0.62
-	var gh := 10.0
-	var rect := Rect2(Vector2(c.x - gw * 0.5, box.end.y + 8.0), Vector2(gw, gh))
+	var rect := gauge_rect(box)
+	var gh: float = rect.size.y
 	var back := StyleBoxFlat.new()
 	back.bg_color = Color(0.05, 0.04, 0.12, 0.7)
 	back.border_color = Color(1, 1, 1, 0.85)
@@ -1398,3 +1397,25 @@ func _draw_arrow(ci: CanvasItem, c: Vector2, size: float, dir: int, color: Color
 	var ring := out.duplicate()
 	ring.append(out[0])
 	ci.draw_polyline(ring, Color(0.05, 0.04, 0.12), 2.5, true)
+
+
+# ================================================================ tutorial rects
+# Read from the same numbers the drawing uses, so the tutorial's highlights
+# follow the HUD and the ship wherever they move.
+
+## The ship on screen, a square around its projected centre.
+func ship_screen_rect() -> Rect2:
+	var s := project(Vector3(ship_pos.x, ship_pos.y, 0.0))
+	var half: float = maxf(s.z * SHIP_WIDTH * 0.55, 20.0)
+	return Rect2(Vector2(s.x, s.y) - Vector2(half, half * 0.7), Vector2(half * 2.0, half * 1.4))
+
+
+## The progress gauge under the question box (draw_hud draws it here).
+func gauge_rect(box: Rect2) -> Rect2:
+	var gw: float = box.size.x * 0.62
+	return Rect2(Vector2(box.get_center().x - gw * 0.5, box.end.y + 8.0), Vector2(gw, 10.0))
+
+
+## The weapon readout, bottom left (draw_hud writes it here).
+func weapon_label_rect() -> Rect2:
+	return Rect2(Vector2(8.0, view_size.y - 40.0), Vector2(230.0, 30.0))

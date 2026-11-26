@@ -58,7 +58,6 @@ func _run() -> void:
 	for popup in [pause, revive, over, settings, about]:
 		popup.call("ensure_built")
 	pause.call("set_volumes", 0.5, 0.5)
-	pause.call("set_boost_side", true)
 	revive.call("set_score", 12600)
 	revive.call("set_character", null, 100.0)
 	settings.call("set_volumes", 0.5, 0.5)

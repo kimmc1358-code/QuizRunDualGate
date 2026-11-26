@@ -20,7 +20,9 @@ extends SceneTree
 #   4. 순위표 기록은 첫 죽음 시점에 얼어붙는다. 광고로 순위를 살 수 없다는
 #      규칙이고, 개인 최고 기록은 반대로 끝까지 간 점수를 받는다.
 
-const RUN_GATES := 35   # phase_gate_counts 기본값 [10,20,30] 에서 phase 2 에 드는 수
+# 문제 수. 보스(SpaceRun.QUIZ_PER_CYCLE = 10) 전에 죽어야 퀴즈 진행도(quiz_index)가
+# 이어지는지를 볼 수 있다.
+const RUN_GATES := 7
 
 # 이 검사는 진짜 판을 굴리므로 진짜 저장 파일에 쓴다. 최고 기록도, 히든 모드
 # 해금 진행도도, 광고 카운터도 전부 여기 있다.
@@ -65,40 +67,51 @@ func _restore_save() -> void:
 	f.close()
 
 
-# 판을 실제로 끝낸다. 2.0 부터 틀린 게이트 하나는 하트 하나일 뿐이라, 하트를
-# 다 잃을 때까지 틀린다. 마지막 하나 전까지는 판이 계속되어야 한다 — 하트가
-# 남았는데 죽으면 그것도 여기서 잡는다.
+# 판을 실제로 끝낸다. 우주 판에서 하트는 소행성과 보스 탄에만 깎이므로, 그 길
+# (_space_hurt)로 하트를 다 잃는다. 마지막 하나 전까지는 판이 계속되어야 한다.
 func _lose_all_hearts(m: Node2D) -> void:
 	var n: int = m.get("hearts")
 	for i in range(n):
-		_gate(m, false)
+		m.set("hurt_elapsed", -1.0)
+		m.call("_space_hurt")
 		if i < n - 1 and m.get("state") == 4:
 			_fail("하트가 %d 개 남았는데 판이 끝났다" % (n - i - 1))
 			return
 
 
-# 게이트 하나를 실제 판정 함수로 통과시킨다. correct=false 면 틀린 차선에
-# 놓아 진짜 죽음을 만든다.
+# 문제 하나를 실제 판정으로 푼다: 정답이면 맞는 행성에, 아니면 어느 행성에도
+# 안 닿는 자리에 세워 두고 행성이 비행면에 닿을 때까지 판을 돌린다. 정답 뒤의
+# 룰렛 구간은 바로 끝낸다.
 func _gate(m: Node2D, correct: bool) -> void:
-	var view: Vector2 = m.call("get_viewport_rect").size
-	m.call("_spawn_gate", view)
-	var gs: Array = m.get("gates")
-	if gs.is_empty():
-		_fail("_spawn_gate 가 게이트를 안 만들었다")
-		return
-	var g: Dictionary = gs[gs.size() - 1]
-	var use_top: bool = g.top_correct if correct else not g.top_correct
-	var zt: float = g.top_zone_top if use_top else g.bottom_zone_top
-	var zb: float = g.top_zone_bottom if use_top else g.bottom_zone_bottom
-	m.set("player_y", (zt + zb) * 0.5)
-	m.call("_resolve_gate", g, view)
+	var sp = m.get("space")
+	var w: Dictionary = sp.upcoming_wave()
+	if w.is_empty():
+		sp.spawn_wave()
+		w = sp.upcoming_wave()
+	var pos := Vector2(2.2, -2.9)
+	if correct:
+		for p in w.planets:
+			if p.correct:
+				pos = p.pos
+	sp.ship_pos = pos
+	sp.ship_target = pos
+	var guard := 0
+	while not w.resolved and guard < 2000 and m.get("state") == 3:
+		sp.tick(1.0 / 60.0, true, true)
+		guard += 1
+	if sp.phase == sp.Phase.LOOT:
+		for r in sp.rocks:
+			r.node.queue_free()
+		sp.rocks.clear()
+		sp.phase_time = sp.LOOT_DURATION
+		sp.tick(1.0 / 60.0, true, true)
 
 
 func _snap(m: Node2D) -> Dictionary:
 	return {
 		"score": m.get("score"),
 		"gates": m.get("gates_passed"),
-		"phase": m.call("_get_phase_index", m.get("gates_passed")),
+		"phase": m.get("space").quiz_index,
 		"combo": m.get("combo"),
 		"max_combo": m.get("max_combo"),
 		"leaderboard": m.get("leaderboard_score"),
@@ -118,19 +131,21 @@ func _run() -> void:
 		await process_frame
 
 	_backup_save()
-	print("check_revive_continuity: phase_gate_counts = %s" % str(m.get("phase_gate_counts")))
+	print("check_revive_continuity")
 	print("")
 
 	m.call("_apply_mode", 0)
 	m.call("_reset_game")
 	m.call("_start_countdown")
+	# 카운트다운은 건너뛴다 — 판정은 PLAYING 에서만 돈다. 튜토리얼도 끈다.
+	m.set("tutorial_active", false)
+	m.set("state", 3)
 	for i in range(RUN_GATES):
 		_gate(m, true)
 	var before: Dictionary = _snap(m)
 	_show("죽기 직전", before)
 	if before["phase"] <= 0:
-		_fail("%d 게이트를 지났는데 아직 phase %d 다 — 이 검사가 phase 유지 여부를 못 본다" % [
-			RUN_GATES, before["phase"]])
+		_fail("%d 문제를 풀었는데 진행도가 %d 다 — 이 검사가 이어짐을 못 본다" % [RUN_GATES, before["phase"]])
 
 	_lose_all_hearts(m)   # 틀린 차선을 하트 수만큼 -> 진짜 죽음 -> 부활 제안
 	var dead: Dictionary = _snap(m)
@@ -161,10 +176,7 @@ func _run() -> void:
 			after["phase"], after["gates"]])
 
 	# ---- 2. 그 자리에서 계속 오르는가 ----
-	var need: int = 0
-	for n in m.get("phase_gate_counts"):
-		need += int(n)
-	var to_next: int = maxi(1, need - after["gates"] + 1)
+	var to_next: int = 1
 	for i in range(to_next):
 		_gate(m, true)
 	var later: Dictionary = _snap(m)

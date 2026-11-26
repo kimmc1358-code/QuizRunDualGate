@@ -235,6 +235,11 @@ func _run() -> void:
 	_check(sp.phase == sp.Phase.QUIZ and not sp.upcoming_wave().is_empty(), "and a new question follows")
 
 	# ---- 4 ----
+	# Asteroids left over from the loot are still in flight; they would cost
+	# a heart here for a reason this step is not about.
+	for r in sp.rocks:
+		r.node.queue_free()
+	sp.rocks.clear()
 	sp.level = 4
 	var hearts_before: int = m.hearts
 	w = sp.upcoming_wave()
