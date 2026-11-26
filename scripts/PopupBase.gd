@@ -1062,7 +1062,7 @@ func _slider_label_column(font_size: int, texts: Array) -> float:
 	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
 
 
-# 아이콘 없이 칸을 통째로 쓰는 이름표(BOOST/LANGUAGE)용 — 슬라이더와 같은
+# 아이콘 없이 칸을 통째로 쓰는 이름표(LANGUAGE)용 — 슬라이더와 같은
 # 칸을 나눠 쓰므로 둘 다 재서 넓은 쪽을 골라야 한다. 슬라이더 쪽만 재면
 # 이름표가 트랙 밑으로 파고든다: "LANGUAGE" 가 "MUSIC" 보다 길다.
 func _row_label_column(font_size: int, texts: Array) -> float:
@@ -1075,8 +1075,7 @@ func _row_label_column(font_size: int, texts: Array) -> float:
 # ---- 두 갈래 토글 ----
 #
 # 알약 모양 트랙 위를 손잡이가 좌우로 옮겨 다니고, 두 칸에 각각 이름이 적힌다.
-# 지금 쓰는 곳은 가속 버튼의 좌/우 하나뿐이지만, 설정 팝업과 일시정지 팝업
-# 둘 다에서 쓰므로 여기 둔다.
+# 지금 쓰는 곳은 설정 팝업의 언어(ENG/KOR) 하나뿐이다.
 #
 # 처음에는 금색 버튼(_make_button) 두 개로 만들었는데 테두리가 깨졌다.
 # GOLD_CORNER 가 88px 이고 나인패치는 모서리를 원본 크기로 그리므로, 버튼을

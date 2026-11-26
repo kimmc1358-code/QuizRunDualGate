@@ -75,10 +75,6 @@ func _run() -> void:
 	# 그대로 커밋되면 모두가 매 판 튜토리얼을 본다.
 	if m.get("debug_replay_tutorial"):
 		_fail("debug_replay_tutorial 이 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
-	# 같은 함정의 다른 스위치. 이걸 보던 check_hidden_unlock 이 예전 게이트 판과
-	# 함께 지워져서 여기로 옮겼다 — 켜진 채 커밋되면 MIX 가 모두에게 잠긴다.
-	if m.get("debug_force_hidden_locked"):
-		_fail("debug_force_hidden_locked 가 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
 	print("check_tutorial:")
 	print("")
 

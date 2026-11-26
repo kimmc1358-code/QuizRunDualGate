@@ -37,13 +37,11 @@ func _run() -> void:
 		await process_frame
 
 	var card = main.get("share_card")
-	var dirs: Array = main.get("MODE_CHARACTER_DIR")
-	var happy: Array = main.get("MODE_CHARACTER_HAPPY_FILE")
+	var face: Texture2D = ArtSlot.texture(str(main.get("FACE_HAPPY_PATH")))
 	var was_locale: String = TranslationServer.get_locale()
 	for shot in SHOTS:
 		TranslationServer.set_locale(shot[0])
 		var mode: int = shot[1]
-		var face: Texture2D = load(str(dirs[mode]) + str(happy[mode]))
 		var img: Image = await card.render(mode, shot[2], shot[3], face)
 		var name := "share_%s_mode%d_%d%s.png" % [shot[0], mode, shot[2], "_new" if shot[3] else ""]
 		if img == null or img.is_empty():

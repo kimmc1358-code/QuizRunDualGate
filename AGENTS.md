@@ -12,8 +12,10 @@ scene. Tap anywhere to flap; fly through the gate whose answer matches the
 quiz prompt. Four visual concepts share the mechanic — `SKY`, `JUNGLE`,
 `OCEAN`, `DREAM` — picked on the mode-select screen.
 
-The whole game is "Hard mode". There is no difficulty selector; the phase
-system (`_get_phase_index`) scales difficulty by gates passed.
+The whole game is "Hard mode". There is no difficulty selector; each cycle
+of the space game (`SpaceRun.cycle`) brings more gates a wave and a tougher
+boss. The four 1.x modes and their code are gone (2026-11-27); `Mode` only
+indexes the per-mode best scores and leaderboards now. See CLAUDE.md.
 
 ## Verifying changes
 
@@ -55,16 +57,15 @@ all need the user to play it.
 check cannot. Run them with `--script`, same as above. Each exits non-zero
 on failure.
 
-| Script | Guards | Re-run when |
-|---|---|---|
-| `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
+The current list, with what each guards and when to re-run it, is the
+*Checkers* table in CLAUDE.md. (`check_boost_bar_range.gd`, the one row this
+table carried, was retired with the boost on 2026-11-27.)
 
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
 it that way — if a checker needs a calculation, extract it from the draw
-code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` still
-re-derives; a copy of a table is exactly what passes while the game itself
-loads nothing.
+code and call it (as `check_tutorial` does with `_tutorial_steps`). A copy
+of a table is exactly what passes while the game itself loads nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -72,10 +73,10 @@ being given far more room than the game has.
 
 ## Architecture
 
-`scripts/Main.gd` is ~6000 lines and deliberately monolithic: gameplay is
-**custom-drawn** in one `_draw()`, not built from nodes. Gates, character,
-background and FX are all `draw_texture_rect` calls over plain Dictionaries
-in Arrays. There is no physics engine and no per-entity scene.
+`scripts/Main.gd` is ~3200 lines and deliberately monolithic: what it draws
+is **custom-drawn** in one `_draw()` (and `draw_hud_into` for the HUD), not
+built from nodes. The 3D world itself is `SpaceRun`'s, rendered in its own
+viewport.
 
 Consequences worth knowing before editing:
 
@@ -83,13 +84,11 @@ Consequences worth knowing before editing:
   Array. Features are self-contained in that trio and are documented as
   such in block comments ("Whole feature = these consts + ... Delete those
   to remove it").
-- Per-mode variation is **parallel arrays indexed by `Mode`**, e.g.
-  `MODE_PARTICLE_DIR`, `MODE_FX_DIR`, `TRAIL_COLORS_PER_MODE`. Adding a mode
-  means extending every one of them. A count of `0` (see
-  `MODE_PARTICLE_COUNT[SKY]`) disables a feature for one mode while keeping
-  the arrays index-aligned.
-- `_apply_mode(mode)` loads all per-mode art. It runs at `_ready` and on
-  every mode switch.
+- `Mode` still indexes the per-mode best scores, their save keys and
+  `MODE_LEADERBOARD_ID` (and `MODE_BGM_NAME`); the per-mode art arrays went
+  with 1.x on 2026-11-27.
+- `_apply_mode(mode)` sets the mode and loads the play screen's art. It runs
+  in `_boot_load` and every time a run is started from the mode select.
 - `_boot_load()` does the heavy loading *after* the logo fades in, not in
   `_ready`. A headless run that only survives a few frames will not have
   reached it.
@@ -113,21 +112,6 @@ powershell -ExecutionPolicy Bypass -File tools/slice_ambient_sheet.ps1 -Measure
 Every slicer takes `-Measure` to report the detected layout without writing.
 Use it first; the detection is alpha-band based, so a stray near-transparent
 pixel can invent a row and shift the whole name mapping.
-
-The exception is an **animation strip** — the character sheets and the boost
-burst. Those stay whole and are cut at load time by `_slice_spritesheet`,
-which takes a cell grid, drops fully transparent cells and rebuilds each
-cell's mipmaps. A regular grid needs no detection, so there is nothing for a
-tool to measure and nothing to commit twice.
-
-The boost burst runs the pipeline **backwards**: that art arrived as loose
-per-frame PNGs, so `tools/build_boost_burst_strips.ps1` assembles them into
-the strips instead of cutting one up. The sources live in
-`assets/fx/boost_burst/frames/` behind a `.gdignore`, so Godot never imports
-twenty PNGs the game does not open. Frames are copied at their **full canvas
-size**, never trimmed — the frames are registered against each other (the
-flame's head holds still while its tail grows backward out of it), and
-trimming each to its own bounds makes the head jitter.
 
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:
@@ -240,9 +224,5 @@ see `slice_boost_bar_sheet.ps1 -TrackHeight`, which must be re-run if
 
 - `.tscn` is **not XML**. Writing `&gt;` in a `text =` field stores those
   five characters literally.
-- `assets/backgrounds/<mode>_world/` has no `sky_world/particles/` — SKY
-  intentionally has no ambient layer.
-- The score box art (`assets/gates/flag_panel/panel_*.png`) is shared
-  between the HUD and the gate's flag panel. Changing it affects both.
 - `_load_trimmed()` builds an `ImageTexture` at runtime and calls
   `generate_mipmaps()` itself, so its inputs ignore the `.import` setting.

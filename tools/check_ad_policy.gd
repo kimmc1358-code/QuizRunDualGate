@@ -157,7 +157,6 @@ func _run() -> void:
 		["게임오버 PLAY AGAIN", "_on_gameover_play_again_pressed"],
 		["게임오버/일시정지 HOME", "_on_pause_home_pressed"],
 		["일시정지 RESTART", "_on_pause_restart_pressed"],
-		["모드선택 복귀(restart_button)", "_on_restart_pressed"],
 	]
 	for entry in paths:
 		_fresh_install(m)

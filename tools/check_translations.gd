@@ -37,7 +37,6 @@ const UI_SCRIPTS := [
 	"res://scripts/ModeSelectScreen.gd",
 	"res://scripts/TutorialOverlay.gd",
 	"res://scripts/ShareCard.gd",
-	"res://scripts/CollectionPopup.gd",
 ]
 const ALL_SCRIPTS_DIR := "res://scripts"
 
@@ -45,7 +44,6 @@ const ALL_SCRIPTS_DIR := "res://scripts"
 # 영어지"를 다시 묻게 되고, 그때 답이 여기 있어야 한다.
 const ENGLISH_ON_PURPOSE := {
 	"START": "그려진 START 아트와 같은 자리·같은 단어다. 글자만 한글로 바꾸면 아트와 어긋난다",
-	"BOOST": "가속 버튼의 이름이고, 한글 튜토리얼 설명도 BOOST 라고 부른다",
 	"ENG": "언어 토글 — 어느 언어에서든 두 선택지가 읽혀야 한다",
 	"KOR": "언어 토글 — 어느 언어에서든 두 선택지가 읽혀야 한다",
 	"BEST": "HUD 와 모드 카드의 BEST 와 같은 단어다. 셋이 같아 보여야 한다",
@@ -63,15 +61,6 @@ const LEAVE_ALONE := {
 	"BUTTON_SOUND_BUS": "오디오 버스 이름",
 	"SCORE_LABEL_TEXT": "게임 화면 HUD 의 SCORE. 한글화 범위는 메뉴·팝업까지고 HUD 는 빠져 있다 — 옆의 BEST 와도 짝이 맞아야 한다",
 	"TITLE_SUBTITLE": "타이틀 화면의 금색 QUIZ RUN — 타이틀 글자는 그림처럼 영어로 둔다. 같은 글자의 메인 화면 카드 이름은 번역한다",
-}
-
-# 원문 그대로 들고 다녀야 하는 것. 이 프로젝트는 퀴즈 정답 맞추기와 중복
-# 방지에 영어 원문을 키로 쓰므로, 상수 자체는 번역하지 않고 그리는 자리에서만
-# tr() 을 부른다(CLAUDE.md 의 Language 절). 그래서 "쓰는 줄마다 tr()" 은
-# 여기에 걸 수 없고, 대신 "어딘가 한 곳에서는 tr() 을 거치는가"만 본다.
-const RAW_FOR_LOGIC := {
-	"OCEAN_COLOR_NAMES": "문제 생성·중복 검사·정답 매칭의 키를 겸한다",
-	"OCEAN_PROMPT_INK": "같은 이유 — 정답 이름과 비교된다",
 }
 
 # 글자가 아니라 자원을 가리키는 상수. 이름으로 거른다.
@@ -241,18 +230,6 @@ func _run() -> void:
 				if not translated:
 					continue
 				checked += 1
-				if RAW_FOR_LOGIC.has(name):
-					# 그리는 자리 한 곳에서만 지나면 된다. 한 곳도 없으면
-					# 번역은 아무 데도 안 나온다.
-					var seen := false
-					for line in lines:
-						if line.contains("tr(%s" % name):
-							seen = true
-							break
-					if not seen:
-						_fail_msg("%s 의 %s 는 원문 그대로 쓰기로 한 상수인데 tr() 을 거치는 자리가 하나도 없다" % [
-							file_name, name])
-					continue
 				for i in range(lines.size()):
 					var line: String = lines[i]
 					if not _mentions(line, name):
@@ -273,8 +250,7 @@ func _run() -> void:
 
 	# ---- 3. 아무도 안 쓰는 줄 ----
 	#
-	# 키가 어긋나면 번역은 조용히 안 나온다. 국가명은 여기 없고(countries.csv)
-	# 코드가 아니라 데이터에서 오므로, ui.csv 만 본다.
+	# 키가 어긋나면 번역은 조용히 안 나온다.
 	var unused: Array[String] = []
 	for key in _csv_keys:
 		if _csv_keys[key] == 0:

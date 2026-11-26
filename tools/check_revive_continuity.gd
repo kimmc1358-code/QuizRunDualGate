@@ -74,7 +74,7 @@ func _lose_all_hearts(m: Node2D) -> void:
 	for i in range(n):
 		m.set("hurt_elapsed", -1.0)
 		m.call("_space_hurt")
-		if i < n - 1 and m.get("state") == 4:
+		if i < n - 1 and m.get("state") == 3:
 			_fail("하트가 %d 개 남았는데 판이 끝났다" % (n - i - 1))
 			return
 
@@ -96,7 +96,7 @@ func _gate(m: Node2D, correct: bool) -> void:
 	sp.ship_pos = pos
 	sp.ship_target = pos
 	var guard := 0
-	while not w.resolved and guard < 2000 and m.get("state") == 3:
+	while not w.resolved and guard < 2000 and m.get("state") == 2:
 		sp.tick(1.0 / 60.0, true, true)
 		guard += 1
 	if sp.phase == sp.Phase.LOOT:
@@ -139,7 +139,7 @@ func _run() -> void:
 	m.call("_start_countdown")
 	# 카운트다운은 건너뛴다 — 판정은 PLAYING 에서만 돈다. 튜토리얼도 끈다.
 	m.set("tutorial_active", false)
-	m.set("state", 3)
+	m.set("state", 2)
 	for i in range(RUN_GATES):
 		_gate(m, true)
 	var before: Dictionary = _snap(m)
@@ -150,19 +150,19 @@ func _run() -> void:
 	_lose_all_hearts(m)   # 틀린 차선을 하트 수만큼 -> 진짜 죽음 -> 부활 제안
 	var dead: Dictionary = _snap(m)
 	_show("죽은 직후", dead)
-	if m.get("state") != 4:
-		_fail("죽었는데 상태가 GAMEOVER(4) 가 아니라 %d 다 — 부활 제안이 안 떴다" % m.get("state"))
+	if m.get("state") != 3:
+		_fail("죽었는데 상태가 GAMEOVER(3) 가 아니라 %d 다 — 부활 제안이 안 떴다" % m.get("state"))
 
 	m.call("_on_revive_continue")
 	# 카운트다운을 실제로 끝까지 돌린다. 여기서 초기화가 일어나면 버튼 직후만
 	# 재서는 못 본다.
 	for i in range(400):
 		m.call("_process", 1.0 / 60.0)
-		if m.get("state") == 3:
+		if m.get("state") == 2:
 			break
 	var after: Dictionary = _snap(m)
 	_show("이어 뛰기 시작", after)
-	if m.get("state") != 3:
+	if m.get("state") != 2:
 		_fail("이어가기 뒤 카운트다운이 안 끝났다 (상태 %d)" % m.get("state"))
 	if not m.get("run_revived"):
 		_fail("run_revived 가 안 섰다 — 전면광고 카운터가 이 판을 세어 버린다")
@@ -216,7 +216,7 @@ func _run() -> void:
 	m.get("leaderboard_bests")[m.get("current_mode")] = 0
 	var final_score: int = later["score"]
 	_lose_all_hearts(m)
-	if m.get("state") != 4:
+	if m.get("state") != 3:
 		_fail("두 번째 죽음 뒤 상태가 %d 다 — 게임오버로 안 갔다" % m.get("state"))
 	if m.get("leaderboard_score") != frozen:
 		_fail("두 번째로 죽자 순위표 점수가 %d -> %d 로 갱신됐다 — 광고 뒤에 번 점수가 순위에 올라간다" % [

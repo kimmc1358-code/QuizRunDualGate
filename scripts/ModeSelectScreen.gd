@@ -32,9 +32,6 @@ signal settings_pressed
 # 고른 카드의 모드를 실어 보낸다 — 어느 순위표를 열지는 그 모드가 정한다.
 signal leaderboard_pressed(mode: int)
 signal remove_ads_pressed
-## Nothing sends this since the 2.0 menu: the 1.x collection is being removed
-## and the hangar will take its place. Kept until Main stops connecting it.
-signal collection_pressed
 
 # ---- the modes ----
 const MODE_QUIZ := 0
@@ -569,17 +566,6 @@ func _on_coming_soon() -> void:
 func set_best_scores(values: PackedInt32Array) -> void:
 	_best = values
 	queue_redraw()
-
-
-## The 1.x MIX unlock. There is no hidden card in the 2.0 menu; Main still
-## reports progress until that system is removed.
-func set_hidden_progress(_cleared: int, _required: int, _gates_needed: int) -> void:
-	pass
-
-
-## The 1.x collection's NEW dot. The collection has no button any more.
-func set_collection_new(_has_new: bool) -> void:
-	pass
 
 
 ## 광고 제거를 샀는가. 샀으면 아래의 "광고 제거" 줄을 숨긴다.

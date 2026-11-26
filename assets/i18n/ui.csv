@@ -33,18 +33,6 @@ SHARE,SHARE,공유
 Login to join the Leaderboard!,Login to join the Leaderboard!,로그인하면 순위표에 오릅니다!
 Saved to Leaderboard,Saved to Leaderboard,순위표에 기록했습니다
 Your best is on the Leaderboard,Your best is on the Leaderboard,최고 기록이 순위표에 있습니다
-What COLOR is this word?,What COLOR is this word?,이 글자는 무슨 색?
-RED,RED,빨강
-BLUE,BLUE,파랑
-GREEN,GREEN,초록
-YELLOW,YELLOW,노랑
-ORANGE,ORANGE,주황
-PURPLE,PURPLE,보라
-PINK,PINK,분홍
-BROWN,BROWN,갈색
-BLACK,BLACK,검정
-WHITE,WHITE,하양
-GRAY,GRAY,회색
 Not logged in,Not logged in,로그인하지 않음
 Logged in as %s,Logged in as %s,%s 님으로 로그인됨
 LOGIN,LOGIN,로그인
@@ -80,31 +68,6 @@ I scored {score} in {mode} on QuizRun: Warp Gate! Can you beat me?,I scored {sco
 Share your score,Share your score,점수 공유하기
 ADS REMOVED,ADS REMOVED,광고 제거됨
 CONTINUE,CONTINUE,이어하기
-COLLECTION,COLLECTION,도감
-FLAGS,FLAGS,국기
-MATH,MATH,연산
-COLORS,COLORS,색깔
-Tap a flag to see its name,Tap a flag to see its name,국기를 누르면 이름이 나와요
-Tap a card to see it,Tap a card to see it,칸을 누르면 무엇인지 나와요
-"Stars at 10, 50 and 200 correct","Stars at 10, 50 and 200 correct",10 · 50 · 200문제를 맞히면 별을 받아요
-Not discovered yet,Not discovered yet,아직 못 만났어요
-"Seen it, missed it. Catch it next time!","Seen it, missed it. Catch it next time!",봤지만 놓쳤어요. 다음엔 꼭 맞혀요!
-'%s' written in %s,'%s' written in %s,'%s' 글자 · %s 색
-EASY,EASY,쉬움
-NORMAL,NORMAL,보통
-HARD,HARD,어려움
-EXPERT,EXPERT,전문가
-1-digit add & subtract,1-digit add & subtract,한 자리 덧셈 · 뺄셈
-2-digit add & subtract,2-digit add & subtract,두 자리 덧셈 · 뺄셈
-Times tables,Times tables,구구단
-2-digit with carrying,2-digit with carrying,받아올림 있는 두 자리
-2-digit × 1-digit,2-digit × 1-digit,두 자리 × 한 자리
-Missing number,Missing number,빈칸 채우기
-MAX,MAX,완료
-NEW!,NEW!,새로 수집!
-Flags +%d,Flags +%d,국기 +%d
-Colors +%d,Colors +%d,색 +%d
-Math stars +%d,Math stars +%d,연산 별 +%d
 QUIZ RUN,QUIZ RUN,퀴즈 런
 BATTLE,BATTLE,배틀
 DAILY,DAILY,데일리

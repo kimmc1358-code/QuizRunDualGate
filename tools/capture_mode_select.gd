@@ -54,34 +54,9 @@ func _run() -> void:
 	main.call("_set_state", 0)   # State.MODE_SELECT
 
 	var w: int = int(ProjectSettings.get_setting("display/window/size/viewport_width"))
-	var base_h: int = int(ProjectSettings.get_setting("display/window/size/viewport_height"))
 	for row in RATIOS:
 		DisplayServer.window_set_size(Vector2i(w, int(row[1])))
 		await process_frame
 		await _shot("mode_select_%s" % row[0])
-
-	# 히든 모드 카드는 잠금/해금 두 얼굴이다. 설명 바 문구가 바뀌는 자리라
-	# 둘 다 찍는다 — 잠금 쪽에는 진행도 숫자가 박혀 있어 길이도 다르다.
-	var screen = main.get("mode_select_panel")
-	if screen != null:
-		var modes: Array = screen.get("CARD_MODES")
-		var hidden_card: int = modes.find(screen.get("MODE_HIDDEN"))
-		var required: int = screen.get("hidden_modes_required")
-		var gates: int = screen.get("hidden_gates_needed")
-		if hidden_card >= 0:
-			for entry in [["locked", 1], ["open", required]]:
-				screen.call("set_hidden_progress", int(entry[1]), required, gates)
-				screen.call("_select", hidden_card, false)
-				await _shot("mode_select_hidden_%s" % entry[0])
-			# 잠금 판은 이름판과 점수판 사이에 맞춰 줄어들므로 화면이 짧을수록
-			# 작아진다. 16:9 가 가장 좁은 경우라 읽히는지 따로 본다.
-			DisplayServer.window_set_size(Vector2i(w, int(base_h)))
-			await process_frame
-			screen.call("set_hidden_progress", 1, required, gates)
-			screen.call("_select", hidden_card, false)
-			await _shot("mode_select_hidden_locked_16x9")
-			# 실제 진행도로 되돌린다.
-			main.call("_push_hidden_progress")
-			screen.call("_select", 0, false)
 
 	quit(0)

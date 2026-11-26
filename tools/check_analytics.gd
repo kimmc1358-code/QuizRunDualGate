@@ -148,7 +148,7 @@ func _run() -> void:
 		"decline logged revive %s and post_score %s" % [declined, revived_end])
 	main.get("gameover_popup").visible = false
 
-	# 튜토리얼, 도감, 공유.
+	# 튜토리얼과 공유.
 	main.call("_reset_game")
 	fake.calls.clear()
 	main.call("_begin_tutorial")
@@ -156,38 +156,12 @@ func _run() -> void:
 	_expect(_events(fake, "tutorial_begin").size() == 1 and _events(fake, "tutorial_complete").size() == 1,
 		"the tutorial logs its begin and its end", "tutorial events: %s" % [fake.calls])
 	fake.calls.clear()
-	main.call("_open_collection")
-	_expect(_events(fake, "collection_open").size() == 1, "opening the collection book is logged",
-		"collection open logged %s" % [fake.calls])
-	main.call("_on_collection_closed")
-	fake.calls.clear()
 	main.set("share_busy", false)
 	main.call("_on_gameover_share_pressed")
 	await process_frame
 	var shares := _events(fake, "share")
 	_expect(shares.size() == 1 and shares[0].get("item_id") == "math",
 		"a SHARE press is logged with the mode", "share logged %s" % [shares])
-
-	# MIX 해금은 넘어선 순간 한 번만.
-	var required: int = main.call("hidden_modes_required")
-	var gates_needed: int = main.get("HIDDEN_UNLOCK_GATES")
-	var cleared: PackedInt32Array = main.get("mode_gates_cleared")
-	var before := cleared.duplicate()
-	main.set("_last_hidden_cleared", required - 1)
-	for m in range(cleared.size()):
-		if m != int(main.get("HIDDEN_MODE")):
-			cleared[m] = gates_needed
-	main.set("mode_gates_cleared", cleared)
-	fake.calls.clear()
-	main.call("_push_hidden_progress")
-	main.call("_push_hidden_progress")
-	var unlocks := _events(fake, "unlock_achievement")
-	_expect(unlocks.size() == 1 and unlocks[0].get("achievement_id") == "mix_mode",
-		"crossing the MIX threshold logs unlock_achievement once",
-		"MIX unlock logged %s" % [unlocks])
-	main.set("mode_gates_cleared", before)
-	main.set("_last_hidden_cleared", -1)
-	main.call("_push_hidden_progress")
 
 	# 유럽: 답을 받았어도(OBTAINED) 분석은 끈다.
 	for status in ["REQUIRED", "OBTAINED", "UNKNOWN"]:

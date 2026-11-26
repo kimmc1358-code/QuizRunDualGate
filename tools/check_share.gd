@@ -49,11 +49,8 @@ func _run() -> void:
 	var logo: Texture2D = card.logo_texture()
 	if logo == null:
 		_fail_msg("the title logo did not load")
-	var faces := []
-	var dirs: Array = main.get("MODE_CHARACTER_DIR")
-	var happy: Array = main.get("MODE_CHARACTER_HAPPY_FILE")
-	for m in range(dirs.size()):
-		faces.append(ArtSlot.texture(str(dirs[m]) + str(happy[m])))
+	# The face the game hands the card — one for every mode since 2.0.
+	var face: Texture2D = ArtSlot.texture(str(main.get("FACE_HAPPY_PATH")))
 
 	var content_w: float = float(card.get("CONTENT_WIDTH"))
 	var min_size: int = int(card.get("SCORE_MIN_SIZE"))
@@ -66,12 +63,11 @@ func _run() -> void:
 		TranslationServer.set_locale(loc)
 		var smallest_score := 9999
 		var tightest := 9999.0
-		# Every mode the menu offers (2.0 has three; Main still carries four 1.x
-		# character slots, so faces can be the longer list).
-		for mode in range(mini(faces.size(), names.size())):
+		# Every mode the menu offers.
+		for mode in range(names.size()):
 			for s in SCORES:
 				for rec in [false, true]:
-					var lay: Dictionary = card.card_layout(mode, s, rec, logo, faces[mode])
+					var lay: Dictionary = card.card_layout(mode, s, rec, logo, face)
 					var where := "%s mode %d score %d%s" % [loc, mode, s, " NEW" if rec else ""]
 					var inner: Rect2 = lay.frame_inner
 					var stack := [["logo", lay.logo], ["mode plate", lay.pill],

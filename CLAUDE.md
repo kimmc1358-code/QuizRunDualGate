@@ -50,17 +50,16 @@ veil is still 117 against an interior of 70) and painting over it adds a
 black frame the other cards do not have; both were tried and both looked
 like a mistake.
 
-A debug build ignores the lock entirely, so the actual refusal only shows in
-a release export. **To see the locked card while developing**, tick
-`debug_force_hidden_locked` on Main in the inspector — it reports 0/3 no
-matter what the save says. It only works in a debug build. It is an
-`@export`, so ticking it in the inspector writes it into `Main.tscn`, and a
-commit like that locks MIX for everyone with the game still running
-perfectly, so `check_tutorial.gd` fails while it is on (the guard moved
-there from `check_hidden_unlock.gd`, which went with the gate game).
+**All of the above is 1.x, and its code is gone** (2026-11-27): the three
+quizzes, MIX and its unlock, the lock veil and the `debug_force_hidden_locked`
+switch that showed it (with its guard in `check_tutorial.gd`). `Mode`
+survives only to index the per-mode best scores, their save keys and the
+leaderboards. Old saves still carry `gates_cleared_<mode>`, `gates_rule` and
+`hidden_unlocked`; nothing reads them. The code is on `release/1.x`.
 
-The whole game is "Hard mode". There is no difficulty selector; the phase
-system (`_get_phase_index`) scales difficulty by gates passed.
+The whole game is "Hard mode". There is no difficulty selector; each cycle
+of the space game (`SpaceRun.cycle`) brings more gates a wave and a tougher
+boss.
 
 **2.0 is being built on `main`; 1.x is kept.** The last 1.x release (1.2.1,
 version code 6) is tagged `v1.2.1`, and `release/1.x` branches from it for any
@@ -120,7 +119,8 @@ else. One run goes round a cycle (`SpaceRun.Phase`):
    starts, with one more planet a wave (`planets_for_cycle`: 2, 3, then 4)
    and a tougher boss.
 
-Flags, Stroop and MIX are being removed (phase 2).
+Flags, Stroop and MIX were removed with the rest of the 1.x code on
+2026-11-27 (phase 2).
 
 The ship is Synty's `Fighter_05`, chosen from all 18 small ships rendered
 from the game's angle. `Fighter_03`, the first pick, looked good from above
@@ -130,8 +130,8 @@ for the same reason: from nearly level, every flat fighter is a line.
 `scripts/SpaceRun.gd` owns the 3D world and the rules of contact. Main
 still owns the run: score, combo, hearts, the revive offer, popups and the
 question box. SpaceRun reports each outcome through Main's `_space_*`
-handlers. `space` is null only before boot; the old gate code still sits in
-Main, unreached, until phase 2 removes it.
+handlers. `space` is null only before boot. The old gate code that sat in
+Main, unreached, was removed on 2026-11-27.
 
 The fairness lives in one choice: **judging happens on the flight plane
 (z = 0), where the ship really is.** A wave is decided the frame it reaches
@@ -313,17 +313,26 @@ gone from Main: `check_gate_reach`, `check_hearts`, `check_mix_mode`,
 `check_speed_lines`, `check_popup_overlap` and `check_ambient_density`. Each
 called a function the rework had removed. A checker that hits a script error
 does not exit; it sits there until killed, so a full sweep cost 2.5 minutes
-per dead checker. Hearts are now covered by `check_space`. MIX's unlock and
-the collection are still in the code, waiting to be removed, but nothing
-checks them any more. The guard against
-`debug_force_hidden_locked` being committed switched on moved to `check_tutorial`. The rule used was:
-delete what can no longer run, keep what still passes.
-`check_boost_bar_range` still passes against a 1.x table Main has not yet
-dropped; retire it with that table. `check_tutorial` was rewritten for the
-three space steps. Once the 1.x art was deleted the same day, three more
-went: `check_bg_layers` and `check_sparkle_pools` (no art left to check)
-and `check_ocean_prompt`. The Stroop quiz it measured is unreachable in the
+per dead checker. Hearts are now covered by `check_space`. The guard against
+`debug_force_hidden_locked` being committed switched on moved to
+`check_tutorial`. The rule used was: delete what can no longer run, keep
+what still passes. `check_tutorial` was rewritten for the three space steps.
+Once the 1.x art was deleted the same day, three more went:
+`check_bg_layers` and `check_sparkle_pools` (no art left to check) and
+`check_ocean_prompt`. The Stroop quiz it measured is unreachable in the
 space game, and it failed only because the question box got narrower.
+
+**The rest of the 1.x code went on 2026-11-27**: about 2,800 lines of Main
+(the flap physics and gate tables, the boost, backgrounds, particles,
+trails and sparkles, the character sheets, the three quizzes, MIX's unlock,
+the collection book and `CollectionPopup.gd`, the old ready and game over
+panels in `Main.tscn`), the country-name translations, the Stroop and
+collection rows of `ui.csv`, and the flap and boost sounds. With them went
+`check_boost_bar_range` (its table was gone) and `check_unicorn_assets`
+(DREAM's art was deleted the day before), the MIX-unlock and collection
+assertions in `check_analytics`, the `debug_force_hidden_locked` guard in
+`check_tutorial`, and every capture script that drove the gate game (see
+*Screenshots of the running game*).
 
 **A run has `MAX_HEARTS` (3) hearts.** In 1.x one miss ended the run; the
 first 28 days of analytics showed about eight runs per player and roughly 12%
@@ -357,6 +366,12 @@ while drawing. A gate is spawned one whole gate ahead of being judged, so
 recomputing from `gates_passed` at draw time would shrink a gate in mid-air
 as the one before it scored.
 
+Both of these are 1.x: the wall, the floor, `_take_gate_hit` and the bigger
+early hole (`gate_hole_*`) went with the gate game. In the space game a heart
+is lost only to an asteroid or a boss shot (`_space_hurt`), and a wrong gate
+costs a weapon step and the combo instead; the blink after a hit still makes
+the ship safe for `HURT_INVULN_DURATION`.
+
 ## Language
 
 `assets/i18n/ui.csv` holds every translated string, `en` and `ko`, and Godot
@@ -373,22 +388,11 @@ popups, and the settings and about popups. **Words that live in painted art stay
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
 them. So does `LOGIN WITH`, which is glued to the Google mark.
 
-The quiz content is translated too: the eleven Stroop colour words, and all
-193 country names in `assets/i18n/countries.csv` (a second file so the UI
-table stays readable). Arithmetic needs nothing.
-
-Stroop was the one that had to be done. The interference comes from reading
-being involuntary, so an English `RED` in front of a Korean player is closer
-to a shape than a word — the conflict never fires and the mode collapses into
-"what colour is this text" with no trap in it. Those eleven words are the
-mode, not decoration on it.
-
-In both cases **only the drawn string goes through `tr()`.**
-`OCEAN_COLOR_NAMES` and the JSON's `name` stay English everywhere else,
-because they also key the problem generator, the repeat guard and the answer
-matching. Translating at the source would tie that logic to the locale for no
-gain. So each is one `tr()` at the draw site, plus the width measurement that
-sizes the gate labels.
+The 1.x quiz content was translated too — the eleven Stroop colour words
+(an English `RED` in front of a Korean player is a shape, not a word, so the
+Stroop trap never fires) and the 193 country names in a second file,
+`countries.csv`. Both went with those quizzes on 2026-11-27. The space
+game's questions are arrows, hands and sums, which need nothing.
 
 **The gap this leaves is a string that never reaches `tr()`**, and it does not
 look like a bug: `tr()` returns its key when there is no translation, so a
@@ -480,7 +484,7 @@ on failure.
 | `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the three `AdIds.LIVE_*` values and nothing in the formats the game does not use, the banner included; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
 | `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
-| `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and neither `debug_replay_tutorial` nor `debug_force_hidden_locked` is on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`/`debug_force_hidden_locked`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
+| `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and `debug_replay_tutorial` is not on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
 | `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 gates a wave by cycle; every arrow, hand and sum question has exactly one right gate and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer passes the gate, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong gate or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
@@ -492,14 +496,12 @@ on failure.
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
 | `check_share.gd` | the share card, in both languages, all four modes, scores from 0 to the int maximum, record or not: every piece sits inside the white frame and the stack never overlaps; the score, label, footer and mode plate fit `CONTENT_WIDTH` — the score shrinks to fit but stops at `SCORE_MIN_SIZE`, so shrinking is no proof that it fits; the logo and character actually loaded; the share text carries the grouped score, the translated mode name and the store link with no `{placeholder}` left; and on PC a SHARE press opens nothing and leaves the button free | `ShareCard`'s layout constants or `card_layout`, the fonts, `CARD_NAMES` or their translations, `SHARE_TEXT`/`FOOTER_TEXT`, `ScoreFormat.grouped`, `ExternalLinks.STORE_URL`, or `_on_gameover_share_pressed` |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
-| `check_boost_bar_range.gd` | all three boost bonus tiers are reachable | `BOOST_BUTTON_MULTIPLIER`, `GATE_SPEED`, `base_gate_spacing`, or the `boost_bonus_*` thresholds change |
-| `check_unicorn_assets.gd` | DREAM's character art is present, its sheet divides evenly into the cell grid, and all four modes end up with a visible character (a missing file falls back to SKY, and it says so) | the unicorn art is re-cut or replaced, or `_slice_spritesheet`'s grid changes |
-| `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, `collection_open`, `share`, and `unlock_achievement` only at the moment MIX unlocks | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, `_open_collection`, `_on_gameover_share_pressed`, or `_push_hidden_progress` |
+| `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, and `share` | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, or `_on_gameover_share_pressed` |
 
 **A checker that plays real gates writes to the real save file.** `user://
-savegame.cfg` holds the best scores, the hidden-mode progress and the ad
-counters, and driving `_resolve_gate` or `_finish_run` updates all three on
-the machine running the check. `check_revive_continuity.gd` therefore
+savegame.cfg` holds the best scores, the tutorial flag and the ad counters,
+and driving a run to `_finish_run` or `_reset_game` updates them on the
+machine running the check. `check_revive_continuity.gd` therefore
 backs the whole file up and writes it
 back at the end. Restoring a few chosen values is not enough — that was
 tried, and a throwaway probe left this machine's SKY record sitting at the
@@ -509,9 +511,8 @@ it. Any new checker that runs gates copies that backup/restore pair.
 Most of them instantiate the real `Main.tscn` and call its own functions
 rather than re-deriving the maths, so they cannot drift from the game. Keep
 it that way — if a checker needs a calculation, extract it from the draw
-code and call it (see `_boost_pop_layout`). `check_boost_bar_range.gd` still
-re-derives; a copy of a table is exactly what passes while the game itself
-loads nothing.
+code and call it (as `check_tutorial` does with `_tutorial_steps`). A copy
+of a table is exactly what passes while the game itself loads nothing.
 
 Note: a headless viewport reports a **square** size, not 480x854. Read the
 resolution from `ProjectSettings` instead, or a layout check passes by
@@ -532,58 +533,36 @@ RenderingServer.frame_post_draw` is the whole trick; without that await you
 save the previous frame. `capture_score_display.gd` is the worked example —
 it sets a score, redraws, and shoots, once per digit count.
 
-`capture_combo.gd` freezes the clock and writes a combo count straight in,
-because tier 4 needs 76 consecutive gates and its colour animates — a value
-you cannot reach by playing and a colour one frame cannot show.
-
-`capture_mix_mode.gd` shoots one gate of each quiz kind in MIX, because
-a count of which kind came up cannot show a flag
-gate drawn with the Stroop code path. `capture_language_toggle.gd` shoots the
-mode select, settings, revive, game over and about screens in both languages,
-and drives the language switch through `Main` rather than the popup so the
-rebuild path is the one being photographed.
-
-`capture_store_screenshots.gd` takes the Play Store phone screenshots, five per language, into `store/screenshots/<ko|en>/`: mode select with MIX still locked, one gate of each quiz mid-flight, and a new-record game over. A phone cannot take them — at 19.5:9 its screen is outside the 16:9 / 9:16 the store accepts — and the dev PC cannot open a 1080x1920 window on a 1440-tall monitor, so the game runs inside an off-screen `SubViewport` 1080 by 1920 whose `size_2d_override` tells it the screen is 480x854: the layout is the game's own, drawn at 2.25x. It switches language and finishes a run, so it backs up and restores the save file like the checkers do.
-
-`capture_feature_graphic.gd` renders five drafts of the Play Store feature graphic (1024x500) from the game's own art. Draft E is `store/feature_graphic_1024x500.png`: three panels — SKY, JUNGLE, OCEAN — each on that mode's blurred game background with its character flying through its own gate (the ring's right half behind, the left half in front), and the logo across the top. D is the same on the sharp backgrounds with a smaller ring; its jungle panel lost the green gate and dragon against green foliage, which is why E uses the game's `_blur` layers and a 320px ring. MIX's unicorn is left out of every draft on purpose: that mode is hidden until earned, and a store image showing it would spoil it.
-
-`capture_gate_size.gd` shoots one gate at eight points along the early-gate
-hole ramp (`--mode <n>` for another mode), because a measurement can
-say the hole is 148.5px and still not answer whether 1.20x looks like enough
-room to a first-time player, or whether the shrink back to full size is
-something they would notice.
-
-`capture_promo.gd` records the game playing itself, for promo shorts. It runs
-under Godot's **Movie Maker** (`--write-movie <dir>/f.png --fixed-fps 60`),
-which writes lossless frames plus a `.wav` at a fixed timestep, so the video is
-frame-exact at 60fps however slowly the PC renders (about 9% of real time
-here). An autopilot taps through the game's own `_unhandled_input` — so taps
-sound and sparkle as a player's would — keeping the character within ±22px of
-the correct hole's centre, and follows a per-gate boost plan (`--plan
-full,none,half`): `full` boosts from the spawn for TURBO!, `half` from the bar's
-midpoint for BOOST!, `none` flies at normal speed. Boosting every gate made a
-cut where every pass read TURBO!, and the normal-speed stretches are what make
-a boost visible. It logs each pass with its time and tier, and the cut is
-chosen from that log with ffmpeg; `--lang en|ko` picks the language. It puts
-the boost button on the right (a left button hid a character diving for a
-bottom gate) and restores the save file.
-
-The editor binary carries the `.editor` window override (480x1067), which
-`--resolution` does not beat, so a 1080x1920 recording needs a temporary
-`override.cfg` in the project root setting
-`window/size/window_width_override.editor=1080` and `..._height_...=1920` —
-delete it straight after. The shorts of 2026-10-09 were cut from such takes:
-`build/promo/quizrun_shorts_24s_<ko|en>.mp4`, eight seconds per mode.
+`capture_language_toggle.gd` shoots the mode select, settings, revive, game
+over and about screens in both languages, and drives the language switch
+through `Main` rather than the popup so the rebuild path is the one being
+photographed.
 
 `capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
 
-`capture_ocean_quiz.gd` shoots the Stroop quiz box in Korean and English with each language's widest colour word, full screen and cropped to the box, because whether 19px *reads* on that art is not something a px count answers.
+`capture_mode_select.gd` shoots four aspect ratios. That screen divides its
+leftover height between blocks, so one ratio proves nothing about the others.
 
-`capture_mode_select.gd` is the other one, and it shoots four aspect ratios
-plus the hidden card in both of its states. That screen divides its leftover
-height between blocks, so one ratio proves nothing about the others; and the
-hidden card's blurb changes length with its lock, which is exactly where the
-explain bar would clip.
+**Nine capture scripts drove the 1.x gate game and were deleted on
+2026-11-27**: `capture_combo`, `capture_mix_mode`, `capture_ocean_quiz`,
+`capture_gate_size`, `capture_hearts`, `capture_collection`, `capture_promo`,
+`capture_store_screenshots` and `capture_feature_graphic`. Two techniques
+from them are worth keeping for 2.0, and git has both:
+
+- **Store screenshots** (`capture_store_screenshots`): a phone cannot take
+  them — at 19.5:9 its screen is outside the 16:9 / 9:16 the store accepts —
+  and the dev PC cannot open a 1080x1920 window on a 1440-tall monitor, so
+  the game ran inside an off-screen `SubViewport` 1080 by 1920 whose
+  `size_2d_override` told it the screen was 480x854: the layout is the
+  game's own, drawn at 2.25x.
+- **Promo video** (`capture_promo`): Godot's **Movie Maker**
+  (`--write-movie <dir>/f.png --fixed-fps 60`) writes lossless frames plus a
+  `.wav` at a fixed timestep, so the video is frame-exact at 60fps however
+  slowly the PC renders. The editor binary carries the `.editor` window
+  override (480x1067), which `--resolution` does not beat, so a 1080x1920
+  recording needs a temporary `override.cfg` in the project root setting
+  `window/size/window_width_override.editor=1080` and `..._height_...=1920` —
+  delete it straight after.
 
 Use this for anything where the question is "does it look right", and reach
 for it before mocking a composite up separately. A hand-built preview of the
@@ -592,70 +571,48 @@ BOOST popup looked fine for two rounds while the real game was drawing
 
 ## Architecture
 
-`scripts/Main.gd` is ~6000 lines and deliberately monolithic: gameplay is
-**custom-drawn** in one `_draw()`, not built from nodes. Gates, character,
-background and FX are all `draw_texture_rect` calls over plain Dictionaries
-in Arrays. There is no physics engine and no per-entity scene.
+`scripts/Main.gd` is ~3200 lines and deliberately monolithic: what it draws
+is **custom-drawn** in one `_draw()` (and `draw_hud_into` for the HUD), not
+built from nodes — the space world's frame, the answer plates, the combo,
+the countdown and the title are `draw_*` calls over plain state. The 3D
+world itself is `SpaceRun`'s, rendered in its own viewport.
 
 Consequences worth knowing before editing:
 
-- Anything visual is a `_draw_*` function plus a `_update_*` and a state
-  Array. Features are self-contained in that trio and are documented as
-  such in block comments ("Whole feature = these consts + ... Delete those
-  to remove it").
-- Per-mode variation is **parallel arrays indexed by `Mode`**, e.g.
-  `MODE_PARTICLE_DIR`, `MODE_FX_DIR`, `TRAIL_COLORS_PER_MODE`. Adding a mode
-  means extending every one of them. A count of `0` (see
-  `MODE_PARTICLE_COUNT[SKY]`) disables a feature for one mode while keeping
-  the arrays index-aligned.
-- `_apply_mode(mode)` loads all per-mode art. It runs at `_ready` and on
-  every mode switch.
+- Anything visual is a `_draw_*` function plus a `_update_*` and some state.
+  Features are self-contained in that trio and are documented as such in
+  block comments ("Whole feature = these consts + ... Delete those to remove
+  it").
+- `Mode` still indexes the per-mode best scores, their save keys and
+  `MODE_LEADERBOARD_ID` (and `MODE_BGM_NAME`); the per-mode art arrays went
+  with 1.x. Adding a mode means extending those.
+- `_apply_mode(mode)` sets the mode and loads the play screen's art. It runs
+  in `_boot_load` and every time a run is started from the mode select.
 - `_boot_load()` does the heavy loading *after* the logo fades in, not in
   `_ready`. A headless run that only survives a few frames will not have
   reached it.
 
-**The boost draws an afterimage of the character**, and the flame plume it
-replaced is gone. Testers kept saying the plume did not belong on a shark or
-a unicorn: the art was already per-mode (a water jet, a rainbow comet) but
-every silhouette was a jet exhaust. Fading copies of the character's own
-sprite cannot have that problem in any mode, and cost no per-mode art.
-
-The afterimage is half a lie and the comment on `BOOST_AFTERIMAGE_STEP_X`
-says so: the character never moves horizontally, so real ghosts would stack
-on one x. The recorded `y` is genuine history (it bends with the flapping);
-the backward offset is invented, and that is the half the eye reads as
-speed. Seven copies 8px apart, not four at 13px — at 13 the copies were
-individually legible and the bird read as several birds. Denser copies
-overlap, so `BOOST_AFTERIMAGE_ALPHA_HEAD` came down with the spacing.
-
 **A three-step tutorial runs once per install**, on the first entry to the
 play screen in any mode. `TutorialOverlay` dims the game and opens one hole
-at a time — character, then the quiz box, then the boost bar and button
-together — with a caption beside each.
+at a time — the ship, then the quiz box, then the progress gauge and the
+weapon readout together — with a caption beside each.
 
 It runs on the play screen rather than in a menu because every one of those
 sentences is about *that thing on that screen*; shown as a picture in a menu,
-the player still has to find the real one afterwards. The boost step is the
-reason the tutorial exists at all: holding the button does not change how
-fast the bar drains (the gate arrives sooner, so more is left at the judge
-line), so nothing on screen visibly answers the press — and a bar that
-empties reads as time running out, the opposite of "keeping it full pays".
-The button and the bar also sit at opposite ends of the screen, which is why
-that step lights both at once.
+the player still has to find the real one afterwards.
 
 The game is held in `State.COUNTDOWN` throughout: the one state that draws
-the world without running physics. `tutorial_active` freezes its clock and
-folds away the READY/START art, and keeps the boost button visible, which
-normally shows only in `State.PLAYING`. Main hands the overlay the rects,
+the world without running the run's rules. `tutorial_active` freezes its
+clock and folds away the READY/START art. Main hands the overlay the rects,
 read from the same helpers that place the real widgets, so moving the HUD
 cannot leave a highlight behind on empty background.
 
 **To watch the tutorial again**, tick `debug_replay_tutorial` on Main in the
 inspector; it runs on every entry until you untick it, and a run forced that
 way does not write "seen" to the save, so turning it off leaves the machine
-where it was. Same `@export` trap as `debug_force_hidden_locked` — ticking it
-writes into `Main.tscn`, and shipping that would make everyone sit through
-the tutorial every single run, so `check_tutorial.gd` fails while it is on.
+where it was. It is an `@export`, so ticking it writes into `Main.tscn`, and
+shipping that would make everyone sit through the tutorial every single run,
+so `check_tutorial.gd` fails while it is on.
 
 Other scripts: `PopupBase.gd` is the shared popup chrome (pause / revive /
 game over / settings / about all extend it). `HudCanvas.gd` is a 34-line
@@ -709,14 +666,12 @@ character sprites are gone, so the launcher icons can only be rebuilt from
 git history or new art. Much of what follows describes the 1.x art and its
 tools; it is history until new art arrives.
 
-The other code that loads 1.x art checks `ResourceLoader.exists` first, so
-those slots just stay null: the 2D gate rings, backgrounds and ambient
-particles, which are never drawn and are part of the phase-2 removal, and
-the tap sparkles. The sparkles were still drawn as the combo burst, which
-now draws nothing until it gets new art or a drawn effect. The score box
-gets a placeholder even though its panel is hidden
-(`SCORE_BOX_PANEL_VISIBLE`), because the SCORE/BEST labels are drawn only
-while `score_box_texture` is set.
+The code that loaded the rest of the 1.x art without a slot — the 2D gate
+rings, backgrounds, ambient particles and the tap sparkles — was removed on
+2026-11-27. The sparkles were last drawn as the combo burst, so a combo now
+only punches and shakes until it gets new art or a drawn effect. The SCORE/
+BEST labels are drawn only while `score_box_texture` is set, which is why
+the score box always gets one, placeholder or not.
 
 Art arrives as a **sheet**, is cut by a script in `tools/`, and both the
 sheet and the cut pieces are committed. Never hand-edit a cut piece — change
@@ -822,12 +777,6 @@ arc, then a `StyleBoxFlat` border on top. The strips have no anti-aliasing
 and the StyleBox does, so the strips are tucked `CARD_FILL_TUCK_PX` under the
 border and their stair-stepped edge never shows.
 
-The exception is an **animation strip** — the character sheets. Those stay
-whole and are cut at load time by `_slice_spritesheet`,
-which takes a cell grid, drops fully transparent cells and rebuilds each
-cell's mipmaps. A regular grid needs no detection, so there is nothing for a
-tool to measure and nothing to commit twice.
-
 Music ships as **OGG** (`BGM_EXTENSIONS` resolves `.ogg` before `.wav`, so an
 unconverted wav still plays and dropping the ogg beside it switches over).
 Tracks arrive as wav and are converted once, at the 160k the existing tracks
@@ -847,7 +796,8 @@ The player code is untouched and plays nothing while they are missing:
 the music. A new track dropped into `assets/audio/` under one of those names
 (`BGM_MENU_NAME`, `BGM_GAMEOVER_NAME`, `MODE_BGM_NAME`) plays with no code
 change. `check_gameover_bgm` reports "skipped" and passes until the game
-over track exists. The sound effects were kept.
+over track exists. The sound effects were kept, except the 1.x flap and
+boost sounds, which went with their code on 2026-11-27.
 
 **Effects are baked into the files, not applied at runtime.** This project
 has no blur shader in its custom-draw setup, so:
@@ -1009,8 +959,9 @@ record; changing it later means recreating all four. It was
 `janiju` — everything else already said JANIJU STUDIO.
 
 `export_filter` must stay `all_resources`. The game builds asset paths at
-runtime — flags, particles, tap sparkles — so nothing links them from a
-scene, and the scene-following export modes drop them silently.
+runtime — the music by name, the menu and popup art, the Synty kits —
+so nothing links them from a scene, and the scene-following export modes
+drop them silently.
 
 That is also why the **exclude filter** carries more than the two folders.
 `all_resources` ships everything under `res://`, including the sources the
@@ -1495,9 +1446,7 @@ collected by Firebase itself):
 | `post_score` | a run ends | `level_name`, `score`, `gates`, `max_combo`, `revived` (0/1) |
 | `revive` | the revive popup's outcome | `result`: `watched`, `skipped`, `no_ad`, `ad_free`, `declined` |
 | `tutorial_begin` / `tutorial_complete` | the tutorial's two ends | |
-| `unlock_achievement` | the moment MIX unlocks — not every launch after | `achievement_id` = `mix_mode` |
 | `share` | the game over SHARE | `method`, `content_type`, `item_id` = mode |
-| `collection_open` | the collection book opens | |
 
 `level_name` comes from `Analytics.MODE_NAMES` (`flags`, `math`, `colors`,
 `mix`) — fixed English names, so one mode stays one row whichever language the
@@ -1617,26 +1566,14 @@ the width on a phone, the height on a pillarboxed tablet.
   - `window/size/window_*_override.editor` runs the editor at 480x1067 (20:9,
     what most phones actually are) while the base viewport stays 16:9. The
     `.editor` suffix keeps it out of exported builds, which have no `editor`
-    feature tag. Do not "fix" this by changing the base viewport — that is
-    where `_gate_field_height_cap` gets the play field's ceiling, so it moves
-    the difficulty.
+    feature tag. Do not "fix" this by changing the base viewport — in 1.x that
+    was where the gate field took its ceiling, and the layout checkers still
+    read the reference resolution from it.
   - `rendering/textures/vram_compression/import_etc2_astc` exists only
     because the Android export refuses without it. Nothing is actually
     re-encoded: all 473 textures import lossless.
-- `assets/backgrounds/<mode>_world/` has no `sky_world/particles/` — SKY
-  intentionally has no ambient layer.
-- The score box art (`assets/gates/flag_panel/panel_*.png`) is shared
-  between the HUD and the gate's flag panel. Changing it affects both.
 - `_load_trimmed()` builds an `ImageTexture` at runtime and calls
   `generate_mipmaps()` itself, so its inputs ignore the `.import` setting.
-- **`GATE_SPEED` and `base_gate_spacing` move together, or difficulty moves
-  with them.** Everything the player has to react to is priced in
-  `base_gate_spacing / GATE_SPEED` — the seconds between one hole and the
-  next. Raising the speed alone shortens that and quietly tightens gate
-  placement; raising both in proportion buys the *sensation* of speed for
-  free, because the whole world scrolls faster while the rhythm and the
-  reachable range stay exactly where they were (130/600 and 200/900 are the
-  same 4.5-second gate).
 - **The device's screen height is not the play field.** The stretch mode is
   `canvas_items` + `keep_width`, so width is pinned at 480 and only height grows
   to fit the phone: a 21:9 device runs a 480x1120 viewport, not 480x854. The
@@ -1650,6 +1587,10 @@ the width on a phone, the height on a pillarboxed tablet.
   fraction of the *reference* viewport height, not `view_size.y`. Character
   clamping and the death line deliberately still use the real screen — see
   the comment on `_gate_field_top` for why an invisible floor is worse.
+  That was the 1.x gate game, and `_gate_field_*` went with it. The space
+  game keeps the camera's horizontal field of view instead (`KEEP_WIDTH`),
+  so a taller phone sees more space above and below, and `check_space`
+  checks every slot is on screen at 16:9 and 20:9.
 - **Tablets get side bars, not a wider game.** The stretch aspect is
   `keep_width`: a screen taller than 9:16 grows the viewport's height exactly
   as `expand` did, and a screen fatter than 9:16 keeps the 480x854 viewport
@@ -1707,9 +1648,3 @@ the width on a phone, the height on a pillarboxed tablet.
   green suite about anything layout-shaped, check whether the thing in
   question is actually measured at more than one ratio — and in Korean,
   where the mode names and the explain line are a different length.
-- Anything set against the world's scroll rate is set against `GATE_SPEED`
-  **in the same breath**, and stops being true when it changes. The one that
-  bites is `PARTICLE_DRIFT_X_RATIO`: DREAM's petals are only perceived as
-  diagonal relative to the background sliding under them, so speeding the
-  background from 130 to 200 turned a 45-degree drift into exactly 0 — dead
-  vertical — with the ratio untouched. Its comment carries the table.

@@ -53,7 +53,7 @@ func _run() -> void:
 
 	# 그리고 게임 화면 HUD. 상단 점수와 그 오른쪽 BEST 를 같은 값으로 둔다.
 	main.call("_reset_game")
-	main.call("_set_state", 3)   # State.PLAYING
+	main.call("_set_state", 2)   # State.PLAYING
 	for v in SHOTS:
 		main.set("score", v)
 		bests[main.get("current_mode")] = v

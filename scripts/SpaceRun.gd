@@ -533,10 +533,6 @@ func texture() -> Texture2D:
 	return viewport.get_texture() if viewport != null else null
 
 
-func fever_active() -> bool:
-	return phase == Phase.FEVER
-
-
 func speed() -> float:
 	return BASE_SPEED * (1.0 + 0.08 * cycle) * (FEVER_SPEED if phase == Phase.FEVER else 1.0)
 

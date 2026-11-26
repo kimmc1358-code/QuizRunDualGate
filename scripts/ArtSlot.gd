@@ -13,8 +13,8 @@ extends RefCounted
 ## SIZES once nothing should fall back for it. A path with no row comes back
 ## as a 256px square and says so once.
 ##
-## A sheet (an icon grid, a character's animation frames) gets one box per
-## cell, inset so the slicers that follow ink to a cell's edge stop inside it.
+## A sheet (an icon grid) gets one box per cell, inset so the slicers that
+## follow ink to a cell's edge stop inside it.
 
 const FILL := Color(0.36, 0.42, 0.56, 0.55)
 # Light blue rather than white: PopupBase._strip_white_background takes near-
@@ -96,25 +96,17 @@ const SIZES := {
 	"res://assets/ui_assets/popup/icon_information.png": Vector2i(1254, 1254),
 	"res://assets/ui_assets/popup/icon_noads.png": Vector2i(1263, 1245),
 	"res://assets/ui_assets/popup/icon_trophy.png": Vector2i(1374, 1145),
-	# characters: the animation sheets and the two faces
-	"res://assets/characters/bird_v2/bird_fly.png": Vector2i(512, 512),
-	"res://assets/characters/dragon_green/dragon_fly.png": Vector2i(512, 512),
-	"res://assets/characters/shark_blue/shark_swim.png": Vector2i(512, 512),
-	"res://assets/characters/unicorn_dream/unicorn_run.png": Vector2i(768, 512),
+	# characters: the two faces the popups and the share card show
 	"res://assets/characters/<char>/<face>.png": Vector2i(256, 256),
 }
 
 ## Sheets: how many cells across and down. Matches the grids their callers
-## slice with (PopupBase.ICON_GRID / POPUP_ICON_GRID / STATUS_ICON_GRID,
-## Main.MODE_CHARACTER_SHEET_GRID).
+## slice with (PopupBase.ICON_GRID / POPUP_ICON_GRID,
+## GameOverPopup.STATUS_ICON_GRID).
 const GRIDS := {
 	"res://assets/ui_assets/main/icon_sheet.png": Vector2i(5, 3),
 	"res://assets/ui_assets/popup/icon_popup.png": Vector2i(3, 1),
 	"res://assets/ui_assets/popup/icon_popup_2.png": Vector2i(2, 1),
-	"res://assets/characters/bird_v2/bird_fly.png": Vector2i(2, 2),
-	"res://assets/characters/dragon_green/dragon_fly.png": Vector2i(2, 2),
-	"res://assets/characters/shark_blue/shark_swim.png": Vector2i(2, 2),
-	"res://assets/characters/unicorn_dream/unicorn_run.png": Vector2i(3, 2),
 }
 
 static var _textures := {}
