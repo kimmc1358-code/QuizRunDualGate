@@ -8,15 +8,15 @@ extends SceneTree
 # 실제 광고는 폰에서만 뜬다. 여기서는 Ads 에 가짜 AdMob 을 끼우고, 광고가
 # 준비됐다/닫혔다/보상을 줬다를 차례로 흉내 내며 Main 이 어떻게 반응하는지 본다.
 #
-#   부활 광고: 끝까지 보면 이어 달린다. 중간에 닫으면 팝업에 남는다. 준비된
-#     광고가 없거나 띄우지 못하면 그냥 이어 준다(주인이 정한 규칙).
+#   리워드 광고(결과 화면의 x2): 끝까지 보면 이번 판의 스타더스트를 한 번 더
+#     준다. 중간에 닫으면 아무것도 주지 않고 버튼이 남는다. 광고가 없으면 주지 않는다.
 #   전면광고: 떠 있는 동안 카운트다운이 서 있다. 카운터는 광고가 실제로 보인
 #     뒤에만 비고, 준비된 것이 없거나 띄우지 못하면 그대로 남는다.
 #   소리: 전체 화면 광고 동안 Master 가 꺼지고, 닫히면 돌아온다.
 #   배너: 없다(2026-11-27). 다시 불러오는 길에서도 배너를 청하지 않는다.
 #
 # 판을 시작하고 끝내는 함수를 부르므로 광고 카운터가 세이브 파일에 적힌다.
-# 파일 전체를 받아 두었다가 끝에 되돌린다(check_revive_continuity.gd 와 같은 이유).
+# 파일 전체를 받아 두었다가 끝에 되돌린다 — 몇 값만 되돌리면 빠뜨린 값이 남는다.
 
 const SAVE_PATH := "user://savegame.cfg"
 const FAKE_ADMOB := """extends Node
@@ -77,10 +77,13 @@ func _run() -> void:
 	if ads.available:
 		_fail("Ads says it is available on a PC with no plugin")
 
-	# PC 그대로: 부활 광고를 누르면 곧장 이어 달린다.
-	_revive_setup(main)
-	main.call("_on_revive_watch_ad")
-	_expect(main.get("run_revived"), "PC: pressing watch-ad continues at once", "PC: watch-ad did nothing")
+	# ---- 결과 화면 x2: PC ----
+	# 광고가 아예 없는 PC 디버그 빌드는 곧장 준다(개발 중 확인용).
+	_dust_setup(main, 40)
+	var pc_before: int = main.get("stardust_total")
+	main.call("_on_double_stardust_pressed")
+	_expect(int(main.get("stardust_total")) == pc_before + 40 and main.get("dust_doubled"),
+		"PC debug: x2 grants the run's stardust again at once", "PC debug: x2 did not grant")
 
 	# 여기서부터 가짜 AdMob.
 	var script := GDScript.new()
@@ -91,41 +94,59 @@ func _run() -> void:
 	ads.set("available", true)
 	var master_muted := func() -> bool: return AudioServer.is_bus_mute(0)
 
-	# ---- 부활: 끝까지 봄 ----
-	_revive_setup(main)
-	ads.set("_rewarded_id", "r1")
-	main.call("_on_revive_watch_ad")
-	_expect(fake.calls.has("show_rewarded r1"), "rewarded ad is shown", "the rewarded ad was never shown")
-	_expect(not main.get("run_revived") and main.get("revive_panel").visible,
-		"the run waits while the ad is up", "the run continued before the ad closed")
+	# ---- 결과 화면 x2 ----
+	_dust_setup(main, 50)
+	var dust0: int = main.get("stardust_total")
+	ads.set("_rewarded_id", "d1")
+	main.call("_on_double_stardust_pressed")
+	_expect(fake.calls.has("show_rewarded d1") and int(main.get("stardust_total")) == dust0,
+		"x2 shows a rewarded ad and grants nothing yet", "x2 granted before the ad, or showed none")
 	ads.call("_set_showing", true)
 	_expect(master_muted.call(), "sound is off during the ad", "sound stayed on during the ad")
 	ads.set("_reward_earned", true)
 	ads.call("_on_rewarded_finished", true)
-	_expect(main.get("run_revived") and not main.get("revive_panel").visible,
-		"watched to the end -> the run continues", "watched to the end but the run did not continue")
+	_expect(int(main.get("stardust_total")) == dust0 + 50 and main.get("dust_doubled"),
+		"watched to the end -> the run's stardust is granted again", "watched, but no stardust granted")
+	_expect(main.get("run_rewarded"), "a watched x2 marks the run as rewarded (no interstitial count)",
+		"a watched x2 did not mark the run as rewarded")
 	_expect(not master_muted.call(), "sound is back after the ad", "sound stayed off after the ad")
 	_expect(fake.calls.has("load_rewarded"), "the next rewarded ad is requested", "no rewarded ad was re-requested")
+	main.call("_on_double_stardust_pressed")
+	_expect(int(main.get("stardust_total")) == dust0 + 50, "x2 is once a run", "x2 granted twice in one run")
 
-	# ---- 부활: 중간에 닫음 ----
-	_revive_setup(main)
-	ads.set("_rewarded_id", "r2")
-	main.call("_on_revive_watch_ad")
+	_dust_setup(main, 50)
+	dust0 = main.get("stardust_total")
+	ads.set("_rewarded_id", "d2")
+	main.call("_on_double_stardust_pressed")
 	ads.call("_on_rewarded_finished", true)
-	_expect(not main.get("run_revived") and main.get("revive_panel").visible,
-		"closed early -> still on the revive popup", "closed early but the run continued anyway")
-	# 그 자리에서 다시 누르면 준비된 광고가 없다 -> 그냥 이어 준다.
-	main.call("_on_revive_watch_ad")
-	_expect(main.get("run_revived"), "no ad ready -> the run continues free",
-		"no ad ready and the button did nothing")
+	var over: Control = main.get("gameover_popup")
+	_expect(int(main.get("stardust_total")) == dust0 and not main.get("dust_doubled")
+		and not over.get("_dust_no_ad"),
+		"closed early -> nothing granted, the x2 stays to press again", "closed early but stardust was granted, or the button went")
 
-	# ---- 부활: 띄우지 못함 ----
-	_revive_setup(main)
-	ads.set("_rewarded_id", "r3")
-	main.call("_on_revive_watch_ad")
+	_dust_setup(main, 50)
+	dust0 = main.get("stardust_total")
+	ads.set("_rewarded_id", "")
+	main.call("_on_double_stardust_pressed")
+	_expect(int(main.get("stardust_total")) == dust0 and over.get("_dust_no_ad"),
+		"no ad ready -> nothing granted, the button reads AD NOT READY", "no ad but stardust was granted, or the button stayed live")
+
+	_dust_setup(main, 50)
+	dust0 = main.get("stardust_total")
+	ads.set("_rewarded_id", "d3")
+	main.call("_on_double_stardust_pressed")
 	ads.call("_on_rewarded_finished", false)
-	_expect(main.get("run_revived"), "the ad failed to show -> the run continues",
-		"the ad failed to show and the player was left stuck")
+	_expect(int(main.get("stardust_total")) == dust0 and over.get("_dust_no_ad"),
+		"the ad failed to show -> nothing granted", "the ad failed but stardust was granted")
+
+	_dust_setup(main, 50)
+	dust0 = main.get("stardust_total")
+	main.set("ads_removed", true)
+	var shown_before: int = fake.calls.size()
+	main.call("_on_double_stardust_pressed")
+	_expect(int(main.get("stardust_total")) == dust0 + 50 and fake.calls.size() == shown_before,
+		"ads removed -> x2 grants at once with no ad", "ads removed but x2 asked for an ad or granted nothing")
+	main.set("ads_removed", false)
 
 	# ---- 전면광고 ----
 	var every: int = main.get("interstitial_every_restarts")
@@ -277,9 +298,12 @@ func _consent_reset(ads: Node, fake: Node) -> void:
 	ads.set("consent_status", "UNKNOWN")
 
 
-func _revive_setup(main: Node2D) -> void:
-	main.set("run_revived", false)
-	main.call("_offer_revive")
+## A run over with `amount` stardust earned and the x2 on offer.
+func _dust_setup(main: Node2D, amount: int) -> void:
+	main.set("last_run_stardust", amount)
+	main.set("dust_doubled", false)
+	main.get("gameover_popup").call("set_stardust", amount, true, main.get("ads_removed"))
+
 
 
 func _expect(cond: bool, ok_msg: String, fail_msg: String) -> void:

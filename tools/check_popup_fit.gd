@@ -51,27 +51,22 @@ func _run() -> void:
 
 	# 내용이 들어 있어야 크기가 진짜다. 빈 팝업은 무엇이든 들어간다.
 	var pause: Control = main.get("pause_panel")
-	var revive: Control = main.get("revive_panel")
 	var over: Control = main.get("gameover_popup")
 	var settings: Control = main.get("settings_popup")
 	var about: Control = main.get("about_popup")
-	for popup in [pause, revive, over, settings, about]:
+	for popup in [pause, over, settings, about]:
 		popup.call("ensure_built")
 	pause.call("set_volumes", 0.5, 0.5)
-	revive.call("set_score", 12600)
-	revive.call("set_character", null, 100.0)
 	settings.call("set_volumes", 0.5, 0.5)
 	settings.call("set_account", null, "PlayerName", true)
 
 	# 게임오버는 얼굴이 셋이다. 위쪽이 리본이냐 BEST 판이냐로 높이가 달라지고,
 	# 아깝게 놓친 판에는 한 줄이 더 붙는다.
 	var over_cases := [
-		["새 기록", 14000, 12000, true, true, 14000],
-		["기록 못 넘김", 12600, 14000, false, true, 12600],
-		["아깝게 놓침 + 부활", 13500, 14000, false, true, 9800],
-		["비로그인", 12600, 14000, false, false, 12600],
+		["새 기록", 14000, 12000, true],
+		["기록 못 넘김", 12600, 14000, false],
+		["아깝게 놓침", 13500, 14000, false],
 	]
-	var revive_cases := [["로그인", true], ["비로그인", false]]
 
 	for ratio in [[16, 9, 854.0], [20, 9, 1067.0]]:
 		var view := Vector2(480.0, float(ratio[2]))
@@ -79,13 +74,14 @@ func _run() -> void:
 		print("check_popup_fit: %dx%d 화면 480x%.0f" % [ratio[0], ratio[1], view.y])
 		for entry in [["pause", pause], ["settings", settings], ["about", about]]:
 			await _measure(str(entry[0]), entry[1], view)
-		for case in revive_cases:
-			revive.call("set_leaderboard_score", 9800, bool(case[1]))
-			await _measure("revive (%s)" % case[0], revive, view)
-		for case in over_cases:
-			over.call("set_result", null, 0.0, int(case[1]), 24, int(case[2]),
-				bool(case[3]), bool(case[4]), int(case[5]))
-			await _measure("gameover (%s)" % case[0], over, view)
+		# 스타더스트 줄(x2 버튼)이 있는 판과 없는 판 둘 다 — 줄이 하나 늘면
+		# 가장 빡빡한 16:9 에서 넘칠 수 있다.
+		for dust in [0, 1250]:
+			for case in over_cases:
+				over.call("set_result", null, 0.0, int(case[1]), 24, int(case[2]),
+					bool(case[3]))
+				over.call("set_stardust", dust, dust > 0, false)
+				await _measure("gameover (%s%s)" % [case[0], ", 스타더스트" if dust > 0 else ""], over, view)
 
 	if _fail == 0:
 		print("")

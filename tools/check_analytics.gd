@@ -10,7 +10,7 @@ extends SceneTree
 # 꺼져 있는 동안의 이벤트는 쌓지 않고 버린다.
 #
 # 판을 시작하고 끝내고 튜토리얼을 마치므로 세이브 파일에 적힌다. 파일 전체를 받아
-# 두었다가 끝에 되돌린다(check_revive_continuity.gd 와 같은 이유).
+# 두었다가 끝에 되돌린다 — 몇 값만 되돌리면 빠뜨린 값이 남는다.
 
 const SAVE_PATH := "user://savegame.cfg"
 const FAKE_ANALYTICS := """extends Node
@@ -118,50 +118,31 @@ func _run() -> void:
 	main.call("_finish_run")
 	var ends := _events(fake, "post_score")
 	_expect(ends.size() == 1 and ends[0].get("level_name") == "math" and ends[0].get("score") == 1234
-			and ends[0].get("gates") == 17 and ends[0].get("max_combo") == 9 and ends[0].get("revived") == 0,
-		"a run end logs post_score with mode, score 1234, 17 gates, combo 9, not revived",
+			and ends[0].get("gates") == 17 and ends[0].get("max_combo") == 9,
+		"a run end logs post_score with mode, score 1234, 17 gates, combo 9",
 		"run end logged %s" % [ends])
 	main.get("gameover_popup").visible = false
 
-	# 부활: 이어 뛰기는 같은 판이라 level_start 를 다시 남기지 않는다.
-	main.call("_reset_game")
-	main.call("_start_countdown")
-	main.call("_offer_revive")
+	# 결과 화면 x2 의 결과. 부활(이어 뛰기)은 2026-11-28 에 빠졌다.
+	main.set("last_run_stardust", 30)
+	main.set("dust_doubled", false)
 	fake.calls.clear()
-	main.call("_on_revive_ad_finished", Ads.Reward.SKIPPED)
-	main.call("_on_revive_ad_finished", Ads.Reward.EARNED)
-	var revives := _events(fake, "revive")
-	_expect(revives.size() == 2 and revives[0].get("result") == "skipped" and revives[1].get("result") == "watched",
-		"revive results are logged as skipped, then watched",
-		"revive results logged %s" % [revives])
-	_expect(_events(fake, "level_start").is_empty(),
-		"continuing after the ad does not count as a new run",
-		"the revive's countdown logged a second level_start")
-	fake.calls.clear()
-	main.call("_offer_revive")
-	main.call("_on_revive_decline")
-	var declined := _events(fake, "revive")
-	var revived_end := _events(fake, "post_score")
-	_expect(declined.size() == 1 and declined[0].get("result") == "declined"
-			and revived_end.size() == 1 and revived_end[0].get("revived") == 1,
-		"declining logs revive=declined, and the run end says it was revived",
-		"decline logged revive %s and post_score %s" % [declined, revived_end])
+	main.call("_on_double_ad_finished", Ads.Reward.SKIPPED)
+	main.call("_on_double_ad_finished", Ads.Reward.EARNED)
+	var doubles := _events(fake, "double_stardust")
+	_expect(doubles.size() == 2 and doubles[0].get("result") == "skipped"
+			and doubles[1].get("result") == "watched" and doubles[1].get("amount") == 30,
+		"x2 results are logged as skipped, then watched with the amount",
+		"x2 results logged %s" % [doubles])
 	main.get("gameover_popup").visible = false
 
-	# 튜토리얼과 공유.
+	# 튜토리얼.
 	main.call("_reset_game")
 	fake.calls.clear()
 	main.call("_begin_tutorial")
 	main.call("_on_tutorial_finished")
 	_expect(_events(fake, "tutorial_begin").size() == 1 and _events(fake, "tutorial_complete").size() == 1,
 		"the tutorial logs its begin and its end", "tutorial events: %s" % [fake.calls])
-	fake.calls.clear()
-	main.set("share_busy", false)
-	main.call("_on_gameover_share_pressed")
-	await process_frame
-	var shares := _events(fake, "share")
-	_expect(shares.size() == 1 and shares[0].get("item_id") == "math",
-		"a SHARE press is logged with the mode", "share logged %s" % [shares])
 
 	# 유럽: 답을 받았어도(OBTAINED) 분석은 끈다.
 	for status in ["REQUIRED", "OBTAINED", "UNKNOWN"]:

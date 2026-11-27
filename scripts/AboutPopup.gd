@@ -24,11 +24,11 @@ const LOGO_OUTLINE_COLOR := Color(0.05, 0.07, 0.12, 1.0)
 
 const INTRO_TEXT := "JANIJU STUDIO is an independent husband-and-wife game studio, crafting casual mobile games with heart, one gate at a time."
 const INTRO_SIZE_FRAC := 0.048         # 판 너비 대비
-const INTRO_COLOR := Color(0.55, 0.55, 0.58, 1.0)
+const INTRO_COLOR := Color(0.62, 0.72, 0.84, 1.0)
 
 # 섹션 제목은 금색 밑줄로 강조한다.
 const SECTION_SIZE_FRAC := 0.056
-const SECTION_COLOR := Color(0.055, 0.180, 0.435, 1.0)
+const SECTION_COLOR := Color(0.55, 0.88, 1.0, 1.0)
 const SECTION_RULE_COLOR := Color(1.0, 0.78, 0.22, 1.0)
 const SECTION_RULE_PX := 3.0
 const SECTION_RULE_DROP := 0.34        # 글자 크기 대비 베이스라인 아래로
@@ -40,9 +40,9 @@ const TEAM := [
 	["Development Support", "Claude Code"],
 ]
 const TEAM_LABEL_SIZE_FRAC := 0.040
-const TEAM_LABEL_COLOR := Color(0.58, 0.58, 0.62, 1.0)
+const TEAM_LABEL_COLOR := Color(0.50, 0.60, 0.72, 1.0)
 const TEAM_NAME_SIZE_FRAC := 0.058
-const TEAM_NAME_COLOR := Color(0.055, 0.180, 0.435, 1.0)
+const TEAM_NAME_COLOR := Color(0.90, 0.96, 1.0, 1.0)
 
 # MADE WITH: 왼쪽 회색 라벨 ...점선... 오른쪽 네이비 값.
 const MADE_WITH := [
@@ -54,9 +54,9 @@ const MADE_WITH := [
 	["Sound Effects", "ElevenLabs"],
 ]
 const ENTRY_SIZE_FRAC := 0.044
-const ENTRY_LABEL_COLOR := Color(0.58, 0.58, 0.62, 1.0)
-const ENTRY_VALUE_COLOR := Color(0.055, 0.180, 0.435, 1.0)
-const ENTRY_LEADER_COLOR := Color(0.80, 0.75, 0.63, 1.0)
+const ENTRY_LABEL_COLOR := Color(0.50, 0.60, 0.72, 1.0)
+const ENTRY_VALUE_COLOR := Color(0.90, 0.96, 1.0, 1.0)
+const ENTRY_LEADER_COLOR := Color(0.30, 0.45, 0.62, 1.0)
 const ENTRY_LEADER_DOT := 1.3          # 점 반지름
 const ENTRY_LEADER_STEP := 7.0         # 점 사이 간격
 const ENTRY_LEADER_PAD := 8.0          # 글자와 점선 사이
@@ -64,7 +64,7 @@ const ENTRY_MIN_SIZE := 10             # 라벨과 값이 한 줄에 안 들어�
 
 const FOOTER_LINES := ["Thank you for playing!", "© 2026 JANIJU STUDIO"]
 const FOOTER_SIZE_FRAC := 0.042
-const FOOTER_COLOR := Color(0.58, 0.58, 0.62, 1.0)
+const FOOTER_COLOR := Color(0.50, 0.60, 0.72, 1.0)
 
 # 세로 여백들 — 모두 판 높이 대비.
 const PAD_AFTER_LOGO := 0.006

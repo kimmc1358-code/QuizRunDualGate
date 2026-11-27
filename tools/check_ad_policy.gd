@@ -12,8 +12,8 @@ extends SceneTree
 # 여기서 보는 것:
 #   1. 설치 후 면제 구간에는 절대 안 나온다.
 #   2. 면제가 끝난 뒤에는 정확히 N판마다 나온다.
-#   3. 리워드 광고를 본 판은 카운터에 안 들어간다 — 부활 광고 바로 뒤에
-#      전면광고가 붙는 것을 막는 규칙이다.
+#   3. 리워드 광고(결과 화면의 x2)를 본 판은 카운터에 안 들어간다 — 광고를 보고
+#      바로 다시 하기를 눌렀는데 또 전면광고가 붙는 것을 막는 규칙이다.
 #   4. 카운터가 저장된다. 앱을 껐다 켜는 것으로 광고를 피할 수 없어야 한다.
 #   5. 판을 떠나는 네 경로가 전부 세어진다. 한 경로만 빠져도 그 경로로만
 #      재시작하면 광고가 영영 안 나온다.
@@ -38,13 +38,14 @@ func _fail(msg: String) -> void:
 	print("  FAIL: " + msg)
 
 
-# 판 하나를 처음부터 끝까지. revived=true 면 그 판에 리워드 광고를 봤다는 뜻.
+# 판 하나를 처음부터 끝까지. rewarded=true 면 그 판에 리워드 광고(결과 화면의
+# x2)를 끝까지 봤다는 뜻.
 # 게임의 실제 함수만 부른다 — 카운터를 여기서 직접 만지면 규칙이 아니라 이
 # 스크립트를 검사하게 된다.
-func _play_one(m: Node2D, revived: bool) -> bool:
+func _play_one(m: Node2D, rewarded: bool) -> bool:
 	m.call("_start_countdown")
-	if revived:
-		m.set("run_revived", true)
+	if rewarded:
+		m.set("run_rewarded", true)
 	m.call("_reset_game")
 	return m.call("_ad_try_interstitial")
 
@@ -52,7 +53,7 @@ func _play_one(m: Node2D, revived: bool) -> bool:
 func _fresh_install(m: Node2D) -> void:
 	m.set("games_played_total", 0)
 	m.set("restarts_since_interstitial", 0)
-	m.set("run_revived", false)
+	m.set("run_rewarded", false)
 	m.set("run_active", false)
 	m.call("_save_ad_state")
 
@@ -102,7 +103,7 @@ func _run() -> void:
 		_play_one(m, false)          # 면제 소진
 	var shown_rewarded := 0
 	for i in range(every * 2):
-		if _play_one(m, true):       # 매 판 부활 광고 시청
+		if _play_one(m, true):       # 매 판 x2 광고 시청
 			shown_rewarded += 1
 	print("")
 	if shown_rewarded > 0:

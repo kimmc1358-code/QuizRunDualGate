@@ -104,19 +104,7 @@ func _run() -> void:
 	settings.visible = false
 
 	print("")
-	print("게임오버 팝업이 떠 있는 동안 로그인이 끝난다")
-	var over: Control = main.get("gameover_popup")
-	over.call("ensure_built")
-	over.call("set_result", null, 0.0, 1200, 5, 3000, false, false, 1200)
-	over.visible = true
-	await process_frame
-	var cap: Label = over.get("_google_button").get_node("Caption")
-	var google_text: String = str(over.get("GOOGLE_TEXT"))
-	var board_text: String = TranslationServer.translate(str(over.get("LEADERBOARD_TEXT")))
-	_ok(cap.text == google_text, "로그인 전: LOGIN WITH GOOGLE")
-	var fired: Array = []
-	over.connect("login_pressed", func() -> void: fired.append("login"))
-	over.connect("leaderboard_pressed", func() -> void: fired.append("leaderboard"))
+	print("로그인이 끝난다")
 
 	_remove_avatar()
 	pg.call("_on_authenticated", true)
@@ -125,9 +113,6 @@ func _run() -> void:
 	_ok(bool(main.get("player_logged_in")), "인증되면 Main 이 로그인 상태가 된다")
 	_ok(str(main.get("player_display_name")) == "김철수", "이름이 넘어온다")
 	_ok(main.get("player_avatar") == null, "사진 파일이 아직 없으면 비어 있다 — 없는 파일을 억지로 읽지 않는다")
-	_ok(cap.text == board_text, "떠 있던 게임오버 팝업이 곧바로 LEADERBOARD 로 바뀐다")
-	over.call("_on_google_button_pressed")
-	_ok(fired == ["leaderboard"], "그때 누르면 로그인이 아니라 순위표로 간다")
 
 	print("")
 	print("사진이 늦게 도착한다")
@@ -168,12 +153,10 @@ func _run() -> void:
 	_ok(not bool(main.get("player_logged_in")), "로그인 상태가 풀린다")
 	_ok(main.get("player_avatar") == null and str(main.get("player_display_name")) == "",
 		"이름과 사진도 비워진다")
-	_ok(cap.text == google_text, "떠 있던 게임오버 팝업도 LOGIN WITH GOOGLE 로 돌아온다")
 	main.call("_open_settings")
 	await process_frame
 	_ok(login_btn.visible, "설정에 LOGIN 버튼이 돌아온다")
 	settings.visible = false
-	over.visible = false
 
 	print("")
 	print("로그인 창이 떠 있는 동안 (기기 흉내)")
@@ -230,7 +213,7 @@ func _check_leaderboards(main: Node2D, pg: Node) -> void:
 	main.set("leaderboard_bests", bests)
 
 	main.call("_submit_leaderboard", 0)
-	main.call("_on_gameover_leaderboard_pressed")
+	main.call("_show_leaderboard", 0)
 	_ok(lb.submitted.is_empty() and lb.shown.is_empty(), "로그인 전에는 올리지도 열지도 않는다")
 
 	pg.call("_on_authenticated", true)
@@ -245,25 +228,21 @@ func _check_leaderboards(main: Node2D, pg: Node) -> void:
 	# 판 끝: 이번 판이 쌓인 기록보다 낮으면 쌓인 기록을 보낸다.
 	main.set("current_mode", 2)
 	main.set("score", 900)
-	main.set("leaderboard_score", 900)
 	main.call("_finish_run")
 	await process_frame
 	_ok(lb.submitted == [[ids[2], 3300]],
 		"판이 끝나면 그 모드 순위표에 쌓아 둔 최고 기록을 올린다 (%s)" % str(lb.submitted))
 	lb.submitted.clear()
 
-	# 부활한 판: 순위표는 첫 실수 지점의 점수까지만 센다.
+	# 판 끝: 이번 판이 쌓인 기록보다 높으면 이번 판의 점수가 올라간다.
 	main.set("current_mode", 1)
 	main.set("score", 5000)
-	main.set("leaderboard_score", 4000)
 	main.call("_finish_run")
 	await process_frame
-	_ok(lb.submitted == [[ids[1], 4000]],
-		"부활한 판은 최종 점수가 아니라 멈춘 점수로 올라간다 (%s)" % str(lb.submitted))
+	_ok(lb.submitted == [[ids[1], 5000]],
+		"기록을 넘긴 판은 그 점수로 올라간다 (%s)" % str(lb.submitted))
+	lb.submitted.clear()
 
-	main.call("_on_gameover_leaderboard_pressed")
-	_ok(lb.shown == [ids[1]], "게임오버의 LEADERBOARD 는 방금 끝난 판의 모드 순위표를 연다")
-	lb.shown.clear()
 	main.call("_on_mode_select_leaderboard_pressed", 3)
 	_ok(lb.shown == [ids[3]], "메인 화면의 LEADERBOARD 는 고른 카드의 모드 순위표를 연다")
 	lb.shown.clear()

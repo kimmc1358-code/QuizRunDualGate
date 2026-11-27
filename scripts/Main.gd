@@ -1,6 +1,6 @@
 extends Node2D
 
-## The run: score, combo, hearts, the revive offer, the popups, the
+## The run: score, combo, hearts, the popups, the
 ## play-screen HUD, the logo and title screens, audio, ads and the save. The
 ## 3D world and the rules of contact are SpaceRun's (scripts/SpaceRun.gd),
 ## which reports each outcome through the _space_* handlers below.
@@ -11,11 +11,12 @@ extends Node2D
 # RUN (0) can start a run yet.
 enum Mode { SKY, JUNGLE, OCEAN, DREAM }
 
-# The faces the revive and game over popups and the share card show: happy
-# for a new record, sad otherwise. Slots for now (ArtSlot) at the 1.x bird's
-# paths, which ArtSlot still sizes; 2.0 art dropped there is used as is.
-const FACE_HAPPY_PATH := "res://assets/characters/bird_v2/bird_happy.png"
-const FACE_SAD_PATH := "res://assets/characters/bird_v2/bird_sad.png"
+# The faces the game over popup shows: happy for a new record, sad
+# otherwise. The 1.x bird's are gone and 2.0's ship has
+# no face, so since the popups' reskin (2026-11-28) they are the UI kit's gold
+# star and amber warning sign; without the kit, ArtSlot placeholders.
+const FACE_HAPPY_PATH := "res://assets/synty_ui/icon_star.png"
+const FACE_SAD_PATH := "res://assets/synty_ui/icon_warning.png"
 # The size the popups draw a face at (logical px) — the bird's in-game size
 # in 1.x (100px x its 0.92 scale), which the popup layouts were built around.
 const FACE_DRAW_SIZE := 92.0
@@ -199,8 +200,7 @@ const BGM_GAMEOVER_NAME := "gameover_bgm"
 # _update_countdown).
 const COUNTDOWN_READY_SOUND_PATH := "res://assets/audio/countdown_ready.mp3"
 const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
-# Failure sound — every heart lost (_take_hit), and the revive offer and the
-# game over. A softer per-hit cue is still to be chosen.
+# Failure sound — every heart lost (_take_hit), and the game over. A softer per-hit cue is still to be chosen.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
 # Tapping the title screen to enter the mode picker. Every other sound here
@@ -325,10 +325,7 @@ var state: int = State.SPLASH   # _ready moves it to LOGO before the first frame
 # Only gates the run's own updates in _process; the space world keeps
 # drifting while paused, as it does on every other screen.
 var paused: bool = false
-# 한 판에 부활 제안은 한 번만. 이어간 뒤 또 죽으면 그때는 바로 게임오버다.
-var revive_offered: bool = false
-
-# "READY" -> "START" pop-in shown before every run, and again after a revive.
+# "READY" -> "START" pop-in shown before every run.
 enum CountdownPhase { READY_TEXT, START_TEXT }
 var countdown_phase: int = CountdownPhase.READY_TEXT
 var countdown_timer: float = 0.0
@@ -402,7 +399,9 @@ const SAVE_KEY_BEST_PREFIX := "best_score_"
 # 모드 구분 없이 하나만 쓰던 시절의 키. 불러올 때 한 번 옮겨 오고 그 뒤로는
 # 쓰지 않는다.
 const SAVE_KEY_BEST_LEGACY := "best_score"
-# 순위표에 올릴 기록. 개인 최고 기록과 따로 둔다 — 아래 leaderboard_score 참고.
+# 순위표에 올릴 기록. 부활이 있던 때(~2026-11-28)는 광고로 이어 뛴 점수를
+# 빼고 따로 쌓았다. 부활이 없어진 뒤로는 판의 점수 그대로 쌓이지만, 옛 저장의
+# 값이 이 키에 남아 있어 따로 둔다.
 const SAVE_KEY_LEADERBOARD_PREFIX := "leaderboard_best_"
 # 튜토리얼을 이미 봤는가. 설치 단위다 — 실행 단위로 두면 앱을 껐다 켤 때마다
 # 다시 돈다.
@@ -567,25 +566,17 @@ const BUTTON_PRESS_ANIM_DURATION := 0.08
 var score: int = 0
 var combo: int = 0
 var max_combo: int = 0   # highest combo reached this run — see _space_correct
-# 광고를 보고 이어서 뛴 판인가. 부활 팝업이 "이어가면 이 판은 순위표에
-# 올라가지 않는다"고 약속하므로, 그 약속을 지키려면 끝까지 들고 가야 한다.
-# (개인 최고 기록은 "always saved"라고 했으니 부활 여부와 무관하게 쓴다.)
-var run_revived: bool = false
+# 이 판에서 리워드 광고(결과 화면의 x2)를 끝까지 봤는가. 그런 판은 전면광고
+# 카운터에 넣지 않는다(_ad_note_run_left) — 광고를 방금 본 사람에게 또 띄우지
+# 않는다. 부활이 있던 때는 run_revived 가 이 일을 했다.
+var run_rewarded: bool = false
 # 판이 실제로 시작됐는가. _reset_game 은 첫 플레이에서도 불리므로, 이것 없이는
 # "떠난 판"과 "아직 없던 판"을 구분할 수 없다.
 var run_active: bool = false
 # 설치 후 누적 판 수(면제 판정용)와 마지막 전면광고 이후 떠난 판 수.
 var games_played_total: int = 0
 var restarts_since_interstitial: int = 0
-# 이 판에서 "첫 실수 전까지" 도달한 점수. 순위표에 올라가는 건 이 값이다.
-#
-# 광고를 보고 이어 뛰면 개인 최고 기록은 끝까지 간 점수로 갱신되지만,
-# 순위표는 여기서 멈춘다. 광고로 순위를 살 수는 없게 하면서, 광고를 보기
-# 전에 이미 정직하게 벌어 둔 점수까지 빼앗지는 않는 선이다.
-#
-# 부활을 거절하면 이 값이 곧 최종 점수라 아무 차이가 없다.
-var leaderboard_score: int = 0
-# 이 판에서 맞게 지난 게이트 수. 분석의 post_score 가 싣고, 부활해도 이어진다.
+# 이 판에서 맞게 지난 게이트 수. 분석의 post_score 가 싣는다.
 var gates_passed: int = 0
 
 var flash_color := Color(0, 0, 0, 0)
@@ -608,17 +599,11 @@ const MODE_LEADERBOARD_ID := [
 	"CgkIxNW7848QEAIQBA",  # DREAM (MIX)
 ]
 # 로그인 상태. PlayGames(scripts/PlayGames.gd)가 정하고 _on_play_games_changed
-# 가 여기로 옮겨 적는다 — 게임오버·부활·설정 팝업이 이 셋을 읽는다.
+# 가 여기로 옮겨 적는다 — 설정 팝업이 이 셋을 읽는다.
 var player_avatar: Texture2D = null
 var player_display_name: String = ""
 var player_logged_in: bool = false
 var play_games: PlayGames
-# 공유. 카드는 user:// 에 덮어쓴다 — 한 번에 한 장만 나가므로 쌓아 둘 까닭이
-# 없고, 안드로이드에서는 앱 내부 저장소라 FileProvider 가 넘길 수 있는 곳이다
-# (ShareSheet 참고).
-const SHARE_IMAGE_PATH := "user://share/quizrun_score.png"
-var share_card: ShareCard
-var share_busy: bool = false
 # 게임오버 때 정해지는 "이번 판이 신기록인가". 판이 끝난 뒤에는 best_scores 가
 # 이미 이번 점수로 바뀌어 있어 다시 계산할 수 없다(_finish_run).
 var last_run_new_record: bool = false
@@ -634,6 +619,13 @@ var store: Store
 var ads_removed: bool = false
 var stardust_total: int = 0   # 저장된 합계
 var run_stardust: int = 0     # 이번 판에서 번 것, 아직 합계에 안 더한 것
+# 결과 화면의 x2 (2026-11-27, 2.0 의 첫 보상형 광고 자리). 판이 끝날 때 번 것을
+# 적어 두고, 광고를 끝까지 보면 그만큼 한 번 더 합계에 더한다. 판당 한 번,
+# DOUBLE_DUST_MIN 이상 벌었을 때만 권한다 — 몇 알을 두 배로 하자고 광고를 보이는
+# 것은 광고 값도 플레이어 시간도 아깝다.
+const DOUBLE_DUST_MIN := 10
+var last_run_stardust: int = 0
+var dust_doubled: bool = false
 # 에디터에서 로그인한 화면을 보는 길. PC 에서는 진짜 로그인이 안 되므로 이것
 # 말고는 볼 방법이 없다. 켜면 "Test Player" 로 로그인된 채로 시작한다.
 #
@@ -645,7 +637,7 @@ var run_stardust: int = 0     # 이번 판에서 번 것, 아직 합계에 안 �
 # 모드별 최고 점수. 인덱스가 곧 Mode 값이다. _ready에서 불러오고, 기록을
 # 갈아치울 때만 저장한다.
 var best_scores := PackedInt32Array()
-# 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — leaderboard_score 참고.
+# 모드별 순위표 기록. 개인 최고 기록과 나뉘어 있다 — SAVE_KEY_LEADERBOARD_PREFIX 참고.
 var leaderboard_bests := PackedInt32Array()
 # 튜토리얼을 봤는지. SAVE_KEY_TUTORIAL 참고.
 var tutorial_seen: bool = false
@@ -662,6 +654,18 @@ var tutorial_active: bool = false
 ## 게임은 멀쩡히 돌아가므로 눈치채기 어렵다. tools/check_tutorial.gd 가 켜진
 ## 채로 커밋된 것을 잡는다.
 @export var debug_replay_tutorial: bool = false
+
+## 패턴 하나만 시험하려고 판 전체를 그 패턴으로 고정한다 (2026-11-27, 야바위를
+## 시험하다 임시 배치에서 안 나와서). Off 면 평소대로 SpaceRun._pick_pattern 이
+## 고른다. debug_force_level 이 0 이면 패턴이 끝날 때마다 한 단계씩 올라가
+## 한 판에 모든 레벨을 본다. 디버그 빌드에서만 듣는다.
+##
+## 위와 같은 @export 함정: 켠 채로 커밋하면 출시판은 디버그가 아니라 무시하지만,
+## 이 저장소를 여는 모든 개발 빌드와 검사기의 판이 한 패턴으로 굳는다.
+## tools/check_tutorial.gd 가 켜진 채로 커밋된 것을 잡는다.
+@export_enum("Off", "COLOR", "ARROW", "SPOT", "MEMORY", "MIX", "ARROW_MIX", "ARROW_SUM", "ARROW_MEMORY", "SHELL")
+var debug_force_pattern: int = 0
+@export_range(0, 5) var debug_force_level: int = 0
 var score_box_texture: Texture2D
 var score_crown_texture: Texture2D
 var score_font: Font
@@ -715,7 +719,6 @@ var fx_sound_boost_start: AudioStreamPlayer
 @onready var tutorial_overlay: Control = $UI/TutorialOverlay
 @onready var pause_button: Button = $UI/PauseButton
 @onready var pause_panel: Control = $UI/PausePanel
-@onready var revive_panel: Control = $UI/RevivePanel
 
 
 # 부팅을 둘로 나눈다.
@@ -763,7 +766,7 @@ func _boot_load() -> void:
 	# 팝업 셋과 모드 선택 화면은 씬의 자식이라 원래 Main 보다 먼저 _ready 가
 	# 돌았다 — 넷이 합쳐 1.6초라, 로고가 뜨기도 전에 그만큼을 잡아먹었다.
 	# 이제 조립을 여기서 시킨다.
-	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
+	for panel in [pause_panel, gameover_popup, settings_popup, about_popup,
 			tutorial_overlay, mode_select_panel]:
 		if panel != null and panel.has_method("ensure_built"):
 			panel.ensure_built()
@@ -876,10 +879,8 @@ func _boot_load() -> void:
 	tutorial_overlay.finished.connect(_on_tutorial_finished)
 	settings_popup.remove_ads_pressed.connect(_on_remove_ads_pressed)
 	gameover_popup.play_again_pressed.connect(_on_gameover_play_again_pressed)
-	gameover_popup.login_pressed.connect(_on_gameover_login_pressed)
-	gameover_popup.leaderboard_pressed.connect(_on_gameover_leaderboard_pressed)
-	gameover_popup.share_pressed.connect(_on_gameover_share_pressed)
 	gameover_popup.home_pressed.connect(_on_pause_home_pressed)
+	gameover_popup.double_pressed.connect(_on_double_stardust_pressed)
 	# 로그인. 팝업이 다 지어지고 신호가 이어진 뒤라야 결과를 받아 줄 곳이 있다.
 	play_games = PlayGames.new()
 	play_games.name = "PlayGames"
@@ -888,11 +889,6 @@ func _boot_load() -> void:
 	play_games.start()
 	if debug_fake_sign_in and OS.is_debug_build() and not play_games.available:
 		play_games.fake_sign_in("Test Player")
-	# 게임오버의 SHARE 가 보낼 점수 카드를 그리는 곳. 트리에 있어야 SubViewport
-	# 가 그려진다.
-	share_card = ShareCard.new()
-	share_card.name = "ShareCard"
-	add_child(share_card)
 	# 광고. PC 에서는 아무것도 띄우지 않고 available 만 false 로 남는다.
 	# 분석은 광고보다 먼저 세운다 — 광고 쪽 동의 결과가 오면 바로 받아야 한다.
 	analytics = Analytics.new()
@@ -920,8 +916,6 @@ func _boot_load() -> void:
 	pause_panel.home_pressed.connect(_on_pause_home_pressed)
 	pause_panel.sfx_volume_changed.connect(set_sfx_volume)
 	pause_panel.music_volume_changed.connect(set_music_volume)
-	revive_panel.watch_ad_pressed.connect(_on_revive_watch_ad)
-	revive_panel.decline_pressed.connect(_on_revive_decline)
 	# pivot_offset is set in _layout_hud_buttons instead — it resizes the
 	# buttons deferred, so reading .size here would still give the scene's
 	# pre-layout value and the press animation would scale off-center.
@@ -1513,9 +1507,8 @@ func _space_correct() -> void:
 	combo += 1
 	max_combo = maxi(max_combo, combo)
 	score += SCORE_PER_COMBO * combo
-	# Gold like the gate it went through; it was a green tint.
-	flash_color = Color(1.0, 0.88, 0.5, 0.22)
-	flash_time = FLASH_DURATION
+	# 화면 전체를 물들이던 번쩍임은 뺐다(2026-11-27) — 통과 연출은 게이트의
+	# 금빛과 SpaceRun._pass_burst 의 색 있는 폭발, 멈칫과 카메라 펀치가 맡는다.
 	_spawn_combo_popup()
 	if fx_sound_pass != null and fx_sound_pass.stream != null:
 		fx_sound_pass.pitch_scale = minf(PASS_PITCH_MAX, 1.0 + PASS_PITCH_STEP * (combo - 1))
@@ -1707,79 +1700,10 @@ func _draw_hearts(ci: CanvasItem, view_size: Vector2) -> void:
 			rect2.size.x * (grow - 1.0) * 0.25, rect2.size.y * (grow - 1.0) * 0.5), col)
 
 
-# 실패한 순간. 곧바로 게임오버 화면으로 가지 않고 부활 제안을 먼저 띄운다 —
-# 판을 접을지 이어갈지는 아직 플레이어가 정하지 않았다. 광고를 보면 이 판이
-# 그대로 이어지고(_on_revive_continue), 거절하면 그때 진짜 게임오버로 간다.
+# 실패한 순간. 곧바로 결과 화면이다 — 부활(광고를 보고 이어 뛰기)은
+# 2026-11-28 에 뺐다. 광고는 결과 화면의 스타더스트 x2 하나다.
 func _game_over() -> void:
-	# 첫 죽음에서 한 번만 — 이어 뛴 뒤의 죽음은 이 값을 건드리지 않는다.
-	if not run_revived:
-		leaderboard_score = score
-	if revive_panel != null and not revive_offered:
-		revive_offered = true
-		_offer_revive()
-		return
 	_finish_run()
-
-
-# 부활 제안. 죽은 자리를 그대로 두고 판만 멈춘다.
-func _offer_revive() -> void:
-	state = State.GAMEOVER   # 판의 규칙을 멈추기 위해 — 화면은 아직 안 띄운다
-	combo = 0
-	flash_color = Color(0.8, 0.15, 0.15, 0.45)
-	flash_time = FLASH_DURATION
-	_play_gameover_bgm()
-	if fx_sound_gameover.stream != null:
-		fx_sound_gameover.play()
-	revive_panel.set_character(sad_face_texture, FACE_DRAW_SIZE)
-	revive_panel.set_score(score)
-	# 이어 뛰어도 순위표는 여기서 멈춘다는 걸 숫자로 보여 준다.
-	revive_panel.set_leaderboard_score(leaderboard_score, player_logged_in)
-	revive_panel.visible = true
-
-
-# 광고를 본 뒤 이어가기. 하트를 채우고 우주 판을 되살려(space.revive) 카운트다운
-# 부터 다시 — 점수와 맞힌 수는 그대로 두어 "이어서 뛰는" 것이 되게 한다.
-func _on_revive_continue() -> void:
-	run_revived = true
-	revive_panel.visible = false
-	# 하트를 다 잃어서 온 자리다 — 이어 하려면 다시 채워야 한다.
-	hearts = MAX_HEARTS
-	hurt_elapsed = -1.0
-	heart_lost_elapsed = -1.0
-	flash_time = 0.0
-	space.revive()
-	_start_countdown()
-
-
-# 제안을 거절했을 때 — 여기서부터가 원래의 게임오버다.
-func _on_revive_decline() -> void:
-	_log_event("revive", {"result": "declined"})
-	revive_panel.visible = false
-	_finish_run()
-
-
-# 부활 팝업의 광고 보기. 띄울 광고가 없으면(아직 못 불러옴, 인터넷 없음, PC)
-# 그냥 이어 준다 — 플레이어 탓이 아닌데 기회를 빼앗을 까닭이 없고, 부활은 판에
-# 한 번뿐인 데다 순위표 점수는 이미 부활 전으로 묶였다(_game_over).
-func _on_revive_watch_ad() -> void:
-	# 광고 제거를 산 사람은 광고 없이 곧장 이어 간다(주인이 정한 규칙).
-	if ads_removed:
-		_log_event("revive", {"result": "ad_free"})
-		_on_revive_continue()
-		return
-	if ads == null or not ads.show_rewarded(_on_revive_ad_finished):
-		_log_event("revive", {"result": "no_ad"})
-		_on_revive_continue()
-
-
-# 광고가 닫힌 뒤. 끝까지 보지 않고 닫았으면 팝업에 남는다 — 다시 누르거나
-# 거절할 수 있다. 띄우려다 실패한 것은 광고가 없던 것과 같게 친다.
-func _on_revive_ad_finished(result: int) -> void:
-	_log_event("revive", {"result": "skipped" if result == Ads.Reward.SKIPPED \
-		else ("watched" if result == Ads.Reward.EARNED else "no_ad")})
-	if result == Ads.Reward.SKIPPED:
-		return
-	_on_revive_continue()
 
 
 # 전면광고가 닫혔을 때. 실제로 보였을 때만 카운터를 비운다 — 띄우려다 실패했는데
@@ -1798,13 +1722,14 @@ func _on_ads_fullscreen(showing: bool) -> void:
 
 func _finish_run() -> void:
 	state = State.GAMEOVER
+	last_run_stardust = run_stardust
+	dust_doubled = false
 	_bank_stardust()
 	_log_event("post_score", {
 		"level_name": Analytics.mode_name(current_mode),
 		"score": score,
 		"gates": gates_passed,
 		"max_combo": max_combo,
-		"revived": 1 if run_revived else 0,
 	})
 	combo = 0  # combo is purely a run-length streak; a miss always zeroes it immediately, not just on restart
 	# Whether this run set a record has to be read BEFORE the record is
@@ -1817,10 +1742,10 @@ func _finish_run() -> void:
 	# record costs no disk access at all.
 	if is_new_record:
 		best_scores[current_mode] = score
-	# 순위표 기록은 첫 실수 전까지의 점수로만 겨룬다.
-	if leaderboard_score > leaderboard_bests[current_mode]:
-		leaderboard_bests[current_mode] = leaderboard_score
-	if is_new_record or leaderboard_score > 0:
+	# 순위표 기록. 옛 저장에서 온 값이 있어 개인 최고 기록과 따로 쌓는다.
+	if score > leaderboard_bests[current_mode]:
+		leaderboard_bests[current_mode] = score
+	if is_new_record or score > 0:
 		_save_best_score(current_mode)
 	# 로그인해 있으면 이 모드의 순위표 기록을 올린다. 이번 판 점수가 아니라
 	# 쌓아 둔 최고 기록을 보낸다 — Play 게임즈는 높은 쪽만 남기므로 손해가 없고,
@@ -1828,16 +1753,59 @@ func _finish_run() -> void:
 	_submit_leaderboard(current_mode)
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
-	# 네 가지 조합(신기록 여부 x 로그인 여부)을 팝업이 스스로 갈래 친다.
 	# 신기록이면 웃는 얼굴, 아니면 우는 얼굴.
 	var face: Texture2D = happy_face_texture if is_new_record else sad_face_texture
 	gameover_popup.set_result(face, FACE_DRAW_SIZE,
-		score, max_combo, previous_best, is_new_record, player_logged_in,
-		leaderboard_score)
+		score, max_combo, previous_best, is_new_record)
+	gameover_popup.set_stardust(last_run_stardust, last_run_stardust >= DOUBLE_DUST_MIN, ads_removed)
 	gameover_popup.visible = true
 	_play_gameover_bgm()
 	if fx_sound_gameover.stream != null:
 		fx_sound_gameover.play()
+
+
+# 결과 화면의 x2. 광고 제거를 산 사람은 광고 없이 곧장 받는다(주인이 정한
+# 규칙). 띄울 광고가 없으면 공짜로 주지 않는다 — 오프라인으로 하면 매 판 두
+# 배가 되기 때문이다. 버튼이 "광고 준비 중"으로 꺼진다. 다만
+# 광고가 아예 없는 PC 의 디버그 빌드는 곧장 준다: 개발 중에 확인할 길이 없다.
+func _on_double_stardust_pressed() -> void:
+	if dust_doubled or last_run_stardust <= 0:
+		return
+	if ads_removed:
+		_grant_double_stardust("ad_free")
+		return
+	if ads != null and ads.show_rewarded(_on_double_ad_finished):
+		return
+	if OS.is_debug_build() and (ads == null or not ads.available):
+		_grant_double_stardust("debug_no_ads")
+		return
+	_log_event("double_stardust", {"result": "no_ad"})
+	gameover_popup.set_double_unavailable()
+
+
+# 광고가 닫힌 뒤. 끝까지 봤을 때만 준다. 중간에 닫았으면 버튼이 남아 다시
+# 누를 수 있고, 띄우지 못했으면 광고가 없던 것과 같다.
+func _on_double_ad_finished(result: int) -> void:
+	if result == Ads.Reward.EARNED:
+		_grant_double_stardust("watched")
+	elif result == Ads.Reward.SKIPPED:
+		_log_event("double_stardust", {"result": "skipped"})
+	else:
+		_log_event("double_stardust", {"result": "no_ad"})
+		gameover_popup.set_double_unavailable()
+
+
+## 이번 판에 번 만큼을 한 번 더 합계에 더한다. 판당 한 번.
+func _grant_double_stardust(result: String) -> void:
+	if dust_doubled:
+		return
+	dust_doubled = true
+	if result == "watched":
+		run_rewarded = true
+	run_stardust = last_run_stardust
+	_bank_stardust()
+	_log_event("double_stardust", {"result": result, "amount": last_run_stardust})
+	gameover_popup.set_stardust_doubled()
 
 
 # 같은 모드로 곧장 다시 시작한다 — 일시정지의 RESTART와 같은 동작이다.
@@ -1847,42 +1815,6 @@ func _on_gameover_play_again_pressed() -> void:
 	_reset_game()
 	_ad_try_interstitial()
 	_start_countdown()
-
-
-func _on_gameover_login_pressed() -> void:
-	_sign_in()
-
-
-func _on_gameover_leaderboard_pressed() -> void:
-	_show_leaderboard(current_mode)
-
-
-## 방금 끝난 판의 점수 카드를 그려 저장하고, 문구와 함께 공유 창을 연다.
-##
-## 카드를 그리는 데 한 프레임이 걸리므로 그 사이 두 번 눌러도 한 번만 간다.
-## PC 에는 공유 창이 없어서 카드만 저장하고 경로를 남긴다 — 카드가 어떻게
-## 나오는지 볼 수는 있다.
-func _on_gameover_share_pressed() -> void:
-	if share_busy or share_card == null:
-		return
-	_log_event("share", {"method": "share_sheet", "content_type": "score_card",
-		"item_id": Analytics.mode_name(current_mode)})
-	share_busy = true
-	var img: Image = await share_card.render(current_mode, score, last_run_new_record,
-		happy_face_texture)
-	share_busy = false
-	if img == null or img.is_empty():
-		push_warning("share: the card rendered empty — no renderer?")
-		return
-	DirAccess.make_dir_recursive_absolute(SHARE_IMAGE_PATH.get_base_dir())
-	var err := img.save_png(SHARE_IMAGE_PATH)
-	if err != OK:
-		push_warning("share: could not save %s (error %d)" % [SHARE_IMAGE_PATH, err])
-		return
-	var absolute: String = ProjectSettings.globalize_path(SHARE_IMAGE_PATH)
-	if not ShareSheet.share_image(absolute,
-			share_card.share_text(current_mode, score), share_card.chooser_title()):
-		print("share: no share sheet here — the card is at %s" % absolute)
 
 
 # 메인 화면 오른쪽 위 톱니바퀴. 지금 볼륨을 넣어 열어 준다.
@@ -1925,12 +1857,7 @@ func _on_play_games_changed() -> void:
 	player_avatar = play_games.avatar
 	if settings_popup != null:
 		settings_popup.set_account(player_avatar, player_display_name, player_logged_in)
-	if gameover_popup != null and gameover_popup.visible:
-		gameover_popup.set_logged_in(player_logged_in)
-	if revive_panel != null and revive_panel.visible:
-		revive_panel.set_leaderboard_score(leaderboard_score, player_logged_in)
-	# 막 로그인했다면 로그인하기 전에 낸 기록까지 올린다. 게임오버 팝업이
-	# "최고 기록이 순위표에 있습니다" 라고 말하는 것이 이것 덕에 참이 된다.
+	# 막 로그인했다면 로그인하기 전에 낸 기록까지 올린다.
 	# 로그인 한 번에 이 함수는 여러 번 불리므로(인증, 이름, 사진) 넘어가는
 	# 순간에만 한다.
 	if player_logged_in and not was_logged_in:
@@ -2042,7 +1969,6 @@ func _on_store_ownership(owned: bool) -> void:
 func _apply_ads_removed() -> void:
 	settings_popup.set_ads_removed(ads_removed)
 	mode_select_panel.set_ads_removed(ads_removed)
-	revive_panel.set_ad_free(ads_removed)
 
 
 func _on_mode_selected(mode: int) -> void:
@@ -2111,7 +2037,7 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 				{"rect": gauge.grow(4.0), "round": gauge.size.y},
 				{"rect": weapon, "round": weapon.size.y * 0.5},
 			],
-			"text": tr("Right gates in a row speed you up,\npower your gun and pay more stardust.\nAll 10 right: FEVER!"),
+			"text": tr("Right gates in a row speed you up,\npower your gun and pay more stardust.\nThe more you get right, the longer the FEVER!"),
 		},
 	]
 
@@ -2137,10 +2063,6 @@ func _apply_mode(mode: int) -> void:
 	current_mode = mode
 	happy_face_texture = ArtSlot.texture(FACE_HAPPY_PATH)
 	sad_face_texture = ArtSlot.texture(FACE_SAD_PATH)
-	# 부활 팝업이 쓸 얼굴을 미리 넘겨 둔다. 팝업이 알파 경계를 다듬느라
-	# 30ms쯤 쓰는데, 판이 끝난 그 순간에 그러면 멈칫하는 게 느껴진다.
-	if revive_panel != null:
-		revive_panel.set_character(sad_face_texture, FACE_DRAW_SIZE)
 	ready_texture = _softened_word_art(ArtSlot.texture(READY_TEXTURE_PATH), COUNTDOWN_READY_WIDTH)
 	start_texture = _softened_word_art(ArtSlot.texture(START_TEXTURE_PATH), COUNTDOWN_START_WIDTH)
 	if score_crown_texture == null:
@@ -2157,9 +2079,7 @@ func _apply_mode(mode: int) -> void:
 
 func _start_countdown() -> void:
 	run_active = true   # 여기부터 "떠날 수 있는 판"이 된다 — _reset_game 참고
-	# 부활해 이어 뛸 때도 여기를 지나지만 같은 판이다 — 판의 시작은 한 번만 센다.
-	if not run_revived:
-		_log_event("level_start", {"level_name": Analytics.mode_name(current_mode)})
+	_log_event("level_start", {"level_name": Analytics.mode_name(current_mode)})
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
 	_set_state(State.COUNTDOWN)
@@ -2181,14 +2101,10 @@ func _reset_game() -> void:
 	combo = 0
 	max_combo = 0
 	gates_passed = 0
-	revive_offered = false
-	run_revived = false
-	leaderboard_score = 0
+	run_rewarded = false
 	hearts = MAX_HEARTS
 	hurt_elapsed = -1.0
 	heart_lost_elapsed = -1.0
-	if revive_panel != null:
-		revive_panel.visible = false
 	flash_time = 0.0
 	combo_display_punch_elapsed = 0.0
 	combo_display_time = 0.0
@@ -2295,10 +2211,8 @@ func _ad_note_run_left() -> void:
 	if games_played_total <= interstitial_free_games:
 		_save_ad_state()
 		return
-	# 리워드 광고를 본 판은 카운터에 넣지 않는다. run_revived 가 곧 "부활
-	# 광고를 보고 이어 뛰었다"이므로 따로 플래그를 두지 않는다 — 두 개를 두면
-	# 언젠가 한쪽만 갱신된다.
-	if not run_revived:
+	# 리워드 광고(x2)를 끝까지 본 판은 카운터에 넣지 않는다 — run_rewarded 참고.
+	if not run_rewarded:
 		restarts_since_interstitial += 1
 	_save_ad_state()
 
@@ -2401,7 +2315,7 @@ func set_language_korean(korean: bool) -> void:
 
 
 func _rebuild_for_language() -> void:
-	for panel in [pause_panel, revive_panel, gameover_popup, settings_popup, about_popup,
+	for panel in [pause_panel, gameover_popup, settings_popup, about_popup,
 			mode_select_panel]:
 		if panel != null and panel.has_method("rebuild"):
 			panel.rebuild()

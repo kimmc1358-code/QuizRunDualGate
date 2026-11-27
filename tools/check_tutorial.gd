@@ -75,6 +75,10 @@ func _run() -> void:
 	# 그대로 커밋되면 모두가 매 판 튜토리얼을 본다.
 	if m.get("debug_replay_tutorial"):
 		_fail("debug_replay_tutorial 이 켜져 있다 — Main 인스펙터에서 끄고 Main.tscn 을 저장할 것")
+	# 패턴 고정 스위치도 같은 함정이다: 켠 채로 커밋되면 모든 개발 빌드와
+	# 검사기의 판이 한 패턴으로 굳는다.
+	if int(m.get("debug_force_pattern")) != 0:
+		_fail("debug_force_pattern 이 켜져 있다 — Main 인스펙터에서 Off 로 돌리고 Main.tscn 을 저장할 것")
 	print("check_tutorial:")
 	print("")
 

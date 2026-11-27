@@ -58,16 +58,9 @@ const UPGRADE_TEXT := "Upgrade"
 const LEADERBOARD_TEXT := "Leaderboard"
 const REMOVE_ADS_TEXT := "Remove Ads"
 
-# ShareCard draws its card from these: the mode's name and colours, the
-# BEST colours, the font weights and the logo slot.
-const CARD_FILL_TOP := [Color(0.10, 0.32, 0.66), Color(0.44, 0.15, 0.20), Color(0.12, 0.38, 0.32)]
-const CARD_FILL_BOTTOM := [Color(0.04, 0.12, 0.30), Color(0.20, 0.05, 0.09), Color(0.04, 0.16, 0.14)]
+# The BEST line on the cards.
 const CARD_BEST_COLOR := Color(0.99, 0.80, 0.22, 1.0)
 const CARD_BEST_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
-const FONT_WEIGHT_BOLD := 600
-const FONT_WEIGHT_HEAVY := 700
-const ART_DIR := "res://assets/ui_assets/main/"
-const TITLE_FILE := "title_main_v2.png"
 
 # ---- art (the Synty UI kit) ----
 const KIT := "res://assets/synty_ui/"

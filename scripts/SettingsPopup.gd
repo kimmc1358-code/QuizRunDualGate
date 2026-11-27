@@ -24,28 +24,22 @@ signal music_volume_changed(value: float)
 ## 언어 토글. true 면 한국어.
 signal language_changed(korean: bool)
 
-# 2172px 짜리 원본을 그대로 GPU 밉맵에 맡겨 줄이면 테두리에 계단이 남는다.
-# _load_icon_from 은 알파를 곱한 채 Lanczos 로 미리 줄이고 여백까지 둘러 주므로
-# (트로피·리본과 같은 길) 그 길로 읽는다. 아트를 바꾸면 다시 구워야 한다 —
-# tools/bake_popup_art.gd.
-const TITLE_FILE := "res://assets/ui_assets/popup/settings_popup.png"
-const TITLE_TEXTURE_HEIGHT := 240
-# 제목 아트가 판 위로 얼마나 걸터앉는가 — 부활 팝업의 OOPS와 같은 방식.
-const TITLE_WIDTH_FRAC := 0.68    # 판 너비 대비 — 오른쪽 위 닫기 버튼 자리를 비워 둔다
-const TITLE_OVERHANG := 0.55      # 자기 높이 중 판 위로 나가는 비율
+# 판 위에 크게 쓰는 제목(PopupBase._make_title / _place_title). 1.x 의 SETTINGS
+# 그림 자리다.
+const TITLE_TEXT := "SETTINGS"
 
 # 계정 줄: [동그란 자리] [상태 글자] ......... [LOGIN 버튼]
 # 줄 높이는 판 "너비" 기준이다. 높이 기준으로 두면 판을 세로로 키울 때
 # 줄들도 같이 커져서 아무리 키워도 계속 넘친다.
 const ACCOUNT_ROW_HEIGHT_FRAC := 0.155   # 판 너비 대비
 const AVATAR_DIAMETER_FRAC := 0.86       # 줄 높이 대비
-const AVATAR_FILL := Color(0.86, 0.83, 0.75, 1.0)
-const AVATAR_EDGE := Color(0.72, 0.68, 0.59, 1.0)
+const AVATAR_FILL := Color(0.10, 0.18, 0.32, 1.0)
+const AVATAR_EDGE := Color(0.30, 0.62, 0.85, 1.0)
 const AVATAR_EDGE_PX := 2.0
-const AVATAR_GLYPH := Color(0.62, 0.59, 0.52, 1.0)   # 사람 모양 자리표시
+const AVATAR_GLYPH := Color(0.40, 0.58, 0.75, 1.0)   # 사람 모양 자리표시
 const ACCOUNT_GAP_FRAC := 0.025          # 판 너비 대비 — 동그라미와 글자 사이
 const ACCOUNT_TEXT_SIZE_FRAC := 0.050    # 판 너비 대비
-const ACCOUNT_TEXT_COLOR := Color(0.55, 0.55, 0.58, 1.0)   # 회색
+const ACCOUNT_TEXT_COLOR := Color(0.58, 0.68, 0.80, 1.0)   # 흐린 하늘색
 const ACCOUNT_TEXT_MIN_SIZE := 11
 const LOGGED_OUT_TEXT := "Not logged in"
 const LOGGED_IN_FORMAT := "Logged in as %s"
@@ -62,7 +56,7 @@ const REMOVE_ADS_TEXT := "REMOVE ADS"
 # 산 뒤에 같은 자리에 남는 글자. 버튼을 치우면 판의 줄 배치가 달라지고, 산
 # 사람에게는 무엇을 샀는지 보이는 편이 낫다.
 const ADS_REMOVED_TEXT := "ADS REMOVED"
-const REMOVE_ADS_ICON := "res://assets/ui_assets/popup/icon_noads.png"
+const REMOVE_ADS_ICON := KIT + "icon_ad.png"
 # 아이콘 텍스처는 그릴 크기보다 넉넉히 구워 둔다 — 작게 구워 놓고 늘리면
 # 가장자리가 뭉갠다. _load_icon_from 이 둘레에 투명 여백까지 둘러 주므로
 # 실루엣이 텍스처 가장자리에 닿아 잘려 보이는 일도 없다.
@@ -88,7 +82,7 @@ const LINK_MAIL_GAP_FRAC := 0.45         # 글자 크기 대비 글자-아이콘
 const LINK_MAIL_HEIGHT_FRAC := 0.72      # 글자 크기 대비 아이콘 높이
 const LINK_MAIL_LINE_PX := 1.3
 const LINK_TEXT_SIZE_FRAC := 0.048       # 판 너비 대비
-const LINK_COLOR := Color(0.24, 0.28, 0.36, 1.0)
+const LINK_COLOR := Color(0.80, 0.90, 1.0, 1.0)
 const LINK_UNDERLINE_PX := 1.4
 const LINK_UNDERLINE_DROP := 0.30        # 글자 크기 대비 베이스라인 아래로
 const LINK_ROW_HEIGHT_FRAC := 0.118      # 판 너비 대비
@@ -97,7 +91,7 @@ const LINK_ROW_HEIGHT_FRAC := 0.118      # 판 너비 대비
 const LINK_GAP_FRAC := 0.010             # 판 너비 대비 — 약관 줄 사이
 const VERSION_GAP_FRAC := 0.094          # 판 너비 대비 — 약관과 버전 사이
 const LINK_CHEVRON := ">"
-const LINK_CHEVRON_COLOR := Color(0.62, 0.62, 0.66, 1.0)
+const LINK_CHEVRON_COLOR := Color(0.40, 0.60, 0.80, 1.0)
 # 아직 주소가 없는 줄. 흐리게 그려 "지금은 눌러도 소용없다"를 보인다 —
 # _link_enabled 참고.
 const LINK_DISABLED_DIM := 0.38
@@ -105,7 +99,7 @@ const LINK_DISABLED_DIM := 0.38
 # 판 맨 아래 가운데의 버전 표시. 문자열은 project.godot 에서 읽는다 —
 # _read_version_text 참고.
 const VERSION_SIZE_FRAC := 0.044       # 판 너비 대비
-const VERSION_COLOR := Color(0.62, 0.62, 0.66, 1.0)
+const VERSION_COLOR := Color(0.45, 0.55, 0.68, 1.0)
 
 # 언어 줄. 두 칸의 글자는 번역하지 않는다 — 지금 언어가 무엇이든 두 선택지가
 # 자기 언어로 적혀 있어야 고를 수 있다. 잘못 눌러 못 읽는 언어로 바뀌었을 때
@@ -119,7 +113,7 @@ const ROW_HEIGHT_FRAC := 0.105          # 언어 줄 높이, 판 너비 대비
 const GAP_MIN := 6.0
 const SQUEEZE_FLOOR := 0.80
 
-var _title: TextureRect
+var _title: Control
 var _sliders: Control
 var _sfx_slider: HSlider
 var _music_slider: HSlider
@@ -162,7 +156,7 @@ func panel_texture_width() -> int:
 
 
 func panel_center_y_frac() -> float:
-	# 제목이 판 위로 튀어나오므로 판을 살짝 내려 머리 공간을 만든다.
+	# 제목이 판 위에 놓이므로 판을 살짝 내려 머리 공간을 만든다(_place_title).
 	return 0.53
 
 
@@ -256,12 +250,7 @@ func _build_content() -> void:
 	_cancel = _make_close_button(func(): close_pressed.emit())
 
 	# 제목은 판보다 위에 그려져야 하므로 마지막에 붙인다.
-	_title = TextureRect.new()
-	_title.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_title.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_title.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_title.texture = _load_icon_from(TITLE_FILE, Vector2i(1, 1), 0, TITLE_TEXTURE_HEIGHT)
+	_title = _make_title(TITLE_TEXT)
 	add_child(_title)
 
 
@@ -283,14 +272,7 @@ func _layout_content(inner: Rect2) -> void:
 	var top: float = inner.position.y
 	var bottom: float = inner.end.y
 
-	# 제목은 판 위쪽 테두리에 걸친다.
-	if _title.texture != null:
-		var tw: float = pw * TITLE_WIDTH_FRAC
-		var th: float = tw * (float(_title.texture.get_height()) / float(_title.texture.get_width()))
-		_title.size = Vector2(tw, th)
-		_title.position = Vector2(
-			_panel_rect.position.x + (pw - tw) * 0.5,
-			_panel_rect.position.y - th * TITLE_OVERHANG)
+	_place_title(_title)
 
 	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
 	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_TRACK_HEIGHT + 6.0

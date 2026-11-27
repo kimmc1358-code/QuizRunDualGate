@@ -27,17 +27,22 @@ extends SceneTree
 #   4. A wrong gate, or a quarter with no gate, breaks the streak and the
 #      combo — the world eases back to PACE_START — and costs no heart, no
 #      weapon and no stardust.
-#   5. Rocks fly between the steps, never on a slot's centre; one that
-#      reaches the ship costs a heart, one shot to pieces scores.
-#   6. A pattern with every step right brings the next weapon and FEVER,
-#      which pays stardust per smash, costs no heart and leads to the next
-#      pattern; one with a miss does not. After PATTERNS_PER_CYCLE patterns
+#   5. No rocks fly between the steps (taken out on 2026-11-27); an
+#      asteroid spawned by hand still costs a heart when it reaches the
+#      ship and scores when shot to pieces. At the fastest the world goes in
+#      a pattern, a late cycle at full streak, a step is still STEP_FLOOR
+#      seconds or more.
+#   6. FEVER lasts FEVER_PER_RIGHT a right gate of the pattern before it,
+#      with a bonus for all of them, and does not come under FEVER_MIN_RIGHT.
+#      A pattern with every step right brings the next weapon and its whole
+#      FEVER, which pays stardust per smash, costs no heart and leads to the
+#      next pattern; one with too few right goes on without. After PATTERNS_PER_CYCLE patterns
 #      the boss comes; its shots cost a heart; shooting it down scores, pays
 #      stardust, ends the cycle and starts the next pattern with three gates
 #      a step.
 #   7. Leaving a run banks its stardust into the saved total, once.
-#   8. Losing the last heart offers the revive; continuing refills the hearts,
-#      keeps the score and starts the pattern over.
+#   8. Losing the last heart ends the run straight on the game over popup;
+#      there is no revive since 2026-11-28.
 #   9. A drag moves the ship by the finger's movement, the touch's emulated
 #      mouse twin does not move it again, and it stops at the field's edge.
 #      In a debug build a held arrow key steers it too.
@@ -47,6 +52,10 @@ extends SceneTree
 # the end.
 
 const SAVE_PATH := "user://savegame.cfg"
+## The least time a step may take, at a late cycle and a full streak: about
+## 0.4 s to read, 0.3 s to find and 0.4 s to steer, and a little over.
+## Below this the owner found it too hard (2026-11-27).
+const STEP_FLOOR := 1.2
 var _fail := 0
 var _save_backup: PackedByteArray
 var _had_save := false
@@ -211,7 +220,7 @@ func _run() -> void:
 			sp.pattern_kind = kind
 			sp.pattern_level = level
 			var key := "%s L%d" % [sp.Kind.keys()[kind], level]
-			var coloured: bool = kind in [sp.Kind.COLOR, sp.Kind.MIX, sp.Kind.SPOT, sp.Kind.MEMORY]
+			var coloured: bool = kind in [sp.Kind.COLOR, sp.Kind.MIX, sp.Kind.SPOT, sp.Kind.MEMORY, sp.Kind.SHELL]
 			layouts_seen[key] = {}
 			for k in range(60):
 				if k % 10 == 0:
@@ -244,7 +253,7 @@ func _run() -> void:
 						bad = "%s avoid: %d wrong among %d gates" % [key, wrong.size(), n]
 				elif right.size() != 1:
 					bad = "%s: %d gates, %d right" % [key, n, right.size()]
-				elif kind == sp.Kind.COLOR or kind == sp.Kind.MIX or kind == sp.Kind.MEMORY:
+				elif kind in [sp.Kind.COLOR, sp.Kind.MIX, sp.Kind.MEMORY, sp.Kind.SHELL]:
 					# Read off the pattern's own lists here, not through
 					# memory_item, which is part of what is being checked.
 					var want: int = sp.pattern_color
@@ -316,6 +325,43 @@ func _run() -> void:
 	_check(gates_bad == "", "every pattern at every level puts out the gates the bank gives it%s" % ("" if gates_bad == "" else " — " + gates_bad))
 	_check(bad == "", "every step has its right gates and they are the ones the pattern asks for%s" % ("" if bad == "" else " — " + bad))
 	_check(layout_bad == "", "every step stands in one layout, the one its level asks for, a diagonal only on the grid%s" % ("" if layout_bad == "" else " — " + layout_bad))
+	# SHELL: once the swaps are done the colours are out, every gate stands
+	# in a slot of its own, and the right gate is wherever the swaps, followed
+	# here one by one, took the gate that started in the right colour. Once
+	# judged, the colours are back.
+	var shell_bad := ""
+	for li in (sp.BANK[sp.Kind.SHELL] as Array).size():
+		sp.pattern_kind = sp.Kind.SHELL
+		sp.pattern_level = li + 1
+		for t in 20:
+			sp._prepare_pattern()
+			sp.steps_spawned = 0
+			var w: Dictionary = sp._make_step(sp.Kind.SHELL)
+			var where: Array = (w.shell.start as Array).duplicate()
+			for s in w.shell.swaps:
+				var keep: int = where[s[0]]
+				where[s[0]] = where[s[1]]
+				where[s[1]] = keep
+			var right_i: int = w.planets.find(w.planets.filter(func(p): return p.correct)[0])
+			for p in w.planets:
+				p.z = sp.SPAWN_Z * (1.0 - (sp.SHELL_END + 0.01))
+			sp._shell_place(w)
+			var slots: Array = w.planets.map(func(p): return int(p.slot))
+			var unique := {}
+			for s in slots:
+				unique[s] = true
+			var swaps_ok: bool = (w.shell.swaps as Array).size() == int(sp.BANK[sp.Kind.SHELL][li].swaps)
+			var placed_ok: bool = w.planets.all(func(p): return (p.base_glow as Color) == sp.GATE_GLOW and (p.pos as Vector2).is_equal_approx(sp.SLOTS[int(p.slot)]))
+			if not swaps_ok or unique.size() != slots.size() or int(w.planets[right_i].slot) != int(where[right_i]) or not placed_ok:
+				shell_bad = "SHELL L%d: slots %s, right gate in %d, want %d" % [li + 1, str(slots), w.planets[right_i].slot, where[right_i]]
+			sp._shell_reveal(w)
+			if color_of.call(w.planets[right_i]) != sp.pattern_color:
+				shell_bad = "SHELL L%d: the right gate does not show its colour again" % (li + 1)
+			for p in w.planets:
+				p.node.free()
+	sp.pattern_kind = sp.Kind.COLOR
+	sp.pattern_level = 1
+	_check(shell_bad == "", "SHELL hides the colours, swaps the gates into slots of their own, the right gate where the swaps took it, and shows the colours again once judged%s" % ("" if shell_bad == "" else " — " + shell_bad))
 	var avoid_levels: int = (sp.BANK[sp.Kind.MIX] as Array).size() + (sp.BANK[sp.Kind.ARROW_MIX] as Array).size()
 	_check(avoids.keys().all(func(k): return k.begins_with("MIX") or k.begins_with("ARROW_MIX")) and avoids.size() == avoid_levels,
 		"avoid steps come in MIX and ARROW_MIX only, at every one of their levels (%s)" % str(avoids))
@@ -353,7 +399,8 @@ func _run() -> void:
 		_tick(dt)
 		learn += dt
 	var need: float = sp.memory_len() * sp.MEMORY_SECONDS_EACH
-	_tick(dt)
+	# Past the hold a right pass brings (HITSTOP_TIME), when the world moves again.
+	_tick(sp.HITSTOP_TIME + dt * 2.0)
 	m.hurt_elapsed = -1.0
 	_check(learn >= need - 0.05 and sp.memory_slow == 1.0,
 		"a %d-colour round is up %.2f s before its first gate at full speed (at least %.1f), then full speed again" % [sp.memory_len(), learn, need])
@@ -447,7 +494,35 @@ func _run() -> void:
 	var hearts_before: int = m.hearts
 	var level_before: int = sp.level
 	var dust_before: int = m.run_stardust
-	_fly_wave_at(_wrong_pos(sp.upcoming_wave()))
+	var w_wrong: Dictionary = sp.upcoming_wave()
+	var right_gate: Dictionary = w_wrong.planets.filter(func(p): return p.correct)[0]
+	_fly_wave_at(_wrong_pos(w_wrong))
+	# The wrong gate answers: the camera jolts and the right gate is ringed.
+	_check(sp.shake > 0.0 and sp.reveals.any(func(r): return is_same(r.p, right_gate))
+		and not sp.reveals.any(func(r): return not r.p.correct),
+		"a wrong gate jolts the camera and rings the gate that was right, and only that")
+	# Again with four gates, where the gates that were neither flown through
+	# nor right must stay unringed; with two there are none to tell apart.
+	var keep_level: int = sp.pattern_level
+	var keep_kind: int = sp.pattern_kind
+	var keep_done: int = sp.steps_done
+	var w4: Dictionary = {}
+	sp.pattern_level = 3
+	sp.pattern_kind = sp.Kind.COLOR
+	sp._prepare_pattern()
+	w4 = sp._make_step(sp.Kind.COLOR)
+	sp.reveals.clear()
+	var wrong4: Dictionary = w4.planets.filter(func(p): return not p.correct)[0]
+	w4["target"] = wrong4
+	sp._resolve_wave(w4)
+	_check(w4.planets.size() == 4 and sp.reveals.size() == 1 and sp.reveals[0].p.correct,
+		"with four gates, only the right one is ringed (%d ringed)" % sp.reveals.size())
+	for p in w4.planets:
+		p.node.free()
+	sp.reveals.clear()
+	sp.pattern_level = keep_level
+	sp.pattern_kind = keep_kind
+	sp.steps_done = keep_done
 	_check(m.hearts == hearts_before and m.combo == 0 and sp.streak == 0 and sp.level == level_before
 		and m.run_stardust == dust_before and is_equal_approx(sp._pace_target(), sp.PACE_START),
 		"a wrong gate breaks the streak and the combo, slows the world back down, and costs no heart, weapon or stardust")
@@ -482,26 +557,31 @@ func _run() -> void:
 	_check(m.combo == combo0 + 1, "one changed after CAPTURE_LOCK does not (combo %d)" % m.combo)
 
 	# ---- 5 ----
-	# Rocks are random; across a few patterns' worth of gaps some come.
-	var rock_bad := ""
+	# No rocks between the steps since 2026-11-27: a few patterns' worth of
+	# gaps, and not one. The asteroid itself is still checked below, spawned
+	# by hand.
 	var rocks_seen := 0
-	var rock_between := false
-	for run in range(3):
+	for run in range(2):
 		_fresh_run()
-		for i in range(5):
+		for i in range(8):
 			_fly_wave_at(_correct_pos(sp.upcoming_wave()))
-			var zs: Array = sp.waves.filter(func(x): return not x.resolved).map(func(x): return x.z)
-			for r in sp.rocks:
-				if r.judged:
-					continue
-				rocks_seen += 1
-				for s in sp.SLOTS:
-					if (r.pos as Vector2).distance_to(s) < sp.ROCK_CLEAR - 0.001:
-						rock_bad += " %s near %s;" % [str(r.pos), str(s)]
-				for j in range(1, zs.size()):
-					rock_between = rock_between or (r.z < zs[j - 1] and r.z > zs[j])
-	_check(rocks_seen > 0 and rock_between, "rocks fly between the steps (%d seen)" % rocks_seen)
-	_check(rock_bad == "", "and keep off every slot's centre%s" % rock_bad)
+			rocks_seen += sp.rocks.size()
+	_check(rocks_seen == 0, "no rocks fly between the steps (%d seen)" % rocks_seen)
+	# The slowest a step can get, read off the game's own speed(): a late
+	# cycle, full streak, no lunge.
+	var keep := [sp.cycle, sp.pace, sp.boost, sp.phase, sp.memory_slow]
+	sp.cycle = 20
+	sp.pace = sp.PACE_MAX
+	sp.boost = 0.0
+	sp.phase = sp.Phase.PATTERN
+	sp.memory_slow = 1.0
+	var fastest: float = sp.STEP_GAP / sp.speed()
+	sp.cycle = keep[0]
+	sp.pace = keep[1]
+	sp.boost = keep[2]
+	sp.phase = keep[3]
+	sp.memory_slow = keep[4]
+	_check(fastest >= STEP_FLOOR, "at its fastest a step is still %.2f s apart (at least %.1f)" % [fastest, STEP_FLOOR])
 	_fresh_run()
 	_hold_pattern()
 	sp.fire_timer = 999.0              # no bullets: let it reach the ship
@@ -526,22 +606,29 @@ func _run() -> void:
 	_check(not rock.alive and m.hearts == m.MAX_HEARTS and m.score > score0, "one shot to pieces scores and costs nothing")
 
 	# ---- 6 ----
+	var per: float = sp.FEVER_PER_RIGHT
+	var whole: float = per * sp.PATTERN_LEN + sp.FEVER_PERFECT_BONUS
+	_check(sp.fever_for(sp.FEVER_MIN_RIGHT - 1) == 0.0 and is_equal_approx(sp.fever_for(sp.FEVER_MIN_RIGHT), per * sp.FEVER_MIN_RIGHT)
+		and is_equal_approx(sp.fever_for(sp.PATTERN_LEN - 1), per * (sp.PATTERN_LEN - 1)) and is_equal_approx(sp.fever_for(sp.PATTERN_LEN), whole),
+		"fever grows with the right gates: none under %d, %.1f s a gate, %.1f s for all %d" % [sp.FEVER_MIN_RIGHT, per, whole, sp.PATTERN_LEN])
 	_fresh_run()
 	_play_pattern(func(_i): return true)
-	_check(sp.phase == sp.Phase.FEVER and sp.weapon == sp.Weapon.SPREAD,
-		"a pattern with every step right brings the next weapon and FEVER (phase %d, weapon %d)" % [sp.phase, sp.weapon])
+	_check(sp.phase == sp.Phase.FEVER and sp.weapon == sp.Weapon.SPREAD and is_equal_approx(sp.fever_time, whole),
+		"a pattern with every step right brings the next weapon and the whole FEVER (phase %d, weapon %d, %.1f s)" % [sp.phase, sp.weapon, sp.fever_time])
 	var hearts_f: int = m.hearts
 	var dust_f: int = m.run_stardust
 	m._space_fever_smash()
 	_check(m.run_stardust == dust_f + sp.STARDUST_FEVER_SMASH, "a planet smashed in fever pays stardust")
 	_park(Vector2.ZERO)
-	_tick(sp.FEVER_DURATION + 0.3)
+	_tick(sp.fever_time + 0.3)
 	_check(m.hearts == hearts_f, "FEVER costs no heart (hearts %d)" % m.hearts)
 	_check(sp.phase == sp.Phase.PATTERN and sp.steps_done == 0 and not sp.upcoming_wave().is_empty(),
 		"and ends on the next pattern")
-	_play_pattern(func(i): return i != 4)
-	_check(sp.phase == sp.Phase.BOSS and sp.boss != null,
-		"a pattern with a miss brings no fever, and after %d patterns the boss comes" % sp.PATTERNS_PER_CYCLE)
+	# Too few right for any fever: straight on, and after the cycle's
+	# patterns that is the boss.
+	_play_pattern(func(i): return i < sp.FEVER_MIN_RIGHT - 1)
+	_check(sp.phase == sp.Phase.BOSS and sp.boss != null and sp.weapon == sp.Weapon.SPREAD,
+		"a pattern with %d right brings no fever and no weapon, and after %d patterns the boss comes" % [sp.FEVER_MIN_RIGHT - 1, sp.PATTERNS_PER_CYCLE])
 	sp.fire_timer = 999.0
 	_tick(sp.BOSS_ENTER_TIME + 0.2)
 	var hearts_b: int = m.hearts
@@ -589,7 +676,6 @@ func _run() -> void:
 	_fresh_run()
 	_fly_wave_at(_correct_pos(sp.upcoming_wave()))
 	m.hearts = 1
-	var score_at_death: int = m.score
 	_hold_pattern()
 	sp.fire_timer = 999.0
 	_park(Vector2.ZERO)
@@ -599,11 +685,8 @@ func _run() -> void:
 		sp.fire_timer = 999.0
 		_tick(1.0 / 60.0)
 		guard += 1
-	_check(m.hearts == 0 and m.state == m.State.GAMEOVER and m.revive_panel.visible, "the last heart offers the revive")
-	m._on_revive_continue()
-	_check(m.hearts == m.MAX_HEARTS and m.score == score_at_death and sp.steps_done == 0
-		and not sp.upcoming_wave().is_empty(),
-		"continuing refills the hearts, keeps the score and starts the pattern over")
+	_check(m.hearts == 0 and m.state == m.State.GAMEOVER and m.gameover_popup.visible,
+		"the last heart ends the run on the game over (there is no revive)")
 	m.state = m.State.PLAYING
 
 	# ---- 9 ----

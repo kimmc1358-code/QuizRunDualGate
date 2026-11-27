@@ -45,7 +45,7 @@ const LIVE_APP_ID := "ca-app-pub-6214282306800929~2199640508"
 # dropped on 2026-11-27: 2.0 shows no banner. The unit still exists in the
 # AdMob console and serves nothing.
 const LIVE_INTERSTITIAL := "ca-app-pub-6214282306800929/6083045191"    # Interstitial - Restart
-const LIVE_REWARDED := "ca-app-pub-6214282306800929/1433353747"        # Rewarded - Revive
+const LIVE_REWARDED := "ca-app-pub-6214282306800929/1433353747"        # Rewarded - Revive (콘솔 이름. 2026-11-28 부터 결과 화면의 x2 가 쓴다)
 
 ## 출시 준비가 끝나면 이 한 줄을 false 로 바꾼다. 그때까지는 릴리스 빌드로 뽑아도
 ## 테스트 광고만 나간다.

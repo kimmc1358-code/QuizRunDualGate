@@ -2,36 +2,34 @@ extends PopupBase
 
 ## 게임오버 팝업.
 ##
-## 부활 제안을 거절하면 이게 뜬다. 판 위로 "TRY AGAIN!" 아트가 걸터앉고,
+## 하트를 다 잃으면 곧장 이게 뜬다(부활은 2026-11-28 에 뺐다). 판 위에 GAME OVER 가 얹히고,
 ## 판 안은 위에서부터 신기록 리본 → 로그인 유도 → 점수 → 최대 콤보 →
-## 버튼들 순서다.
+## 이번 판의 스타더스트(광고 보고 2배) → PLAY AGAIN → HOME 순서다.
 ##
-## 판·버튼·글로우는 PopupBase가 맡는다. 여기에는 이 팝업만의 내용과
+## 판·버튼은 PopupBase가 맡는다. 여기에는 이 팝업만의 내용과
 ## 배치만 있다.
 ##
 ## 신기록이냐 아니냐로 맨 윗줄만 갈라진다. 신기록이면 트로피와 리본,
 ## 아니면 넘어야 할 기록을 적은 판. 나머지 줄은 그대로다 — 두 화면이 아주
 ## 달라 보이면 "졌다"는 느낌이 화면 전환으로까지 번진다.
 ##
-## 로그인 여부는 가운데 안내 상자와 왼쪽 크림 버튼만 바꾼다. 로그인했으면
-## "순위표에 올라갔다"는 확인, 아니면 로그인 유도다. 네 가지 조합이지만
-## 화면은 한 벌이고 두 곳만 갈린다.
+## 로그인과 순위표 이야기는 이 화면에 없다(2026-11-28 주인의 결정). 순위표
+## 안내 상자("로그인하면 순위표에 오릅니다" / "최고 기록이 순위표에 있습니다")와
+## LOGIN WITH GOOGLE·LEADERBOARD·SHARE 버튼이 있었다. 기록은 여전히 판이
+## 끝날 때 순위표에 올라간다(Main._finish_run).
 
 signal play_again_pressed
-signal login_pressed
-signal leaderboard_pressed
-signal share_pressed
 signal home_pressed
+signal double_pressed
 
-const TRYAGAIN_FILE := "tryagain_popup.png"
-# TRY AGAIN 아트가 판 위로 얼마나 걸터앉는가 — OOPS와 같은 방식.
-const TRYAGAIN_WIDTH_FRAC := 0.82   # 판 너비 대비
-const TRYAGAIN_OVERHANG := 0.58     # 자기 높이 중 판 위로 나가는 비율
+# 판 위에 크게 쓰는 제목(PopupBase._make_title / _place_title). 1.x 의 TRY AGAIN
+# 그림 자리다. PLAY AGAIN 버튼이 바로 아래에서 같은 말을 하므로 제목은 GAME OVER.
+const TITLE_TEXT := "GAME OVER"
 
 # ---- 맨 윗줄: 리본 위에 트로피와 캐릭터가 올라탄다 ----
 # 리본은 판 테두리에 닿을 만큼 넓게 편다. 트로피와 캐릭터는 그 양 끝에
 # 겹쳐 놓는다 — 옆에 나란히 세우면 리본이 그만큼 좁아진다.
-const RIBBON_FILE := "res://assets/ui_assets/popup/popup_best.png"
+const RIBBON_FILE := KIT + "quiz_box.png"   # 2.0: 문제 상자와 같은 주황 머리 틀 — 화면에서 가장 큰 소리
 const RIBBON_WIDTH_FRAC := 0.95     # 판 너비 대비 — 리본 끝이 판 테두리에 살짝 걸친다
 const RIBBON_TEXTURE_HEIGHT := 320  # 미리 줄여 둘 높이(px)
 const BEST_TEXT := "NEW BEST!"
@@ -49,7 +47,7 @@ const BEST_TEXT_SIDE_PAD := 4.0     # 양 끝 그림과 글자 사이 최소 간
 const RIBBON_CURVE_SAMPLES := 65    # 중심선을 몇 군데서 잴지
 const BEST_TEXT_Y_NUDGE := 0.02     # 리본 높이 대비 미세 조정(양수면 아래로)
 
-const TROPHY_FILE := "res://assets/ui_assets/popup/icon_trophy.png"
+const TROPHY_FILE := KIT + "icon_trophy_gold.png"
 const TROPHY_HEIGHT_FRAC := 0.62    # 리본 높이 대비 — 위아래로 살짝 넘친다
 const TROPHY_TEXTURE_HEIGHT := 260
 # 트로피가 밑동을 축으로 좌우로 갸웃거린다. 캐릭터는 위아래로 움직이므로
@@ -72,44 +70,17 @@ const EDGE_INSET_FRAC := 0.012      # 리본 너비 대비
 const CHARACTER_BOB_PERIOD := 2.2
 const CHARACTER_BOB_AMPLITUDE := 5.0
 
-# ---- 정보 상자 두 개 ----
-# 한 줄짜리 둥근 상자. 로그인 유도는 하늘색, 최대 콤보는 부활 팝업의 안내
-# 상자와 같은 크림색 — 같은 모양이되 성격이 다르다는 걸 색으로 가른다.
-const LOGIN_BOX_COLOR := Color(0.72, 0.87, 0.97, 1.0)
-const COMBO_BOX_COLOR := Color(0.93, 0.90, 0.82, 1.0)
+# ---- 정보 상자 ----
+# 한 줄짜리 상자. 최대 콤보는 주황 테, 스타더스트는 하늘색 테(_info_box).
+const COMBO_BOX_COLOR := Color(1.0, 0.62, 0.20, 1.0)
 const BOX_RADIUS := 14
-const LOGIN_BOX_HEIGHT_FRAC := 0.058   # 판 높이 대비
 const COMBO_BOX_HEIGHT_FRAC := 0.082   # 성적이라 조금 두툼하게
 const BOX_PAD := 14.0               # 상자 안쪽 좌우 여백
 const BOX_ICON_HEIGHT_FRAC := 1.55  # 글자 크기 대비 아이콘 높이
 const BOX_ICON_GAP_FRAC := 0.62     # 글자 크기 대비 아이콘-글자 간격
-const LOGIN_TEXT_FRAC := 0.043      # 판 너비 대비 — 안내 문구라 작게
 const BOX_TEXT_MIN := 9             # 더 줄이면 읽히지 않는다
 const COMBO_TEXT_FRAC := 0.057      # 판 너비 대비 — 성적이라 조금 크게
 
-# icon_popup_2.png는 2칸짜리 — 왼쪽이 초록 체크, 오른쪽이 파란 자물쇠.
-const STATUS_ICON_SHEET := "res://assets/ui_assets/popup/icon_popup_2.png"
-const STATUS_ICON_GRID := Vector2i(2, 1)
-const ICON_CHECK := 0
-const ICON_LOCK := 1
-# 안내 상자는 세 얼굴을 가진다.
-#
-#   로그인 전       파랑 + 자물쇠  — 순위표에 들어오라는 권유
-#   기록 갱신       연두 + 체크    — 이 판이 순위표에 올라갔다
-#   기록 미달성     연두 + 체크    — 내 기록은 이미 순위표에 있다
-#   부활한 판       크림 + 느낌표  — 순위표는 첫 실수 지점에서 멈췄다
-#
-# 미달성일 때 "Saved to Leaderboard"라고 하면 안 된다. 순위표는 사람마다
-# 최고 기록 한 줄만 두므로, 기록을 못 넘긴 판은 순위표를 바꾸지 않는다.
-# 그렇게 적어 두면 순위표에 가 본 게이머는 방금 점수를 찾지 못한다.
-const LOGIN_BOX_TEXT := "Login to join the Leaderboard!"
-const SAVED_BOX_TEXT := "Saved to Leaderboard"
-const STANDING_BOX_TEXT := "Your best is on the Leaderboard"
-# 부활한 판에도 "안 셌다"가 아니라 "여기까지 셌다"라고 적는다.
-const REVIVED_BOX_FORMAT := "Leaderboard kept your score at %s"
-const SAVED_BOX_COLOR := Color(0.76, 0.92, 0.72, 1.0)   # 연두 — 잠김(파랑)과 대비되는 "됐다"
-const REVIVED_BOX_COLOR := Color(0.93, 0.90, 0.82, 1.0) # 크림 — 좋지도 나쁘지도 않은 알림
-const INFO_ICON_FILE := "res://assets/ui_assets/popup/icon_information.png"
 
 # ---- 신기록이 아닐 때의 맨 윗줄 ----
 # 리본 대신 "넘어야 할 숫자"를 적은 판을 가운데에 놓는다. 빈자리를 메우는 게
@@ -117,12 +88,12 @@ const INFO_ICON_FILE := "res://assets/ui_assets/popup/icon_information.png"
 #
 # 캐릭터는 이쪽에 나오지 않는다. 기록을 못 넘겼다고 우는 얼굴을 띄우면
 # 판을 나무라는 화면이 된다.
-const CROWN_FILE := "res://assets/ui_assets/popup/icon_crown.png"
+const CROWN_FILE := KIT + "icon_star.png"
 # 배지 바탕은 전용 아트를 9-slice로 늘려 쓴다. 실루엣이 2148x555(약 3.9:1)로
 # 배지 비율과 거의 같아서, 다른 9-slice들처럼 폭에 맞춰 줄여도 모서리 곡률이
 # 그려진 대로 나온다.
-const BEST_BOX_FILE := "best_box.png"
-const BEST_BOX_CORNER := 91            # 원본의 모서리 곡률 반경(px)
+const BEST_BOX_FILE := KIT + "explain_bar.png"   # 메뉴 설명 줄과 같은 틀
+const BEST_BOX_CORNER := 40            # 구운 텍스처의 양 끝 머리 폭(px) — ModeSelectScreen.EXPLAIN_FRAME_CAP
 const BEST_BOX_TEXTURE_WIDTH := 340    # 미리 줄여 둘 폭(논리 px). 가장 넓은 배지보다 조금 크게
 const BEST_PLATE_HEIGHT_FRAC := 0.105  # 판 높이 대비 — 안내 상자들보다 두툼하게
 # 판은 내용에 맞춰 폭이 정해지는 배지다. 좌우로 길게 늘이면 아래 안내
@@ -147,7 +118,18 @@ const GAP_LINE_FORMAT := "%s to beat your best"
 const GAP_LINE_FRAC := 0.048           # 판 너비 대비
 const GAP_LINE_TOP := 6.0              # 점수 줄과의 간격
 
-const FIRE_FILE := "res://assets/ui_assets/popup/icon_fire.png"
+# 이번 판에 번 스타더스트와, 광고를 보고 그것을 한 번 더 받는 x2 (2026-11-27,
+# 2.0 의 첫 보상형 광고 자리). 상자는 최대 콤보 상자 바로 아래, 버튼은 상자
+# 오른쪽 안에 든다. 광고 제거를 산 사람에게는 광고 표시 없이 x2 만 뜬다.
+const DUST_ICON := "res://assets/synty_ui/icon_stardust.png"
+const DUST_LABEL := "STARDUST"
+const DOUBLE_TEXT := "x2"
+const NO_AD_TEXT := "AD NOT READY"
+const DUST_BOX_COLOR := Color(0.55, 0.92, 1.0, 1.0)    # 스타더스트 아이콘의 색
+const DUST_BOX_HEIGHT_FRAC := 0.082
+const DUST_BUTTON_W_FRAC := 0.32        # 상자 폭 대비; 0.40 은 한국어 "스타더스트"와 숫자를 겹치게 했다
+const DUST_GOLD := Color(1.0, 0.78, 0.25, 1.0)         # 2배가 된 뒤 x2 글자
+const FIRE_FILE := KIT + "icon_bolt.png"
 const COMBO_LABEL := "MAX COMBO"
 
 # ---- 점수 줄 ----
@@ -166,50 +148,38 @@ const WIDE_FRAC := 0.86             # 판 너비 대비 — 버튼과 상자가 
 const PLAY_BUTTON_HEIGHT_FRAC := 0.125
 const PLAY_BUTTON_TEXT := "PLAY AGAIN"
 const PLAY_ICON_SCALE := 1.15
-const PAIR_BUTTON_HEIGHT_FRAC := 0.082   # LOGIN WITH GOOGLE / SHARE
-const PAIR_GAP_FRAC := 0.035             # 두 버튼 사이(판 너비 대비)
-const PAIR_LABEL_FIT := 0.92
 const HOME_BUTTON_HEIGHT_FRAC := 0.082
-# 크림 버튼 셋의 아이콘은 같은 크기여야 한다. 글자 길이가 제각각이라
-# (SHARE / HOME은 여유롭고 LOGIN WITH GOOGLE은 줄어든다) 아이콘을 글자
-# 크기에 맡기면 셋의 크기가 어긋난다. 버튼 높이에서 직접 뽑는다.
+# HOME 의 아이콘은 버튼 높이에서 직접 뽑는다 — 글자 크기에 맡기면 아이콘이
+# 지나치게 작다.
+#
+# 이 줄에는 LOGIN WITH GOOGLE(로그인 뒤 LEADERBOARD)과 SHARE 가 나란히 있었다.
+# 2026-11-28 주인의 결정으로 뺐다: 결과 화면은 x2·다시 하기·홈만 남긴다.
+# 로그인은 설정과 메뉴의 사람 아이콘에, 순위표는 메뉴의 트로피에 있다.
 const CREAM_ICON_HEIGHT_FRAC := 0.52     # 버튼 높이 대비
-# 골드와 크림 사이는 다른 줄 간격보다 좁게 — 셋이 한 덩어리로 읽힌다.
-const BUTTON_BLOCK_GAP := 8.0
 # 골드 버튼 위아래로 똑같이 띄우는 간격. 주 동작 버튼이 콤보 상자와 크림
 # 버튼 사이 한가운데에 놓이게 한다.
 const PLAY_BUTTON_GAP := 14.0
+# 스타더스트 줄과 콤보 상자 사이 — 다른 줄 간격보다 좁게, 둘이 한 덩어리로 읽힌다.
+const BUTTON_BLOCK_GAP := 8.0
 
-const GOOGLE_FILE := "res://assets/ui_assets/popup/icon_google.png"
-# 두 줄로 나눈다. 한 줄로 쓰면 옆 SHARE 버튼과 같은 폭에 스무 자를 욱여넣게
-# 되어 글자가 지나치게 작아진다. 라벨은 가운데 정렬이라 GOOGLE이 저절로
-# 윗줄 한가운데에 선다.
-const GOOGLE_TEXT := "LOGIN WITH
-GOOGLE"
-# 로그인한 뒤에는 같은 버튼이 순위표로 가는 버튼이 된다.
-const LEADERBOARD_TEXT := "LEADERBOARD"
-const SHARE_TEXT := "SHARE"
-const ICON_TROPHY := 3              # icon_sheet 윗줄 오른쪽에서 두 번째
-const ICON_SHARE := 4               # icon_sheet 윗줄 가장 오른쪽
-
-var _tryagain: TextureRect
+var _tryagain: Control
 var _character: TextureRect
 var _top_row: Control
-var _login_box: Control
 var _score_row: Control
 var _combo_box: Control
+var _dust_box: Control
+var _double_button: Button
+var _dust_icon: Texture2D
+var _dust := 0
+var _dust_offer := false
+var _dust_doubled := false
+var _dust_no_ad := false
+var _dust_ad_free := false
 var _play_button: Button
-var _google_button: Button
-var _share_button: Button
 var _home_button: Button
 
 var _ribbon: Texture2D
 var _trophy: Texture2D
-var _lock: Texture2D
-var _check: Texture2D
-var _info: Texture2D
-var _google_icon: Texture2D
-var _trophy_icon: Texture2D
 var _fire: Texture2D
 
 # 레이아웃이 잡아 준 캐릭터의 제자리. 흔들림은 여기서부터 위아래로만 더한다 —
@@ -220,9 +190,6 @@ var _score := 0
 var _max_combo := 0
 var _best := 0
 var _is_new_record := true
-var _logged_in := false
-var _revived := false
-var _leaderboard_score := 0
 var _crown: Texture2D
 var _best_plate: NinePatchRect
 var _best_plate_rect := Rect2()
@@ -235,14 +202,13 @@ var _ribbon_rect := Rect2()
 var _ribbon_curve := PackedFloat32Array()
 var _trophy_rect := Rect2()
 var _best_font := 0
-var _login_font := 0
 var _combo_font := 0
 var _score_label_font := 0
 var _score_value_font := 0
 
 
-# 캐릭터를 제자리에서 아주 조금 띄웠다 내린다. 글로우는 부모가 계속 돌려야
-# 하므로 super를 먼저 부른다.
+# 캐릭터를 제자리에서 아주 조금 띄웠다 내린다. 시계(_elapsed)는 부모가 돌리므로
+# super를 먼저 부른다.
 func _process(delta: float) -> void:
 	super._process(delta)
 	if not visible or _character == null:
@@ -254,14 +220,23 @@ func _process(delta: float) -> void:
 		_top_row.queue_redraw()
 
 
+const PANEL_MAX_H := 700.0   # 논리 px — 16:9 의 0.82 와 같은 높이
+
 func panel_size_frac() -> Vector2:
-	# 담을 것이 일곱 줄이라 팝업 중 가장 크다. 그래도 화면 끝까지 넓히지는
-	# 않는다 — 판 둘레의 글로우가 퍼질 자리(약 22px)가 남아야 한다.
-	return Vector2(0.90, 0.82)
+	# 화면 끝까지 넓히지는 않는다 — 판 양옆에 바깥 화면이 조금은 보여야
+	# 팝업으로 읽힌다.
+	#
+	# 높이는 PANEL_MAX_H 에서 멈춘다. 줄 높이는 판 너비(곧 화면 너비)를 따라
+	# 어느 폰에서나 같은데, 판은 화면 높이를 따라 길어진다. 안내 상자와 버튼
+	# 한 줄이 빠진 뒤로(2026-11-28) 20:9 에서는 빈 간격만 커다랗게 남았다.
+	var h: float = 0.82
+	if size.y > 0.0:
+		h = minf(h, PANEL_MAX_H / size.y)
+	return Vector2(0.90, h)
 
 
 func panel_center_y_frac() -> float:
-	# TRY AGAIN이 판 위로 튀어나오므로 판을 살짝 내려 머리 공간을 만든다.
+	# 제목이 판 위에 놓이므로 판을 살짝 내려 머리 공간을 만든다(_place_title).
 	return 0.54
 
 
@@ -280,11 +255,6 @@ func _build_content() -> void:
 	_ribbon = _load_icon_from(RIBBON_FILE, Vector2i(1, 1), 0, RIBBON_TEXTURE_HEIGHT)
 	_measure_ribbon_curve()
 	_trophy = _load_icon_from(TROPHY_FILE, Vector2i(1, 1), 0, TROPHY_TEXTURE_HEIGHT)
-	_lock = _load_icon_from(STATUS_ICON_SHEET, STATUS_ICON_GRID, ICON_LOCK)
-	_check = _load_icon_from(STATUS_ICON_SHEET, STATUS_ICON_GRID, ICON_CHECK)
-	_info = _load_icon_from(INFO_ICON_FILE, Vector2i(1, 1), 0)
-	_google_icon = _load_icon_from(GOOGLE_FILE, Vector2i(1, 1), 0)
-	_trophy_icon = _load_icon(ICON_TROPHY)
 	_fire = _load_icon_from(FIRE_FILE, Vector2i(1, 1), 0)
 	_crown = _load_icon_from(CROWN_FILE, Vector2i(1, 1), 0)
 
@@ -310,12 +280,6 @@ func _build_content() -> void:
 	_character.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	add_child(_character)
 
-	_login_box = Control.new()
-	_login_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_login_box.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_login_box.draw.connect(_draw_login_box)
-	add_child(_login_box)
-
 	_score_row = Control.new()
 	_score_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_score_row.draw.connect(_draw_score_row)
@@ -327,46 +291,30 @@ func _build_content() -> void:
 	_combo_box.draw.connect(_draw_combo_box)
 	add_child(_combo_box)
 
+	_dust_icon = ArtSlot.texture(DUST_ICON)
+	_dust_box = Control.new()
+	_dust_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_dust_box.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	_dust_box.draw.connect(_draw_dust_box)
+	add_child(_dust_box)
+	_double_button = _make_button(GOLD_FILE, GOLD_CORNER, DOUBLE_TEXT,
+		_load_popup_icon(POPUP_ICON_AD), true)
+	_double_button.pressed.connect(func(): double_pressed.emit())
+	add_child(_double_button)
+
 	_play_button = _make_button(GOLD_FILE, GOLD_CORNER, tr(PLAY_BUTTON_TEXT),
 		_load_popup_icon(POPUP_ICON_RESTART), true)
 	_play_button.pressed.connect(func(): play_again_pressed.emit())
 	add_child(_play_button)
-
-	_google_button = _make_button(CREAM_FILE, CREAM_CORNER, GOOGLE_TEXT,
-		_google_icon, false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
-	_google_button.pressed.connect(_on_google_button_pressed)
-	add_child(_google_button)
-
-	_share_button = _make_button(CREAM_FILE, CREAM_CORNER, tr(SHARE_TEXT),
-		_load_icon(ICON_SHARE), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
-	_share_button.pressed.connect(func(): share_pressed.emit())
-	add_child(_share_button)
 
 	_home_button = _make_button(CREAM_FILE, CREAM_CORNER, tr("HOME"),
 		_load_icon(ICON_HOME), false, CREAM_GRADIENT, CREAM_TEXTURE_WIDTH)
 	_home_button.pressed.connect(func(): home_pressed.emit())
 	add_child(_home_button)
 
-	# TRY AGAIN은 판보다 위에 그려져야 하므로 마지막에 붙인다.
-	_tryagain = TextureRect.new()
-	_tryagain.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_tryagain.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_tryagain.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_tryagain.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	_tryagain.texture = _load_tryagain()
+	# 제목은 판보다 위에 그려져야 하므로 마지막에 붙인다.
+	_tryagain = _make_title(TITLE_TEXT)
 	add_child(_tryagain)
-
-
-# TRY AGAIN 아트도 알파 없이 흰 배경으로 저장되어 있다
-# (_strip_white_background 참고). 배경을 지우면 실루엣 둘레가 알파 0 아니면
-# 1인 딱딱한 경계라, 줄여 그릴 때 계단이 진다 — _smoothed가 1px 경사를 만든다.
-func _load_tryagain() -> Texture2D:
-	var img: Image = ArtSlot.image(ART_DIR + TRYAGAIN_FILE)
-	img.convert(Image.FORMAT_RGBA8)
-	img.clear_mipmaps()
-	_strip_white_background(img)
-	img.generate_mipmaps()
-	return _smoothed(ImageTexture.create_from_image(img))
 
 
 ## 이번 판의 결과를 Main이 넣어 준다.
@@ -374,15 +322,10 @@ func _load_tryagain() -> Texture2D:
 ## face는 신기록이면 happy, 아니면 sad 표정이다. Main이 골라 넘긴다 —
 ## 팝업은 어느 모드인지 모른다.
 ##
-## logged_in은 가운데 안내 상자와 왼쪽 크림 버튼을 바꾼다.
-##
-## leaderboard_score는 첫 실수 전까지 도달한 점수다. score보다 낮으면
-## 광고를 보고 이어 뛴 판이라는 뜻이라, 안내 상자가 그걸 알려 준다.
-##
 ## draw_size는 게임 화면에서 이 캐릭터를 그리던 크기(논리 px)다. 팝업도 같은
 ## 좌표계라 그대로 쓰면 크기가 정확히 일치한다.
 func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
-		best: int, is_new_record: bool, logged_in: bool, leaderboard_score: int) -> void:
+		best: int, is_new_record: bool) -> void:
 	if _character != null:
 		# 아트의 알파 경계가 딱딱해서 그대로 크게 띄우면 계단이 보인다.
 		_character.texture = _smoothed(face)
@@ -392,39 +335,49 @@ func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
 	_max_combo = max_combo
 	_best = best
 	_is_new_record = is_new_record
-	_logged_in = logged_in
-	_leaderboard_score = leaderboard_score
-	# 순위표에 남은 점수가 최종 점수보다 낮다면 광고를 보고 이어 뛴 판이다.
-	_revived = leaderboard_score < score
-	_apply_login_face()
 	_layout()
 
 
-## 떠 있는 동안 로그인이 끝났을 때 Main 이 부른다. 이 팝업의 LOGIN WITH GOOGLE
-## 로 로그인하면 결과가 팝업이 떠 있는 채로 돌아온다. set_result 는 판의 결과
-## 전부를 다시 넣는 함수라 로그인 하나 때문에 부를 것이 아니고, 바뀌는 것은
-## 로그인에 걸린 두 곳 — 왼쪽 크림 버튼과 안내 상자 — 뿐이다.
-func set_logged_in(logged_in: bool) -> void:
-	if _logged_in == logged_in:
+## 이번 판에 번 스타더스트. `offer` 면 x2 버튼을 띄우고, `ad_free` 면 광고
+## 표시 없이 띄운다. 판마다 set_result 와 함께 부른다.
+func set_stardust(amount: int, offer: bool, ad_free: bool) -> void:
+	_dust = amount
+	_dust_offer = offer
+	_dust_doubled = false
+	_dust_no_ad = false
+	_dust_ad_free = ad_free
+	_apply_double_face()
+	_layout()
+
+
+## 2배를 받았다: 버튼이 빠지고 숫자 옆에 금색 x2 가 붙는다.
+func set_stardust_doubled() -> void:
+	_dust_doubled = true
+	_layout()
+
+
+## 띄울 광고가 없었다: 버튼이 "광고 준비 중"으로 꺼진다. 이번 판에는 다시
+## 누를 수 없다 — 몇 초 뒤 광고가 들어와도, 결과 화면을 붙잡고 기다리게
+## 만들 까닭이 없다.
+func set_double_unavailable() -> void:
+	_dust_no_ad = true
+	_apply_double_face()
+	_layout()
+
+
+func _apply_double_face() -> void:
+	if _double_button == null:
 		return
-	_logged_in = logged_in
-	_apply_login_face()
-	_layout()
-	if _login_box != null:
-		_login_box.queue_redraw()
+	var caption: Label = _double_button.get_node("Caption")
+	caption.text = tr(NO_AD_TEXT) if _dust_no_ad else DOUBLE_TEXT
+	var icon: TextureRect = _double_button.get_node("Icon")
+	icon.texture = null if (_dust_ad_free or _dust_no_ad) else _load_popup_icon(POPUP_ICON_AD)
+	_double_button.disabled = _dust_no_ad
+	_double_button.modulate = Color(1, 1, 1, 0.55) if _dust_no_ad else Color.WHITE
 
 
-# 왼쪽 크림 버튼은 로그인 여부로 얼굴을 바꾼다. 글자 길이가 달라지므로
-# 부르는 쪽이 이어서 _layout()을 불러 크기를 다시 재게 한다.
-func _apply_login_face() -> void:
-	var caption: Label = _google_button.get_node("Caption")
-	caption.text = tr(LEADERBOARD_TEXT) if _logged_in else GOOGLE_TEXT
-	var icon: TextureRect = _google_button.get_node("Icon")
-	icon.texture = _trophy_icon if _logged_in else _google_icon
-
-
-# 위에서부터: 리본줄 → 로그인 상자 → 점수 → 콤보 상자 → PLAY AGAIN →
-# (LOGIN WITH GOOGLE | SHARE) → HOME. 남는 세로 공간을 줄 사이에 고르게
+# 위에서부터: 리본줄 → 점수 → 콤보 상자 → 스타더스트 →
+# PLAY AGAIN → HOME. 남는 세로 공간을 줄 사이에 고르게
 # 나눠, 화면 비율이 달라져도 아래위가 붙거나 벌어지지 않는다.
 func _layout_content(inner: Rect2) -> void:
 	var pw: float = _panel_rect.size.x
@@ -436,7 +389,6 @@ func _layout_content(inner: Rect2) -> void:
 	var wide_w: float = pw * WIDE_FRAC
 	var wide_x: float = _panel_rect.position.x + (pw - wide_w) * 0.5
 
-	_login_font = int(round(pw * LOGIN_TEXT_FRAC))
 	_combo_font = int(round(pw * COMBO_TEXT_FRAC))
 	_score_label_font = int(round(pw * SCORE_LABEL_FRAC))
 	_score_value_font = int(round(pw * SCORE_VALUE_FRAC))
@@ -453,21 +405,21 @@ func _layout_content(inner: Rect2) -> void:
 	if not _is_new_record:
 		top_row_h = ph * BEST_PLATE_HEIGHT_FRAC
 
-	var login_h: float = ph * LOGIN_BOX_HEIGHT_FRAC
 	var combo_h: float = ph * COMBO_BOX_HEIGHT_FRAC
 	_gap_line_font = int(round(pw * GAP_LINE_FRAC))
 	var score_h: float = _score_value_font * 1.3
 	if _gap_line_text() != "":
 		score_h += GAP_LINE_TOP + _gap_line_font * 1.25
 	var play_h: float = ph * PLAY_BUTTON_HEIGHT_FRAC
-	var pair_h: float = ph * PAIR_BUTTON_HEIGHT_FRAC
 	var home_h: float = ph * HOME_BUTTON_HEIGHT_FRAC
+	# 스타더스트 상자는 번 것이 있을 때만. 콤보 상자 밑에 붙어 간격 몫을 안 먹는다.
+	var dust_h: float = ph * DUST_BOX_HEIGHT_FRAC if _dust > 0 else 0.0
 
 	# 골드 버튼 둘레(위아래)와 크림 두 줄 사이는 고정 간격이고, 남는 공간은
-	# 위쪽 줄들이 나눠 갖는다 — 간격 셋.
-	var used: float = top_row_h + login_h + combo_h + score_h + play_h + pair_h + home_h
-	var fixed: float = PLAY_BUTTON_GAP * 2.0 + BUTTON_BLOCK_GAP
-	var gap: float = maxf(4.0, (bottom - top - used - fixed) / 3.0)
+	# 위쪽 줄들이 나눠 갖는다 — 간격 둘.
+	var used: float = top_row_h + combo_h + dust_h + score_h + play_h + home_h
+	var fixed: float = PLAY_BUTTON_GAP * 2.0 + (BUTTON_BLOCK_GAP if dust_h > 0.0 else 0.0)
+	var gap: float = maxf(4.0, (bottom - top - used - fixed) / 2.0)
 
 	var y := top
 
@@ -502,9 +454,7 @@ func _layout_content(inner: Rect2) -> void:
 		# 바탕 노드는 _top_row가 아니라 팝업에 직접 붙어 있으므로 화면 좌표로.
 		_best_plate.position = _best_plate_rect.position + Vector2(
 			_panel_rect.position.x + (pw - ribbon_w) * 0.5, y)
-		# 크게 만들고 되돌린다 — UI_SUPERSAMPLE 주석 참고.
-		_best_plate.size = _best_plate_rect.size * UI_SUPERSAMPLE
-		_best_plate.scale = Vector2.ONE / UI_SUPERSAMPLE
+		_fit_patch(_best_plate, _best_plate_rect.size)
 	_character.size = Vector2(char_w, _character_size)
 	_character_rest_y = y + (top_row_h - _character_size) * 0.5
 	_character.position = Vector2(_top_row.position.x + char_left, _character_rest_y)
@@ -518,12 +468,6 @@ func _layout_content(inner: Rect2) -> void:
 	_top_row.queue_redraw()
 	y += top_row_h + gap
 
-	# --- 로그인 유도 상자 ---
-	_login_box.position = Vector2(wide_x, y)
-	_login_box.size = Vector2(wide_w, login_h)
-	_login_box.queue_redraw()
-	y += login_h + gap
-
 	# --- 점수 ---
 	_score_row.position = Vector2(wide_x, y)
 	_score_row.size = Vector2(wide_w, score_h)
@@ -536,6 +480,21 @@ func _layout_content(inner: Rect2) -> void:
 	_combo_box.queue_redraw()
 	y += combo_h
 
+	# --- 스타더스트 + x2 ---
+	_dust_box.visible = dust_h > 0.0
+	_double_button.visible = dust_h > 0.0 and _dust_offer and not _dust_doubled
+	if dust_h > 0.0:
+		y += BUTTON_BLOCK_GAP
+		_dust_box.position = Vector2(wide_x, y)
+		_dust_box.size = Vector2(wide_w, dust_h)
+		_dust_box.queue_redraw()
+		if _double_button.visible:
+			var bw: float = wide_w * DUST_BUTTON_W_FRAC
+			var bh: float = dust_h * 0.86
+			_place(_double_button, wide_x + wide_w - bw - dust_h * 0.07, y + (dust_h - bh) * 0.5, bw, bh,
+				1.3, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+		y += dust_h
+
 	y += PLAY_BUTTON_GAP
 
 	# --- 버튼들 ---
@@ -543,26 +502,11 @@ func _layout_content(inner: Rect2) -> void:
 		BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
 	y += play_h + PLAY_BUTTON_GAP
 
-	# 두 버튼은 같은 크기로 좌우에 나란히. 아이콘 높이는 셋 다 같은 값으로
-	# 못박는다 — 이유는 CREAM_ICON_HEIGHT_FRAC 주석 참고.
-	var cream_icon: float = pair_h * CREAM_ICON_HEIGHT_FRAC
-	var pair_gap: float = pw * PAIR_GAP_FRAC
-	var pair_w: float = (wide_w - pair_gap) * 0.5
-	_place(_google_button, wide_x, y, pair_w, pair_h, 1.0, PAIR_LABEL_FIT, cream_icon)
-	_place(_share_button, wide_x + pair_w + pair_gap, y, pair_w, pair_h, 1.0, PAIR_LABEL_FIT, cream_icon)
-	y += pair_h + BUTTON_BLOCK_GAP
-
+	# 아이콘 높이는 버튼 높이에서 — 이유는 CREAM_ICON_HEIGHT_FRAC 주석 참고.
+	var cream_icon: float = home_h * CREAM_ICON_HEIGHT_FRAC
 	_place(_home_button, wide_x, y, wide_w, home_h, 1.0, BUTTON_CONTENT_FIT, cream_icon)
 
-	# TRY AGAIN은 판 위쪽 테두리에 걸친다.
-	if _tryagain.texture != null:
-		var tw: float = pw * TRYAGAIN_WIDTH_FRAC
-		var th: float = tw * (float(_tryagain.texture.get_height())
-			/ float(_tryagain.texture.get_width()))
-		_tryagain.size = Vector2(tw, th)
-		_tryagain.position = Vector2(
-			_panel_rect.position.x + (pw - tw) * 0.5,
-			_panel_rect.position.y - th * TRYAGAIN_OVERHANG)
+	_place_title(_tryagain)
 
 
 # 리본 아트를 세로로 훑어 띠의 중심선을 재 둔다. 각 표본은 그 세로줄에서
@@ -647,7 +591,7 @@ func _draw_best_plate() -> void:
 	# 않는다. 숫자 자리가 그것을 기준으로 잡히기 때문이다.
 	var label_x: float = x + ring
 	_top_row.draw_string_outline(_font_bold, Vector2(label_x, baseline),
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, INK)
+		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, PRIMARY_LABEL_OUTLINE)
 	_top_row.draw_string(_font_bold, Vector2(label_x, baseline),
 		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
 	_top_row.draw_string(_font_heavy, Vector2(x + label_w + text_gap, baseline),
@@ -743,11 +687,7 @@ func _draw_trophy() -> void:
 
 # 둥근 상자 하나. 두 상자가 같은 함수를 쓰므로 모양이 어긋날 일이 없다.
 func _draw_box(node: Control, color: Color) -> void:
-	var style := StyleBoxFlat.new()
-	style.bg_color = color
-	style.set_corner_radius_all(BOX_RADIUS)
-	style.anti_aliasing = true
-	node.draw_style_box(style, Rect2(Vector2.ZERO, node.size))
+	node.draw_style_box(_info_box(color, BOX_RADIUS), Rect2(Vector2.ZERO, node.size))
 
 
 # 상자 안에 아이콘 + 글자를 한 줄로 그린다. start_x부터 오른쪽으로 흐른다.
@@ -776,43 +716,41 @@ func _box_row_width(icon: Texture2D, text: String, font_size: int) -> float:
 	return w
 
 
-# 자물쇠 + 문구를 한 덩어리로 묶어 상자 가운데에 놓는다.
-func _draw_login_box() -> void:
-	var colour := LOGIN_BOX_COLOR
-	var icon := _lock
-	var text := tr(LOGIN_BOX_TEXT)
-	if _logged_in and _revived:
-		# 로그인 전에는 부활 여부를 말해 봐야 소용이 없다 — 애초에 올라갈
-		# 순위표가 없으니, 로그인 권유를 그대로 두는 편이 쓸모 있다.
-		colour = REVIVED_BOX_COLOR
-		icon = _info
-		text = tr(REVIVED_BOX_FORMAT) % _group(_leaderboard_score)
-	elif _logged_in:
-		colour = SAVED_BOX_COLOR
-		icon = _check
-		text = tr(SAVED_BOX_TEXT) if _is_new_record else tr(STANDING_BOX_TEXT)
-	_draw_box(_login_box, colour)
-	# 상태마다 문구 길이가 꽤 다르다("Saved to Leaderboard"는 스무 자,
-	# 부활 안내는 마흔 자가 넘는다). 상자에 들어올 때까지 글자를 줄인다.
-	var fs := _login_font
-	var room: float = _login_box.size.x - BOX_PAD * 2.0
-	while fs > BOX_TEXT_MIN and _box_row_width(icon, text, fs) > room:
-		fs -= 1
-	var group_w: float = _box_row_width(icon, text, fs)
-	_draw_box_row(_login_box, icon, text, fs,
-		(_login_box.size.x - group_w) * 0.5)
-
-
-# 왼쪽 크림 버튼은 상태에 따라 뜻이 다르므로 신호도 따로 보낸다.
-func _on_google_button_pressed() -> void:
-	if _logged_in:
-		leaderboard_pressed.emit()
-	else:
-		login_pressed.emit()
-
-
 # 왼쪽에 불꽃 + MAX COMBO, 오른쪽 끝에 값. 값을 라벨 바로 뒤에 붙이면 넓은
 # 상자의 오른쪽이 통째로 비어 보인다.
+## 스타더스트 상자: 아이콘, STARDUST, +번 것. 2배를 받았으면 금색 x2 가
+## 붙고 숫자도 두 배로 적힌다.
+func _draw_dust_box() -> void:
+	_draw_box(_dust_box, DUST_BOX_COLOR)
+	var value := "+%s" % ScoreFormat.grouped(_dust * (2 if _dust_doubled else 1))
+	var right: float = _dust_box.size.x - BOX_PAD
+	if _double_button != null and _double_button.visible:
+		right = _double_button.position.x - _dust_box.position.x - BOX_PAD * 0.6
+	# One size for the label and the numbers, shrunk until they fit side by
+	# side in what the x2 button leaves; a long label (Korean) would else run
+	# into the number.
+	var fs: int = _combo_font
+	var label: String = tr(DUST_LABEL)
+	while fs > BOX_TEXT_MIN:
+		var need: float = _box_row_width(_dust_icon, label, fs) + BOX_PAD * 0.8
+		need += _font_heavy.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		if _dust_doubled:
+			need += _font_heavy.get_string_size(DOUBLE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + BOX_PAD * 0.5
+		if BOX_PAD + need <= right:
+			break
+		fs -= 1
+	_draw_box_row(_dust_box, _dust_icon, label, fs, BOX_PAD)
+	var y: float = _dust_box.size.y * 0.5 + fs * 0.35
+	if _dust_doubled:
+		var xw: float = _font_heavy.get_string_size(DOUBLE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		_dust_box.draw_string(_font_heavy, Vector2(right - xw, y), DOUBLE_TEXT,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DUST_GOLD)
+		right -= xw + BOX_PAD * 0.5
+	var vw: float = _font_heavy.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	_dust_box.draw_string(_font_heavy, Vector2(right - vw, y), value,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+
+
 func _draw_combo_box() -> void:
 	_draw_box(_combo_box, COMBO_BOX_COLOR)
 	_draw_box_row(_combo_box, _fire, tr(COMBO_LABEL), _combo_font, BOX_PAD)

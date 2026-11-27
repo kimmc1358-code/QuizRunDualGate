@@ -89,39 +89,15 @@ func _run() -> void:
 		DisplayServer.window_set_size(Vector2i(480, 1067))
 		await process_frame
 		main.get("settings_popup").visible = false
-		# 부활 팝업의 아랫줄은 로그인한 사람에게만 나온다 — 안 켜고 찍으면
-		# 정작 번역이 빠져 있던 그 줄이 화면에 없다.
-		# 진짜 경로로 띄운다 — 캐릭터까지 들어간 판이라야 점수 줄이 들어갈
-		# 자리가 정말 있는지 보인다. 16:9 도 함께 찍는다: 판 높이는 화면 비율
-		# 대비라 가장 짧은 화면이 가장 빡빡하다.
-		var revive: Control = main.get("revive_panel")
-		main.set("score", 12600)
-		main.set("leaderboard_score", 9800)
-		for who in [["in", true], ["out", false]]:
-			main.set("player_logged_in", bool(who[1]))
-			main.call("_offer_revive")
-			await _shot("revive_%s_%s" % [who[0], lang[0]])
-			if who[0] == "in":
-				DisplayServer.window_set_size(Vector2i(480, 854))
-				await process_frame
-				await _shot("revive_%s_%s_16x9" % [who[0], lang[0]])
-				DisplayServer.window_set_size(Vector2i(480, 1067))
-				await process_frame
-			revive.visible = false
-
-		# 게임오버는 세 얼굴이 다 다른 글자를 쓴다. 순위표 줄이 나오는 것은
-		# 로그인 + 부활한 판이고, 기록까지 남은 점수 줄은 아깝게 놓쳤을
-		# 때만이라 기록의 80% 를 넘는 점수를 넣어야 나온다.
+		# 기록까지 남은 점수 줄은 아깝게 놓쳤을 때만이라 기록의 80% 를 넘는
+		# 점수를 넣어야 나온다.
 		var over: Control = main.get("gameover_popup")
 		over.call("ensure_built")
-		# BEST 판은 신기록이 아닐 때만 뜬다. 로그인 여부는 가운데 안내 상자만
-		# 바꾸지만, 상단 글자가 둘 다에서 같은지 보려면 둘 다 찍어야 한다.
-		for shot in [["in", true], ["out", false]]:
-			over.call("set_result", null, 0.0, 12600, 24, 14000,
-				false, bool(shot[1]), 9800)
-			over.visible = true
-			await _shot("gameover_%s_%s" % [shot[0], lang[0]])
-			over.visible = false
+		# BEST 판은 신기록이 아닐 때만 뜬다.
+		over.call("set_result", null, 0.0, 12600, 24, 14000, false)
+		over.visible = true
+		await _shot("gameover_%s" % lang[0])
+		over.visible = false
 
 		var about: Control = main.get("about_popup")
 		about.call("ensure_built")

@@ -57,7 +57,6 @@ func _run() -> void:
 
 	var popups := {
 		"pause": main.get("pause_panel"),
-		"revive": main.get("revive_panel"),
 		"gameover": main.get("gameover_popup"),
 		"settings": main.get("settings_popup"),
 		"about": main.get("about_popup"),
@@ -77,15 +76,16 @@ func _run() -> void:
 			wanted[art] += found[art]
 		print("  %-9s %s" % [label, str(found)])
 
-	# 금색 버튼은 넷이다. 하나라도 다른 소리를 달라고 하면 팝업마다 소리가
-	# 갈린다 — 나란히 눌러 보기 전에는 모르는 종류다.
+	# 금색(주) 버튼은 넷이다 — RESUME, PLAY AGAIN, x2(2026-11-27), REMOVE ADS. 부활의
+	# WATCH AD 는 부활과 함께 빠졌다(2026-11-28). 하나라도 다른 소리를 달라고 하면 팝업마다 소리가 갈린다 —
+	# 나란히 눌러 보기 전에는 모르는 종류다.
 	var gold: String = load("res://scripts/PopupBase.gd").get_script_constant_map()["GOLD_SOUND_NAME"]
 	var cream: String = load("res://scripts/PopupBase.gd").get_script_constant_map()["CREAM_SOUND_NAME"]
 	print("")
 	print("  금색 버튼 소리 \"%s\" x%d, 크림 버튼 소리 \"%s\" x%d" % [
 		gold, int(wanted.get(gold, 0)), cream, int(wanted.get(cream, 0))])
 	if int(wanted.get(gold, 0)) != 4:
-		_fail_msg("금색 버튼이 넷이어야 하는데 %d 개가 \"%s\" 를 쓴다 (RESUME / PLAY AGAIN / WATCH AD / REMOVE ADS)" % [
+		_fail_msg("금색 버튼이 넷이어야 하는데 %d 개가 \"%s\" 를 쓴다 (RESUME / PLAY AGAIN / x2 / REMOVE ADS)" % [
 			int(wanted.get(gold, 0)), gold])
 
 	# 이름이 걸려 있어도 파일이 없으면 무음이다. 여기가 이 검사의 요점이다.

@@ -14,7 +14,7 @@ extends SceneTree
 #   복원과 환불: 저장된 답은 다시 켜도 남는다. 조회 결과에 상품이 없으면 풀리고
 #     (환불), 조회가 실패하면 그대로 둔다. "이미 산 상품"이면 내역을 다시 묻는다.
 #   광고: 없앤 뒤에는 전면광고가 안 뜨고 카운터도 그대로(배너는 2026-11-27 에 빠졌다),
-#     부활은 보상형 광고 없이 곧장 이어 간다.
+#     결과 화면의 x2 는 보상형 광고 없이 곧장 준다(아이콘도 없다).
 #   화면: 설정의 버튼은 "ADS REMOVED" 로 눌리지 않고, 모드 선택의 줄은 숨는다.
 #   값: Store 가 옮겨 적은 열거형 값이 플러그인의 BillingClient 와 같다.
 #
@@ -166,12 +166,14 @@ func _run() -> void:
 	var shown: bool = main.call("_ad_try_interstitial")
 	_expect(not shown and not admob.calls.has("show_interstitial i1") and int(main.get("restarts_since_interstitial")) == due,
 		"no interstitial, counter untouched", "an interstitial still fired after buying")
-	main.set("run_revived", false)
-	main.call("_offer_revive")
+	# 결과 화면의 x2: 광고 없이 곧장 준다.
+	main.set("last_run_stardust", 40)
+	main.set("dust_doubled", false)
 	ads.set("_rewarded_id", "r1")
-	main.call("_on_revive_watch_ad")
-	_expect(main.get("run_revived") and not admob.calls.has("show_rewarded r1"),
-		"revive continues at once, no rewarded ad", "the revive still went through a rewarded ad")
+	var dust_before: int = main.get("stardust_total")
+	main.call("_on_double_stardust_pressed")
+	_expect(int(main.get("stardust_total")) == dust_before + 40 and not admob.calls.has("show_rewarded r1"),
+		"x2 grants at once, no rewarded ad", "the x2 still went through a rewarded ad")
 
 	# ---- 화면 ----
 	var settings = main.get("settings_popup")
@@ -183,14 +185,13 @@ func _run() -> void:
 			button.disabled if button != null else "?", caption.text if caption != null else "?"])
 	var link: Button = main.get("mode_select_panel").get("_remove_ads")
 	_expect(link != null and not link.visible, "mode select hides its remove-ads line", "the mode select line is still showing")
-	var revive = main.get("revive_panel")
-	revive.call("ensure_built")
-	var ad_button: Button = revive.get("_ad_button")
-	var ad_caption: Label = ad_button.get_node("Caption") if ad_button != null else null
-	var ad_icon: TextureRect = ad_button.get_node("Icon") if ad_button != null else null
-	_expect(ad_caption != null and ad_caption.text == revive.tr("CONTINUE") and ad_icon != null and ad_icon.texture == null,
-		"the revive button reads CONTINUE with no ad icon", "revive button: '%s' icon=%s" % [
-			ad_caption.text if ad_caption != null else "?", ad_icon.texture if ad_icon != null else "?"])
+	var over = main.get("gameover_popup")
+	over.call("ensure_built")
+	over.call("set_stardust", 40, true, true)
+	var x2: Button = over.get("_double_button")
+	var x2_icon: TextureRect = x2.get_node("Icon") if x2 != null else null
+	_expect(x2_icon != null and x2_icon.texture == null,
+		"the game over x2 shows no ad icon", "x2 icon=%s" % [x2_icon.texture if x2_icon != null else "?"])
 
 	# ---- 다시 켜기, 조회 실패, 환불, 이미 산 상품 ----
 	main.set("ads_removed", false)

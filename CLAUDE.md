@@ -87,7 +87,9 @@ the quiz box states one rule, and a row of gate steps is flown under it,
 borrowing the rhythm of an endless-stairs game — many quick calls in a row,
 the next few in sight, faster the longer the run of right ones.
 
-1. **PATTERN.** `PATTERN_LEN` (10) steps, one rule for the whole pattern,
+1. **PATTERN.** `PATTERN_LEN` (12) steps, one rule for the whole pattern,
+   twelve since 2026-11-27: ten felt short, a rule over just as it was
+   learned, and twelve divides by the memory rounds' 3, 4 and 6;
    one pattern kind per pattern (mixing kinds within one was judged too
    hard).
 
@@ -100,6 +102,11 @@ the next few in sight, faster the longer the run of right ones.
    with `gates` (2-4 a step); the numbers are all in that one table.
    `tools/capture_pattern_bank.gd` shoots every pattern at every level on
    one sheet, and `check_space` walks the whole bank.
+   **To play one pattern**, set `debug_force_pattern` on Main in the
+   inspector: every pattern of the run is that one, a level higher each
+   pattern (L1, L2, ... L5) unless `debug_force_level` fixes it. Debug
+   builds only, and the same `@export` trap as the other debug switches,
+   so `check_tutorial` fails while it is on.
 
    | Pattern | What the box shows / what to fly through | Levels 1 → 5 |
    |---|---|---|
@@ -107,6 +114,7 @@ the next few in sight, faster the longer the run of right ones.
    | `MIX` | a colour, sometimes under a red no-entry sign: then any gate but that colour | gates 3, 3, 4, 4, 4; avoid chance 0.2, 0.3, 0.3, 0.4, 0.5 |
    | `SPOT` | the step's gates as coloured dots laid out like the slots; one dot is not its gate's colour, fly through that gate | gates 2, 3, 4, 4, 4; at 4 and 5 the dots go blank once the step is 0.82 / 0.70 of the way in (`hide`) |
    | `MEMORY` | a round of colours, shown until the round's first gate, then "?" for the rest; flown in order from memory | colours a round 3, 4, 4, 5, 6 (`len`); gates 3, 3, 4, 4, 4. Six at most: colours seen once are held about four at a time, and four colours in a long round repeat. It went to 7 at first |
+   | `SHELL` | the shell game: a colour; the gates come in wearing theirs, go dark at 0.6 of the way in and swap places until 0.88; fly through the one that wore the colour. Colours come back once judged | gates 2, 3, 3, 4, 4; swaps 1, 1, 2, 2, 3 (`_shell_moves`, `_shell_place`) |
    | `ARROW` | an arrow; the gate it points at | gates 2, 3, 4, 4, 4; the diamond at 1-3, either layout step by step at 4, the grid at 5 (`layout`), where the arrows go diagonal |
    | `ARROW_MIX` | an arrow, sometimes under the no-entry sign: then any gate but that way | gates 3, 3, 4, 4, 4; avoid chance 0.2, 0.3, 0.3, 0.4, 0.5 |
    | `ARROW_SUM` | two arrows with a plus, up or down and left or right; the grid corner they add up to | always the grid; gates 2, 3, 4, 4, 4; at 4 and 5 the box goes blank once the step is 0.82 / 0.70 of the way in |
@@ -116,7 +124,7 @@ the next few in sight, faster the longer the run of right ones.
    - `MIX`'s sign is a red ring and one slash round the swatch
      (`_draw_cross`). A bold X was tried first and hid the colour it was
      crossing out; on a red swatch it hardly showed at all. The avoid step
-     exists because with one colour for ten steps a player stops reading
+     exists because with one colour for twelve steps a player stops reading
      the box after the first.
    - `SPOT` was built after the owner asked for colour quizzes that use
      the box; "the odd colour out", which needs none, was the other idea.
@@ -125,7 +133,7 @@ the next few in sight, faster the longer the run of right ones.
    - `MEMORY` is the owner's design. The colours flown through stay,
      dimmed, so the player can tell how far into the round they are. Each
      round brings new colours (`_memory_rounds`, never one colour twice in
-     a row), so at four a round a pattern runs 4 + 4 + 2, and the last
+     a row), so at five a round a pattern runs 5 + 5 + 2, and the last
      round shows only its own steps. The world slows on a round's first
      step, if it has to, so the colours are up `MEMORY_SECONDS_EACH`
      (0.5 s) a colour: at full streak speed a step is 1.1 s away, and
@@ -157,14 +165,15 @@ the next few in sight, faster the longer the run of right ones.
      route drawn as a little path.
 
    A right gate lights up gold, adds to the **streak** and pays stardust
-   (`STARDUST_PER_GATE` × the streak, so a whole pattern pays 55 against
-   10 for one broken every step). Every `POWER_EVERY` (3) in a row the
+   (`STARDUST_PER_GATE` × the streak, so a whole pattern pays 78 against
+   12 for one broken every step). Every `POWER_EVERY` (3) in a row the
    weapon steps up a level. A wrong gate, or a quarter with none, **only
    breaks the streak and the combo** — no heart, no weapon, no stardust.
    Bullets pass through the gates; only flying through counts. Hearts are
-   spent only on steering mistakes: asteroids in the gaps between steps
-   (`_spawn_gap_rocks`, kept `ROCK_CLEAR` off every slot's centre, where the
-   ship comes out of one gate and is drawn into the next) and boss shots.
+   spent only on boss shots. Asteroids flew in the gaps between steps
+   until 2026-11-27 and cost a heart on contact; the owner took them out
+   because reading and steering for the gates was enough to ask. The
+   asteroid itself is kept, unspawned, for a shooter mode.
    The roulette and the old LOOT phase went with this change; the weapon
    grows only with the streak and never drops.
 
@@ -185,11 +194,16 @@ the next few in sight, faster the longer the run of right ones.
    away past the plane like the planets did: left at full size, the camera
    flew through the top slot's ring and it filled the screen. Fever planets and asteroids are still
    planets and rocks.
-2. **FEVER.** Only after a pattern with **every** step right (owner's
-   call: all ten, not most): it also brings the next weapon, then drones
-   (`_power_up(true)`). 8 s at speed with no gates. Every planet touched or
+2. **FEVER.** Earned by the right gates of the pattern before it
+   (2026-11-27, the owner's idea): `FEVER_PER_RIGHT` (0.6 s) a right gate,
+   `FEVER_PERFECT_BONUS` (1.8 s) more for all of them, so all twelve is 9 s,
+   and none under `FEVER_MIN_RIGHT` (6) (`fever_for`). It was all or
+   nothing at first, 8 s for every step right and none for a miss, which
+   the owner found too tight for what is meant to be the fun part. Every
+   step right still also brings the next weapon, then drones
+   (`_power_up(true)`). At speed with no gates; every planet touched or
    shot is smashed for points and `STARDUST_FEVER_SMASH`, and nothing
-   costs a heart. A pattern with a miss goes straight on.
+   costs a heart.
 3. **BOSS.** After `PATTERNS_PER_CYCLE` (2) patterns an enemy ship comes.
    A strong weapon melts it, and a weak one can still win by dodging. Its
    shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
@@ -212,7 +226,7 @@ and was two thin lines from behind. The camera sits well above the plane
 for the same reason: from nearly level, every flat fighter is a line.
 
 `scripts/SpaceRun.gd` owns the 3D world and the rules of contact. Main
-still owns the run: score, combo, hearts, the revive offer, popups and the
+still owns the run: score, combo, hearts, popups and the
 question box. SpaceRun reports each outcome through Main's `_space_*`
 handlers. `space` is null only before boot. The old gate code that sat in
 Main, unreached, was removed on 2026-11-27.
@@ -244,12 +258,18 @@ and wrong), so the player can see where they are about to go.
 full speed, and the owner said it was too fast both to decide and to steer;
 it was slowed near the gate for a while (`SLOW_START_Z`), but with steps
 `STEP_GAP` apart that pulsed the world every step. Now a
-pattern starts at `PACE_START` (0.6, 2.4 s a step), each right gate in a
-row adds `PACE_PER_STREAK`, up to `PACE_MAX`, and a miss eases the world
-back to the start, so whoever just missed gets the easy speed back. The gap
-was 22 at first, three steps in sight; the owner found the gates too close
-together and it went to 34 the same day, so two are in sight and the next
-can still be read while this one is flown. `pace` scales `speed()`, so the streaks and the sky follow it. The
+pattern starts at `PACE_START` (0.6, 2.9 s a step), each right gate in a
+row adds `PACE_PER_STREAK` (0.05), up to `PACE_MAX` (1.1, 1.6 s a step),
+and a miss eases the world back to the start, so whoever just missed gets
+the easy speed back. Each cycle adds `CYCLE_SPEED_STEP` (5%) up to
+`CYCLE_SPEED_MAX` (1.3), so a step never gets under 1.2 s (`check_space`
+holds it to `STEP_FLOOR`). The gap was 22 at first, three steps in sight;
+the owner found the gates too close together and it went to 34 the same
+day, then 42 that evening with the rocks gone, when the owner found it
+still a little too hard: at 34, 8% a cycle with no ceiling and PACE_MAX
+1.25, a step was 1.1 s at full streak in the first cycle and 0.8 s by the
+seventh. Two steps are in sight, so the next can still be read while this
+one is flown. The table of seconds a step is beside `STEP_GAP`. `pace` scales `speed()`, so the streaks and the sky follow it. The
 lunge after a pass is small (`WARP_BOOST` 0.5) for the same reason: at 1.6
 it ate half the gap to the next step.
 
@@ -263,7 +283,14 @@ drawn into goes see-through.
 
 Judged gates also used to fly on into the camera; the top slot's sits
 almost on its line of sight and swelled to cover half the screen. Past the
-plane they now shrink away over `PASS_SHRINK_DISTANCE`.
+plane they shrank away in place over `PASS_SHRINK_DISTANCE` for a while,
+which at speed took 0.13 s and read as the gate blinking out (owner,
+2026-11-27). Now a passed gate parts outward as it flies on, each away
+from the field's middle, `PASS_SPREAD` out by the camera and fast at
+first (a square root of the distance), shrinking over the longer
+`PASS_GATE_SHRINK`: the top gate rises past the question box instead of
+covering the next step. Only the drawn place moves; `p.pos`, which
+judging and the pull read, stays put.
 
 The camera keeps its **horizontal** field of view (`KEEP_WIDTH`). The game
 is 480 wide on every phone, so a taller phone sees more space above and
@@ -310,6 +337,114 @@ committed:
   (`_draw_horizontal_slice`), the square frames as nine-patches.
 - The caps and margins (`HUD_*_CAP`, `HUD_SIDE_SLOT_MARGIN`) are in baked
   pixels.
+
+**The popups are dressed from the same kit** (2026-11-28, owner's ask).
+Pause, game over, settings and about keep their layouts (the revive popup
+was there too until it went on 2026-11-28); what
+changed is the art and the palette (`PopupBase`):
+
+- The panel is `Frame_Box_Large_08`, the blue-lit frame with steel corner
+  caps; its face is near-opaque dark. It has a tab in the middle of its top
+  and bottom edges, which a nine-patch would smear the length of the panel,
+  so `build_ui_kit` cuts it down (`NINE`, `_nine_cut`) to its four corners
+  joined by a short plain piece of each edge. `PANEL_CORNER` is the corner
+  it prints.
+- The owner went through sheets of every frame in the pack drawn as popups,
+  switched to the orange-bracketed `Frame_Box_Large_01` with a title bar,
+  and came back to Large_08 the same day. Any frame can be tried by swapping
+  its `PIECES` row and the `NINE` row (Large_01 cut well at `[0.20, 0.31]`,
+  corner 149); frames with gear on one side only (Large_04-07, 13, the
+  Mediums) look lopsided stretched to a popup. The pack's own demo look,
+  `Frame_Box_Large_09` (silver rails top and bottom, open sides) over a dark
+  teal face with baked scanlines, was tried in the game the same day and
+  the owner kept Large_08. Scanlines need the face tiled, not stretched
+  (`axis_stretch_vertical` TILE_FIT), or their spacing grows with the panel.
+- The main button (`GOLD_FILE`, `popup_primary.png`) is `Bar_Frame_02`
+  filled orange, its cyan arrow tips matching the panel's blue; the others
+  (`CREAM_FILE`, `popup_button.png`) are `Frame_Box_Small_04`, a thick
+  silver bevel with cut corners round a dark face with a little blue in it
+  (the owner's ask), with a cyan caption and
+  icon (`SECONDARY_LABEL_COLOR`): the look of the pack's sample
+  `Label_Button`. It is a square frame, baked small and nine-sliced on all
+  four sides at the bake's scale like the panel (`CREAM_CORNER`,
+  `CREAM_CORNER_Y`), so the corners stay small and only the edges grow. The
+  owner picked the main one from a sheet of every button frame drawn dark
+  and orange. Secondaries tried on the way: the grey rounded
+  `Button_Frame_03` (first build, and again nine-sliced, whose faceted ends
+  never look like a cut corner), `Button_Frame_07` (rails above and below),
+  and a rounded box drawn in code. The names
+  GOLD and CREAM are kept from 1.x and mean main and secondary. Buttons are
+  three-sliced at their texture's height (`_fit_patch`), so the ends shrink
+  with the button instead of being squashed, and `_place` keeps the icon and
+  caption between the ends. Held, a button's inner face lights up, as the
+  menu's PLAY does: an additive layer over the face (`Glow`, placed from
+  `GOLD_FACE_INSET`/`CREAM_FACE_INSET`, measured off the baked art) fades in
+  with the press and out over `PRESS_GLOW_FADE` after it.
+- GAME OVER and SETTINGS (and OOPS! while the revive lasted) are large gold Zen Dots letters with a dark
+  rim and no plate (`_make_title`), standing just above the panel and clear
+  of it (`_place_title`). They were on a header plate astride the panel's
+  top edge first, then on the orange `Bar_Frame_08` above it; the owner
+  asked for them clear of the panel, larger, and then for the letters
+  alone. Their width stops at `TITLE_WIDTH_FRAC` of the panel so SETTINGS
+  misses the close button (at 0.74 it touched it), and they shrink to the
+  room above the panel where there is less (the settings popup at 16:9).
+  The game over's title was TRY AGAIN; PLAY AGAIN under it already says
+  that.
+- The 1.x popups were navy on cream. Text is now a pale blue (`INK`) and the
+  info boxes are dark glass with a coloured rim (`_info_box`); each box's old
+  fill colour constant is now its rim. Sliders and the toggle are cyan. The glow that breathed around the panel (gold in 1.x, then cyan) was removed at the owner's request: the kit frame carries its own light and colour.
+- Icons are the pack's white ones (`KIT_ICONS`, and the game over's
+  `*_FILE`s), the tick and lock baked tinted. The pack has no plain play
+  triangle, so RESUME's is drawn (`_play_icon`).
+- The faces the game over shows are the kit's
+  amber warning sign and gold star (`FACE_SAD_PATH`/`FACE_HAPPY_PATH`), since
+  the ship has no face.
+- Kit art never goes through the popup bake (`_bake_store`): its output sits
+  under `ui_assets/`, which git tracks.
+
+**A right pass bursts in colour** (2026-11-27). The gate lights up gold (red
+when wrong), and a right one throws a shockwave ring, shards out of the ring
+in its plane and speed lines from its centre on the screen
+(`_pass_burst`, `draw_pass_lines`), while the space streaks stretch with
+the lunge and Main plays a chime pitched up with the streak. It was made
+finer when the owner asked for it to look more polished: soft light over
+hard shapes. A bloom of light opens at the gate's middle, an OmniLight
+lights the gate and the ship in the burst's colour for a moment, a wide
+soft halo (a ring texture on a quad) spreads behind the crisp thin ring,
+the shards are thin streaks with a glowing head flying out in the gate's
+plane, a few motes linger and twinkle, and the speed lines are wedges
+tapering to a point. Two things bit on the way: the billboards ignored
+their node's scale until `billboard_keep_scale` was set, and the motes and
+bloom came out a whole unit across, blobs; and shards flying toward the
+camera swelled their heads into blurred balls (`PASS_SHARD_TOWARD`). The colours
+come from `_pass_palette`: the ring wears the gate's own colour (cyan for an
+arrow gate), the shards and the speed lines' tips are drawn from that
+colour and white, with its opposite hue from five in a row and every hue of
+`PASS_RAINBOW` from ten, when a second ring follows in the opposite hue.
+
+A wrong gate answers the opposite way, short and dull (2026-11-27): the
+camera jolts side to side (`WRONG_SHAKE`), the passed gate's portal
+sputters red and goes out (`WRONG_FAULT_TIME`), and the gate that was
+right, every one of them on an avoid step, is ringed in green where it was
+judged for `REVEAL_TIME` (`_draw_reveals`), so the player sees at once what
+it should have been. The ring first followed the gate as it parted
+outward and left the screen in 0.15 s, before it could be read. A sound
+for it waits for the new audio.
+
+With it come two of the owner's three asks of that evening:
+
+- **B**: the world holds for `HITSTOP_TIME` (0.06 s) and the camera is
+  thrown forward `CAMERA_PUNCH`, then eases back.
+- **C**: the passed gate's portal flares and swirls shut over
+  `PORTAL_CLOSE_TIME` (its `open_amount`), so the gate itself answers.
+
+How it got here: the burst was all one gold at first and the owner found
+it flat. Three BinbunVFX packs were tried in its place the same evening,
+Stylized Hit FX (CC0), Electric FX (CC0) and Magic Area, alone and then
+layered, with the hit made bigger and moved in front of the gate ("A") and
+a lab scene for trying them; they read as explosions and spells rather
+than a gate flown through, and all of it was taken out. The burst came back
+with colour instead.
 
 **The gates' inner face comes from BinbunVFX's Portal VFX pack**
 (2026-11-27), under the same rule: paid, never committed.
@@ -520,10 +655,12 @@ dev machine shows Korean in the editor, which is worth knowing before you
 think something is broken.
 
 Only part of the game is translated, deliberately: the mode names and their
-blurbs, the leaderboard label, the tutorial, the pause / revive / game over
+blurbs, the leaderboard label, the tutorial, the pause and game over
 popups, and the settings and about popups. **Words that live in painted art stay English** — START, READY,
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
-them. So does `LOGIN WITH`, which is glued to the Google mark.
+them. The popup
+titles are drawn now (GAME OVER, SETTINGS as plain lettering), but in
+Zen Dots, which has no Hangul, so they stay English too.
 
 The 1.x quiz content was translated too — the eleven Stroop colour words
 (an English `RED` in front of a Korean player is a shape, not a word, so the
@@ -617,29 +754,27 @@ on failure.
 
 | Script | Guards | Re-run when |
 |---|---|---|
-| `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs that used a rewarded ad do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
+| `check_ad_policy.gd` | interstitials never fire during the post-install free games, then fire on exactly the configured cycle; runs whose x2 ad was watched do not count toward it (and do not stall it either); the counter survives a relaunch; and all four ways of leaving a run increment it | `interstitial_every_restarts`, `interstitial_free_games`, `_ad_note_run_left`, `should_show_interstitial`, `_reset_game`/`_start_countdown`, or a new path out of a run |
 | `check_ad_ids.gd` | both builds, asked separately because the checker itself is always a debug build: a debug build serves only Google's demo units whatever `FORCE_TEST_ADS` says, and its ad node has every real field empty; a release build serves the demo units while the flag is on and, with it off, exactly the three `AdIds.LIVE_*` values and nothing in the formats the game does not use, the banner included; the live IDs are well-formed (app ID with `~`, units with `/`) and all from one account; the test units still match Google's published values; `android_export.cfg` exists with all three keys, keeps the test app ID in `[Debug]`, and has `is_real` and `[Release]` agreeing with the flag; and no scene contains an `Admob` node for the plugin to fall back to | `AdIds` — any constant, `use_test_ads_in`, or `FORCE_TEST_ADS`; `android_export.cfg`; `Ads.make_admob_node`; or an update of the AdMob plugin |
-| `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
+| `check_ads_wiring.gd` | with a fake plugin feeding the results: the game over's x2 shows a rewarded ad and grants the run's stardust again only when watched to the end (and marks the run so it skips the interstitial count), once a run, grants nothing and keeps the button when closed early, grants nothing and reads AD NOT READY with no ad or a failed one, grants at once with ads removed, and on a PC debug build grants at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_double_stardust_pressed`/`_on_double_ad_finished`/`_grant_double_stardust`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and `debug_replay_tutorial` is not on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
-| `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed, the **patterns done** (a run is played through one perfect pattern and its fever first), and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
-| `check_space.gd` | a run starts with full hearts on a colour pattern; every pattern in `BANK` at every level puts out its gates and the right gates its rule asks for (COLOR's colour changing exactly every `switch` steps, MIX's avoid steps and only MIX's, SPOT's one mismatched dot, MEMORY's rounds in order with no colour twice in a row, the arrow's slot, ARROW_MIX's avoid steps, ARROW_SUM's arrows adding up to the corner worked out from where it stands, ARROW_MEMORY's rounds with a diagonal only on a grid step); every step stands in the layout its level asks for, and in both layouts each slot lies in its own quarter; the top MEMORY level's round stays up `MEMORY_SECONDS_EACH` a colour before its first gate at full speed, then full speed again; each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; rocks fly between the steps, never on a slot's centre, cost a heart on contact and score when shot; a perfect pattern brings the next weapon and FEVER (stardust per smash, no heart lost, then the next pattern), one with a miss does not; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart offers the revive and continuing keeps the score and restarts the pattern; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
+| `check_space.gd` | a run starts with full hearts on a colour pattern; every pattern in `BANK` at every level puts out its gates and the right gates its rule asks for (COLOR's colour changing exactly every `switch` steps, MIX's avoid steps and only MIX's, SPOT's one mismatched dot, MEMORY's rounds in order with no colour twice in a row, the arrow's slot, ARROW_MIX's avoid steps, ARROW_SUM's arrows adding up to the corner worked out from where it stands, ARROW_MEMORY's rounds with a diagonal only on a grid step); every step stands in the layout its level asks for, and in both layouts each slot lies in its own quarter; the top MEMORY level's round stays up `MEMORY_SECONDS_EACH` a colour before its first gate at full speed, then full speed again; each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; no rocks fly between the steps, and an asteroid spawned by hand costs a heart on contact and scores when shot; at its fastest a step is still `STEP_FLOOR` (1.2 s) apart; FEVER lasts 0.6 s a right gate of the pattern before it, 9 s for all twelve, none under six; a perfect pattern brings the next weapon and the whole FEVER (stardust per smash, no heart lost, then the next pattern), one with too few right goes straight on; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart ends the run straight on the game over (there is no revive); a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
-| `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
+| `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the game over lays down `gameover_bgm` at `gameover_bgm_db` rather than silence, and every way out — PLAY AGAIN, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_finish_run` touches the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |
-| `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces and the revive popup's two | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
-| `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; a sign-in that completes while the game over popup is open flips it to LEADERBOARD on the spot; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score, and for a revived run the pre-revive score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, `GameOverPopup.set_logged_in`, or `debug_fake_sign_in` |
-| `check_store.gd` | with a fake BillingClient feeding Google Play's answers: the constants `Store` copied from the plugin's enums still match it; on PC the store is unavailable and the button grants nothing; on connect it asks for the product and the purchases, and will not open the sheet before the product details arrive; cancelled and pending purchases grant nothing; a completed one is **acknowledged** (or Google refunds it after three days) and removes the ads, and the save remembers it; afterwards no interstitial fires and its counter is untouched, the revive continues with no rewarded ad, settings shows a disabled ADS REMOVED, mode select hides its line and the revive button reads CONTINUE with no ad icon; a relaunch reads it back, a failed query changes nothing, an unacknowledged purchase found by a query is acknowledged again, a purchase gone from the query (a refund) brings the ads and the line back, and "already owned" asks again | `Store.gd`, `REMOVE_ADS_PRODUCT_ID`, `_on_remove_ads_pressed`/`_on_store_ownership`/`_apply_ads_removed`, any `ads_removed` branch in Main, `SettingsPopup.set_ads_removed`, `RevivePopup.set_ad_free`, `ModeSelectScreen.set_ads_removed`, or an update of the billing plugin |
+| `check_popup_fit.gd` | nothing laid out inside a popup extends past the bottom of its panel, at 16:9 and 20:9, across the game over popup's four faces, each with and without the stardust row and its x2 button | a row is added to or removed from any popup, a `used`/`gap` sum changes, `panel_size_frac` changes, or a string gets long enough to wrap |
+| `check_play_games.gd` | without the plugin, by feeding in the results it would send: a sign-in press on PC answers "failed" at once instead of waiting forever; the name arrives before the photo and the photo is taken only when *its* file lands; settings drops its LOGIN button once signed in and gives the space to the name; the mode select's person icon opens settings once signed in; losing the account on a relaunch undoes all of it; a double tap opens one sign-in window; a stale timeout cannot cut a live attempt and a lost answer cannot leave the button dead; each mode's stored best — not the run's score — goes to that mode's own leaderboard at run end and once when sign-in completes, skipping modes with no record, and a failed sign-in from the LEADERBOARD button opens nothing and leaves no waiting connection; and `debug_fake_sign_in` is off in the shipped scene | `PlayGames.gd`, `MODE_LEADERBOARD_ID`/`_submit_leaderboard`/`_show_leaderboard`, the leaderboard block in `_finish_run`, `_on_play_games_changed`/`_sign_in`/`_on_mode_select_login_pressed`, `SettingsPopup.set_account`, or `debug_fake_sign_in` |
+| `check_store.gd` | with a fake BillingClient feeding Google Play's answers: the constants `Store` copied from the plugin's enums still match it; on PC the store is unavailable and the button grants nothing; on connect it asks for the product and the purchases, and will not open the sheet before the product details arrive; cancelled and pending purchases grant nothing; a completed one is **acknowledged** (or Google refunds it after three days) and removes the ads, and the save remembers it; afterwards no interstitial fires and its counter is untouched, the game over's x2 grants at once with no rewarded ad and no ad icon, settings shows a disabled ADS REMOVED and mode select hides its line; a relaunch reads it back, a failed query changes nothing, an unacknowledged purchase found by a query is acknowledged again, a purchase gone from the query (a refund) brings the ads and the line back, and "already owned" asks again | `Store.gd`, `REMOVE_ADS_PRODUCT_ID`, `_on_remove_ads_pressed`/`_on_store_ownership`/`_apply_ads_removed`, any `ads_removed` branch in Main, `SettingsPopup.set_ads_removed`, `GameOverPopup.set_stardust`, `ModeSelectScreen.set_ads_removed`, or an update of the billing plugin |
 | `check_translations.gd` | every display string constant in the UI scripts has a row in `ui.csv` or a recorded reason to stay English, every use of a translated constant goes through `tr()`, no `ko` cell is empty, and no CSV row is orphaned | a string constant is added or reworded anywhere in `scripts/`, a row is added to `ui.csv`, or a string is deliberately left English |
-| `check_share.gd` | the share card, in both languages, all four modes, scores from 0 to the int maximum, record or not: every piece sits inside the white frame and the stack never overlaps; the score, label, footer and mode plate fit `CONTENT_WIDTH` — the score shrinks to fit but stops at `SCORE_MIN_SIZE`, so shrinking is no proof that it fits; the logo and character actually loaded; the share text carries the grouped score, the translated mode name and the store link with no `{placeholder}` left; and on PC a SHARE press opens nothing and leaves the button free | `ShareCard`'s layout constants or `card_layout`, the fonts, `CARD_NAMES` or their translations, `SHARE_TEXT`/`FOOTER_TEXT`, `ScoreFormat.grouped`, `ExternalLinks.STORE_URL`, or `_on_gameover_share_pressed` |
 | `check_score_format.gd` | `ScoreFormat.compact` never exceeds 5 characters anywhere in int32, matches the documented examples, and the HUD and mode-select cards actually route through it | `ScoreFormat`, `_score_digit_layout`, `_best_digit_layout`, `set_best_scores`, or the score box art/font sizes change |
-| `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode and not again for a revive's countdown, `post_score` with score, gates, combo and the revived flag, `revive` results, both tutorial ends, and `share` | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the revive handlers, `_begin_tutorial`/`_on_tutorial_finished`, or `_on_gameover_share_pressed` |
+| `check_analytics.gd` | with a fake Firebase: nothing is available or collected on PC; before any consent answer every signal is denied and collection is off, and events are dropped rather than queued; `NOT_REQUIRED` grants all four signals and turns collection on, once; `REQUIRED`, `OBTAINED` and `UNKNOWN` keep it off; and the game's own paths log the right events with the right values — `level_start` with the mode, `post_score` with score, gates and combo, the x2's `double_stardust` results, and both tutorial ends | `Analytics.gd`, `_log_event` or any call to it, `_on_ads_consent_changed`, `_start_countdown`/`_finish_run`, the x2 handlers, or `_begin_tutorial`/`_on_tutorial_finished` |
 
 **A checker that plays real gates writes to the real save file.** `user://
 savegame.cfg` holds the best scores, the tutorial flag and the ad counters,
 and driving a run to `_finish_run` or `_reset_game` updates them on the
-machine running the check. `check_revive_continuity.gd` therefore
-backs the whole file up and writes it
+machine running the check. The checkers that drive runs therefore
+back the whole file up and writes it
 back at the end. Restoring a few chosen values is not enough — that was
 tried, and a throwaway probe left this machine's SKY record sitting at the
 checker's 12600 and its hidden mode unlocked without anyone having earned
@@ -670,12 +805,15 @@ RenderingServer.frame_post_draw` is the whole trick; without that await you
 save the previous frame. `capture_score_display.gd` is the worked example —
 it sets a score, redraws, and shoots, once per digit count.
 
-`capture_language_toggle.gd` shoots the mode select, settings, revive, game
+`capture_language_toggle.gd` shoots the mode select, settings, game
 over and about screens in both languages, and drives the language switch
 through `Main` rather than the popup so the rebuild path is the one being
 photographed.
 
-`capture_share.gd` renders the share card for four mode, language and score combinations, the 13-character int maximum among them, because whether white text reads on each mode's colour is a question for the picture.
+`capture_popups.gd` shoots every popup over the play screen in both
+languages: pause, the game over with and without a record (with
+the stardust row), settings and about. `--ratio 16x9` shoots the shortest
+screen.
 
 `capture_mode_select.gd` shoots four aspect ratios. That screen divides its
 leftover height between blocks, so one ratio proves nothing about the others.
@@ -1079,8 +1217,8 @@ roughly ten characters survive before truncation — hence `QuizRun` rather
 than the full title. The **Play Store title** is `QuizRun: Dual Gate`, set in
 the Play Console and not in this repo at all. **2.0 is titled `QuizRun: Warp
 Gate`** (decided 2026-11-27, after the warp gate the ship flies through). The
-Play Console title changes when 2.0 ships. The share text and the feedback
-mail subject already say Warp Gate. The **in-game title art** is its own
+Play Console title changes when 2.0 ships. The feedback mail subject
+already says Warp Gate. The **in-game title art** is its own
 painted asset, still a placeholder.
 
 `application/config/name` stays `QuizRunDualGate` on purpose. It also names
@@ -1234,13 +1372,12 @@ What goes up is **the stored per-mode best** (`leaderboard_bests`), not the
 run's score, at the end of every run and once at the moment sign-in
 completes. Play Games keeps only the higher score, so resending costs
 nothing, and it buys two things: a submission lost offline heals on the next
-run end, and records made before signing in reach the board — which is what
-makes the game over popup's "your best is on the leaderboard" true. The best
-itself is built from `leaderboard_score`, the pre-revive score, so a revived
-run cannot lift its board entry with the points the ad bought.
+run end, and records made before signing in reach the board. The best
+is kept apart from the personal best (`leaderboard_bests`): while the revive
+existed it was the pre-revive score, and old saves still carry those values.
 
-The game over LEADERBOARD opens the board of the run that just ended; the
-mode select's opens the selected card's. Pressed while signed out, the mode
+The board opens from the mode select's trophy, for the selected card; the
+game over had a LEADERBOARD button too until 2026-11-28. Pressed while signed out, the mode
 select signs in first and opens the board only if that succeeds.
 
 Each board's **name and icon live in the Play Console**, not here — the game
@@ -1334,40 +1471,19 @@ The first gradle export printed `[ DONE ]` and then hung on exit with
 "Scan thread aborted" — the APK was complete. If it happens again, check the
 APK's timestamp and end the process rather than waiting on it.
 
-## Share
+## Share — removed
 
-The game over SHARE sends an image card and a line of text through
-Android's share sheet. `ShareCard.gd` draws the card — 1080x1350, on the
-mode card's colours, with the logo, the mode name, the happy face, `SCORE`
-or `NEW BEST!`, the grouped score and "Can you beat me?" — into an
-off-screen SubViewport, and `ShareSheet.gd` hands it to Android. It is a
-drawn card rather than a screenshot because the game over popup would carry
-PLAY AGAIN and HOME buttons the recipient cannot press. Its colours, mode
-names and logo path are read from `ModeSelectScreen`, not copied.
-
-**There is no plugin.** Godot 4.4 and later reach Android from GDScript:
-`Engine.get_singleton("AndroidRuntime").getActivity()`, and
-`JavaClassWrapper.wrap()`, where a constructor is called by the class's own
-name (`Intent.Intent(...)`). The image goes out through the FileProvider the
-Godot library already declares — authority `<package>.fileprovider`, with
-`files-path "/"` among its paths — so a file saved under `user://` can be
-shared without touching our manifest. Both facts were read out of the
-godot-lib AAR. The chooser is built as an `ACTION_CHOOSER` intent rather
-than with `Intent.createChooser`, whose title parameter is a `CharSequence`
-that a GDScript String is not guaranteed to match.
-
-**It has not been tried on a device.** JNI overload resolution for
-`putExtra(String, Uri)` is the step most likely to need attention; any
-failure is logged as a warning carrying the Java exception.
-
-On PC there is no share sheet: the card is saved to
-`user://share/quizrun_score.png` and its path printed, which is also the way
-to look at one. A headless run has no renderer, so `render()` returns null
-there rather than waiting forever on `frame_post_draw` — `check_share.gd`
-hung on exactly that before the guard existed.
-
-The share text ends with `ExternalLinks.STORE_URL`, which is derived from the
-package name and will not resolve until the store listing is public.
+The game over SHARE (an image card drawn by `ShareCard.gd` and handed to
+Android's share sheet by `ShareSheet.gd`, with no plugin) was removed on
+2026-11-28 with the LEADERBOARD and LOGIN WITH GOOGLE buttons and the
+leaderboard note above the score ("Login to join the Leaderboard!" / "Your
+best is on the Leaderboard"), at the owner's call: the game over keeps only
+its result rows, x2, PLAY AGAIN and HOME, and says nothing about signing in.
+Scores still go to the boards at run end. With two rows gone its panel stops
+at `PANEL_MAX_H` (700, the 16:9 height), or 20:9 was mostly empty gaps. It had
+never been tried on a device. Git has the whole of it, `check_share` and
+`capture_share` included; the JNI notes in `ShareSheet.gd` are the part
+worth reading if sharing comes back.
 
 ## Ad policy
 
@@ -1377,24 +1493,18 @@ screen* below); the decision layer described here is testable without it.
 
 | | Rule | Built? |
 |---|---|---|
-| Rewarded | Opt-in on the revive popup, once per run. The run's leaderboard entry is frozen at the pre-revive score; the personal best still takes the full score | Yes — `revive_offered`, and `leaderboard_score` captured on the first death only; shown through `Ads.show_rewarded` |
-
-Continuing after the ad resumes the run, it does not restart it: `score`,
-`gates_passed` and `max_combo` all survive, and because the phase is derived
-from `gates_passed` alone the difficulty curve picks up exactly where it
-stopped. `combo` is the one thing that breaks, deliberately — you did miss —
-and since scoring is `SCORE_PER_COMBO * combo`, the per-gate rate drops from
-700 back to 20 at the moment you continue. That collapse is what makes a
-resumed run *feel* like it restarted even though nothing else did; measure
-before believing it, which is what `check_revive_continuity.gd` is for.
-
-Carrying the combo through the revive was raised and **declined**. It is the
-one thing an ad would buy back that is worth real points rather than time,
-and the run did miss the gate. Do not "fix" it — the checker asserts the
-reset, so changing it means changing that assertion on purpose.
+| Rewarded x2 | The game over's x2 (2026-11-27): watch an ad to get the run's stardust again, once a run, offered from `DOUBLE_DUST_MIN` (10) earned. Watched to the end grants it; closed early grants nothing and the button stays; no ad ready, or one that fails to show, grants nothing and the button reads AD NOT READY, since free on no ad would double every offline run. Ads removed: granted at once with no ad. A debug build on PC, where no ad can show, grants at once so it can be tried | Yes — `_on_double_stardust_pressed`, `_grant_double_stardust`, `GameOverPopup.set_stardust` |
 | Interstitial | Every 5 runs left behind, skipping runs that used a rewarded ad, with the first 3 runs after install exempt | Yes — `_ad_*`, shown through `Ads.show_interstitial` |
 | Banner | None. Dropped on 2026-11-27 | Removed; see *Banner ads — removed* |
 | App-open | Not used | n/a |
+
+**There is no revive** (removed 2026-11-28, owner's call). Until then a
+rewarded ad on a revive popup continued the run once, with the leaderboard
+entry frozen at the pre-revive score (`leaderboard_score`), and the x2 was
+the second rewarded placement. A dead run now goes straight to the game
+over: x2, PLAY AGAIN, HOME. The revive popup, `check_revive_continuity` and
+the "OOPS!" title went with it; git has them. `leaderboard_bests` stays a
+separate saved value because old saves carry pre-revive scores in it.
 
 Three things about the interstitial counter are deliberate and each was
 wrong at first:
@@ -1416,8 +1526,8 @@ wrong at first:
   For the same reason the exemption is per **install**, not per launch: per
   launch, playing one run and closing avoids ads forever.
 
-`run_revived` doubles as "this run used a rewarded ad". It is not a second
-flag, because two flags for one fact drift.
+`run_rewarded` marks a run whose x2 ad was watched to the end; it is not
+counted. (It was `run_revived` while the revive was the rewarded ad.)
 
 ### Ad unit IDs, and why they are locked
 
@@ -1451,7 +1561,8 @@ alone is *supposed* to fail it.
 
 The live IDs are in `AdIds.LIVE_*`, all three from one account
 (`ca-app-pub-6214282306800929`): the app, `Interstitial - Restart` and
-`Rewarded - Revive`, named as in the AdMob console. The fourth, `Banner -
+`Rewarded - Revive`, named as in the AdMob console (the revive is gone; the
+unit now serves the game over's x2). The fourth, `Banner -
 Main menu`, went with the banner on 2026-11-27. They are public — they ship inside every APK — so they live in code.
 
 `AdIds` is read in two places: `Ads.make_admob_node`, which fills the plugin's
@@ -1503,11 +1614,10 @@ stay; they are ignored while the flag is on.
 
 What each format does:
 
-- **Rewarded** — the revive popup's button shows it, and the run continues
-  only once the ad was watched to the end. Closed early, the popup stays.
-  No ad ready, or an ad that fails to show, counts as no ad and the run
-  continues free. That was the owner's call: the player did nothing wrong,
-  the revive is once per run, and its leaderboard score is frozen regardless.
+- **Rewarded** — the game over's x2 shows it, and the run's stardust is
+  granted again only once the ad was watched to the end. Closed early, the
+  button stays. No ad ready, or an ad that fails to show, grants nothing and
+  the button reads AD NOT READY (see the Rewarded x2 row above).
 - **Interstitial** — shown at the existing decision point. While it is up,
   `ad_hold_countdown` stops the READY/START clock; otherwise the run would start
   behind the ad. The counter resets when the ad closes, not when it is asked
@@ -1536,8 +1646,8 @@ without one, Google answers that no form exists and the game logs a warning.
 **Failing to ask never blocks ads.** Offline, a form that fails to load, or no
 message in AdMob all start the SDK anyway: the SDK keeps the consent from the
 last time it was given, and for an EEA player who never gave it Google serves
-limited ads itself. Blocking instead would take the revive ad away for the
-whole session after one bad connection.
+limited ads itself. Blocking instead would take the x2 away for the whole
+session after one bad connection.
 
 Google also requires a way back in. Settings carries **Ad Privacy Choices**
 under Privacy Policy, lit only where consent was asked for (`REQUIRED` or
@@ -1570,7 +1680,7 @@ and an offline launch does not know its region. Events while off are dropped,
 not queued, so a later consent cannot send what happened before it.
 
 Ads take the opposite default — they start even when consent could not be
-asked — because blocking them takes the revive away, while a missing day of
+asked — because blocking them takes the x2 away, while a missing day of
 analytics costs a line of statistics.
 
 What is logged, using Google's recommended game event names where one fits
@@ -1579,11 +1689,13 @@ collected by Firebase itself):
 
 | Event | When | Parameters |
 |---|---|---|
-| `level_start` | a run starts — not the countdown after a revive, which is the same run | `level_name` |
-| `post_score` | a run ends | `level_name`, `score`, `gates`, `max_combo`, `revived` (0/1) |
-| `revive` | the revive popup's outcome | `result`: `watched`, `skipped`, `no_ad`, `ad_free`, `declined` |
+| `level_start` | a run starts | `level_name` |
+| `post_score` | a run ends | `level_name`, `score`, `gates`, `max_combo` |
+| `double_stardust` | the game over x2 | `result`: `watched`, `skipped`, `no_ad`, `ad_free`, `debug_no_ads`; `amount` when granted |
 | `tutorial_begin` / `tutorial_complete` | the tutorial's two ends | |
-| `share` | the game over SHARE | `method`, `content_type`, `item_id` = mode |
+
+The `revive` event, the `revived` flag on `post_score` and the `share`
+event went with the revive and the SHARE button on 2026-11-28.
 
 `level_name` comes from `Analytics.MODE_NAMES` (`flags`, `math`, `colors`,
 `mix`) — fixed English names, so one mode stays one row whichever language the
@@ -1629,12 +1741,10 @@ unavailable and `buy()` answers false at once.
 
 Owning it stops interstitials without touching their counter (there has
 been no banner to remove since 2026-11-27), and makes the
-revive button continue with no rewarded ad — the owner's call: someone who
-paid should never be shown an ad, and the revive stays once per run with its
-leaderboard score frozen regardless. Settings keeps the button but disabled,
-reading ADS REMOVED; mode select hides its line; the revive button reads
-CONTINUE without the ad icon. The two popups change by being rebuilt, the
-same path a language change takes.
+game over's x2 grant at once with no rewarded ad and no ad icon — the owner's
+call: someone who paid should never be shown an ad. Settings keeps the
+button but disabled, reading ADS REMOVED; mode select hides its line.
+Settings changes by being rebuilt, the same path a language change takes.
 
 **Google Play decides who owns it.** `Store` asks for the purchases on
 connecting and every time the app comes back to the foreground, and

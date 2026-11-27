@@ -3,8 +3,8 @@ class_name PopupBase
 
 ## 팝업들의 공통 바탕.
 ##
-## 판·버튼·아이콘을 만드는 법, 골드 글로우, 팔레트, 눌림 동작처럼 모든
-## 팝업이 똑같이 쓰는 것만 모아 둔다. 각 팝업(PausePopup, RevivePopup, …)은
+## 판·버튼·아이콘을 만드는 법, 팔레트, 눌림 동작처럼 모든
+## 팝업이 똑같이 쓰는 것만 모아 둔다. 각 팝업(PausePopup, GameOverPopup, …)은
 ## 이걸 상속해서 _build_content()에 자기 내용만 얹고 _layout_content()에서
 ## 배치한다.
 ##
@@ -30,15 +30,37 @@ static var bake_writing := false          # 도구가 켠다. 켜지면 계산 �
 static var _bake_index: Dictionary = {}
 static var _bake_index_loaded := false
 static var _bake_written: Dictionary = {}
-const PANEL_FILE := "popup_panel.png"
-const GOLD_FILE := "button_gold_v2.png"
-const CREAM_FILE := "button_cream_v4.png"
+# ---- 2.0 의 판과 버튼 (2026-11-28) ----
+#
+# Synty INTERFACE Sci-Fi Menus 키트에서 온다(tools/build_ui_kit.gd 가 굽고,
+# 유료라 git 에 들어가지 않는다). 판은 파란 불이 든 강철 모서리
+# 프레임(Frame_Box_Large_08)을 모서리 넷과 민무늬 변만 남겨 9-slice 로 잘라 둔 것,
+# 주 버튼은 주황으로 채운 Bar_Frame_02(양 끝 청록 화살촉), 보조 버튼은 두툼한
+# 은색 테두리에 모서리를 깎은 Frame_Box_Small_04 다(둘 다 2026-11-28 주인이 골랐다). 보조
+# 버튼은 판처럼 네 변을 모두 9-slice 해서, 모서리는 작게 남고 변만 길어진다 —
+# 팩 예시 화면의 Label_Button 모양. 키트가 없으면 ArtSlot 의 회색 틀로 그려진다.
+#
+# 1.x 의 크림·골드 판(ART_DIR)은 2026-11-26 에 그림이 지워졌다. 이름은
+# 그대로 두었다 — GOLD 는 "주 버튼", CREAM 은 "보조 버튼"으로 읽는다.
+const KIT := "res://assets/synty_ui/"
+const PANEL_FILE := KIT + "popup_panel.png"
+const GOLD_FILE := KIT + "popup_primary.png"
+const CREAM_FILE := KIT + "popup_button.png"
 
-# 각 원본의 모서리 곡률 반경(px). 알파 실루엣을 재서 얻은 값이고, 아트를
-# 다시 그리면 다시 재야 한다.
-const PANEL_CORNER := 121
-const GOLD_CORNER := 88
-const CREAM_CORNER := 202
+# 9-slice 여백(텍스처 px). 판은 build_ui_kit 이 찍어 주는 값, 주 버튼은 양 끝
+# 화살촉 쇠붙이의 폭, 보조 버튼은 테두리에 깎은 모서리를 더한 폭이다(가로와
+# 세로가 같다). 키트를 다시 구우면 다시 잰다.
+const PANEL_CORNER := 96
+const GOLD_CORNER := 62
+const CREAM_CORNER := 22
+const CREAM_CORNER_Y := 22
+# 보조 버튼 글자와 아이콘 — 짙은 면 위의 하늘색(Label_Button 과 같은 색).
+const SECONDARY_LABEL_COLOR := Color(0.55, 0.88, 1.0, 1.0)
+# 판의 9-slice 는 키트가 구운 배율(화면 1px 에 2.25px)로 그린다 — 모서리가
+# 구운 그대로의 크기로 나온다. 버튼은 높이에 맞춰 늘린다(_fit_patch).
+const KIT_BAKE := 2.25
+# 키트 버튼의 아이콘+글자가 양 끝 머리 사이에서 쓸 수 있는 몫(_place).
+const KIT_BUTTON_FACE_FIT := 0.96
 
 # 버튼 누르는 소리. 골드(주 동작)와 크림(보조)이 다른 소리를 낸다.
 #
@@ -46,8 +68,8 @@ const CREAM_CORNER := 202
 # 동작만 하므로, 한쪽만 넣어도 된다.
 const BUTTON_SOUND_DIR := "res://assets/audio/"
 const BUTTON_SOUND_EXTENSIONS := [".ogg", ".wav"]
-# 금색 버튼은 팝업의 주 버튼 넷뿐이다 — RESUME, PLAY AGAIN, WATCH AD TO
-# CONTINUE, REMOVE ADS. 메인 화면의 START 는 이 길을 안 지나고
+# 금색 버튼은 팝업의 주 버튼 넷뿐이다 — RESUME, PLAY AGAIN, 결과 화면의 x2,
+# REMOVE ADS. 메인 화면의 START 는 이 길을 안 지나고
 # ModeSelectScreen 이 제 소리(start_main.wav)를 따로 낸다.
 const GOLD_SOUND_NAME := "goldbutton_sound"
 const CREAM_SOUND_NAME := "button_cream"
@@ -56,10 +78,11 @@ const BUTTON_SOUND_BUS := "SFX"
 
 # 골드 버튼 안의 내용(아이콘 + 글자)을 위로 미는 거리(px).
 #
-# 골드 아트는 아래쪽에 입체감을 주는 두툼한 턱이 있어, 눈에 보이는 판의
+# 1.x 골드 아트는 아래쪽에 입체감을 주는 두툼한 턱이 있어, 눈에 보이는 판의
 # 한가운데가 사각형 한가운데보다 조금 위다. 그대로 가운데에 맞추면 글자가
-# 살짝 가라앉아 보인다. 아트의 성질이라 골드 버튼 셋이 같은 값을 쓴다.
-const GOLD_CONTENT_DY := -3.0
+# 살짝 가라앉아 보였다. 2.0 의 주 버튼(Bar_Frame_02)은 면이 위아래 가운데라
+# 0 이다. 아트를 바꾸면 다시 본다 — 주 버튼들이 모두 같은 값을 쓴다.
+const GOLD_CONTENT_DY := 0.0
 
 # 9-slice 원본을 몇 px 폭으로 줄여 둘지 (논리 px, UI_SUPERSAMPLE 배로 그린다).
 #
@@ -74,7 +97,7 @@ const GOLD_CONTENT_DY := -3.0
 const BUTTON_TEXTURE_WIDTH := 320
 const CREAM_TEXTURE_WIDTH := 197
 
-const BACKDROP_COLOR := Color(0.04, 0.06, 0.12, 0.55)  # 뒤 게임이 비치도록 옅게
+const BACKDROP_COLOR := Color(0.01, 0.02, 0.06, 0.62)  # 뒤 게임이 비치도록 옅게
 
 # 판 안쪽 여백 — 판 아트의 골드 테두리 두께를 감안한 값이다.
 const CONTENT_SIDE_FRAC := 0.115      # 판 너비 대비 좌우 여백
@@ -97,6 +120,18 @@ const BUTTON_TEXT_FIT_H := 0.80
 #                같은 뜻의 아이콘이라도 이쪽이 팝업 크기에 맞게 굵고 또렷해서,
 #                버튼에는 이쪽을 우선 쓴다.
 const ICON_SHEET := "res://assets/ui_assets/main/icon_sheet.png"
+# 2.0 에서는 두 시트의 칸 번호가 키트의 흰 아이콘을 가리킨다(_load_icon).
+# 재생은 키트에 맞는 것이 없어 코드로 그린다(_play_icon).
+const KIT_ICONS := {
+	1: "icon_restart.png",   # ICON_RESTART
+	2: "icon_home.png",      # ICON_HOME
+	5: "icon_sound.png",     # ICON_SPEAKER
+	6: "icon_music.png",     # ICON_NOTE
+}
+const KIT_POPUP_ICONS := {
+	1: "icon_restart.png",   # POPUP_ICON_RESTART
+	2: "icon_ad.png",        # POPUP_ICON_AD
+}
 const ICON_GRID := Vector2i(5, 3)
 const ICON_PLAY := 0            # 지금 쓰는 곳은 없다 — 시트의 목차라 자리를 지운다
 const ICON_RESTART := 1
@@ -123,61 +158,55 @@ const ICON_PAD_FRAC := 0.035
 
 # 주 버튼 글자는 흰색에 네이비 외곽선 — 골드 판 위에서 가장 또렷하고,
 # 흰 채움 + 네이비 테두리인 아이콘과 같은 옷을 입는다.
-const PRIMARY_LABEL_COLOR := Color(1.0, 1.0, 1.0, 1.0)
+const PRIMARY_LABEL_COLOR := Color(1.0, 0.98, 0.92, 1.0)
+# 주황 버튼 위 글자의 테두리 — 메뉴 PLAY 의 PLAY_TEXT_RIM 과 같다.
+const PRIMARY_LABEL_OUTLINE := Color(0.36, 0.12, 0.02, 1.0)
 const PRIMARY_LABEL_OUTLINE_FRAC := 0.20   # 글자 크기 대비 외곽선 두께
 
-# 글자는 판/버튼 테두리와 같은 진한 네이비 — 화면 전체가 한 팔레트로 묶인다.
-const INK := Color(0.055, 0.180, 0.435, 1.0)
+# 글자는 어두운 판 위의 흰 빛 도는 하늘색. 1.x 는 크림 판에 네이비였다.
+const INK := Color(0.88, 0.95, 1.0, 1.0)
+# 판 위의 상자(콤보, 안내, 스타더스트 줄)는 어둡게 비치는 유리판에 색 테를
+# 두른다(_info_box). 상자마다 정하는 색은 그 테와 은은한 바탕 빛이 된다.
+const BOX_FILL := Color(0.06, 0.12, 0.24, 0.85)
+const BOX_EDGE_PX := 2
 # 소리 조절 슬라이더 — 일시정지 팝업과 설정 팝업이 같은 것을 쓴다.
 const SLIDER_LABEL_FRAC := 0.062
 const SLIDER_TRACK_HEIGHT := 12.0
-const SLIDER_TRACK_COLOR := Color(0.84, 0.80, 0.70, 1.0)   # 빈 구간
-const SLIDER_FILL_COLOR := Color(1.0, 0.78, 0.22, 1.0)     # 채워진 구간 — 판의 골드와 같은 계열
+const SLIDER_TRACK_COLOR := Color(0.10, 0.16, 0.28, 1.0)   # 빈 구간
+const SLIDER_FILL_COLOR := Color(0.30, 0.82, 1.0, 1.0)     # 채워진 구간 — 판 테두리의 파란 불 계열
 const SLIDER_TRACK_RADIUS := 6
 const SLIDER_KNOB_SIZE := 26        # 손잡이 지름(px). 손가락으로 잡을 만한 크기
-const SLIDER_KNOB_FILL := Color(1.0, 0.99, 0.96, 1.0)
-const SLIDER_KNOB_EDGE := Color(0.055, 0.180, 0.435, 1.0)  # 테두리 네이비와 동일
+const SLIDER_KNOB_FILL := Color(0.92, 0.98, 1.0, 1.0)
+const SLIDER_KNOB_EDGE := Color(0.08, 0.40, 0.62, 1.0)
 const SLIDER_KNOB_EDGE_PX := 3.0
 const SLIDER_ICON_GAP_FRAC := 0.34  # 글자 크기 대비 아이콘-글자 간격
 # 판을 가로지르는 점선 구분선.
 const DIVIDER_DOTS := 22
 const DIVIDER_DOT_RADIUS := 2.6
-const DIVIDER_COLOR := Color(0.80, 0.75, 0.63, 1.0)   # 진한 크림
+const DIVIDER_COLOR := Color(0.30, 0.62, 0.85, 0.55)
 
-# 오른쪽 위 모서리의 동그란 닫기 버튼. 아트는 빈 원판이라 X 는 직접 그린다.
-const CANCEL_FILE := "res://assets/ui_assets/popup/button_cancel.png"
-const CANCEL_TEXTURE_HEIGHT := 160
+# 오른쪽 위 모서리의 닫기 버튼. 틀은 빈 네모라 X 는 직접 그린다.
+const CANCEL_FILE := KIT + "side_slot.png"   # HUD 의 네모 슬롯과 같은 틀
 const CANCEL_SIZE_FRAC := 0.125        # 판 너비 대비 지름
 # 버튼 가운데를 판의 "보이는" 테두리 위에 얹는다 — 반은 안, 반은 밖.
 # _panel_rect 는 아트 사각형이라 투명 여백이 있으므로, PANEL_ART_INSET_* 만큼
 # 안으로 들어온 자리가 실제로 그려진 테두리다.
 # 지름 대비: x 는 오른쪽 테두리에서 이만큼 왼쪽, y 는 위 테두리에서 이만큼 아래.
 const CANCEL_ON_BORDER := Vector2(0.45, 0.0)
-const CANCEL_X_COLOR := Color(0.055, 0.180, 0.435, 1.0)  # 네이비
+const CANCEL_X_COLOR := Color(0.88, 0.95, 1.0, 1.0)
 const CANCEL_X_ARM_FRAC := 0.19        # 지름 대비 X 팔 길이(중심에서)
 const CANCEL_X_WIDTH_FRAC := 0.095     # 지름 대비 선 굵기
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
 
-# 판 둘레의 골드 글로우.
+# 판 사각형에서 실제로 그려진 테두리까지의 거리(판 크기 대비) — 닫기 버튼을
+# 테두리 위에 얹을 때 쓴다. 키트 판은 잉크까지 잘려 있어 여백이 거의 없고,
+# 모서리의 강철 삼각형만 파란 선보다 조금 바깥으로 나와 있다.
 #
-# 판 아트에는 골드 테두리 바깥으로 투명 여백이 있다(1024px 원본 기준 약 30px).
-# NinePatchRect의 사각형은 그 여백까지 포함하므로, 사각형 그대로 링을 두르면
-# 빛이 테두리에서 30px 떨어진 곳부터 시작해 붕 뜬다. 그래서 아래 비율만큼
-# 안쪽으로 좁혀 실제 골드 테두리에 붙인다.
-const PANEL_ART_INSET_X := 0.0303   # 원본 폭 대비 좌우 투명 여백
-const PANEL_ART_INSET_Y := 0.0195   # 원본 높이 대비 상하 투명 여백
-const GLOW_COLOR := Color(1.0, 0.82, 0.30)
-const GLOW_RINGS := 48
-const GLOW_BORDER := 2.0        # 링 두께 — 얇을수록 매끄럽다
-# 퍼지는 거리는 GLOW_BORDER * GLOW_SPREAD. 넓힐 때는 링 개수도 같이 올려야
-# 링 사이가 벌어지지 않는다 — 안 그러면 넓어지면서 줄무늬가 보인다.
-const GLOW_SPREAD := 14.0
-const GLOW_INSET := 3.0         # 테두리보다 이만큼 안쪽에서 시작해 빛이 테두리를 물고 나온다
-const GLOW_ALPHA := 0.125      # 링 하나의 알파 — 겹쳐서 밝기를 만든다
-const GLOW_FALLOFF := 2.0       # 클수록 바깥으로 빠르게 옅어진다
-const GLOW_PULSE_PERIOD := 2.4  # 숨쉬듯 아주 느리게
-const GLOW_PULSE_RANGE := Vector2(0.75, 1.0)
+# 판 둘레에는 하늘색(1.x 에서는 금색) 글로우가 숨쉬듯 번졌는데, 2026-11-28
+# 주인의 요청으로 뺐다. 키트 판은 테두리 자체에 빛과 색이 있다.
+const PANEL_ART_INSET_X := 0.012
+const PANEL_ART_INSET_Y := 0.010
 
 # 9-slice를 논리 해상도의 몇 배로 그릴지.
 #
@@ -206,14 +235,24 @@ const PRESS_SCALE := 0.97
 const PRESS_SINK := 3.0
 const PRESS_ANIM_DURATION := 0.08
 
+# 눌린 동안 버튼 안쪽 면이 밝아진다(2026-11-28, 주인의 요청 — 메뉴의 PLAY 처럼).
+# 면 위에 더하기(ADD)로 빛을 얹어 그림의 결은 살리고 밝기만 올린다. 테두리는
+# 그대로라 "면이 켜졌다"로 읽힌다. 면의 자리는 구운 그림에서 잰 안쪽 여백
+# (텍스처 px)이고, 그림과 같은 배율로 화면에 옮긴다(_place).
+const GOLD_FACE_INSET := Vector2(38, 31)    # popup_primary.png 의 주황 면 둘레
+const CREAM_FACE_INSET := Vector2(15, 17)   # popup_button.png 의 파란 면 둘레
+const PRESS_GLOW_GOLD := Color(1.0, 0.80, 0.40, 0.32)
+const PRESS_GLOW_CREAM := Color(0.30, 0.62, 1.0, 0.30)
+const PRESS_GLOW_RADIUS := 3
+const PRESS_GLOW_FADE := 0.18     # 손을 뗀 뒤 꺼지는 시간 — 켜질 때보다 느긋하게
+
 var _font_bold: Font
 var _font_heavy: Font
 var _backdrop: ColorRect
-var _glow: Control
 var _panel: NinePatchRect
 var _elapsed := 0.0
 # 판의 논리 크기(화면에 보이는 크기). _panel.size는 UI_SUPERSAMPLE 배로
-# 부풀려져 있어 글자 크기나 글로우 위치의 기준으로 쓰면 안 된다.
+# 부풀려져 있어 글자 크기나 배치의 기준으로 쓰면 안 된다.
 var _panel_rect := Rect2()
 # 버튼 소리 재생기. 아트 종류(골드/크림)마다 하나씩, 팝업이 만들어질 때 한 번만.
 var _button_players := {}
@@ -270,12 +309,6 @@ func _ready() -> void:
 	_backdrop.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_backdrop)
 
-	# 글로우는 판보다 먼저 — 판 뒤에서 새어나오는 것처럼 보여야 한다.
-	_glow = Control.new()
-	_glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_glow.draw.connect(_draw_glow)
-	add_child(_glow)
-
 	_panel = _nine_patch(PANEL_FILE, PANEL_CORNER, int(panel_texture_width() * UI_SUPERSAMPLE))
 	add_child(_panel)
 
@@ -290,8 +323,7 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if not visible:
 		return
-	_elapsed += delta
-	_glow.queue_redraw()
+	_elapsed += delta   # 하위 팝업의 흔들림(트로피, 캐릭터)이 쓴다
 
 
 # ---- 하위 팝업이 채우는 자리 ----
@@ -335,12 +367,8 @@ func _layout() -> void:
 	var px: float = (view.x - pw) * 0.5
 	var py: float = view.y * panel_center_y_frac() - ph * 0.5
 	_panel.position = Vector2(px, py)
-	# 크게 만들고 되돌린다 — UI_SUPERSAMPLE 주석 참고.
-	_panel.size = Vector2(pw, ph) * UI_SUPERSAMPLE
-	_panel.scale = Vector2.ONE / UI_SUPERSAMPLE
+	_fit_patch(_panel, Vector2(pw, ph))
 	_panel_rect = Rect2(px, py, pw, ph)
-	_glow.position = Vector2.ZERO
-	_glow.size = view
 
 	var pad_x: float = pw * CONTENT_SIDE_FRAC
 	_layout_content(Rect2(
@@ -349,31 +377,6 @@ func _layout() -> void:
 		pw - pad_x * 2.0,
 		ph - ph * (CONTENT_TOP_FRAC + CONTENT_BOTTOM_FRAC)))
 
-
-# 판 둘레의 골드 글로우. 사각 링을 바깥으로 겹쳐 그려 번짐을 흉내낸다.
-func _draw_glow() -> void:
-	if _panel == null:
-		return
-	var pulse: float = (sin(_elapsed / GLOW_PULSE_PERIOD * TAU) + 1.0) * 0.5
-	var strength: float = lerpf(GLOW_PULSE_RANGE.x, GLOW_PULSE_RANGE.y, pulse)
-	# 사각형을 아트의 투명 여백만큼 좁혀 실제 골드 테두리에 맞춘다.
-	var inset_x: float = _panel_rect.size.x * PANEL_ART_INSET_X
-	var inset_y: float = _panel_rect.size.y * PANEL_ART_INSET_Y
-	var rect := Rect2(_panel_rect.position + Vector2(inset_x, inset_y),
-		_panel_rect.size - Vector2(inset_x, inset_y) * 2.0)
-	var radius: float = PANEL_CORNER * (_panel_rect.size.x / 1024.0)
-	for i in range(GLOW_RINGS):
-		var t: float = float(i) / float(GLOW_RINGS - 1)
-		# 테두리 안쪽에서 시작해 바깥으로 — 빛이 테두리를 감싸고 번져 나간다.
-		var grow: float = lerpf(-GLOW_INSET, GLOW_BORDER * GLOW_SPREAD, t)
-		var style := StyleBoxFlat.new()
-		style.draw_center = false
-		style.set_corner_radius_all(maxi(0, int(round(radius + grow))))
-		style.set_border_width_all(maxi(1, int(round(GLOW_BORDER))))
-		style.border_color = Color(GLOW_COLOR.r, GLOW_COLOR.g, GLOW_COLOR.b,
-			GLOW_ALPHA * pow(1.0 - t, GLOW_FALLOFF) * strength)
-		style.anti_aliasing = true
-		_glow.draw_style_box(style, rect.grow(grow))
 
 
 # ---- 만들기 헬퍼 ----
@@ -402,6 +405,8 @@ func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.Z
 	var np := NinePatchRect.new()
 	np.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	np.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	if file.begins_with(KIT):
+		return _kit_patch(np, file, corner)
 	var key := "np|%s|%d|%d|%.3f|%.3f" % [file, corner, target_w, gradient.x, gradient.y]
 	var baked := _baked(key)
 	if not baked.is_empty():
@@ -444,6 +449,42 @@ func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.Z
 	return np
 
 
+# 키트 그림은 이미 표시 크기 가까이로 구워져 있어 줄이지 않고 그대로 쓴다.
+# 판(PANEL_FILE)과 보조 버튼(CREAM_FILE)은 네 변 모두 9-slice 로 구운 배율
+# 그대로 그린다. 주 버튼은 양 끝만 고정하고 높이는 그림째 맞춘다 — 화살촉
+# 머리가 위아래로 눌리지 않게.
+#
+# 굽기(_bake_store)는 거치지 않는다. 구운 파일은 ui_assets 아래에 남는데,
+# 키트 그림은 유료라 저장소에 들어가면 안 된다.
+func _kit_patch(np: NinePatchRect, file: String, corner: int) -> NinePatchRect:
+	np.texture = ArtSlot.texture(file)
+	var whole: bool = file == PANEL_FILE or file == CREAM_FILE
+	var corner_y: int = CREAM_CORNER_Y if file == CREAM_FILE else corner
+	np.patch_margin_left = corner
+	np.patch_margin_right = corner
+	np.patch_margin_top = corner_y if whole else 0
+	np.patch_margin_bottom = corner_y if whole else 0
+	np.set_meta("fit", "fixed" if whole else "height")
+	return np
+
+
+## NinePatchRect 를 논리 크기 size 로 놓는다. 노드는 크게 만들고 scale 로
+## 되돌린다 — 텍스처 픽셀이 화면 픽셀보다 촘촘해야 또렷하다.
+##   1.x 아트      UI_SUPERSAMPLE 배(_nine_patch 가 그 폭으로 줄여 둔다)
+##   키트 판       KIT_BAKE 배 — 모서리가 구운 크기 그대로
+##   키트 버튼     텍스처 높이에 맞춘 배율 — 양 끝 머리가 높이와 함께 준다
+func _fit_patch(np: NinePatchRect, size: Vector2) -> void:
+	var k: float = UI_SUPERSAMPLE
+	match str(np.get_meta("fit", "")):
+		"fixed":
+			k = KIT_BAKE
+		"height":
+			if np.texture != null and size.y > 0.0:
+				k = float(np.texture.get_height()) / size.y
+	np.size = size * k
+	np.scale = Vector2.ONE / k
+
+
 # 배경은 NinePatchRect가 그리고 Button은 투명하게 눌리는 역할만 한다.
 # TextureButton은 9-slice를 지원하지 않아 그림 전체를 늘려 버리기 때문이다.
 # 아이콘은 인덱스가 아니라 텍스처로 받는다 — 팝업마다 쓰는 시트가 달라서,
@@ -465,16 +506,35 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 	bg.name = "Background"
 	button.add_child(bg)
 
+	# 눌렸을 때 안쪽 면을 밝히는 빛. 글자와 아이콘 아래에 깔린다.
+	if file == GOLD_FILE or file == CREAM_FILE:
+		var glow := Control.new()
+		glow.name = "Glow"
+		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		glow.modulate.a = 0.0
+		var add := CanvasItemMaterial.new()
+		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+		glow.material = add
+		var tint: Color = PRESS_GLOW_GOLD if file == GOLD_FILE else PRESS_GLOW_CREAM
+		glow.draw.connect(func() -> void:
+			glow.draw_style_box(_pill(tint, PRESS_GLOW_RADIUS), Rect2(Vector2.ZERO, glow.size)))
+		glow.set_meta("inset", GOLD_FACE_INSET if file == GOLD_FILE else CREAM_FACE_INSET)
+		button.add_child(glow)
+
 	var label := _make_label(text, _font_heavy)
 	label.name = "Caption"
 	if primary:
 		label.add_theme_color_override("font_color", PRIMARY_LABEL_COLOR)
-		label.add_theme_color_override("font_outline_color", INK)
+		label.add_theme_color_override("font_outline_color", PRIMARY_LABEL_OUTLINE)
+	elif file == CREAM_FILE:
+		label.add_theme_color_override("font_color", SECONDARY_LABEL_COLOR)
 	button.add_child(label)
 
 	var icon_rect := TextureRect.new()
 	icon_rect.name = "Icon"
 	icon_rect.texture = icon
+	if file == CREAM_FILE:
+		icon_rect.modulate = SECONDARY_LABEL_COLOR   # 흰 아이콘을 글자와 같은 하늘색으로
 	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	icon_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -511,13 +571,19 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 
 	var shadow: NinePatchRect = button.get_node("Shadow")
 	shadow.position = Vector2(0.0, SHADOW_OFFSET)
-	shadow.size = Vector2(w, h) * UI_SUPERSAMPLE
-	shadow.scale = Vector2.ONE / UI_SUPERSAMPLE
+	_fit_patch(shadow, Vector2(w, h))
 
 	var bg: NinePatchRect = button.get_node("Background")
 	bg.position = Vector2.ZERO
-	bg.size = Vector2(w, h) * UI_SUPERSAMPLE
-	bg.scale = Vector2.ONE / UI_SUPERSAMPLE
+	_fit_patch(bg, Vector2(w, h))
+
+	var glow: Control = button.get_node_or_null("Glow")
+	if glow != null:
+		# 그림의 안쪽 여백을 그림과 같은 배율(bg.scale)로 화면 px 에 옮긴다.
+		var inset: Vector2 = Vector2(glow.get_meta("inset", Vector2.ZERO)) * bg.scale.x
+		glow.position = inset
+		glow.size = Vector2(maxf(0.0, w - inset.x * 2.0), maxf(0.0, h - inset.y * 2.0))
+		glow.queue_redraw()
 
 	var label: Label = button.get_node("Caption")
 	var icon: TextureRect = button.get_node("Icon")
@@ -532,6 +598,11 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	# 캡션은 줄바꿈(\n)을 담을 수 있으므로 여러 줄 기준으로 잰다. 한 줄짜리
 	# 문구에는 한 줄로 잰 것과 같은 값이 나온다.
 	var fit_w: float = w * fit
+	# 키트 버튼은 양 끝 머리(PLAY 의 V 홈, 회색 버튼의 비스듬한 끝)가 높이에
+	# 비례해 굵다. 폭의 몇 할로만 재면 짧은 버튼에서 아이콘이 머리 위에 얹힌다.
+	if str(bg.get_meta("fit", "")) == "height" and bg.texture != null:
+		var cap: float = bg.patch_margin_left * h / float(bg.texture.get_height())
+		fit_w = minf(fit_w, (w - cap * 2.0) * KIT_BUTTON_FACE_FIT)
 	var fit_h: float = h * BUTTON_TEXT_FIT_H
 	var text_w := 0.0
 	var icon_w := 0.0
@@ -673,14 +744,47 @@ func _smoothed(tex: Texture2D) -> Texture2D:
 	_smooth_cache[key] = result
 	return result
 
-# 메인 시트(5x3)의 한 칸.
+# 메인 시트(5x3)의 한 칸 — 2.0 에서는 키트의 같은 뜻 아이콘.
 func _load_icon(index: int) -> Texture2D:
+	if index == ICON_PLAY:
+		return _play_icon()
+	if KIT_ICONS.has(index):
+		return _load_icon_from(KIT + str(KIT_ICONS[index]), Vector2i.ONE, 0)
 	return _load_icon_from(ICON_SHEET, ICON_GRID, index)
 
 
-# 팝업 전용 시트(3x1)의 한 칸.
+# 팝업 전용 시트(3x1)의 한 칸 — 2.0 에서는 키트의 같은 뜻 아이콘.
 func _load_popup_icon(index: int) -> Texture2D:
+	if index == POPUP_ICON_PLAY:
+		return _play_icon()
+	if KIT_POPUP_ICONS.has(index):
+		return _load_icon_from(KIT + str(KIT_POPUP_ICONS[index]), Vector2i.ONE, 0)
 	return _load_icon_from(POPUP_ICON_SHEET, POPUP_ICON_GRID, index)
+
+
+# 재생 세모. 키트에는 흰 단색 재생 아이콘이 없어(금속 질감뿐) 그린다.
+# 네 배로 그려 줄여서 가장자리를 부드럽게 한다.
+static var _play_tex: Texture2D
+
+func _play_icon() -> Texture2D:
+	if _play_tex != null:
+		return _play_tex
+	var n := ICON_TEXTURE_HEIGHT * 4
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	img.fill(Color(1, 1, 1, 0))
+	var pad: float = n * 0.10
+	var tri := PackedVector2Array([Vector2(pad + n * 0.08, pad),
+		Vector2(pad + n * 0.08, n - pad), Vector2(n - pad, n * 0.5)])
+	for y in range(n):
+		for x in range(n):
+			if Geometry2D.is_point_in_polygon(Vector2(x + 0.5, y + 0.5), tri):
+				img.set_pixel(x, y, Color(1, 1, 1, 1))
+	img.premultiply_alpha()
+	img.resize(ICON_TEXTURE_HEIGHT, ICON_TEXTURE_HEIGHT, Image.INTERPOLATE_LANCZOS)
+	_unpremultiply(img)
+	img.generate_mipmaps()
+	_play_tex = ImageTexture.create_from_image(img)
+	return _play_tex
 
 
 # 시트의 한 칸을 잘라 투명 여백을 털어 낸다. 칸마다 아이콘이 차지하는
@@ -887,7 +991,8 @@ func _load_icon_from(sheet_path: String, grid: Vector2i, index: int, target_h :=
 		cell.premultiply_alpha()
 		cell.resize(maxi(1, int(round(cell.get_width() * s))), target_h, Image.INTERPOLATE_LANCZOS)
 		_unpremultiply(cell)
-	_bake_store(key, cell, 0)
+	if not sheet_path.begins_with(KIT):   # 유료 키트 그림은 굽지 않는다(_kit_patch)
+		_bake_store(key, cell, 0)
 	cell.generate_mipmaps()
 	return ImageTexture.create_from_image(cell)
 
@@ -1087,7 +1192,8 @@ func _row_label_column(font_size: int, texts: Array) -> float:
 const TOGGLE_HEIGHT := 40.0
 const TOGGLE_PAD := 4.0            # 트랙 안쪽, 손잡이 둘레의 여백
 const TOGGLE_LABEL_FRAC := 0.42    # 토글 높이 대비 글자 크기
-const TOGGLE_OFF_TEXT := Color(0.42, 0.40, 0.36, 1.0)
+const TOGGLE_OFF_TEXT := Color(0.50, 0.60, 0.72, 1.0)
+const TOGGLE_ON_TEXT := Color(0.02, 0.10, 0.20, 1.0)   # 하늘색 손잡이 위라 어둡게
 
 
 ## 두 갈래 토글 하나. `texts` 는 [왼쪽, 오른쪽] 이름이고, 값이 false 면 왼쪽이
@@ -1138,7 +1244,20 @@ func _draw_side_toggle(t: Control) -> void:
 		var cx: float = TOGGLE_PAD + knob_w * (float(i) + 0.5)
 		var lit: bool = (i == 1) == second
 		t.draw_string(_font_bold, Vector2(cx - tw * 0.5, h * 0.5 + fs * 0.36),
-			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK if lit else TOGGLE_OFF_TEXT)
+			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TOGGLE_ON_TEXT if lit else TOGGLE_OFF_TEXT)
+
+
+## 판 위의 정보 상자: 어둡게 비치는 유리에 tint 색 테. 바탕에도 tint 를
+## 조금 섞어 상자마다 제 색이 은은하게 돈다. 1.x 의 크림·하늘색 알약을
+## 대신한다 — 밝은 바탕에 흰 글자는 읽히지 않는다.
+func _info_box(tint: Color, radius: float) -> StyleBoxFlat:
+	var box := StyleBoxFlat.new()
+	box.bg_color = BOX_FILL.lerp(Color(tint.r, tint.g, tint.b, BOX_FILL.a), 0.18)
+	box.border_color = Color(tint.r, tint.g, tint.b, 0.85)
+	box.set_border_width_all(BOX_EDGE_PX)
+	box.set_corner_radius_all(int(round(radius)))
+	box.anti_aliasing = true
+	return box
 
 
 func _pill(color: Color, radius: float) -> StyleBoxFlat:
@@ -1168,7 +1287,7 @@ func _make_close_button(on_pressed: Callable) -> Button:
 	for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
 		button.add_theme_stylebox_override(slot, empty)
 	button.set_meta("sound", CREAM_SOUND_NAME)
-	button.set_meta("art", _load_icon_from(CANCEL_FILE, Vector2i(1, 1), 0, CANCEL_TEXTURE_HEIGHT))
+	button.set_meta("art", ArtSlot.texture(CANCEL_FILE))
 	button.button_down.connect(_press.bind(button))
 	button.button_up.connect(_release.bind(button))
 	button.draw.connect(_draw_close_button.bind(button))
@@ -1201,6 +1320,65 @@ func _draw_close_button(button: Button) -> void:
 	var w: float = d * CANCEL_X_WIDTH_FRAC
 	button.draw_line(c + Vector2(-arm, -arm), c + Vector2(arm, arm), CANCEL_X_COLOR, w, true)
 	button.draw_line(c + Vector2(arm, -arm), c + Vector2(-arm, arm), CANCEL_X_COLOR, w, true)
+
+
+## 판 바로 위에 크게 쓰는 제목(2026-11-28): 틀 없이 Zen Dots 글자만, 금색에
+## 어두운 테두리. 1.x 의 OOPS·TRY AGAIN·SETTINGS 그림 자리에 들어간다. 그림이었던
+## 말이라 영어 그대로다(CLAUDE.md, Language) — Zen Dots 에는 한글도 없다.
+##
+## 처음에는 키트의 머리 모양 틀에 써서 판 윗변에 반쯤 걸쳤고, 다음에는 주황
+## 막대(Bar_Frame_08)에 써서 판 위에 따로 얹었다. 주인이 판과 겹치지 않게,
+## 그리고 틀 없이 글자만 크게 해 달라고 했다.
+const TITLE_TEXT_COLOR := Color(1.0, 0.86, 0.45, 1.0)
+const TITLE_TEXT_RIM := Color(0.20, 0.08, 0.0, 1.0)
+const TITLE_RIM_FRAC := 0.14       # 글자 크기 대비 테두리 두께
+const TITLE_FONT_FRAC := 0.12      # 판 너비 대비 글자 크기 — 이보다 크게는 안 쓴다
+# 글자 폭의 상한(판 너비 대비). 닫기 버튼(판 오른쪽 위 모서리에 반쯤 걸친)이
+# 판 폭의 87% 지점부터 시작하므로, 가운데 놓인 글자가 거기 닿지 않을 만큼 —
+# 0.74 에서는 SETTINGS 의 끝 글자가 테두리째 버튼에 닿았다.
+const TITLE_WIDTH_FRAC := 0.66
+const TITLE_GAP := 6.0             # 판 윗변과 글자 바닥 사이
+const TITLE_SCREEN_MARGIN := 2.0   # 화면 위 끝과의 최소 간격
+
+func _make_title(text: String) -> Control:
+	var title := Control.new()
+	title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	title.set_meta("text", text)
+	title.draw.connect(_draw_title.bind(title))
+	return title
+
+
+## 판 위 공간이 모자란 화면(16:9 의 설정 팝업은 판 위가 60px 남짓이다)에서는
+## 그 공간에 맞춰 글자를 줄인다.
+func _place_title(title: Control) -> void:
+	if title == null:
+		return
+	var text: String = title.get_meta("text", "")
+	var font: Font = TitleArt.font(_font_heavy)
+	var room: float = _panel_rect.position.y - TITLE_GAP - TITLE_SCREEN_MARGIN
+	var fs: int = int(round(_panel_rect.size.x * TITLE_FONT_FRAC))
+	while fs > 10 and (font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			> _panel_rect.size.x * TITLE_WIDTH_FRAC or font.get_ascent(fs) > room):
+		fs -= 1
+	title.set_meta("font_size", fs)
+	var h: float = font.get_ascent(fs)
+	title.size = Vector2(_panel_rect.size.x, h)
+	title.position = Vector2(_panel_rect.position.x, _panel_rect.position.y - TITLE_GAP - h)
+	title.queue_redraw()
+
+
+func _draw_title(title: Control) -> void:
+	var text: String = title.get_meta("text", "")
+	var fs: int = title.get_meta("font_size", 0)
+	if fs <= 0:
+		return
+	var font: Font = TitleArt.font(_font_heavy)
+	var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	# 바닥(기준선)을 칸 아래 끝에 — 판과의 간격이 TITLE_GAP 그대로 보인다.
+	var base := Vector2((title.size.x - tw) * 0.5, title.size.y)
+	title.draw_string_outline(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+		maxi(2, int(round(fs * TITLE_RIM_FRAC))), TITLE_TEXT_RIM)
+	title.draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TITLE_TEXT_COLOR)
 
 
 func _make_label(text: String, font: Font) -> Label:
@@ -1263,6 +1441,10 @@ func _press(button: Control) -> void:
 	if shadow != null:
 		tween.tween_property(shadow, "position:y", SHADOW_PRESSED_OFFSET, PRESS_ANIM_DURATION) \
 			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	var glow: CanvasItem = button.get_node_or_null("Glow")
+	if glow != null:
+		tween.tween_property(glow, "modulate:a", 1.0, PRESS_ANIM_DURATION) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 
 
 func _release(button: Control) -> void:
@@ -1277,6 +1459,10 @@ func _release(button: Control) -> void:
 	if shadow != null:
 		tween.tween_property(shadow, "position:y", SHADOW_OFFSET, PRESS_ANIM_DURATION) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	var glow: CanvasItem = button.get_node_or_null("Glow")
+	if glow != null:
+		tween.tween_property(glow, "modulate:a", 0.0, PRESS_GLOW_FADE) \
+			.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
 
 
 func _weighted(base: Font, wght_tag: int, weight: int) -> Font:

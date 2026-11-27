@@ -5,20 +5,17 @@ extends SceneTree
 #
 #   Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/check_gameover_bgm.gd
 #
-# 세 가지가 조용히 어긋날 수 있다.
+# 두 가지가 조용히 어긋날 수 있다.
 #
 # 하나, 낮추는 것을 잊는다. 소리는 나므로 화면으로는 멀쩡하고, 게임오버
 # 효과음과 곡이 같은 크기로 서로를 밟는 것은 나란히 들어 봐야 안다.
 #
-# 둘, 부활 팝업에서 게임오버 팝업으로 넘어갈 때 곡이 다시 시작한다. 두 팝업이
-# 각각 음악을 트는데 같은 곡이라 _play_bgm 이 걸러 주는 구조라서, 한쪽 이름만
-# 바꾸거나 사이에 _stop_bgm 이 끼면 그 자리에서 곡이 처음으로 돌아간다 —
-# 0.4초 크로스페이드에 묻혀 "끊겼다"기보다 "뭔가 이상하다"로만 들린다.
+# 둘, 돌아오지 않는다. 판을 떠나는 길이 셋인데(PLAY AGAIN / HOME / 일시정지)
+# 음악을 되돌리는 것은 _set_state 와 _start_countdown 두 곳뿐이라, 어느 길이
+# 그 둘을 안 지나면 게임 내내 낮은 게임오버 곡이 깔린 채로 논다.
 #
-# 셋, 돌아오지 않는다. 판을 떠나는 길이 넷인데(PLAY AGAIN / HOME / 부활
-# 이어하기 / 일시정지) 음악을 되돌리는 것은 _set_state 와 _start_countdown
-# 두 곳뿐이라, 어느 길이 그 둘을 안 지나면 게임 내내 낮은 게임오버 곡이
-# 깔린 채로 논다.
+# 부활 팝업이 있던 때(~2026-11-28)는 부활 팝업에서 게임오버 팝업으로 넘어갈
+# 때 곡이 다시 시작하지 않는지도 보았다.
 
 const SAVE_PATH := "user://savegame.cfg"
 
@@ -100,30 +97,14 @@ func _run() -> void:
 	_ok(absf(_active(main).volume_db) < 0.01,
 		"그 곡은 원래 크기다 (%.1f dB)" % _active(main).volume_db)
 
-	# ---- 죽는다: 부활 제안 ----
+	# ---- 죽는다: 곧장 게임오버 팝업 ----
 	main.set("score", 4200)
-	main.set("revive_offered", false)
 	main.call("_game_over")
 	await _settle(main)
-	_ok(str(main.get("bgm_current_path")) == over_path, "부활 제안에 게임오버 곡이 깔린다")
+	_ok(str(main.get("bgm_current_path")) == over_path, "게임오버 팝업에 게임오버 곡이 깔린다")
 	_ok(absf(_active(main).volume_db - quiet) < 0.01,
 		"낮춘 크기로 깔린다 (%.1f dB, want %.1f)" % [_active(main).volume_db, quiet])
 	_ok(_active(main).playing, "실제로 재생 중이다")
-
-	# ---- 거절: 게임오버 팝업으로 ----
-	#
-	# 같은 곡이므로 다시 시작하면 안 된다. 재생 위치가 뒤로 가면 다시 시작한
-	# 것이고, 플레이어가 바뀌어도 마찬가지다(크로스페이드가 돌았다는 뜻).
-	var before_player: AudioStreamPlayer = _active(main)
-	var before_pos: float = before_player.get_playback_position()
-	await create_timer(0.25).timeout
-	main.call("_on_revive_decline")
-	await process_frame
-	_ok(_active(main) == before_player, "게임오버 팝업으로 넘어가도 같은 플레이어가 이어 낸다")
-	_ok(_active(main).get_playback_position() >= before_pos,
-		"곡이 처음으로 돌아가지 않는다 (%.2f -> %.2f 초)" % [
-			before_pos, _active(main).get_playback_position()])
-	_ok(absf(_active(main).volume_db - quiet) < 0.01, "크기도 그대로다")
 
 	# ---- 다시 하기 ----
 	main.call("_reset_game")
@@ -133,23 +114,11 @@ func _run() -> void:
 	_ok(absf(_active(main).volume_db) < 0.01,
 		"원래 크기로 돌아온다 (%.1f dB)" % _active(main).volume_db)
 
-	# ---- 부활해서 이어하기 ----
-	main.set("score", 5100)
-	main.set("revive_offered", false)
+	# ---- 홈으로 ----
+	main.set("score", 900)
 	main.call("_game_over")
 	await _settle(main)
 	_ok(str(main.get("bgm_current_path")) == over_path, "다시 죽으면 다시 게임오버 곡")
-	main.call("_on_revive_continue")
-	await _settle(main)
-	_ok(str(main.get("bgm_current_path")) == run_path, "이어하기면 판의 곡으로 돌아온다")
-	_ok(absf(_active(main).volume_db) < 0.01, "그때도 원래 크기다")
-
-	# ---- 홈으로 ----
-	main.set("score", 900)
-	main.set("revive_offered", true)   # 제안 없이 곧바로 게임오버
-	main.call("_game_over")
-	await _settle(main)
-	_ok(str(main.get("bgm_current_path")) == over_path, "제안 없이 끝나도 게임오버 곡")
 	main.call("_reset_game")
 	main.call("_set_state", 0)   # State.MODE_SELECT
 	await _settle(main)

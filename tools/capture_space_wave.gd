@@ -7,7 +7,7 @@ extends SceneTree
 #   Godot_v4.7.2-stable_win64_console.exe --path . --resolution 480x854 \
 #       --script res://tools/capture_space_wave.gd -- <out dir> [options]
 #
-#   --kind color|mix|spot|memory|arrow|amix|sum|amemory|avoid   the pattern
+#   --kind color|mix|spot|memory|arrow|amix|sum|amemory|shell|avoid   the pattern
 #                             (default color);
 #                             avoid is a mix pattern started over until its
 #                             first step is an avoid step
@@ -19,6 +19,8 @@ extends SceneTree
 #                             quarter: the right gate's quarter but off its
 #                             hole, to watch the ship being drawn in
 #   --after 0.07,0.2,0.4      frames after judgement, in seconds
+#   --streak N                right gates already in a row before this one, for
+#                             the pass's hit, which grows with the streak
 #
 # Writes <out dir>/wave_<kind>_<fly>.png, the frames left to right.
 #
@@ -104,12 +106,13 @@ func _go() -> void:
 	m.pause_button.visible = true
 
 	sp.cycle = int(_opt(args, "--cycle", "2"))
-	var kind: int = {"color": sp.Kind.COLOR, "mix": sp.Kind.MIX, "spot": sp.Kind.SPOT, "memory": sp.Kind.MEMORY, "arrow": sp.Kind.ARROW, "amix": sp.Kind.ARROW_MIX, "sum": sp.Kind.ARROW_SUM, "amemory": sp.Kind.ARROW_MEMORY, "avoid": sp.Kind.MIX}.get(kind_name, sp.Kind.COLOR)
+	var kind: int = {"color": sp.Kind.COLOR, "mix": sp.Kind.MIX, "spot": sp.Kind.SPOT, "memory": sp.Kind.MEMORY, "arrow": sp.Kind.ARROW, "amix": sp.Kind.ARROW_MIX, "sum": sp.Kind.ARROW_SUM, "amemory": sp.Kind.ARROW_MEMORY, "shell": sp.Kind.SHELL, "avoid": sp.Kind.MIX}.get(kind_name, sp.Kind.COLOR)
 	for w0 in sp.waves:
 		for p in w0.planets:
 			p.node.queue_free()
 	sp.waves.clear()
 	sp._begin_pattern(kind, int(_opt(args, "--level", "-1")))
+	sp.streak = int(_opt(args, "--streak", "0"))
 	var w: Dictionary = sp.upcoming_wave()
 	for tries in 200:
 		if kind_name != "avoid" or w.avoid:

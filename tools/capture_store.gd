@@ -6,8 +6,8 @@ extends SceneTree
 #   Godot_v4.7.2-stable_win64_console.exe --path . --script res://tools/capture_store.gd -- --out <dir>
 #
 # check_store 가 버튼의 글자와 눌림 여부를 재지만, 흐리게 한 "ADS REMOVED" 가
-# 판 위에서 어떻게 읽히는지, 광고 아이콘을 뗀 "CONTINUE" 버튼이 비어 보이지
-# 않는지는 찍어 봐야 안다. 모드 선택 화면, 설정, 부활 팝업을 두 언어로 찍는다.
+# 판 위에서 어떻게 읽히는지, 광고 아이콘을 뗀 결과 화면의 x2 가 비어 보이지
+# 않는지는 찍어 봐야 안다. 모드 선택 화면, 설정, 결과 화면을 두 언어로 찍는다.
 #
 # 언어를 바꾸면 그 선택이, 판을 새로 차리면(_reset_game) 광고 카운터가 세이브
 # 파일에 적힌다. 파일 전체를 받아 두었다가 끝에 되돌린다.
@@ -61,12 +61,14 @@ func _run() -> void:
 		await _shot("%s_settings" % tag)
 		main.get("settings_popup").visible = false
 
-		main.call("_apply_mode", 0)
-		main.call("_reset_game")
-		main.call("_set_state", main.State.PLAYING)
-		main.call("_offer_revive")
-		await _shot("%s_revive" % tag)
-		main.get("revive_panel").visible = false
+		# 결과 화면의 x2: 광고를 지운 사람에게는 광고 표시 없이 뜬다.
+		var over: Control = main.get("gameover_popup")
+		over.call("ensure_built")
+		over.call("set_result", null, 0.0, 12600, 24, 14000, false)
+		over.call("set_stardust", 186, true, bool(main.get("ads_removed")))
+		over.visible = true
+		await _shot("%s_gameover" % tag)
+		over.visible = false
 	main.call("set_language_korean", was_korean)
 	if _had_save:
 		var f := FileAccess.open(SAVE_PATH, FileAccess.WRITE)

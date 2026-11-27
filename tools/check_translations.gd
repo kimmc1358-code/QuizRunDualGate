@@ -30,13 +30,11 @@ extends SceneTree
 const CSV_PATH := "res://assets/i18n/ui.csv"
 const UI_SCRIPTS := [
 	"res://scripts/GameOverPopup.gd",
-	"res://scripts/RevivePopup.gd",
 	"res://scripts/PausePopup.gd",
 	"res://scripts/SettingsPopup.gd",
 	"res://scripts/AboutPopup.gd",
 	"res://scripts/ModeSelectScreen.gd",
 	"res://scripts/TutorialOverlay.gd",
-	"res://scripts/ShareCard.gd",
 ]
 const ALL_SCRIPTS_DIR := "res://scripts"
 
@@ -47,9 +45,11 @@ const ENGLISH_ON_PURPOSE := {
 	"ENG": "언어 토글 — 어느 언어에서든 두 선택지가 읽혀야 한다",
 	"KOR": "언어 토글 — 어느 언어에서든 두 선택지가 읽혀야 한다",
 	"BEST": "HUD 와 모드 카드의 BEST 와 같은 단어다. 셋이 같아 보여야 한다",
-	"LOGIN WITH": "구글 마크에 붙어 있는 글자라 함께 다시 그려야 바뀐다",
 	"© 2026 JANIJU STUDIO": "옮길 것이 없다",
 	"PLAY": "메인 화면의 PLAY — 타이틀의 WARP GATE 와 같은 Zen Dots 글자로 그린 버튼 문구라, START 처럼 영어로 둔다",
+	"x2": "결과 화면 스타더스트의 배수 표시 — 숫자와 기호라 어느 언어에서나 읽힌다",
+	"GAME OVER": "팝업 제목판 — Zen Dots 로 그리는 그림 글자라(한글이 없다) 1.x 그림 때처럼 영어로 둔다",
+	"SETTINGS": "팝업 제목판 — Zen Dots 로 그리는 그림 글자라(한글이 없다) 1.x 그림 때처럼 영어로 둔다",
 }
 
 # 이 상수만은 번역을 거치지 않는다. 값이 우연히 번역 키와 같아졌을 뿐이거나

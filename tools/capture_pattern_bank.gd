@@ -86,7 +86,7 @@ func _go() -> void:
 
 	var K = sp.Kind
 	var sheets := {
-		"color": [[K.COLOR, false], [K.MIX, false], [K.SPOT, false], [K.MEMORY, false], [K.MEMORY, true]],
+		"color": [[K.COLOR, false], [K.MIX, false], [K.SPOT, false], [K.MEMORY, false], [K.MEMORY, true], [K.SHELL, false]],
 		"arrow": [[K.ARROW, false], [K.ARROW_MIX, false], [K.ARROW_SUM, false], [K.ARROW_MEMORY, false], [K.ARROW_MEMORY, true]],
 	}
 	for sheet_name in sheets:

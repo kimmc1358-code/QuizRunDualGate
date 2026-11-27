@@ -69,7 +69,40 @@ const PIECES := {
 	# the heavier Bar_02 and the blue-lit Bar_09. Drawn at its own proportions
 	# across the screen, so it is baked to that width.
 	"title_bar.png": ["SciFiMenus/SPR_SciFiMenus_Bar_11_Bottom", "", 17.0],
+	# The popups (2026-11-28). The panel is the blue-lit frame with steel
+	# corner caps, its face nearly opaque so rows of text read over the
+	# space; it is cut down to a nine-patch (see NINE). The main button is
+	# Bar_Frame_02 filled orange, its cyan arrow tips matching the panel's blue;
+	# the secondary buttons are Frame_Box_Small_04, a thick silver bevel with cut
+	# corners (Button_Frame_03, faceted end to end, was tried first), baked small and
+	# nine-sliced on all four sides so its corners stay small, the look of the
+	# pack's sample Label_Button. The title is plain text over the panel (PopupBase.
+	# _make_title), with no plate. The owner went from this frame to the
+	# orange-bracketed Large_01 with a title bar and back again the same day.
+	"popup_panel.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Large_08", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Large_08_Background", 330.0, null, Color(0.035, 0.06, 0.13, 0.95)],
+	"popup_primary.png": ["SciFiMenus/SPR_SciFiMenus_Bar_Frame_02", "SciFiMenus/SPR_SciFiMenus_Bar_Frame_02_Background", 70.0, null, Color(1.0, 0.72, 0.22, 1.0)],
+	"popup_button.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04_Background", 40.0, null, Color(0.06, 0.24, 0.50, 0.97)],
+	"icon_restart.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Refresh_01_Clean", "", 48.0],
+	"icon_home.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Planet_01_Clean", "", 48.0],
+	"icon_ad.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Display_01_Clean", "", 48.0],
+	"icon_sound.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Sound_On_01_Clean", "", 48.0],
+	"icon_music.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Music_On_01_Clean", "", 48.0],
+	"icon_bolt.png": ["Icons_Menu/ICON_SciFiMenus_Menu_LightningBolt_01_Clean", "", 48.0, Color(1.0, 0.72, 0.22)],
+	"icon_star.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Star_01_Clean", "", 64.0, Color(1.0, 0.82, 0.25)],
+	"icon_trophy_gold.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Trophy_01_Clean", "", 96.0, Color(1.0, 0.80, 0.25)],
+	"icon_warning.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Warning_01_Clean", "", 96.0, Color(1.0, 0.72, 0.22)],
 }
+## Frames cut down to a nine-patch: out file -> [corner, as a share of the
+## frame's height; where along each edge the plain stretch is sampled].
+## Large_08 carries a tab in the middle of its top and bottom edges, which a
+## nine-patch would smear into a bar as long as the panel. So the baked
+## texture is only the four corners joined by a short plain piece of each
+## edge (and of the face), and the stretch never meets a tab.
+const NINE := {
+	"popup_panel.png": [0.13, 0.27],
+}
+## A few pixels of plain edge between the corners, in source pixels.
+const NINE_STRIP := 16
 ## Copied as they are into assets/synty_ui/fonts/.
 const FONTS := ["Fonts/Zen_Dots/ZenDots-Regular.ttf", "Fonts/Zen_Dots/OFL.txt"]
 ## The pause sign drawn onto pause.png: two bars, as fractions of the canvas.
@@ -115,6 +148,15 @@ func _init() -> void:
 			img = img.get_region(used)
 		var h: int = int(round(float(p[2]) * BAKE))
 		var w: int = int(round(img.get_width() * float(h) / img.get_height()))
+		if NINE.has(out_name):
+			# Scaled as if the whole frame were drawn p[2] tall, so the
+			# corners come out at the size they would have had.
+			var k: float = float(h) / img.get_height()
+			var c: int = int(round(img.get_height() * float(NINE[out_name][0])))
+			img = _nine_cut(img, c, float(NINE[out_name][1]))
+			w = int(round(img.get_width() * k))
+			h = int(round(img.get_height() * k))
+			print("  %-16s corner %d px" % [out_name, int(round(c * k))])
 		_shrink(img, w, h)
 		img.save_png(ProjectSettings.globalize_path(OUT + out_name))
 		print("  %-16s %4dx%-4d from %s" % [out_name, w, h, p[0].get_file()])
@@ -174,6 +216,29 @@ func _tint_vertical(img: Image, top: Color, bottom: Color) -> void:
 		for x in img.get_width():
 			var c := img.get_pixel(x, y)
 			img.set_pixel(x, y, Color(minf(1.0, c.r * tint.r), minf(1.0, c.g * tint.g), minf(1.0, c.b * tint.b), c.a * tint.a))
+
+
+## The four c x c corners of `img` joined by NINE_STRIP pixels of each edge
+## and of the face, taken `at` of the way along: a nine-patch with the same
+## corners and a plain stretch.
+func _nine_cut(img: Image, c: int, at: float) -> Image:
+	var s := NINE_STRIP
+	var w := img.get_width()
+	var h := img.get_height()
+	var px := int(w * at)
+	var py := int(h * at)
+	var out := Image.create(c * 2 + s, c * 2 + s, false, Image.FORMAT_RGBA8)
+	var o := c + s
+	out.blit_rect(img, Rect2i(0, 0, c, c), Vector2i(0, 0))
+	out.blit_rect(img, Rect2i(w - c, 0, c, c), Vector2i(o, 0))
+	out.blit_rect(img, Rect2i(0, h - c, c, c), Vector2i(0, o))
+	out.blit_rect(img, Rect2i(w - c, h - c, c, c), Vector2i(o, o))
+	out.blit_rect(img, Rect2i(px, 0, s, c), Vector2i(c, 0))
+	out.blit_rect(img, Rect2i(px, h - c, s, c), Vector2i(c, o))
+	out.blit_rect(img, Rect2i(0, py, c, s), Vector2i(0, c))
+	out.blit_rect(img, Rect2i(w - c, py, c, s), Vector2i(o, c))
+	out.blit_rect(img, Rect2i(px, py, s, s), Vector2i(c, c))
+	return out
 
 
 func _draw_pause(img: Image) -> void:
