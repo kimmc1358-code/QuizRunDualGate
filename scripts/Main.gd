@@ -689,6 +689,13 @@ var combo_shake_elapsed: float = -1.0  # -1 = inactive; separate tiny shake for 
 var combo_glow_elapsed: float = -1.0   # -1 = inactive; screen-edge glow for combo Tier 4
 var combo_font: Font
 var fx_sound_chime: AudioStreamPlayer
+## The pass (2026-11-27): the chime again on a player of its own, so a
+## power-up on the same gate does not cut it off, pitched up a step for each
+## gate in the combo, up to PASS_PITCH_MAX.
+var fx_sound_pass: AudioStreamPlayer
+const PASS_PITCH_STEP := 0.04
+const PASS_PITCH_MAX := 1.5
+const PASS_VOLUME_DB := -4.0
 # Two players so a track change can crossfade; bgm_active indexes whichever
 # is currently the audible one. See _play_bgm.
 var bgm_players: Array[AudioStreamPlayer] = []
@@ -808,6 +815,11 @@ func _boot_load() -> void:
 	fx_sound_chime.bus = BUS_SFX
 	if ResourceLoader.exists(FX_SOUND_CHIME_PATH):
 		fx_sound_chime.stream = load(FX_SOUND_CHIME_PATH)
+	fx_sound_pass = AudioStreamPlayer.new()
+	add_child(fx_sound_pass)
+	fx_sound_pass.bus = BUS_SFX
+	fx_sound_pass.volume_db = PASS_VOLUME_DB
+	fx_sound_pass.stream = fx_sound_chime.stream
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
 		add_child(player)
@@ -1501,9 +1513,13 @@ func _space_correct() -> void:
 	combo += 1
 	max_combo = maxi(max_combo, combo)
 	score += SCORE_PER_COMBO * combo
-	flash_color = Color(0.3, 0.8, 0.4, 0.25)
+	# Gold like the gate it went through; it was a green tint.
+	flash_color = Color(1.0, 0.88, 0.5, 0.22)
 	flash_time = FLASH_DURATION
 	_spawn_combo_popup()
+	if fx_sound_pass != null and fx_sound_pass.stream != null:
+		fx_sound_pass.pitch_scale = minf(PASS_PITCH_MAX, 1.0 + PASS_PITCH_STEP * (combo - 1))
+		fx_sound_pass.play()
 
 
 ## 틀린 게이트를 지났거나 게이트 없는 구역에 있었을 때. 하트도 무기도 그대로다
@@ -1536,6 +1552,15 @@ func _space_points(points: int) -> void:
 func _space_powered_up(label: String) -> void:
 	_spawn_space_banner(label, Color(0.55, 0.92, 1.0))
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
+		fx_sound_chime.pitch_scale = 1.0
+		fx_sound_chime.play()
+
+
+## 색 찾기의 목표 색이 바뀌었을 때(SpaceRun._note_rule_change). 상자가 번쩍이는
+## 것과 함께, 낮은 차임으로 귀에도 알린다 — 눈이 게이트에 가 있을 때다.
+func _space_rule_changed() -> void:
+	if fx_sound_chime != null and fx_sound_chime.stream != null:
+		fx_sound_chime.pitch_scale = 0.7
 		fx_sound_chime.play()
 
 
@@ -1587,6 +1612,7 @@ func _space_fever_smash() -> void:
 	run_stardust += SpaceRun.STARDUST_FEVER_SMASH
 	score += maxi(1, int(round(SCORE_PER_COMBO * maxi(combo, 1) * FEVER_SMASH_SHARE)))
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
+		fx_sound_chime.pitch_scale = 1.0
 		fx_sound_chime.play()
 
 
@@ -2073,7 +2099,10 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 		},
 		{
 			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
-			"text": tr("Fly through the gate this box\nasks for: its colour, its arrow,\nor its symbols, in order."),
+			"text": tr("Fly through the gate this box\nasks for: its colour,\nor where its arrow points.\nUnder a no-entry sign: any gate but that one."),
+			# 말로만 하면 금지 표시가 무엇인지 모른다: 이 단계 동안 상자의 색이
+			# 그대로와 금지 표시 붙은 것을 번갈아 보여 준다(SpaceRun.demo_avoid).
+			"demo": "avoid",
 		},
 		{
 			# 게이지(패턴 10칸의 진행)와 무기 표시를 같이 밝힌다 — 연달아 맞힐수록
@@ -2853,6 +2882,8 @@ func _layout_hud_buttons() -> void:
 # own canvas) rather than onto Main, which is the whole point — see
 # scripts/HudCanvas.gd.
 func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
+	var step: Dictionary = tutorial_overlay.call("_current") if tutorial_active and tutorial_overlay != null and tutorial_overlay.visible else {}
+	space.demo_avoid = step.get("demo", "") == "avoid"
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)

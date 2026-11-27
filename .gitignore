@@ -57,3 +57,5 @@ desktop.ini
 # Synty INTERFACE Sci-Fi Menus pack: paid, licensed for use in a built game but
 # not for redistribution as source. Built by tools/build_ui_kit.gd; never commit it.
 /assets/synty_ui/
+# BinbunVFX Portal VFX (paid), copied in by tools/build_vfx_kit.gd
+/assets/binbun_vfx/

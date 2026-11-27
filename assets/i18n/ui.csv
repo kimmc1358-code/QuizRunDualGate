@@ -5,12 +5,15 @@ It fires on its own.","DRAG anywhere to steer the ship.
 It fires on its own.","화면 아무 데나 끌어서 우주선을 조종하세요.
 총은 저절로 쏩니다."
 "Fly through the gate this box
-asks for: its colour, its arrow,
-or its symbols, in order.","Fly through the gate this box
-asks for: its colour, its arrow,
-or its symbols, in order.","이 칸이 알려 주는 게이트를 통과하세요.
-같은 색, 화살표가 가리키는 쪽,
-또는 기호를 순서대로요."
+asks for: its colour,
+or where its arrow points.
+Under a no-entry sign: any gate but that one.","Fly through the gate this box
+asks for: its colour,
+or where its arrow points.
+Under a no-entry sign: any gate but that one.","이 칸이 알려 주는 게이트를 통과하세요.
+같은 색이나
+화살표가 가리키는 쪽이에요.
+금지 표시가 붙으면 그것만 빼고 아무 데나!"
 "Right gates in a row speed you up,
 power your gun and pay more stardust.
 All 10 right: FEVER!","Right gates in a row speed you up,

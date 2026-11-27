@@ -1,5 +1,4 @@
 # CLAUDE.md
-
 Guidance for Claude Code working in this repository.
 
 See [README.md](README.md) for the tuning defaults table and the design docs
@@ -90,29 +89,73 @@ the next few in sight, faster the longer the run of right ones.
 
 1. **PATTERN.** `PATTERN_LEN` (10) steps, one rule for the whole pattern,
    one pattern kind per pattern (mixing kinds within one was judged too
-   hard). Each step is a row of `planets_for_cycle` gates.
-   - `Kind.COLOR`: the box shows a colour; fly through the gate of that
-     colour. Every gate in a step wears a different one of `GATE_COLORS`.
-   - `Kind.ARROW`: the box shows the front step's arrow; fly to the gate
-     it points at. A red arrow means the opposite one, from the second
-     cycle on.
-   - `Kind.SEQUENCE`: the box shows a row of symbols (`SEQ_LEN`: 3 in the
-     first cycle, then 4), the next one ringed in gold; fly through the
-     gates carrying them in that order, round again until the pattern
-     ends. The wrong gates carry the sequence's other symbols first. Each
-     mark sits in its gate's hole on every step in sight, so the next can
-     be read ahead; being drawn over the 3D world, a farther mark is
-     dropped wherever a nearer gate covers it (`_draw_gate_symbols`).
-     The marks are ten of the UI pack's 26 `Crest_Symbol` sprites, chosen
-     with the owner on 2026-11-27 as the ones whose outlines still tell
-     apart at 28 px, one from each family of look-alikes (the list and
-     why are in `build_ui_kit.gd`'s `SYMBOLS`). The owner preferred them
-     to the flat menu icons. Without the kit each falls back to its number.
-   - Still to come, in the owner's list: a sequence shown briefly and then
-     hidden, a colour-and-shape pair, and a route drawn as a little path.
+   hard).
 
-   The first cycle is colour, then symbols; arrows, the closest to the old
-   quiz, join from the second cycle, which draws any of the three.
+   **The patterns live in a bank** (`SpaceRun.BANK`, 2026-11-27), each
+   at its own levels, kept apart from where they are placed in a run. The
+   owner is filling the bank first and drawing up the placement after;
+   until then `_pick_pattern` is a stand-in: the first cycle is plain
+   colour then plain arrow, and after that any pattern in the bank at one
+   level higher each cycle. A level is a Dictionary of knobs, every one
+   with `gates` (2-4 a step); the numbers are all in that one table.
+   `tools/capture_pattern_bank.gd` shoots every pattern at every level on
+   one sheet, and `check_space` walks the whole bank.
+
+   | Pattern | What the box shows / what to fly through | Levels 1 → 5 |
+   |---|---|---|
+   | `COLOR` | a colour; that colour's gate | gates 2, 3, 4; then 4 with the colour changing every 5 steps, then every 3 (`switch`), the box flashing and a low chime at each change (`_note_rule_change`) |
+   | `MIX` | a colour, sometimes under a red no-entry sign: then any gate but that colour | gates 3, 3, 4, 4, 4; avoid chance 0.2, 0.3, 0.3, 0.4, 0.5 |
+   | `SPOT` | the step's gates as coloured dots laid out like the slots; one dot is not its gate's colour, fly through that gate | gates 2, 3, 4, 4, 4; at 4 and 5 the dots go blank once the step is 0.82 / 0.70 of the way in (`hide`) |
+   | `MEMORY` | a round of colours, shown until the round's first gate, then "?" for the rest; flown in order from memory | colours a round 3, 4, 4, 5, 6 (`len`); gates 3, 3, 4, 4, 4. Six at most: colours seen once are held about four at a time, and four colours in a long round repeat. It went to 7 at first |
+   | `ARROW` | an arrow; the gate it points at | gates 2, 3, 4, 4, 4; the diamond at 1-3, either layout step by step at 4, the grid at 5 (`layout`), where the arrows go diagonal |
+   | `ARROW_MIX` | an arrow, sometimes under the no-entry sign: then any gate but that way | gates 3, 3, 4, 4, 4; avoid chance 0.2, 0.3, 0.3, 0.4, 0.5 |
+   | `ARROW_SUM` | two arrows with a plus, up or down and left or right; the grid corner they add up to | always the grid; gates 2, 3, 4, 4, 4; at 4 and 5 the box goes blank once the step is 0.82 / 0.70 of the way in |
+   | `ARROW_MEMORY` | a round of arrows, shown until its first gate, then "?" | arrows a round 3, 4, 4, 5, 6; gates 3, 3, 4, 4, 4; diagonals (on grid steps) at 4 and 5 |
+
+   - Every gate in a step wears a different one of `GATE_COLORS`.
+   - `MIX`'s sign is a red ring and one slash round the swatch
+     (`_draw_cross`). A bold X was tried first and hid the colour it was
+     crossing out; on a red swatch it hardly showed at all. The avoid step
+     exists because with one colour for ten steps a player stops reading
+     the box after the first.
+   - `SPOT` was built after the owner asked for colour quizzes that use
+     the box; "the odd colour out", which needs none, was the other idea.
+     Its dots sit inside the frame's dark middle (`_draw_spot`); the first
+     layout had the top and bottom dots on the frame.
+   - `MEMORY` is the owner's design. The colours flown through stay,
+     dimmed, so the player can tell how far into the round they are. Each
+     round brings new colours (`_memory_rounds`, never one colour twice in
+     a row), so at four a round a pattern runs 4 + 4 + 2, and the last
+     round shows only its own steps. The world slows on a round's first
+     step, if it has to, so the colours are up `MEMORY_SECONDS_EACH`
+     (0.5 s) a colour: at full streak speed a step is 1.1 s away, and
+     six colours cannot be learned in that (`_update_memory_slow`). A
+     colour sequence with the current one marked was turned down: it is
+     only the colour pattern with a colour that changes.
+   - `Kind.SEQUENCE`, a row of symbols in the box flown through in order
+     with each mark in its gate's hole, was dropped the same evening at the
+     owner's call: reading a symbol off a gate in flight was too hard. Its
+     code, the ten `Crest_Symbol` marks the UI kit baked for it and its
+     checks are gone.
+   - **Layouts** (2026-11-27): a step's gates stand either in the diamond
+     (left, right, up, down; slots 0-3) or the 2x2 grid of corners (slots
+     4-7, 3.2 apart), `Layout`/`LAYOUT_SLOTS`. The quarter that decides
+     the answer follows the layout (`region_of`): the diamond's field is cut
+     along its diagonals, the grid's along its middle lines. A level picks
+     its layout, or MIXED for either step by step; SPOT's dots and the
+     arrows follow it. Rocks keep off all eight slots.
+   - **The no-entry sign means "anything but this" everywhere.** The red
+     arrow, which meant "the opposite one", was replaced by ARROW_MIX's
+     sign on 2026-11-27: the owner had not understood the red arrow the
+     first time, and the patterns are meant to read at a glance.
+     The tutorial's box step names it and shows it: the box's colour
+     wears the sign every other 1.2 s while that step is up (`"demo":
+     "avoid"` on the step, `SpaceRun.demo_avoid`).
+   - The odd arrow out was turned down: finding it is plain, but that its
+     direction is the answer would need explaining.
+   - Still to come, in the owner's list: a colour-and-shape pair and a
+     route drawn as a little path.
+
    A right gate lights up gold, adds to the **streak** and pays stardust
    (`STARDUST_PER_GATE` × the streak, so a whole pattern pays 55 against
    10 for one broken every step). Every `POWER_EVERY` (3) in a row the
@@ -128,7 +171,10 @@ the next few in sight, faster the longer the run of right ones.
    The targets were planets to ram at first, and became gates on
    2026-11-26 at the owner's call. The game is called Dual Gate, and the
    Synty pack has a warp gate in the same blue-and-orange as the ship. Only
-   its inner ring and glow band are used (`GATE_RING_NODE`/`GATE_GLOW_NODE`).
+   its inner ring and glow band are used (`GATE_RING_NODE`/`GATE_GLOW_NODE`),
+   and the band only when the portal kit is missing: with a portal filling
+   the hole in the gate's colour, the band around it only doubled it, and
+   it was dropped at the owner's call (2026-11-27).
    The outer ring's spurs reach 1.8 times the hole, and neighbouring slots
    are 2.95 apart. The hole is 1.08 (`GATE_RADIUS`), as big as it goes
    before two diagonal neighbours' rings meet at 1.10; since the ship is
@@ -147,9 +193,9 @@ the next few in sight, faster the longer the run of right ones.
 3. **BOSS.** After `PATTERNS_PER_CYCLE` (2) patterns an enemy ship comes.
    A strong weapon melts it, and a weak one can still win by dodging. Its
    shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
-   cycle, and the next cycle starts, with one more gate a step
-   (`planets_for_cycle`: 2, 3, then 4), more rocks, a faster world and a
-   tougher boss.
+   cycle, and the next cycle starts, a level higher in the bank (for now:
+   see `_pick_pattern`), with more rocks, a faster world and a tougher
+   boss.
 
 Stardust is won in a run (`Main.run_stardust`, shown in the slot right of
 the question box) and banked into the saved total (`[meta] stardust`) when
@@ -207,8 +253,8 @@ can still be read while this one is flown. `pace` scales `speed()`, so the strea
 lunge after a pass is small (`WARP_BOOST` 0.5) for the same reason: at 1.6
 it ate half the gap to the next step.
 
-**Answer plates on gates** (`draw_labels`) are kept for the symbol
-patterns to come; no gate carries a label now. From 2026-11-26 the answers
+**Answer plates on gates** (`draw_labels`) are kept for patterns to come;
+no gate carries a label now. From 2026-11-26 the answers
 were shown at full size on the plane, in dashed rings, from the moment a
 wave appeared; that covered every quarter of the screen, and it was removed
 on 2026-11-27. A plate sits in its gate's hole, at least `LABEL_MIN_FONT`,
@@ -256,7 +302,6 @@ committed:
   | Progress gauge | `Bar_Frame_08` |
   | Weapon readout's backing | `Menu_Item_Background_03_Blue` |
   | BEST mark | `Trophy_01`, tinted gold |
-  | Symbol pattern marks | ten `Crest_Symbol_NN`, cropped to their ink and centred in a 144 px square (`symbol_00`..`symbol_09.png`) |
 
 - Each frame is laid over its own `_Background` sprite, tinted dark, so
   white text on it reads against the space behind.
@@ -265,6 +310,31 @@ committed:
   (`_draw_horizontal_slice`), the square frames as nine-patches.
 - The caps and margins (`HUD_*_CAP`, `HUD_SIDE_SLOT_MARGIN`) are in baked
   pixels.
+
+**The gates' inner face comes from BinbunVFX's Portal VFX pack**
+(2026-11-27), under the same rule: paid, never committed.
+
+- `tools/build_vfx_kit.gd` (headless Godot) copies only `portal.gdshader`
+  and its dithering include out of the unzipped `PortalVFXFull.zip` into
+  `assets/binbun_vfx/`, which is gitignored. Run it as `... --headless
+  --path . --script res://tools/build_vfx_kit.gd -- <PortalVFXFull dir>`,
+  then `--import`. The owner keeps the zip under `D:\Godot\Godot VFX
+  collection\`.
+- The pack's scenes (particles, an OmniLight and an AnimationPlayer per
+  portal) are not used. `SpaceRun._load_portal` rebuilds the noise and
+  shape textures in code from the pack's own settings, and `_make_portal`
+  puts one quad across each gate's hole in "Opaque" mode. "Warp", which
+  bends what is behind it, was tried first: it pulled the ring's lit inner
+  edge into the hole as a thin turning circle and showed the next step
+  through it. The noise is the
+  pack's `noise_04` (ridged, domain-warped, like smoke), picked by the
+  owner from all nine patterns compared side by side.
+- The portal takes the gate's glow colour every frame (`_portal_color`), so
+  it gives nothing away that the ring does not.
+- Without the kit the hole stays empty, as before. A release must be
+  exported from a machine that has all three kits.
+- Each portal runs eight noise layers per pixel. That has not been
+  measured on a phone; `PORTAL_LAYERS` is the knob if it costs frames.
 
 **The title screen is built from the same kit** (2026-11-27). It follows the
 pack's own promotional banner, turned for a portrait screen; the banner
@@ -304,9 +374,11 @@ no rebuild.
 
 `check_space.gd` guards the rules and the framing. `capture_space.gd` shoots
 one frame of each step of the cycle. `capture_space_wave.gd` shoots one
-wave as a strip, from appearing to flying past, with the quiz kind, the
-number of gates and the ship's route chosen on the command line. Use it for
-anything about how a wave looks.
+wave as a strip, from appearing to flying past, with the pattern, its
+level, the number of gates and the ship's route chosen on the command
+line. Use it for anything about how a wave looks.
+`capture_pattern_bank.gd` shoots every pattern in the bank at every level
+on one sheet, a row a pattern and a column a level.
 
 **Modes and meta progression, decided 2026-11-27.** Only the menu is built
 so far: `ModeSelectScreen.gd` was rewritten the same day (see its header for
@@ -551,7 +623,7 @@ on failure.
 | `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and `debug_replay_tutorial` is not on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
 | `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed, the **patterns done** (a run is played through one perfect pattern and its fever first), and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
-| `check_space.gd` | a run starts with full hearts on a colour pattern; 2, 3, then 4 gates a step by cycle; every colour, arrow and symbol step has exactly one right gate (the pattern's colour among distinct colours; the arrow's slot, a red arrow the opposite one; the sequence's symbol for that step, in order, among distinct symbols with the sequence's others as decoys); each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; rocks fly between the steps, never on a slot's centre, cost a heart on contact and score when shot; a perfect pattern brings the next weapon and FEVER (stardust per smash, no heart lost, then the next pattern), one with a miss does not; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart offers the revive and continuing keeps the score and restarts the pattern; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
+| `check_space.gd` | a run starts with full hearts on a colour pattern; every pattern in `BANK` at every level puts out its gates and the right gates its rule asks for (COLOR's colour changing exactly every `switch` steps, MIX's avoid steps and only MIX's, SPOT's one mismatched dot, MEMORY's rounds in order with no colour twice in a row, the arrow's slot, ARROW_MIX's avoid steps, ARROW_SUM's arrows adding up to the corner worked out from where it stands, ARROW_MEMORY's rounds with a diagonal only on a grid step); every step stands in the layout its level asks for, and in both layouts each slot lies in its own quarter; the top MEMORY level's round stays up `MEMORY_SECONDS_EACH` a colour before its first gate at full speed, then full speed again; each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; rocks fly between the steps, never on a slot's centre, cost a heart on contact and score when shot; a perfect pattern brings the next weapon and FEVER (stardust per smash, no heart lost, then the next pattern), one with a miss does not; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart offers the revive and continuing keeps the score and restarts the pattern; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
 | `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |

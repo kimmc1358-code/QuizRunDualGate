@@ -6,9 +6,8 @@ extends Node
 ##
 ##   PATTERN  one pattern of PATTERN_LEN gate steps in a row, one rule for the
 ##            whole pattern, shown in the question box: fly through the gate
-##            of the box's colour (Kind.COLOR), the gate the box's arrow
-##            points at (Kind.ARROW), or the gates of the box's row of
-##            symbols in order (Kind.SEQUENCE). Each step is a row of gates; the ship is
+##            of the box's colour (Kind.COLOR) or the gate the box's arrow
+##            points at (Kind.ARROW). Each step is a row of gates; the ship is
 ##            drawn into the gate of the quarter it is in. A right gate pays
 ##            stardust and adds to the streak, which speeds the world up and
 ##            pays more; a wrong one only breaks the streak — no heart, no
@@ -33,7 +32,11 @@ extends Node
 ## tools/build_space_kit.py); without the kit this falls back to plain shapes.
 
 enum Phase { PATTERN, BOSS, FEVER }
-enum Kind { COLOR, ARROW, SEQUENCE }
+enum Kind { COLOR, ARROW, SPOT, MEMORY, MIX, ARROW_MIX, ARROW_SUM, ARROW_MEMORY }
+## How a step's gates are laid out (2026-11-27): the diamond, left, right,
+## up and down, or the 2x2 grid of corners. A step uses one; a level of the
+## bank says which, or MIXED for either, step by step.
+enum Layout { DIAMOND, GRID, MIXED }
 enum Weapon { BLASTER, SPREAD, LASER }
 
 const KIT_PATH := "res://assets/synty_space/space_kit.glb"
@@ -52,8 +55,17 @@ const GATE_GLOW_NODE := "Veh_WarpGate_Glow_01"
 
 # ---- the field (world units, on the flight plane) ----
 const FIELD_HALF := Vector2(2.3, 3.0)
-# left, right, up, down. Far enough apart that no point touches two planets.
-const SLOTS := [Vector2(-1.85, 0.0), Vector2(1.85, 0.0), Vector2(0.0, 2.3), Vector2(0.0, -2.3)]
+# Every place a gate can stand: 0-3 the diamond (left, right, up, down),
+# 4-7 the grid (up-left, up-right, down-left, down-right). The grid's
+# corners are 3.2 apart, past the 2.9 two outer rings take, and inside the
+# diamond's reach, so they fit the screen wherever the diamond does.
+const SLOTS := [Vector2(-1.85, 0.0), Vector2(1.85, 0.0), Vector2(0.0, 2.3), Vector2(0.0, -2.3),
+	Vector2(-1.6, 1.6), Vector2(1.6, 1.6), Vector2(-1.6, -1.6), Vector2(1.6, -1.6)]
+## The slots of each layout (Layout.DIAMOND, Layout.GRID).
+const LAYOUT_SLOTS := [[0, 1, 2, 3], [4, 5, 6, 7]]
+## ARROW_SUM: the two arrows that add up to each grid corner, up or down
+## first, then left or right.
+const CORNER_PARTS := {4: [2, 0], 5: [2, 1], 6: [3, 0], 7: [3, 1]}
 const PLANET_RADIUS := 1.0
 # The quiz targets are gates, flown through rather than rammed. GATE_RADIUS
 # is the open hole, judged like a planet was: the ship's centre within
@@ -88,6 +100,23 @@ const GATE_COLORS := [
 	Color(0.25, 1.0, 0.35, 1.0),   # green
 	Color(1.0, 0.85, 0.15, 1.0),   # yellow
 ]
+# The gate's inner face (2026-11-27): a swirling portal across the hole, from
+# BinbunVFX's Portal VFX pack (tools/build_vfx_kit.gd copies its shader into
+# the gitignored assets/binbun_vfx/). Without it the hole stays empty.
+# It takes the gate's own glow colour, frame by frame, so it says nothing
+# the ring does not: cyan for every gate, a colour gate's own colour, the
+# aim lift, gold or red when judged. It is opaque ("Opaque" mode): "Warp",
+# which bends what is behind it, pulled the ring's own lit inner edge into
+# the hole as a thin turning circle, and showed the next step through it.
+# The shader shows a disc 0.428 of the quad wide (its shape mask cut at 0.2),
+# so PORTAL_QUAD = 2 * 1.12 / 0.428 tucks its edge just under the ring.
+const PORTAL_SHADER_PATH := "res://assets/binbun_vfx/portal.gdshader"
+const PORTAL_QUAD := 2.62
+const PORTAL_DARK := 0.15           # the deep middle: the glow times this; 0.25 under Warp
+const PORTAL_EMISSION := 1.6
+const PORTAL_LAYERS := 8
+const PORTAL_SPIN := 0.15
+const PORTAL_INWARD := 0.5
 const SHIP_HIT_RADIUS := 0.3
 const SHIP_WIDTH := 1.7
 
@@ -118,7 +147,7 @@ const PACE_EASE := 3.0             # 1/s, how fast the speed follows its target
 const AIM_Z := -18.0
 const WARP_BOOST := 0.5            # extra speed right after a pass, decaying
 const WARP_BOOST_DECAY := 3.0      # 1/s
-const WARP_FOV_KICK := 6.0         # degrees at the top of the boost
+const WARP_FOV_KICK := 9.0         # degrees at the top of the boost; 6 until the pass effect (2026-11-27)
 # The draw (2026-11-27). Steering a 0.3-wide ship into a 1-wide hole was
 # where most wrong answers came from — testers on the right side of the
 # screen slid past the right gate. Now the field is cut into four quarters
@@ -144,17 +173,96 @@ const SQUEEZE_RECOVER := 5.0       # 1/s, back to full size after the pass
 # Ten steps a pattern, as the owner first guessed; to be settled by playing.
 const PATTERN_LEN := 10
 const PATTERNS_PER_CYCLE := 2
-# The arrow sometimes comes red, meaning "the other way". Not in the first
-# cycle, so the plain rule is learned before it is bent.
-const ARROW_REVERSE_CHANCE := 0.3
-# Kind.SEQUENCE: the box shows a row of symbols and the steps go through it
-# in order, round again until the pattern ends. Three in the first cycle,
-# four after: long enough that the order has to be read, short enough to
-# keep in mind while flying. The marks are the UI kit's (build_ui_kit.gd
-# SYMBOLS); without the kit each falls back to its number.
-const SEQ_LEN := [3, 4]
-const SYMBOL_COUNT := 10
-const SYMBOL_PATH := "res://assets/synty_ui/symbol_%02d.png"
+# ---- the pattern bank (2026-11-27) ----
+# Every pattern the game can ask for, each at its own levels, kept apart
+# from where the patterns are placed in a run: the owner is filling the
+# bank first and drawing up the placement after. Until then _pick_pattern
+# is a stand-in that walks the levels up a cycle at a time.
+# tools/capture_pattern_bank.gd shoots every pattern at every level.
+#
+# The patterns (Kind):
+#   COLOR   fly through the box's colour.
+#   MIX     the same, but a step sometimes shows the colour under a red
+#           no-entry sign: any gate but that one. Without it a colour
+#           pattern lets the player stop reading the box after one step.
+#   SPOT    spot the difference: the box shows the step's gates as coloured
+#           dots laid out as the slots are, and one dot is not its gate's
+#           colour; fly through that gate.
+#   MEMORY  the owner's design: a round of colours shows in the box until
+#           the round's first gate is judged, then the ones to come turn to
+#           "?" and the round is flown from memory. Colours already flown
+#           through stay, dimmed. Each round brings new colours, never one
+#           colour twice in a row; a pattern of 10 at four a round runs
+#           4 + 4 + 2.
+#   ARROW         fly to the gate the arrow points at.
+#   ARROW_MIX     the same, a step sometimes under the no-entry sign: any
+#                 gate but that way. It replaced the red arrow, which meant
+#                 "the opposite one": the owner did not see that the first
+#                 time, and the no-entry sign is a road sign everyone reads.
+#                 It means the same in every pattern: anything but this.
+#   ARROW_SUM     two arrows, up or down and left or right, add up to a
+#                 corner of the grid: up + right is the top right gate.
+#   ARROW_MEMORY  MEMORY with arrows: a round of directions shown until its
+#                 first gate, then "?". Directions are easier to hold than
+#                 colours, since they can be said over (up, left, up), so
+#                 the same length is the easier pattern. A diagonal comes
+#                 on a grid step, a straight one on a diamond step.
+# "The odd arrow out" was turned down (2026-11-27): finding it is plain,
+# but that its direction is the answer has to be explained.
+#
+# A level is a Dictionary; every one has `gates`, the gates a step (2-4):
+#   switch   COLOR: the target colour changes every this many steps (0:
+#            never), with a flash on the box and a chime, so the habit of
+#            the last colour has to be broken.
+#   avoid    MIX, ARROW_MIX: the chance a step is an avoid step.
+#   hide     SPOT, ARROW_SUM: the box goes blank once the step is this far in
+#            (approach()); 1 never. A step becomes the front one at about
+#            0.51, when the one before it is judged.
+#   len      MEMORY, ARROW_MEMORY: colours or arrows a round. Six at most (2026-11-27): seen once,
+#            colours are held about four at a time, five or six for a good
+#            player, and with only four colours a long round repeats them,
+#            while the ship is being flown. L3 adds a gate, not a colour, so
+#            only one thing gets harder a level.
+#   layout   ARROW, ARROW_MEMORY: Layout.DIAMOND (the default), GRID, or
+#            MIXED, step by step. ARROW_SUM is always on the grid. For
+#            ARROW_MEMORY a mixed level draws diagonals into its rounds.
+const BANK := {
+	Kind.COLOR: [
+		{"gates": 2, "switch": 0}, {"gates": 3, "switch": 0}, {"gates": 4, "switch": 0},
+		{"gates": 4, "switch": 5}, {"gates": 4, "switch": 3}],
+	Kind.MIX: [
+		{"gates": 3, "avoid": 0.2}, {"gates": 3, "avoid": 0.3}, {"gates": 4, "avoid": 0.3},
+		{"gates": 4, "avoid": 0.4}, {"gates": 4, "avoid": 0.5}],
+	Kind.SPOT: [
+		{"gates": 2, "hide": 1.0}, {"gates": 3, "hide": 1.0}, {"gates": 4, "hide": 1.0},
+		{"gates": 4, "hide": 0.82}, {"gates": 4, "hide": 0.7}],
+	Kind.MEMORY: [
+		{"gates": 3, "len": 3}, {"gates": 3, "len": 4}, {"gates": 4, "len": 4},
+		{"gates": 4, "len": 5}, {"gates": 4, "len": 6}],
+	Kind.ARROW: [
+		{"gates": 2, "layout": Layout.DIAMOND}, {"gates": 3, "layout": Layout.DIAMOND},
+		{"gates": 4, "layout": Layout.DIAMOND}, {"gates": 4, "layout": Layout.MIXED},
+		{"gates": 4, "layout": Layout.GRID}],
+	Kind.ARROW_MIX: [
+		{"gates": 3, "avoid": 0.2}, {"gates": 3, "avoid": 0.3}, {"gates": 4, "avoid": 0.3},
+		{"gates": 4, "avoid": 0.4}, {"gates": 4, "avoid": 0.5}],
+	Kind.ARROW_SUM: [
+		{"gates": 2, "hide": 1.0}, {"gates": 3, "hide": 1.0}, {"gates": 4, "hide": 1.0},
+		{"gates": 4, "hide": 0.82}, {"gates": 4, "hide": 0.7}],
+	Kind.ARROW_MEMORY: [
+		{"gates": 3, "len": 3}, {"gates": 3, "len": 4}, {"gates": 4, "len": 4},
+		{"gates": 4, "len": 5, "layout": Layout.MIXED}, {"gates": 4, "len": 6, "layout": Layout.MIXED}],
+}
+const AVOID_CROSS := Color(1.0, 0.18, 0.18)
+const SPOT_EMPTY := Color(0.55, 0.6, 0.75, 0.35)
+const MEMORY_DONE_ALPHA := 0.35
+# MEMORY's time to learn a round: the world slows on the round's first step,
+# if it has to, so the colours are up for at least this long a colour. At
+# full streak speed a step is only 1.1 s away, and six colours cannot be
+# learned in that.
+const MEMORY_SECONDS_EACH := 0.5
+const RULE_FLASH_DECAY := 2.0        # 1/s, the box's flash when its rule changes
+const DEMO_AVOID_PERIOD := 1.2       # s, plain then signed, in the tutorial
 
 # ---- the streak: stardust and power ----
 # A right gate pays STARDUST_PER_GATE times the streak it makes (1, 2, 3 ...),
@@ -217,13 +325,16 @@ const FEVER_SPAWN_INTERVAL := 0.28
 const FEVER_FOV_BOOST := 7.0
 
 # ---- control ----
-const DRAG_GAIN := 1.35
-const SHIP_FOLLOW_SHARPNESS := 16.0
+# Raised on 2026-11-27 at the owner's call, the ship felt slow: the drag
+# from 1.35, the follow from 16 (it now closes 90% of a gap in 0.1 s), and
+# the keys from 6.0.
+const DRAG_GAIN := 1.8
+const SHIP_FOLLOW_SHARPNESS := 24.0
 # Testing on PC (2026-11-27): the arrow keys, or WASD, steer the ship in a
 # debug build, KEY_STEER_SPEED world units a second — the field is 4.6 wide,
-# so about 0.8 s edge to edge. A release build ignores the keyboard: the
+# so about 0.6 s edge to edge. A release build ignores the keyboard: the
 # game is a touch game, and a phone with a keyboard should not steer twice.
-const KEY_STEER_SPEED := 6.0
+const KEY_STEER_SPEED := 8.0
 const SHIP_BANK_PER_SPEED := 0.10
 const SHIP_BANK_MAX := 0.7
 const SHIP_PITCH_PER_SPEED := 0.06
@@ -246,6 +357,23 @@ const DEBRIS_LIFE := 0.9
 const DEBRIS_SPEED := 7.0
 const FLASH_LIFE := 0.45
 const RING_LIFE := 0.55
+# The pass (2026-11-27). A right gate only lit up gold with a small ring, and
+# the owner wanted it to feel like a rush. On top of that now: a wide gold
+# shockwave, shards thrown out of the ring in its plane, speed lines bursting
+# from its centre on the screen (draw_pass_lines), and the space streaks
+# stretching with the lunge (PASS_STREAK_STRETCH x boost). Main adds the
+# chime, pitched up with the streak.
+const PASS_SHOCK_LIFE := 0.30
+const PASS_SHOCK_GROW := 2.6           # x the gate's radius, at the end; 4.2 covered half the screen
+const PASS_SHOCK_COLOR := Color(1.8, 1.4, 0.6, 1.0)
+const PASS_SHARDS := 18
+const PASS_SHARD_SPEED := 9.0
+const PASS_SHARD_LIFE := 0.5
+const PASS_SHARD_COLOR := Color(2.4, 1.9, 0.9, 1.0)
+const PASS_LINES := 26
+const PASS_LINE_LIFE := 0.36
+const PASS_LINE_COLOR := Color(1.0, 0.95, 0.75)
+const PASS_STREAK_STRETCH := 3.0
 
 const PALETTES := [
 	[Color(0.10, 0.35, 0.85), Color(0.25, 0.70, 0.30)],
@@ -275,22 +403,7 @@ const LABEL_TEXT_SCALE := 0.6      # of the gate's hole on screen
 const LABEL_MIN_FONT := 15.0       # px: the gate is still small when its answer appears
 const LABEL_PLATE_ALPHA := 0.8
 const LABEL_PLATE_UNDER_SHIP := 0.3   # the ship is being drawn through it
-# Kind.SEQUENCE's marks sit in their gates' holes, on every step in sight
-# and not only the front one, so the next symbols can be read ahead as the
-# colours can. They fade in over SYMBOL_FADE (approach() fractions) and are
-# SYMBOL_IN_HOLE of the hole across, never under SYMBOL_MIN_PX. A mark is
-# drawn inside its own ring, so unlike a text plate it cannot spill onto a
-# neighbour however small the gates are.
-const SYMBOL_FADE := Vector2(0.2, 0.32)
-const SYMBOL_IN_HOLE := 0.78
-const SYMBOL_MIN_PX := 12.0
-const SYMBOL_BACK := Color(0.03, 0.04, 0.10, 0.55)
-# The box's row: the symbol to fly through next at full strength in a gold
-# ring, the rest dimmed.
-const SEQ_DIM := 0.38
-const SEQ_NOW_RING := Color(1.0, 0.8, 0.25)
 const ARROW_NORMAL := Color(0.18, 0.55, 1.0)
-const ARROW_REVERSE := Color(0.95, 0.2, 0.2)
 
 var main: Node
 var viewport: SubViewport
@@ -316,14 +429,24 @@ var patterns_done := 0           # patterns finished this cycle
 
 # the pattern under way
 var pattern_kind: int = Kind.COLOR
-var pattern_color := 0           # Kind.COLOR: index into GATE_COLORS
-var pattern_seq: Array = []       # Kind.SEQUENCE: symbol indices, in order
+var pattern_level := 1           # 1-based, into BANK[pattern_kind]
+var pattern_color := 0           # MIX: index into GATE_COLORS
+var pattern_colors: Array = []    # COLOR: the colour each step asks for
+var pattern_rounds: Array = []    # MEMORY: a list of colour indices per round
+var memory_shown := 0.0          # MEMORY: seconds the round's colours have been up
+var memory_slow := 1.0           # MEMORY: the world's slowdown while they are learned
+var rule_flash := 0.0            # 0..1, the box flashing at a change of rule
+## The tutorial's box step (Main sets it): the colour in the box shows the
+## no-entry sign every other DEMO_AVOID_PERIOD, so the sign the caption names
+## is seen once before it counts.
+var demo_avoid := false
 var steps_spawned := 0
 var steps_done := 0              # steps judged
 var steps_right := 0
 var streak := 0                  # right gates in a row
 
-## Step waves: {"planets", "z", "resolved", "kind", "dir", "reverse"}
+## Step waves: {"planets", "z", "resolved", "kind", "layout", "dir", "parts",
+## "avoid", "spot"}; see _make_step
 var waves: Array = []
 ## Free-flying things: fever planets (loose) and asteroids (rocks).
 var loose: Array = []
@@ -348,6 +471,9 @@ var orbs: Array = []
 
 var debris: Array = []
 var flashes: Array = []
+## The pass's screen burst: where it went off and when, with its lines'
+## angles and lengths. Empty when none is showing.
+var pass_lines := {}
 
 var planet_meshes: Array = []
 var rock_meshes: Array = []
@@ -373,7 +499,10 @@ var sky_material: ShaderMaterial
 ## How far the sky has slid, in picture heights.
 var sky_scroll := 0.0
 var kit_loaded := false
-var symbol_textures: Array = []   # Kind.SEQUENCE's marks, with mipmaps; null where missing
+## The portal shader and the two textures it reads, or null without the kit.
+var portal_shader: Shader
+var portal_noise: Texture2D
+var portal_shape: Texture2D
 
 
 # ================================================================ setup
@@ -423,6 +552,7 @@ func setup(main_node: Node, size: Vector2) -> void:
 	_load_kit()
 	_build_ship()
 	_build_fx_materials()
+	_load_portal()
 	_build_sky()
 	_build_streaks()
 	fit(size)
@@ -567,6 +697,73 @@ func _add_material(color: Color) -> StandardMaterial3D:
 	return m
 
 
+## The portal shader and its textures, rebuilt from the pack's own settings
+## so only the shader has to be copied in: a radial gradient for the disc,
+## and the pack's noise_04.tres, a ridged, domain-warped noise that reads as
+## smoke. The owner chose it on 2026-11-27 from all nine of the pack's
+## patterns side by side; it was noise_01, a softer cellular cloud, before.
+func _load_portal() -> void:
+	if not ResourceLoader.exists(PORTAL_SHADER_PATH):
+		return
+	portal_shader = load(PORTAL_SHADER_PATH)
+	var fn := FastNoiseLite.new()
+	fn.frequency = 0.015
+	fn.fractal_type = FastNoiseLite.FRACTAL_RIDGED
+	fn.fractal_octaves = 3
+	fn.fractal_weighted_strength = 0.5
+	fn.domain_warp_enabled = true
+	fn.domain_warp_frequency = 0.01
+	fn.domain_warp_fractal_octaves = 2
+	fn.domain_warp_fractal_lacunarity = 3.0
+	var noise := NoiseTexture2D.new()
+	noise.noise = fn
+	noise.seamless = true
+	portal_noise = noise
+	var shape := GradientTexture2D.new()
+	shape.gradient = Gradient.new()
+	shape.fill = GradientTexture2D.FILL_RADIAL
+	shape.fill_from = Vector2(0.5, 0.5)
+	shape.fill_to = Vector2(0.5, 0.0)
+	portal_shape = shape
+
+
+## A portal across a gate's hole, as a child of the gate so it rolls and
+## shrinks with it. Faces +Z, toward the camera.
+func _make_portal(gate: Node3D) -> ShaderMaterial:
+	var quad := QuadMesh.new()
+	quad.size = Vector2.ONE * PORTAL_QUAD
+	# The shader bulges the middle toward the camera, which needs vertices.
+	quad.subdivide_width = 24
+	quad.subdivide_depth = 24
+	var m := ShaderMaterial.new()
+	m.shader = portal_shader
+	m.set_shader_parameter("size", quad.size)
+	m.set_shader_parameter("noise_texture", portal_noise)
+	m.set_shader_parameter("shape_texture", portal_shape)
+	m.set_shader_parameter("emission_strength", PORTAL_EMISSION)
+	m.set_shader_parameter("layers", PORTAL_LAYERS)
+	m.set_shader_parameter("spin_motion", PORTAL_SPIN)
+	m.set_shader_parameter("inward_motion", PORTAL_INWARD)
+	m.set_shader_parameter("base_motion", 0.2)
+	m.set_shader_parameter("portal_mode", 0)
+	var mi := MeshInstance3D.new()
+	mi.mesh = quad
+	mi.material_override = m
+	# Drawn before the glow band, so the band stays on top of it.
+	mi.sorting_offset = -0.1
+	gate.add_child(mi)
+	_portal_color(m, GATE_GLOW)
+	return m
+
+
+static func _portal_color(m: ShaderMaterial, glow: Color) -> void:
+	if m == null:
+		return
+	var bright := Color(minf(glow.r, 1.0), minf(glow.g, 1.0), minf(glow.b, 1.0), 1.0)
+	m.set_shader_parameter("primary_color", bright)
+	m.set_shader_parameter("secondary_color", Color(bright.r * PORTAL_DARK, bright.g * PORTAL_DARK, bright.b * PORTAL_DARK, 1.0))
+
+
 func _build_fx_materials() -> void:
 	flash_material = _glow_material(Color(1.0, 0.75, 0.4), 2.5)
 	ring_material = _add_material(Color(1.0, 0.88, 0.65, 1.0))
@@ -638,7 +835,7 @@ func fit(size: Vector2) -> void:
 func texture() -> Texture2D:
 	return viewport.get_texture() if viewport != null else null
 func speed() -> float:
-	return BASE_SPEED * (1.0 + 0.08 * cycle) * (FEVER_SPEED if phase == Phase.FEVER else 1.0) * pace * (1.0 + WARP_BOOST * boost)
+	return BASE_SPEED * (1.0 + 0.08 * cycle) * (FEVER_SPEED if phase == Phase.FEVER else 1.0) * pace * (1.0 + WARP_BOOST * boost) * memory_slow
 
 
 ## The speed `pace` eases toward: the streak's in a pattern, full elsewhere.
@@ -648,9 +845,14 @@ func _pace_target() -> float:
 	return minf(PACE_MAX, PACE_START + PACE_PER_STREAK * streak)
 
 
-## Two gates a step in the first cycle, three in the second, then four.
-func planets_for_cycle(c: int) -> int:
-	return clampi(2 + c, 2, 4)
+## The pattern under way's level, from the bank.
+func level_spec() -> Dictionary:
+	return spec_of(pattern_kind, pattern_level)
+
+
+static func spec_of(kind: int, level: int) -> Dictionary:
+	var levels: Array = BANK[kind]
+	return levels[clampi(level, 1, levels.size()) - 1]
 
 
 # ================================================================ run state
@@ -706,6 +908,7 @@ func _clear_world() -> void:
 	orbs.clear()
 	debris.clear()
 	flashes.clear()
+	pass_lines = {}
 
 
 func _free(node) -> void:
@@ -753,24 +956,68 @@ func pattern_perfect() -> bool:
 
 # ================================================================ patterns
 
-## The first cycle is colour, then symbols; arrows, the closest to the old
-## quiz, join from the second cycle, which draws any of the three.
-func _next_kind() -> int:
+## The placement: which pattern, at which level, comes next. A stand-in
+## until the owner draws up the real table. The first cycle is plain colour
+## then plain arrow, so the two simplest rules are met first; after that any
+## pattern in the bank, at one level higher each cycle. A rule of symbols
+## flown in order was dropped on 2026-11-27: reading a symbol off a gate in
+## flight was too hard.
+func _pick_pattern() -> Array:
 	if cycle == 0 and patterns_done < 2:
-		return [Kind.COLOR, Kind.SEQUENCE][patterns_done]
-	return [Kind.COLOR, Kind.ARROW, Kind.SEQUENCE][randi() % 3]
+		return [[Kind.COLOR, Kind.ARROW][patterns_done], 1]
+	var kinds: Array = BANK.keys()
+	return [kinds[randi() % kinds.size()], cycle + 1]
 
 
-func _begin_pattern(kind: int = -1) -> void:
-	pattern_kind = _next_kind() if kind < 0 else kind
-	pattern_color = randi() % GATE_COLORS.size()
-	pattern_seq = _random_symbols(SEQ_LEN[mini(cycle, SEQ_LEN.size() - 1)])
+## Starts a pattern: `kind` at `level`, or the next one _pick_pattern gives.
+## A kind with no level takes the one _pick_pattern would give this cycle.
+func _begin_pattern(kind: int = -1, level: int = -1) -> void:
+	if kind < 0:
+		var pick: Array = _pick_pattern()
+		kind = pick[0]
+		level = pick[1]
+	elif level < 0:
+		level = 1 if cycle == 0 else cycle + 1
+	pattern_kind = kind
+	pattern_level = clampi(level, 1, (BANK[kind] as Array).size())
+	_prepare_pattern()
 	steps_spawned = 0
 	steps_done = 0
 	steps_right = 0
 	streak = 0
 	if main != null:
 		spawn_wave()
+
+
+## Draws everything a pattern decides up front: MIX's colour, COLOR's colour
+## for each step, the memory patterns' rounds.
+func _prepare_pattern() -> void:
+	var spec := level_spec()
+	pattern_color = randi() % GATE_COLORS.size()
+	pattern_colors = []
+	var every: int = int(spec.get("switch", 0))
+	var colour := randi() % GATE_COLORS.size()
+	for k in PATTERN_LEN:
+		if every > 0 and k > 0 and k % every == 0:
+			var next: int = randi() % (GATE_COLORS.size() - 1)
+			colour = next if next < colour else next + 1
+		pattern_colors.append(colour)
+	# MEMORY remembers colours; ARROW_MEMORY directions, as slots, the
+	# diagonals among them only on a mixed level.
+	var items: Array = range(GATE_COLORS.size())
+	if pattern_kind == Kind.ARROW_MEMORY:
+		items = LAYOUT_SLOTS[Layout.DIAMOND].duplicate()
+		if int(spec.get("layout", Layout.DIAMOND)) == Layout.MIXED:
+			items.append_array(LAYOUT_SLOTS[Layout.GRID])
+	pattern_rounds = _memory_rounds(int(spec.get("len", 4)), items)
+	memory_shown = 0.0
+	memory_slow = 1.0
+	rule_flash = 0.0
+
+
+## Whether `kind` is flown from memory, with rounds shown and then hidden.
+static func is_memory(kind: int) -> bool:
+	return kind == Kind.MEMORY or kind == Kind.ARROW_MEMORY
 
 
 ## Spawns the next step of the pattern at SPAWN_Z, and the rocks of the gap
@@ -791,67 +1038,136 @@ func spawn_wave() -> Dictionary:
 	return w
 
 
-## One step of `kind`: planets_for_cycle gates in distinct slots, exactly one
-## marked correct.
-##   COLOR  every gate a different colour, one of them the pattern's.
-##   ARROW  the box points at a slot; red means the slot opposite, so that
-##          one is always in the step as well.
-##   SEQUENCE  the right gate carries the sequence's next symbol; the wrong
-##          ones carry the sequence's other symbols first — the ones the
-##          player is holding in mind — then any others.
+## The layout a step of `spec` stands in.
+static func _layout_of(spec: Dictionary) -> int:
+	var layout: int = int(spec.get("layout", Layout.DIAMOND))
+	if layout == Layout.MIXED:
+		return Layout.DIAMOND if randf() < 0.5 else Layout.GRID
+	return layout
+
+
+## One step of `kind` at the pattern's level: its `gates` gates in distinct
+## slots of one layout, one marked correct (all but one on an avoid step).
+##   COLOR         every gate a different colour, one of them the step's.
+##   MIX           the same with the pattern's colour; on an avoid step that
+##                 gate is the only wrong one.
+##   MEMORY        the same with the round's colour for the step.
+##   SPOT          every gate a different colour; `spot` holds the box's dot
+##                 for each slot (-1 where no gate), the gates' colours except
+##                 at the correct slot, which gets another colour.
+##   ARROW         `dir` is the correct slot, which the box's arrow points at.
+##   ARROW_MIX     the same; on an avoid step that gate is the only wrong one.
+##   ARROW_SUM     on the grid; `parts` are the two arrows adding up to `dir`.
+##   ARROW_MEMORY  `dir` is the round's direction for the step, on the grid
+##                 if it is a diagonal.
 func _make_step(kind: int) -> Dictionary:
-	var n: int = planets_for_cycle(cycle)
-	var w := {"planets": [], "z": SPAWN_Z, "resolved": false, "kind": kind,
-		"dir": -1, "reverse": false}
-	var slots: Array = [0, 1, 2, 3]
+	var spec := spec_of(kind, pattern_level)
+	var n: int = int(spec.gates)
+	var layout: int = _layout_of(spec)
+	var want_slot := -1
+	if kind == Kind.ARROW_SUM:
+		layout = Layout.GRID
+	elif kind == Kind.ARROW_MEMORY:
+		want_slot = memory_item(steps_spawned)
+		layout = Layout.GRID if want_slot >= 4 else Layout.DIAMOND
+	var w := {"planets": [], "z": SPAWN_Z, "resolved": false, "kind": kind, "layout": layout,
+		"dir": -1, "parts": [], "avoid": false, "spot": [-1, -1, -1, -1, -1, -1, -1, -1]}
+	var slots: Array = (LAYOUT_SLOTS[layout] as Array).duplicate()
 	slots.shuffle()
+	if want_slot >= 0:
+		slots.erase(want_slot)
+		slots.push_front(want_slot)
 	slots = slots.slice(0, n)
 	var correct_slot: int = slots[0]
 	var colors: Array = []
-	var symbols: Array = []
-	if kind == Kind.SEQUENCE:
-		var want: int = pattern_seq[steps_spawned % pattern_seq.size()]
-		var others: Array = pattern_seq.filter(func(s): return s != want)
-		others.shuffle()
-		var rest: Array = range(SYMBOL_COUNT).filter(func(s): return s != want and not others.has(s))
-		rest.shuffle()
-		symbols = [want] + others + rest
-		w["symbol"] = want
-	elif kind == Kind.COLOR:
-		for i in GATE_COLORS.size():
-			if i != pattern_color:
-				colors.append(i)
-		colors.shuffle()
-		colors.push_front(pattern_color)
-	else:
-		var reverse: bool = cycle > 0 and randf() < ARROW_REVERSE_CHANCE
-		var shown: int = _opposite(correct_slot) if reverse else correct_slot
-		if reverse and not slots.has(shown):
-			slots[slots.size() - 1] = shown
-		w.reverse = reverse
-		w.dir = shown
+	match kind:
+		Kind.COLOR, Kind.MIX, Kind.MEMORY:
+			var want: int = pattern_color
+			if kind == Kind.COLOR:
+				want = pattern_colors[steps_spawned % PATTERN_LEN]
+			elif kind == Kind.MEMORY:
+				want = memory_item(steps_spawned)
+			for i in GATE_COLORS.size():
+				if i != want:
+					colors.append(i)
+			colors.shuffle()
+			colors.push_front(want)
+			w.avoid = kind == Kind.MIX and randf() < float(spec.avoid)
+		Kind.SPOT:
+			colors = range(GATE_COLORS.size())
+			colors.shuffle()
+			for i in slots.size():
+				w.spot[slots[i]] = colors[i]
+			var others: Array = range(GATE_COLORS.size()).filter(func(k): return k != colors[0])
+			w.spot[correct_slot] = others[randi() % others.size()]
+		Kind.ARROW_SUM:
+			w.dir = correct_slot
+			w.parts = (CORNER_PARTS[correct_slot] as Array).duplicate()
+			w.parts.shuffle()
+		_:
+			w.dir = correct_slot
+			w.avoid = kind == Kind.ARROW_MIX and randf() < float(spec.avoid)
 	for i in slots.size():
 		var s: int = slots[i]
-		var p := _make_gate(SLOTS[s], SPAWN_Z, "", s == correct_slot)
+		# An avoid step turns it round: the gate it names is the one wrong gate.
+		var p := _make_gate(SLOTS[s], SPAWN_Z, "", (s == correct_slot) != bool(w.avoid))
 		p["slot"] = s
-		if kind == Kind.COLOR:
-			# slots[0] is the correct slot, and colors[0] the pattern's colour.
+		if not colors.is_empty():
+			# slots[0] is the correct slot, and colors[0] the colour it wants.
 			_tint_gate(p, GATE_COLORS[colors[i]])
-		elif kind == Kind.SEQUENCE:
-			p["symbol"] = symbols[i]
 		w.planets.append(p)
 	return w
 
 
-## `n` different symbols in a random order.
-func _random_symbols(n: int) -> Array:
-	var all: Array = range(SYMBOL_COUNT)
-	all.shuffle()
-	return all.slice(0, n)
+## A memory pattern's rounds for a whole pattern, `size` of `items` each,
+## never the same one twice in a row, across rounds too.
+func _memory_rounds(size: int, items: Array) -> Array:
+	var rounds: Array = []
+	var last := -1
+	for r in ceili(float(PATTERN_LEN) / size):
+		var round: Array = []
+		for i in size:
+			var pick: int = items[randi() % items.size()]
+			while pick == last:
+				pick = items[randi() % items.size()]
+			round.append(pick)
+			last = pick
+		rounds.append(round)
+	return rounds
 
 
-static func _opposite(slot: int) -> int:
-	return [1, 0, 3, 2][slot]
+## A memory pattern's items a round at the pattern's level.
+func memory_len() -> int:
+	return int(level_spec().get("len", 4))
+
+
+## What a memory pattern's step `k` asks for: a colour for MEMORY, a slot
+## for ARROW_MEMORY.
+func memory_item(k: int) -> int:
+	var size := memory_len()
+	return pattern_rounds[k / size][k % size]
+
+
+## The colour COLOR's front step asks for, which is what the box shows.
+func color_now() -> int:
+	return pattern_colors[mini(steps_done, PATTERN_LEN - 1)] if not pattern_colors.is_empty() else 0
+
+
+## MEMORY: the world slows on a round's first step, if it has to, so the
+## round's colours are up for MEMORY_SECONDS_EACH a colour before the gate.
+## Called each frame before the world moves.
+func _update_memory_slow(delta: float) -> void:
+	memory_slow = 1.0
+	if phase != Phase.PATTERN or not is_memory(pattern_kind) or steps_done % memory_len() != 0:
+		return
+	var w := upcoming_wave()
+	if w.is_empty():
+		return
+	memory_shown += delta
+	var need: float = memory_len() * MEMORY_SECONDS_EACH - memory_shown
+	var full: float = speed()
+	if need > 0.0 and full > 0.0 and -float(w.z) / full < need:
+		memory_slow = clampf(-float(w.z) / (need * full), 0.15, 1.0)
 
 
 ## Rocks for the gap centred on `z`, kept ROCK_CLEAR off every slot's centre.
@@ -859,16 +1175,18 @@ func _spawn_gap_rocks(z: float) -> void:
 	var want: float = ROCKS_PER_GAP + ROCKS_PER_CYCLE * cycle
 	var count: int = int(want) + (1 if randf() < want - floorf(want) else 0)
 	for i in count:
+		# A rock with no clear spot after the tries is left out. It used to be
+		# placed at its last try regardless, which put one on a slot's centre
+		# about one check_space run in six.
 		var pos := Vector2.ZERO
-		for attempt in 12:
+		var clear := false
+		for attempt in 24:
 			pos = Vector2(randf_range(-FIELD_HALF.x, FIELD_HALF.x), randf_range(-FIELD_HALF.y, FIELD_HALF.y)) * 0.85
-			var clear := true
-			for s in SLOTS:
-				if pos.distance_to(s) < ROCK_CLEAR:
-					clear = false
+			clear = SLOTS.all(func(s): return pos.distance_to(s) >= ROCK_CLEAR)
 			if clear:
 				break
-		_spawn_asteroid(pos, z + randf_range(-3.0, 3.0))
+		if clear:
+			_spawn_asteroid(pos, z + randf_range(-3.0, 3.0))
 
 
 func _make_planet(pos: Vector2, z: float, label: String, correct: bool) -> Dictionary:
@@ -907,7 +1225,11 @@ func _make_gate(pos: Vector2, z: float, label: String, correct: bool) -> Diction
 		ring.mesh = gate_ring_mesh
 		ring.transform = gate_part_xform
 		node.add_child(ring)
-		if gate_glow_mesh != null:
+		# The glow band carried the gate's colour until the portal came; the
+		# portal now carries it across the whole hole, and the band around it
+		# only doubled it (owner's call, 2026-11-27). glow_mat stays: it is
+		# where the colour is kept, and the no-kit ring still wears it.
+		if gate_glow_mesh != null and portal_shader == null:
 			var glow := MeshInstance3D.new()
 			glow.mesh = gate_glow_mesh
 			glow.transform = gate_part_xform
@@ -922,10 +1244,11 @@ func _make_gate(pos: Vector2, z: float, label: String, correct: bool) -> Diction
 		ring.rotation.x = PI * 0.5
 		ring.material_override = glow_mat
 		node.add_child(ring)
+	var portal: ShaderMaterial = _make_portal(node) if portal_shader != null else null
 	node.rotation.z = randf() * TAU
 	root3d.add_child(node)
 	var p := {
-		"node": node, "mat": null, "glow": glow_mat, "pos": pos, "z": z, "label": label,
+		"node": node, "mat": null, "glow": glow_mat, "portal": portal, "pos": pos, "z": z, "label": label,
 		"correct": correct, "alive": true, "judged": false, "palette": PALETTES[0],
 		"base_scale": 1.0, "radius": GATE_RADIUS, "gate": true,
 		"spin": Vector3(0.0, 0.0, GATE_ROLL_SPEED * (1.0 if randf() < 0.5 else -1.0)),
@@ -940,6 +1263,7 @@ func _make_gate(pos: Vector2, z: float, label: String, correct: bool) -> Diction
 func _tint_gate(p: Dictionary, color: Color) -> void:
 	p.base_glow = Color(color.r, color.g, color.b, 0.8)
 	(p.glow as StandardMaterial3D).albedo_color = p.base_glow
+	_portal_color(p.get("portal"), p.base_glow)
 
 
 ## The ship went through `p`: it lights up gold if right, red if wrong, with
@@ -950,6 +1274,64 @@ func _pass_gate(p: Dictionary, right: bool) -> void:
 	p.flash = 1.0
 	p.flash_color = GATE_GLOW_RIGHT if right else GATE_GLOW_WRONG
 	_burst(p.node.position, p.palette, not right, 1.0, false)
+	if right:
+		_pass_burst(p.node.position)
+
+
+## The rush of a right pass: the shockwave and the shards in 3D, and the
+## speed lines for draw_pass_lines to draw over the world.
+func _pass_burst(center: Vector3) -> void:
+	var shock := MeshInstance3D.new()
+	var torus := TorusMesh.new()
+	# Thin, since the whole torus scales with it and its tube thickens too.
+	torus.inner_radius = 0.95
+	torus.outer_radius = 1.0
+	shock.mesh = torus
+	shock.material_override = _add_material(PASS_SHOCK_COLOR)
+	shock.rotation.x = PI * 0.5
+	shock.position = center
+	root3d.add_child(shock)
+	flashes.append({"node": shock, "t": 0.0, "life": PASS_SHOCK_LIFE, "kind": "shock", "size": GATE_RADIUS})
+	var shard_mat := _add_material(PASS_SHARD_COLOR)
+	var shard_mesh := BoxMesh.new()
+	shard_mesh.size = Vector3(0.05, 0.05, 0.5)
+	for i in PASS_SHARDS:
+		var a: float = TAU * (i + randf_range(-0.3, 0.3)) / PASS_SHARDS
+		var out := Vector3(cos(a), sin(a), 0.0)
+		var mi := MeshInstance3D.new()
+		mi.mesh = shard_mesh
+		mi.material_override = shard_mat
+		mi.position = center + out * GATE_RADIUS
+		# Laid along its flight, so it reads as a streak and not a speck.
+		mi.look_at_from_position(mi.position, mi.position + out + Vector3(0, 0, 0.6), Vector3.FORWARD)
+		root3d.add_child(mi)
+		flashes.append({"node": mi, "t": 0.0, "life": PASS_SHARD_LIFE * randf_range(0.7, 1.1), "kind": "shard",
+			"vel": (out + Vector3(0, 0, 0.6)) * PASS_SHARD_SPEED * randf_range(0.7, 1.2), "size": 1.0})
+	var lines := []
+	for i in PASS_LINES:
+		lines.append([TAU * (i + randf()) / PASS_LINES, randf_range(0.6, 1.0)])
+	pass_lines = {"t": 0.0, "at": center, "lines": lines}
+
+
+## The speed lines of the last right pass, bursting out of the gate's centre
+## on the screen and gone in PASS_LINE_LIFE: each runs outward from inside
+## the ring past its edge, thinning and fading as it goes.
+func draw_pass_lines(ci: CanvasItem) -> void:
+	if pass_lines.is_empty():
+		return
+	var u: float = clampf(pass_lines.t / PASS_LINE_LIFE, 0.0, 1.0)
+	var s := project(pass_lines.at)
+	if s.z <= 0.0:
+		return
+	var c := Vector2(s.x, s.y)
+	var r: float = s.z * GATE_RADIUS
+	var ease_out: float = 1.0 - (1.0 - u) * (1.0 - u)
+	var k: float = px_per_unit() / 100.0
+	for l in pass_lines.lines:
+		var dir := Vector2.from_angle(l[0])
+		var inner: float = r * lerpf(0.9, 2.6, ease_out)
+		var outer: float = inner + r * lerpf(0.6, 2.2, ease_out) * l[1]
+		ci.draw_line(c + dir * inner, c + dir * outer, Color(PASS_LINE_COLOR, (1.0 - u) * 0.9), maxf(1.0, 3.0 * k * (1.0 - u)))
 
 
 func _planet_material(sea: Color, ground: Color) -> ShaderMaterial:
@@ -1029,10 +1411,13 @@ func _draw_in(w: Dictionary, delta: float) -> void:
 func ship_shown() -> Vector2:
 	return pull_pos if pulling else ship_pos
 
-## Which quarter of the field `pos` is in, as a slot index: the field is cut
-## along its diagonals, so each quarter holds exactly one of SLOTS. Measured
-## against FIELD_HALF so the cut runs corner to corner on screen.
-static func region_of(pos: Vector2) -> int:
+## Which quarter of the field `pos` is in, as a slot index of `layout`. The
+## diamond's field is cut along its diagonals, measured against FIELD_HALF
+## so the cut runs corner to corner on screen; the grid's along its middle
+## lines. Either way each quarter holds exactly one of the layout's slots.
+static func region_of(pos: Vector2, layout: int = Layout.DIAMOND) -> int:
+	if layout == Layout.GRID:
+		return (4 if pos.y > 0.0 else 6) + (0 if pos.x < 0.0 else 1)
 	var n := pos / FIELD_HALF
 	if absf(n.x) >= absf(n.y):
 		return 0 if n.x < 0.0 else 1
@@ -1041,7 +1426,7 @@ static func region_of(pos: Vector2) -> int:
 
 ## The gate of `w` in the quarter `pos` is in, or {} when that quarter has none.
 func target_gate(w: Dictionary, pos: Vector2) -> Dictionary:
-	var r := region_of(pos)
+	var r := region_of(pos, int(w.get("layout", Layout.DIAMOND)))
 	for p in w.planets:
 		if int(p.get("slot", -1)) == r:
 			return p
@@ -1063,6 +1448,7 @@ func _resolve_wave(w: Dictionary) -> void:
 		ship_target = hit.pos
 		pulling = false
 		boost = 1.0
+	_note_rule_change()
 	if not hit.is_empty() and hit.correct:
 		_pass_gate(hit, true)
 		steps_right += 1
@@ -1076,6 +1462,21 @@ func _resolve_wave(w: Dictionary) -> void:
 			_pass_gate(hit, false)
 		streak = 0
 		main._space_wrong()
+
+
+## After a step is judged: a MEMORY round that starts now shows its colours
+## from scratch, and COLOR's box flashing with a chime when the next step
+## asks for another colour.
+func _note_rule_change() -> void:
+	if steps_done >= PATTERN_LEN:
+		return
+	if is_memory(pattern_kind) and steps_done % memory_len() == 0:
+		memory_shown = 0.0
+		rule_flash = 1.0
+	elif pattern_kind == Kind.COLOR and pattern_colors[steps_done] != pattern_colors[steps_done - 1]:
+		rule_flash = 1.0
+		if main != null and main.has_method("_space_rule_changed"):
+			main._space_rule_changed()
 
 
 ## The last step of the pattern has been judged and flown past: a whole
@@ -1335,6 +1736,7 @@ func _update_bullets(delta: float) -> void:
 ## Called every frame by Main. `running`: the run is live (PLAYING, not
 ## paused). `steerable`: the ship answers the finger (also in the countdown).
 func tick(delta: float, running: bool, steerable: bool) -> void:
+	rule_flash = maxf(0.0, rule_flash - RULE_FLASH_DECAY * delta)
 	if steerable or running:
 		_update_ship(delta)
 	if running:
@@ -1353,6 +1755,7 @@ func _update_ship(delta: float) -> void:
 func _update_run(delta: float) -> void:
 	phase_time += delta
 	_update_pace(delta)
+	_update_memory_slow(delta)
 	var v := speed() * delta
 	_fire(delta)
 	_update_bullets(delta)
@@ -1564,6 +1967,14 @@ func _update_fx(delta: float, running: bool) -> void:
 		if f.kind == "flash":
 			node.scale = Vector3.ONE * lerpf(1.2, 4.0, u) * f.size
 			m.albedo_color.a = 1.0 - u
+		elif f.kind == "shock":
+			var grow: float = 1.0 - (1.0 - u) * (1.0 - u) * (1.0 - u)
+			node.scale = Vector3.ONE * lerpf(1.0, PASS_SHOCK_GROW, grow) * f.size
+			m.albedo_color.a = (1.0 - u) * (1.0 - u) * (1.0 - u)
+		elif f.kind == "shard":
+			node.position += f.vel * delta
+			f.vel *= maxf(0.0, 1.0 - 2.5 * delta)
+			node.scale = Vector3.ONE * maxf(1.0 - u, 0.0001)
 		else:
 			node.scale = Vector3.ONE * lerpf(1.0, 2.8, u) * f.size
 			m.albedo_color.a = (1.0 - u) * (1.0 - u) * 0.8
@@ -1571,8 +1982,12 @@ func _update_fx(delta: float, running: bool) -> void:
 		if f.t >= f.life:
 			_free(f.node)
 	flashes = flashes.filter(func(f): return f.t < f.life)
+	if not pass_lines.is_empty():
+		pass_lines.t += delta
+		if pass_lines.t >= PASS_LINE_LIFE:
+			pass_lines = {}
 	var flow: float = speed() if running else BASE_SPEED * 0.25
-	var stretch: float = 3.0 if phase == Phase.FEVER else 1.0
+	var stretch: float = (3.0 if phase == Phase.FEVER else 1.0) * (1.0 + PASS_STREAK_STRETCH * boost)
 	if streaks != null:
 		var mm := streaks.multimesh
 		for i in streak_pos.size():
@@ -1598,10 +2013,13 @@ func _animate(p: Dictionary, delta: float) -> void:
 		if p.get("gate", false):
 			var lit: Color = p.flash_color
 			(p.glow as StandardMaterial3D).albedo_color = (p.base_glow as Color).lerp(Color(lit.r * 2.5, lit.g * 2.5, lit.b * 2.5, 1.0), p.flash)
+			_portal_color(p.get("portal"), (p.base_glow as Color).lerp(lit, p.flash))
 		else:
 			p.mat.set_shader_parameter("hit_flash", p.flash)
 	elif p.get("gate", false) and p.alive:
-		(p.glow as StandardMaterial3D).albedo_color = _aim_glow(p) if p.get("aim", false) else p.base_glow
+		var glow: Color = _aim_glow(p) if p.get("aim", false) else p.base_glow
+		(p.glow as StandardMaterial3D).albedo_color = glow
+		_portal_color(p.get("portal"), glow)
 	_place(p)
 
 
@@ -1667,75 +2085,6 @@ static func approach(p: Dictionary) -> float:
 	return clampf((p.z - SPAWN_Z) / -SPAWN_Z, 0.0, 1.0)
 
 
-## Kind.SEQUENCE's marks, one in each gate's hole. Drawn over the 3D world,
-## so they know nothing of depth: a farther step's mark would show through
-## a nearer gate's ring. Walked near to far, a mark is dropped where a nearer
-## gate already covers that spot on screen, then the rest are drawn far
-## first, so a near one lands on top.
-func _draw_gate_symbols(ci: CanvasItem, font: Font) -> void:
-	var covers: Array = []      # [centre, radius] of nearer gates, on screen
-	var marks: Array = []
-	for w in waves:
-		if w.resolved:
-			continue
-		var pulled: Dictionary = w.get("target", {})
-		var these: Array = []
-		for p in w.planets:
-			if not p.alive:
-				continue
-			var node: Node3D = p.node
-			var s := project(node.position)
-			if s.z <= 0.0:
-				continue
-			var c := Vector2(s.x, s.y)
-			var r: float = s.z * p.radius * node.scale.x
-			these.append([c, r * GATE_OUTER_OF_HOLE])
-			if w.kind != Kind.SEQUENCE or not p.has("symbol"):
-				continue
-			var shown := smoothstep(SYMBOL_FADE.x, SYMBOL_FADE.y, approach(p))
-			if shown <= 0.01 or covers.any(func(cv): return c.distance_to(cv[0]) < cv[1]):
-				continue
-			var size: float = maxf(r * 2.0 * SYMBOL_IN_HOLE, SYMBOL_MIN_PX)
-			var alpha: float = shown * (LABEL_PLATE_UNDER_SHIP if is_same(p, pulled) else 1.0)
-			marks.append([int(p.symbol), c, size, alpha])
-		covers.append_array(these)
-	for i in range(marks.size() - 1, -1, -1):
-		var mk: Array = marks[i]
-		ci.draw_circle(mk[1], mk[2] * 0.55, Color(SYMBOL_BACK, SYMBOL_BACK.a * mk[3]))
-		_draw_symbol(ci, font, mk[0], mk[1], mk[2], Color(1, 1, 1, mk[3]))
-
-
-## Symbol `i` centred on `c`, `size` px square. Without the UI kit, its
-## number, so the pattern still plays.
-func _draw_symbol(ci: CanvasItem, font: Font, i: int, c: Vector2, size: float, mod: Color) -> void:
-	var tex := _symbol_texture(i)
-	if tex != null:
-		ci.draw_texture_rect(tex, Rect2(c - Vector2(size, size) * 0.5, Vector2(size, size)), false, mod)
-		return
-	var text := str(i + 1)
-	var fs := int(maxf(10.0, size * 0.7))
-	var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	ci.draw_string(font, Vector2(c.x - tw * 0.5, c.y + fs * 0.36), text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, mod)
-
-
-## The mark for symbol `i`, loaded once. Mipmapped here rather than in its
-## .import file: the kit is rebuilt per machine and its sidecars are not
-## committed, and a gate shows the 144 px mark as small as 12 px.
-func _symbol_texture(i: int) -> Texture2D:
-	if symbol_textures.is_empty():
-		for k in SYMBOL_COUNT:
-			var path := SYMBOL_PATH % k
-			var tex: Texture2D = null
-			if ResourceLoader.exists(path):
-				var img: Image = (load(path) as Texture2D).get_image()
-				if img != null:
-					img.decompress()
-					img.generate_mipmaps()
-					tex = ImageTexture.create_from_image(img)
-			symbol_textures.append(tex)
-	return symbol_textures[i] if i >= 0 and i < symbol_textures.size() else null
-
-
 ## The answers of the next wave, each in its own gate's hole, growing as the
 ## gate flies in. They appear over LABEL_FADE, once the gates have spread far
 ## enough apart for their plates not to overlap, and never earlier — showing
@@ -1743,7 +2092,7 @@ func _symbol_texture(i: int) -> Texture2D:
 ## The plate drawn over the gate the ship is being pulled into thins out so the
 ## ship shows through it.
 func draw_labels(ci: CanvasItem, font: Font) -> void:
-	_draw_gate_symbols(ci, font)
+	draw_pass_lines(ci)
 	var w := upcoming_wave()
 	if w.is_empty():
 		return
@@ -1789,11 +2138,29 @@ func draw_hud(ci: CanvasItem, box: Rect2, side: Rect2) -> void:
 	var c := box.get_center()
 	if phase == Phase.PATTERN:
 		if pattern_kind == Kind.COLOR:
+			_draw_swatch(ci, c, box.size.y * 0.3, GATE_COLORS[color_now()])
+			_draw_rule_flash(ci, c, box.size.y * 0.3)
+			if demo_avoid and fmod(Time.get_ticks_msec() / 1000.0, DEMO_AVOID_PERIOD * 2.0) >= DEMO_AVOID_PERIOD:
+				_draw_cross(ci, c, box.size.y * 0.3)
+		elif pattern_kind == Kind.MIX:
 			_draw_swatch(ci, c, box.size.y * 0.3, GATE_COLORS[pattern_color])
-		elif pattern_kind == Kind.SEQUENCE:
-			_draw_sequence(ci, font, box)
+			if not w.is_empty() and w.get("avoid", false):
+				_draw_cross(ci, c, box.size.y * 0.3)
+		elif is_memory(pattern_kind):
+			_draw_memory(ci, font, c, box)
 		elif not w.is_empty():
-			_draw_arrow(ci, c, box.size.y * 0.34, int(w.dir), ARROW_REVERSE if w.reverse else ARROW_NORMAL)
+			var hidden: bool = approach(w.planets[0]) > float(level_spec().get("hide", 1.0))
+			match pattern_kind:
+				Kind.SPOT:
+					var blank := [-1, -1, -1, -1, -1, -1, -1, -1]
+					_draw_spot(ci, c, box.size.y, blank if hidden else w.spot, int(w.layout))
+				Kind.ARROW_SUM:
+					if not hidden:
+						_draw_sum(ci, font, c, box.size.y, w.parts)
+				_:
+					_draw_arrow(ci, c, box.size.y * 0.34, int(w.dir), ARROW_NORMAL)
+					if w.get("avoid", false):
+						_draw_cross(ci, c, box.size.y * 0.3)
 	var rect := gauge_rect(box)
 	main._draw_horizontal_slice(ArtSlot.texture(HUD_GAUGE_PATH), rect, HUD_GAUGE_CAP, ci)
 	var inner := rect.grow_individual(-HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y, -HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y)
@@ -1852,25 +2219,6 @@ func _draw_stardust(ci: CanvasItem, font: Font, rect: Rect2, amount: int) -> voi
 	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, STARDUST_COLOR)
 
 
-## Kind.SEQUENCE's rule: the pattern's symbols in a row across the box, the
-## one to fly through next at full strength in a gold ring, the rest dimmed.
-## The next is the front step's, so it moves on as each step is judged and
-## comes round to the first again.
-func _draw_sequence(ci: CanvasItem, font: Font, box: Rect2) -> void:
-	if pattern_seq.is_empty():
-		return
-	var n: int = pattern_seq.size()
-	var size: float = box.size.y * 0.5
-	var gap: float = size * 0.45
-	var x0: float = box.get_center().x - (n * size + (n - 1) * gap) * 0.5 + size * 0.5
-	var now: int = steps_done % n
-	for i in n:
-		var c := Vector2(x0 + i * (size + gap), box.get_center().y)
-		if i == now:
-			ci.draw_arc(c, size * 0.62, 0.0, TAU, 32, SEQ_NOW_RING, 2.5, true)
-		_draw_symbol(ci, font, int(pattern_seq[i]), c, size, Color(1, 1, 1, 1.0 if i == now else SEQ_DIM))
-
-
 ## Kind.COLOR's rule: a round swatch of the colour to fly through, ringed so
 ## it holds on any background.
 func _draw_swatch(ci: CanvasItem, c: Vector2, r: float, color: Color) -> void:
@@ -1879,12 +2227,104 @@ func _draw_swatch(ci: CanvasItem, c: Vector2, r: float, color: Color) -> void:
 	ci.draw_circle(c + Vector2(-r, -r) * 0.3, r * 0.28, Color(1, 1, 1, 0.35))
 
 
+## The avoid step's sign: a red ring round the swatch with one thin slash
+## across it, the no-entry sign. A bold X was tried first and covered the
+## colour it was crossing out, and a red X on red hardly showed at all; the
+## ring sits outside the swatch and the slash leaves most of it showing.
+## `r` is the swatch's radius.
+func _draw_cross(ci: CanvasItem, c: Vector2, r: float) -> void:
+	var ring: float = r + 6.0
+	ci.draw_arc(c, ring, 0.0, TAU, 40, Color(0.05, 0.04, 0.12), 6.5, true)
+	ci.draw_arc(c, ring, 0.0, TAU, 40, AVOID_CROSS, 3.5, true)
+	var d := Vector2(1, -1).normalized() * ring
+	ci.draw_line(c - d, c + d, Color(0.05, 0.04, 0.12), 6.0)
+	ci.draw_line(c - d, c + d, AVOID_CROSS, 3.0)
+
+
+## A ring swelling out of the box's swatch as it fades, when the rule changes.
+func _draw_rule_flash(ci: CanvasItem, c: Vector2, r: float) -> void:
+	if rule_flash <= 0.0:
+		return
+	ci.draw_arc(c, r + 4.0 + (1.0 - rule_flash) * 16.0, 0.0, TAU, 40, Color(1, 1, 1, rule_flash), 3.0, true)
+
+
+## Kind.MEMORY's box: the round's colours in a row. Until the round's first
+## step is judged all of them show; after it, the ones flown through stay,
+## dimmed, and the rest are "?".
+func _draw_memory(ci: CanvasItem, font: Font, c: Vector2, box: Rect2) -> void:
+	if pattern_rounds.is_empty():
+		return
+	var size := memory_len()
+	var round: Array = pattern_rounds[mini(steps_done / size, pattern_rounds.size() - 1)]
+	var at: int = steps_done % size
+	# The last round of a pattern is short (10 = 4 + 4 + 2): show only its steps.
+	var n: int = mini(size, PATTERN_LEN - (steps_done / size) * size)
+	# Six items have to fit between the box's end caps.
+	var r: float = minf(box.size.y * 0.17, box.size.x * 0.6 / (n * 2.9))
+	var gap: float = r * 2.9
+	var x0: float = c.x - gap * (n - 1) * 0.5
+	for i in n:
+		var p := Vector2(x0 + gap * i, c.y)
+		var arrows: bool = pattern_kind == Kind.ARROW_MEMORY
+		if at == 0 or i >= at:
+			if at == 0:
+				if arrows:
+					_draw_arrow(ci, p, r * 1.1, int(round[i]), ARROW_NORMAL)
+				else:
+					_draw_swatch(ci, p, r, GATE_COLORS[round[i]])
+			else:
+				ci.draw_circle(p, r + 3.0, Color(0.05, 0.04, 0.12))
+				ci.draw_circle(p, r, Color(0.22, 0.25, 0.36))
+				var fs := int(r * 1.5)
+				var tw: float = font.get_string_size("?", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+				ci.draw_string(font, Vector2(p.x - tw * 0.5, p.y + fs * 0.36), "?", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.85, 0.9, 1.0))
+		elif arrows:
+			_draw_arrow(ci, p, r * 0.9, int(round[i]), Color(ARROW_NORMAL, MEMORY_DONE_ALPHA))
+		else:
+			var k: Color = GATE_COLORS[round[i]]
+			ci.draw_circle(p, r * 0.8, Color(k, MEMORY_DONE_ALPHA))
+
+
+## ARROW_SUM's box: its two arrows with a plus between them.
+func _draw_sum(ci: CanvasItem, font: Font, c: Vector2, h: float, parts: Array) -> void:
+	if parts.size() < 2:
+		return
+	var off: float = h * 0.62
+	_draw_arrow(ci, c - Vector2(off, 0.0), h * 0.28, int(parts[0]), ARROW_NORMAL)
+	_draw_arrow(ci, c + Vector2(off, 0.0), h * 0.28, int(parts[1]), ARROW_NORMAL)
+	var fs := int(h * 0.42)
+	var tw: float = font.get_string_size("+", HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	ci.draw_string(font, Vector2(c.x - tw * 0.5, c.y + fs * 0.36), "+", HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(0.85, 0.9, 1.0))
+
+
+## Kind.SPOT's box: one dot per slot of `layout`, placed as the slots are on
+## the field, coloured as `spot` says; a slot with no gate a faint ring.
+func _draw_spot(ci: CanvasItem, c: Vector2, h: float, spot: Array, layout: int) -> void:
+	# Kept inside the frame's dark middle, about 0.66 of the box's height:
+	# at 0.27 apart and 0.15 across, the top and bottom dots sat on the frame.
+	# Flattened (up and down closer than left and right) to fit.
+	var dy: float = h * 0.2
+	var dx: float = h * 0.52
+	var r: float = h * 0.13
+	# The grid's corners take the same height, closer in sideways.
+	var gx: float = h * 0.3
+	var at := [Vector2(-dx, 0.0), Vector2(dx, 0.0), Vector2(0.0, -dy), Vector2(0.0, dy),
+		Vector2(-gx, -dy), Vector2(gx, -dy), Vector2(-gx, dy), Vector2(gx, dy)]
+	for s in LAYOUT_SLOTS[layout]:
+		var k: int = spot[s]
+		if k < 0:
+			ci.draw_arc(c + at[s], r * 0.7, 0.0, TAU, 20, SPOT_EMPTY, 1.5, true)
+		else:
+			_draw_swatch(ci, c + at[s], r, GATE_COLORS[k])
+
+
 func _draw_arrow(ci: CanvasItem, c: Vector2, size: float, dir: int, color: Color) -> void:
-	# Drawn pointing right, then turned: slots are left, right, up, down.
+	# Drawn pointing right, then turned to the slot: left, right, up, down,
+	# then the grid's up-left, up-right, down-left, down-right.
 	var pts := PackedVector2Array([
 		Vector2(-0.9, -0.28), Vector2(0.15, -0.28), Vector2(0.15, -0.62),
 		Vector2(0.95, 0.0), Vector2(0.15, 0.62), Vector2(0.15, 0.28), Vector2(-0.9, 0.28)])
-	var ang: float = [PI, 0.0, -PI * 0.5, PI * 0.5][dir]
+	var ang: float = [PI, 0.0, -PI * 0.5, PI * 0.5, -PI * 0.75, -PI * 0.25, PI * 0.75, PI * 0.25][dir]
 	var out := PackedVector2Array()
 	for p in pts:
 		out.append(c + p.rotated(ang) * size)

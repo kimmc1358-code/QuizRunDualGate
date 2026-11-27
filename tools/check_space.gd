@@ -6,12 +6,15 @@ extends SceneTree
 #   Godot_v4.7.2-stable_win64_console.exe --headless --path . --script res://tools/check_space.gd
 #
 #   1. A run starts with full hearts on a colour pattern with a step in
-#      flight; 2 gates a step in the first cycle, 3 in the second, then 4;
-#      every step of each kind has exactly one right gate: the one in the
-#      pattern's colour (every gate a different colour), the slot the arrow
-#      points at (the one opposite for a red arrow), or the one with the
-#      sequence's symbol for that step, in order and round again, among
-#      distinct symbols, the sequence's others as decoys.
+#      flight. Every pattern in the bank (SpaceRun.BANK), at every level,
+#      puts out the gates the bank gives it and the right gates the pattern
+#      asks for: COLOR the step's colour, changing exactly every `switch`
+#      steps; MIX the pattern's colour, or on an avoid step every gate but
+#      that one (avoid steps in MIX only, at every level); SPOT the one gate
+#      whose colour is not the box's dot for its slot; MEMORY the round's
+#      colour for that step, rounds of `len` covering the pattern with no
+#      colour twice in a row; ARROW the slot the arrow points at (the one
+#      opposite for a red arrow). Every gate in a step a different colour.
 #   2. Each slot sits in its own quarter of the field (the quarter decides
 #      the answer), no two gate rings touch, and every slot and field corner
 #      is on screen below the question box at 16:9 and 20:9.
@@ -114,7 +117,7 @@ func _off_centre_pos(w: Dictionary) -> Vector2:
 
 ## Somewhere in a quarter with no gate of the step in it.
 func _clear_pos(w: Dictionary) -> Vector2:
-	for s in sp.SLOTS.size():
+	for s in sp.LAYOUT_SLOTS[int(w.get("layout", 0))]:
 		if not w.planets.any(func(p): return int(p.slot) == s):
 			return sp.SLOTS[s]
 	return Vector2.ZERO
@@ -180,71 +183,204 @@ func _run() -> void:
 	_check(m.hearts == m.MAX_HEARTS and sp.phase == sp.Phase.PATTERN and sp.pattern_kind == sp.Kind.COLOR
 		and not sp.upcoming_wave().is_empty(),
 		"a run starts with %d hearts on a colour pattern, a step in flight" % m.MAX_HEARTS)
-	var counts := []
-	for c in range(4):
-		counts.append(sp.planets_for_cycle(c))
-	_check(counts == [2, 3, 4, 4], "gates per step by cycle: %s" % str(counts))
 	var bad := ""
-	for c in range(3):
-		sp.cycle = c
-		for kind in [sp.Kind.COLOR, sp.Kind.ARROW, sp.Kind.SEQUENCE]:
+	var gates_bad := ""
+	var avoids := {}
+	var colour_switches := {}
+	var spot_hidden := {}
+	# A gate's colour as an index into GATE_COLORS, read back off its glow.
+	var color_of := func(p: Dictionary) -> int:
+		var g: Color = p.base_glow
+		for i in sp.GATE_COLORS.size():
+			var gc: Color = sp.GATE_COLORS[i]
+			if Color(g.r, g.g, g.b).is_equal_approx(Color(gc.r, gc.g, gc.b)):
+				return i
+		return -1
+	# Every pattern in the bank at every level, read off the bank itself.
+	var layout_bad := ""
+	var layouts_seen := {}
+	# The arrows adding up to each grid corner, worked out from where the
+	# corner is rather than read from CORNER_PARTS.
+	var parts_of := func(slot: int) -> Array:
+		var at: Vector2 = sp.SLOTS[slot]
+		return [2 if at.y > 0.0 else 3, 0 if at.x < 0.0 else 1]
+	for kind in sp.BANK.keys():
+		for li in (sp.BANK[kind] as Array).size():
+			var level: int = li + 1
+			var spec: Dictionary = sp.BANK[kind][li]
+			sp.pattern_kind = kind
+			sp.pattern_level = level
+			var key := "%s L%d" % [sp.Kind.keys()[kind], level]
+			var coloured: bool = kind in [sp.Kind.COLOR, sp.Kind.MIX, sp.Kind.SPOT, sp.Kind.MEMORY]
+			layouts_seen[key] = {}
 			for k in range(60):
-				sp.pattern_color = k % sp.GATE_COLORS.size()
 				if k % 10 == 0:
-					sp.pattern_seq = sp._random_symbols(sp.SEQ_LEN[mini(c, sp.SEQ_LEN.size() - 1)])
+					sp._prepare_pattern()
 				sp.steps_spawned = k % 10
 				var w: Dictionary = sp._make_step(kind)
+				var n: int = w.planets.size()
 				var right: Array = w.planets.filter(func(p): return p.correct)
-				if w.planets.size() != sp.planets_for_cycle(c) or right.size() != 1:
-					bad = "kind %d: %d gates, %d right" % [kind, w.planets.size(), right.size()]
+				var wrong: Array = w.planets.filter(func(p): return not p.correct)
+				var colours := {}
+				for p in w.planets:
+					colours[color_of.call(p)] = true
+				layouts_seen[key][int(w.layout)] = true
+				# Every gate stands in a slot of the step's own layout.
+				var own: Array = sp.LAYOUT_SLOTS[int(w.layout)]
+				if not w.planets.all(func(p): return own.has(int(p.slot))):
+					layout_bad = "%s: a gate outside layout %d" % [key, w.layout]
+				if n != int(spec.gates):
+					gates_bad = "%s: %d gates, the bank says %d" % [key, n, spec.gates]
+				elif w.avoid:
+					avoids[key] = avoids.get(key, 0) + 1
+					# Anything but what the box names: n - 1 right, and the one
+					# wrong gate is the named colour or the named way.
+					var named_ok: bool = false
+					if kind == sp.Kind.MIX:
+						named_ok = wrong.size() == 1 and color_of.call(wrong[0]) == sp.pattern_color and colours.size() == n
+					elif kind == sp.Kind.ARROW_MIX:
+						named_ok = wrong.size() == 1 and int(wrong[0].slot) == int(w.dir)
+					if not named_ok:
+						bad = "%s avoid: %d wrong among %d gates" % [key, wrong.size(), n]
+				elif right.size() != 1:
+					bad = "%s: %d gates, %d right" % [key, n, right.size()]
+				elif kind == sp.Kind.COLOR or kind == sp.Kind.MIX or kind == sp.Kind.MEMORY:
+					# Read off the pattern's own lists here, not through
+					# memory_item, which is part of what is being checked.
+					var want: int = sp.pattern_color
+					if kind == sp.Kind.COLOR:
+						want = int(sp.pattern_colors[k % 10])
+					elif kind == sp.Kind.MEMORY:
+						var size: int = int(spec.len)
+						want = int(sp.pattern_rounds[(k % 10) / size][(k % 10) % size])
+					if color_of.call(right[0]) != want or colours.size() != n:
+						bad = "%s colour %d: right gate %d, %d colours among %d gates" % [key, want, color_of.call(right[0]), colours.size(), n]
+				elif kind == sp.Kind.SPOT:
+					# The box's dot matches its gate everywhere but at the
+					# right gate, and shows nothing where there is no gate.
+					var dots: Array = w.spot
+					for s in sp.SLOTS.size():
+						var gate: Array = w.planets.filter(func(p): return int(p.slot) == s)
+						if gate.is_empty():
+							if int(dots[s]) != -1:
+								bad = "%s: a dot at empty slot %d" % [key, s]
+						elif (int(dots[s]) == color_of.call(gate[0])) == bool(gate[0].correct) or int(dots[s]) < 0:
+							bad = "%s %s: slot %d dot %d, gate %d, right %s" % [key, str(dots), s, dots[s], color_of.call(gate[0]), str(gate[0].correct)]
+					if colours.size() != n:
+						bad = "%s: %d colours among %d gates" % [key, colours.size(), n]
 				else:
 					var r: Dictionary = right[0]
-					if kind == sp.Kind.COLOR:
-						var want: Color = sp.GATE_COLORS[sp.pattern_color]
-						var seen := {}
-						for p in w.planets:
-							seen[p.base_glow] = true
-						var rc: Color = r.base_glow
-						if not Color(rc.r, rc.g, rc.b).is_equal_approx(Color(want.r, want.g, want.b)) or seen.size() != w.planets.size():
-							bad = "colour %d: right gate %s, %d colours among %d gates" % [sp.pattern_color, str(rc), seen.size(), w.planets.size()]
-					elif kind == sp.Kind.SEQUENCE:
-						var want_sym: int = sp.pattern_seq[(k % 10) % sp.pattern_seq.size()]
-						var syms := {}
-						for p in w.planets:
-							syms[p.symbol] = true
-						var dup: bool = syms.size() != w.planets.size()
-						# A wrong gate shows another of the sequence's own
-						# symbols whenever the sequence has one to spare.
-						var decoy_from_seq: bool = w.planets.any(func(p): return not p.correct and sp.pattern_seq.has(p.symbol))
-						if int(r.symbol) != want_sym or dup or not decoy_from_seq:
-							bad = "sequence %s step %d: right gate %d (want %d), symbols %s" % [str(sp.pattern_seq), k % 10, r.symbol, want_sym, str(syms.keys())]
-					else:
-						var want_slot: int = sp._opposite(int(w.dir)) if w.reverse else int(w.dir)
-						if int(r.slot) != want_slot:
-							bad = "arrow %d (reverse %s): right gate in slot %d" % [w.dir, str(w.reverse), r.slot]
+					var want_slot: int = int(w.dir)
+					if kind == sp.Kind.ARROW_MEMORY:
+						var size: int = int(spec.len)
+						want_slot = int(sp.pattern_rounds[(k % 10) / size][(k % 10) % size])
+						# A diagonal can only be flown on the grid.
+						if (want_slot >= 4) != (int(w.layout) == sp.Layout.GRID):
+							layout_bad = "%s: direction %d on layout %d" % [key, want_slot, w.layout]
+					if kind == sp.Kind.ARROW_SUM:
+						var got: Array = (w.parts as Array).duplicate()
+						got.sort()
+						var expect: Array = parts_of.call(int(r.slot))
+						expect.sort()
+						if int(w.layout) != sp.Layout.GRID or got != expect:
+							bad = "%s: parts %s for corner %d" % [key, str(w.parts), r.slot]
+					if int(r.slot) != want_slot:
+						bad = "%s: the box points at %d, the right gate is in %d" % [key, want_slot, r.slot]
 				for p in w.planets:
 					p.node.free()
-	sp.cycle = 0
+			if kind == sp.Kind.COLOR:
+				# The colour changes exactly every `switch` steps, never to itself.
+				var cols: Array = sp.pattern_colors
+				var every: int = int(spec.switch)
+				var ok: bool = cols.size() == sp.PATTERN_LEN
+				for i in range(1, cols.size()):
+					var changes: bool = cols[i] != cols[i - 1]
+					ok = ok and changes == (every > 0 and i % every == 0)
+				colour_switches[key] = ok
+			if kind == sp.Kind.SPOT:
+				spot_hidden[key] = float(spec.hide)
+			# The layouts the level asks for, and no other: a mixed level shows
+			# both over sixty steps, ARROW_SUM only the grid.
+			var asked: int = int(spec.get("layout", sp.Layout.DIAMOND))
+			var seen: Dictionary = layouts_seen[key]
+			var fine: bool = seen.keys() == [asked]
+			if kind == sp.Kind.ARROW_SUM:
+				fine = seen.keys() == [sp.Layout.GRID]
+			elif asked == sp.Layout.MIXED:
+				fine = seen.has(sp.Layout.DIAMOND) and seen.has(sp.Layout.GRID)
+			if not fine:
+				layout_bad = "%s: layouts %s, asked %d" % [key, str(seen.keys()), asked]
+	sp.pattern_kind = sp.Kind.COLOR
+	sp.pattern_level = 1
 	sp.steps_spawned = 0
-	_check(bad == "", "every step has one right gate and it is the one the pattern asks for%s" % ("" if bad == "" else " — " + bad))
+	_check(gates_bad == "", "every pattern at every level puts out the gates the bank gives it%s" % ("" if gates_bad == "" else " — " + gates_bad))
+	_check(bad == "", "every step has its right gates and they are the ones the pattern asks for%s" % ("" if bad == "" else " — " + bad))
+	_check(layout_bad == "", "every step stands in one layout, the one its level asks for, a diagonal only on the grid%s" % ("" if layout_bad == "" else " — " + layout_bad))
+	var avoid_levels: int = (sp.BANK[sp.Kind.MIX] as Array).size() + (sp.BANK[sp.Kind.ARROW_MIX] as Array).size()
+	_check(avoids.keys().all(func(k): return k.begins_with("MIX") or k.begins_with("ARROW_MIX")) and avoids.size() == avoid_levels,
+		"avoid steps come in MIX and ARROW_MIX only, at every one of their levels (%s)" % str(avoids))
+	_check(colour_switches.values().all(func(v): return v),
+		"COLOR's target colour changes exactly every `switch` steps (%s)" % str(colour_switches))
+	var repeat := false
+	var sizes_ok := true
+	for spec in sp.BANK[sp.Kind.MEMORY]:
+		for t in 30:
+			var rounds: Array = sp._memory_rounds(int(spec.len), range(sp.GATE_COLORS.size()))
+			var flat: Array = []
+			for rd in rounds:
+				sizes_ok = sizes_ok and rd.size() == int(spec.len)
+				flat.append_array(rd)
+			sizes_ok = sizes_ok and flat.size() >= sp.PATTERN_LEN
+			for i in range(1, flat.size()):
+				repeat = repeat or flat[i] == flat[i - 1]
+	_check(sizes_ok and not repeat, "memory rounds cover the pattern, `len` colours each at every level, never one colour twice in a row")
+
+	# MEMORY's time to learn a round: at full streak speed, where a step is
+	# barely more than a second away, the top level's round still stays up
+	# MEMORY_SECONDS_EACH a colour before its first gate; the world is back
+	# to full speed for the steps flown from memory.
+	_fresh_run()
+	_hold_pattern()
+	var top: int = (sp.BANK[sp.Kind.MEMORY] as Array).size()
+	sp._begin_pattern(sp.Kind.MEMORY, top)
+	var first: Dictionary = sp.upcoming_wave()
+	var learn := 0.0
+	var dt := 1.0 / 60.0
+	while not first.resolved and learn < 20.0 and m.state == m.State.PLAYING:
+		sp.streak = 10
+		sp.pace = sp.PACE_MAX
+		m.hurt_elapsed = 0.1
+		_tick(dt)
+		learn += dt
+	var need: float = sp.memory_len() * sp.MEMORY_SECONDS_EACH
+	_tick(dt)
+	m.hurt_elapsed = -1.0
+	_check(learn >= need - 0.05 and sp.memory_slow == 1.0,
+		"a %d-colour round is up %.2f s before its first gate at full speed (at least %.1f), then full speed again" % [sp.memory_len(), learn, need])
 
 	# ---- 2 ----
-	# The quarters decide the answer, so each slot has to sit in its own one,
-	# and the four quarters have to share the field out between them.
+	# The quarters decide the answer, so in each layout each slot has to sit
+	# in its own one, and the four quarters have to share the field out.
 	var own := true
-	for i in sp.SLOTS.size():
-		own = own and sp.region_of(sp.SLOTS[i]) == i
-	var regions := {}
-	for x in range(-10, 11):
-		for y in range(-10, 11):
-			regions[sp.region_of(Vector2(x / 10.0, y / 10.0) * sp.FIELD_HALF)] = true
-	_check(own and regions.size() == 4, "each slot lies in its own quarter of the field, and the field splits four ways")
-	# Two gates' outer rings must not meet: diagonal neighbours are the closest.
+	var splits := true
+	for layout in [sp.Layout.DIAMOND, sp.Layout.GRID]:
+		var slots: Array = sp.LAYOUT_SLOTS[layout]
+		for s in slots:
+			own = own and sp.region_of(sp.SLOTS[s], layout) == s
+		var regions := {}
+		for x in range(-10, 11):
+			for y in range(-10, 11):
+				regions[sp.region_of(Vector2(x / 10.0 + 0.01, y / 10.0 + 0.01) * sp.FIELD_HALF, layout)] = true
+		splits = splits and regions.keys().all(func(r): return slots.has(r)) and regions.size() == 4
+	_check(own and splits, "in both layouts each slot lies in its own quarter of the field, and the field splits four ways")
+	# Two gates' outer rings must not meet within a layout: the diamond's
+	# diagonal neighbours and the grid's side by side are the closest.
 	var ring: float = sp.GATE_RADIUS * sp.GATE_OUTER_OF_HOLE
 	var min_gap := 1e9
-	for i in sp.SLOTS.size():
-		for j in range(i + 1, sp.SLOTS.size()):
-			min_gap = minf(min_gap, (sp.SLOTS[i] as Vector2).distance_to(sp.SLOTS[j]))
+	for slots in sp.LAYOUT_SLOTS:
+		for i in slots.size():
+			for j in range(i + 1, slots.size()):
+				min_gap = minf(min_gap, (sp.SLOTS[slots[i]] as Vector2).distance_to(sp.SLOTS[slots[j]]))
 	_check(min_gap > 2.0 * ring, "no two gate rings touch (closest %.2f apart, rings %.2f across)" % [min_gap, 2.0 * ring])
 	var off := ""
 	var w0 := float(ProjectSettings.get_setting("display/window/size/viewport_width"))

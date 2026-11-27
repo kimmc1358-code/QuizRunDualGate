@@ -7,7 +7,12 @@ extends SceneTree
 #   Godot_v4.7.2-stable_win64_console.exe --path . --resolution 480x854 \
 #       --script res://tools/capture_space_wave.gd -- <out dir> [options]
 #
-#   --kind color|arrow|sequence   the pattern (default color)
+#   --kind color|mix|spot|memory|arrow|amix|sum|amemory|avoid   the pattern
+#                             (default color);
+#                             avoid is a mix pattern started over until its
+#                             first step is an avoid step
+#   --level N                 the pattern's level in SpaceRun.BANK (default:
+#                             what the cycle would give)
 #   --cycle N                 0: 2 gates, 1: 3, 2 and up: 4 (default 2)
 #   --at 0.1,0.5,0.86,0.97    frames before judgement, as approach() fractions
 #   --fly right|wrong|stay|quarter   where the ship goes (default right);
@@ -99,13 +104,21 @@ func _go() -> void:
 	m.pause_button.visible = true
 
 	sp.cycle = int(_opt(args, "--cycle", "2"))
-	var kind: int = {"color": sp.Kind.COLOR, "arrow": sp.Kind.ARROW, "sequence": sp.Kind.SEQUENCE}.get(kind_name, sp.Kind.COLOR)
+	var kind: int = {"color": sp.Kind.COLOR, "mix": sp.Kind.MIX, "spot": sp.Kind.SPOT, "memory": sp.Kind.MEMORY, "arrow": sp.Kind.ARROW, "amix": sp.Kind.ARROW_MIX, "sum": sp.Kind.ARROW_SUM, "amemory": sp.Kind.ARROW_MEMORY, "avoid": sp.Kind.MIX}.get(kind_name, sp.Kind.COLOR)
 	for w0 in sp.waves:
 		for p in w0.planets:
 			p.node.queue_free()
 	sp.waves.clear()
-	sp._begin_pattern(kind)
+	sp._begin_pattern(kind, int(_opt(args, "--level", "-1")))
 	var w: Dictionary = sp.upcoming_wave()
+	for tries in 200:
+		if kind_name != "avoid" or w.avoid:
+			break
+		for p in w.planets:
+			p.node.queue_free()
+		sp.waves.clear()
+		sp._begin_pattern(kind, int(_opt(args, "--level", "-1")))
+		w = sp.upcoming_wave()
 
 	var goal := Vector2.ZERO
 	for p in w.planets:

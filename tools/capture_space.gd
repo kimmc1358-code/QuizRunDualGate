@@ -1,8 +1,7 @@
 extends SceneTree
 # Shoots the space game at each step of its cycle: a colour pattern with its
-# steps in sight, the same pattern a few right gates into a streak, a symbol
-# sequence pattern (in sight, then two steps in), an arrow pattern, the boss
-# fight and fever.
+# steps in sight, the same pattern a few right gates into a streak, an
+# arrow pattern, the boss fight and fever.
 #
 #   Godot_v4.7.2-stable_win64_console.exe --path . --resolution 480x854 \
 #       --script res://tools/capture_space.gd -- <out dir>
@@ -99,15 +98,6 @@ func _go():
 		_pass_right()
 	_tick(0.15)
 	await _shot("space_2_streak.png")
-
-	_restart_pattern(sp.Kind.SEQUENCE)
-	sp.ship_target = Vector2(0.3, -0.6)
-	_tick(2.4)
-	await _shot("space_3a_sequence.png")
-	for i in 2:
-		_pass_right()
-	_tick(0.6)
-	await _shot("space_3b_sequence_on.png")
 
 	_restart_pattern(sp.Kind.ARROW)
 	_tick(2.4)
