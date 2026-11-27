@@ -319,6 +319,31 @@ func _run() -> void:
 	_fly_wave_at(_clear_pos(sp.upcoming_wave()))
 	_check(m.hearts == hearts_before and sp.streak == 0 and sp.level == level_before,
 		"a quarter with no gate counts as a wrong gate")
+	# Changing the answer during the pull: steered from a wrong gate's quarter
+	# into the right one past half way in, the right gate is the one passed;
+	# steered away after CAPTURE_LOCK, the gate already chosen still is.
+	var late := func(first: Vector2, then_at: float, to: Vector2) -> void:
+		var lw: Dictionary = sp.upcoming_wave()
+		_park(first)
+		var g := 0
+		while not lw.resolved and g < 2000 and lw.z < sp.CAPTURE_Z * (1.0 - then_at):
+			m.hurt_elapsed = 0.1
+			_tick(1.0 / 60.0)
+			g += 1
+		_park(to)
+		while not lw.resolved and g < 4000:
+			m.hurt_elapsed = 0.1
+			_tick(1.0 / 60.0)
+			g += 1
+		m.hurt_elapsed = -1.0
+	var w_late: Dictionary = sp.upcoming_wave()
+	var combo0: int = m.combo
+	late.call(_wrong_pos(w_late), 0.6, _correct_pos(w_late))
+	_check(m.combo == combo0 + 1, "an answer changed 60%% of the way into the pull still counts (combo %d)" % m.combo)
+	w_late = sp.upcoming_wave()
+	combo0 = m.combo
+	late.call(_correct_pos(w_late), sp.CAPTURE_LOCK + 0.05, _wrong_pos(w_late))
+	_check(m.combo == combo0 + 1, "one changed after CAPTURE_LOCK does not (combo %d)" % m.combo)
 
 	# ---- 5 ----
 	# Rocks are random; across a few patterns' worth of gaps some come.

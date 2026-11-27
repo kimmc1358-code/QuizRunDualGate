@@ -126,7 +126,17 @@ const WARP_FOV_KICK := 6.0         # degrees at the top of the boost
 # CAPTURE_Z the ship is pulled into the gate of the quarter it is in, right
 # or wrong. A quarter with no gate pulls nothing and costs like a wrong gate.
 # CAPTURE_Z is 0.42 s of pull at PACE_START and 0.2 s at PACE_MAX.
+#
+# The gate used to be fixed the moment the pull began, with the drag ignored
+# from then on; the owner found it took hold too soon to change an answer at
+# the last moment. Now the player steers through the pull, the gate follows
+# their quarter until CAPTURE_LOCK of the way in, and the pull grows as
+# u^CAPTURE_PULL_POW (cubed, against squared before), so it only takes over
+# near the end: at half way it is an eighth of the way to the gate.
 const CAPTURE_Z := -6.0
+const CAPTURE_LOCK := 0.85
+const CAPTURE_PULL_POW := 3.0
+const PULL_GLIDE := 14.0          # 1/s, the pull sliding over to a newly chosen gate
 const CAPTURE_SHIP_SCALE := 0.55   # the ship shrinks into the hole as it goes in
 const SQUEEZE_RECOVER := 5.0       # 1/s, back to full size after the pass
 
@@ -296,6 +306,8 @@ var ship_vel := Vector2.ZERO
 var pace := 1.0                  # follows _pace_target(): the streak's speed
 var boost := 0.0                 # 0..1, the lunge after a pass
 var squeeze := 0.0               # 0..1, the ship shrinking into a gate
+var pulling := false             # a gate is drawing the ship in this frame
+var pull_pos := Vector2.ZERO     # where the pull has the ship; see ship_shown()
 
 var phase: int = Phase.PATTERN
 var phase_time := 0.0
@@ -659,6 +671,7 @@ func reset_run() -> void:
 	pace = PACE_START
 	boost = 0.0
 	squeeze = 0.0
+	pulling = false
 	if camera != null:
 		camera.fov = CAMERA_FOV
 	_enter(Phase.PATTERN)
@@ -671,6 +684,7 @@ func revive() -> void:
 	ship_target = Vector2.ZERO
 	boost = 0.0
 	squeeze = 0.0
+	pulling = false
 	if phase == Phase.BOSS:
 		phase_time = BOSS_ENTER_TIME
 		boss_fire_timer = BOSS_FIRE_INTERVAL * 1.5
@@ -969,7 +983,7 @@ func _place(p: Dictionary) -> void:
 
 
 func _touching(p: Dictionary) -> bool:
-	return ship_pos.distance_to(p.pos) <= p.radius + SHIP_HIT_RADIUS
+	return ship_shown().distance_to(p.pos) <= p.radius + SHIP_HIT_RADIUS
 
 
 ## Eases the world toward the streak's speed, and lets the lunge after a pass
@@ -977,33 +991,43 @@ func _touching(p: Dictionary) -> bool:
 func _update_pace(delta: float) -> void:
 	pace = lerpf(pace, _pace_target(), 1.0 - exp(-PACE_EASE * delta))
 	boost = maxf(0.0, boost - WARP_BOOST_DECAY * delta)
-	var w := upcoming_wave()
-	if w.is_empty() or not w.has("target"):
+	if not pulling:
 		squeeze = maxf(0.0, squeeze - SQUEEZE_RECOVER * delta)
 
 
-## The draw. Once `w` reaches CAPTURE_Z the gate of the ship's quarter is
-## fixed, and from then on the ship is pulled to its centre, arriving as the
-## step reaches the plane. The pull eases in (u squared) — it starts gently
-## and snaps shut, which is what being sucked in looks like. Dragging still
-## moves ship_target meanwhile, but it is overwritten here every frame.
-func _draw_in(w: Dictionary) -> void:
-	var aim := target_gate(w, ship_pos) if not w.has("target") else w.target as Dictionary
+## The draw. From CAPTURE_Z the ship is pulled toward the gate of the quarter
+## it is steered into, arriving as the step reaches the plane. The player
+## keeps steering all the way: ship_pos is where the finger puts the ship,
+## and the pull is laid over it (pull_pos, shown by ship_shown()), so moving
+## to another quarter changes the gate, and the pull glides over to it
+## (PULL_GLIDE). Only at CAPTURE_LOCK of the way in is the gate fixed. The
+## pull grows as u^CAPTURE_PULL_POW: barely there at first, then it snaps
+## shut, which is what being sucked in looks like.
+func _draw_in(w: Dictionary, delta: float) -> void:
+	var locked: bool = w.has("target")
+	var aim: Dictionary = w.target if locked else target_gate(w, ship_pos)
 	for p in w.planets:
 		p["aim"] = w.z >= AIM_Z and is_same(p, aim)
 	if w.z < CAPTURE_Z:
 		return
-	if not w.has("target"):
-		w["target"] = aim
-		w["from"] = ship_pos
-	if (w.target as Dictionary).is_empty():
-		return
 	var u: float = clampf((w.z - CAPTURE_Z) / -CAPTURE_Z, 0.0, 1.0)
-	var e: float = u * u
-	ship_pos = (w.from as Vector2).lerp(w.target.pos, e)
-	ship_target = ship_pos
-	ship_vel = Vector2.ZERO
-	squeeze = e
+	if not locked and u >= CAPTURE_LOCK:
+		w["target"] = aim
+	if not w.has("anchor"):
+		w["anchor"] = ship_pos
+	var goal: Vector2 = aim.pos if not aim.is_empty() else ship_pos
+	w.anchor = (w.anchor as Vector2).lerp(goal, 1.0 - exp(-PULL_GLIDE * delta))
+	var e: float = pow(u, CAPTURE_PULL_POW)
+	pull_pos = ship_pos.lerp(w.anchor, e)
+	pulling = true
+	squeeze = e if not aim.is_empty() else maxf(0.0, squeeze - SQUEEZE_RECOVER * delta)
+
+
+## Where the ship is on the plane: where it is steered, or, while a gate is
+## drawing it in, where the pull has it. Everything drawn at the ship and
+## everything that hits it uses this.
+func ship_shown() -> Vector2:
+	return pull_pos if pulling else ship_pos
 
 ## Which quarter of the field `pos` is in, as a slot index: the field is cut
 ## along its diagonals, so each quarter holds exactly one of SLOTS. Measured
@@ -1037,6 +1061,7 @@ func _resolve_wave(w: Dictionary) -> void:
 	if not hit.is_empty():
 		ship_pos = hit.pos
 		ship_target = hit.pos
+		pulling = false
 		boost = 1.0
 	if not hit.is_empty() and hit.correct:
 		_pass_gate(hit, true)
@@ -1186,7 +1211,7 @@ func _update_boss(delta: float) -> void:
 		boss_fire_timer = BOSS_FIRE_INTERVAL / (1.0 + 0.2 * cycle)
 		var shots: int = 1 + mini(cycle, 2)
 		for i in shots:
-			_fire_orb(ship_pos + Vector2((i - (shots - 1) * 0.5) * 1.1, 0.0))
+			_fire_orb(ship_shown() + Vector2((i - (shots - 1) * 0.5) * 1.1, 0.0))
 
 
 func _fire_orb(aim: Vector2) -> void:
@@ -1224,7 +1249,8 @@ func _fire(delta: float) -> void:
 	fire_timer -= delta
 	if fire_timer > 0.0:
 		return
-	var origin := Vector3(ship_pos.x, ship_pos.y, -0.8)
+	var shown := ship_shown()
+	var origin := Vector3(shown.x, shown.y, -0.8)
 	match weapon:
 		Weapon.BLASTER:
 			fire_timer = maxf(0.11, 0.30 - 0.018 * level)
@@ -1333,12 +1359,13 @@ func _update_run(delta: float) -> void:
 	if not main.space_run_live():
 		return
 	# Pattern steps.
+	pulling = false
 	for w in waves:
 		w.z += v
 		for p in w.planets:
 			p.z = w.z
 		if not w.resolved:
-			_draw_in(w)
+			_draw_in(w, delta)
 		if not w.resolved and w.z >= 0.0:
 			_resolve_wave(w)
 			if not main.space_run_live():
@@ -1368,7 +1395,7 @@ func _update_run(delta: float) -> void:
 		if not o.judged and node.position.z >= 0.0:
 			o.judged = true
 			var at := Vector2(node.position.x, node.position.y)
-			if at.distance_to(ship_pos) <= ORB_RADIUS + SHIP_HIT_RADIUS and not main._space_invulnerable():
+			if at.distance_to(ship_shown()) <= ORB_RADIUS + SHIP_HIT_RADIUS and not main._space_invulnerable():
 				o["dead"] = true
 				_spark(node.position)
 				main._space_hurt()
@@ -1503,7 +1530,8 @@ func _update_fx(delta: float, running: bool) -> void:
 				r.flash = maxf(0.0, r.flash - delta * 6.0)
 				(node.material_override as ShaderMaterial).set_shader_parameter("hit_flash", r.flash * 0.5)
 	if ship_pivot != null:
-		ship_pivot.position = Vector3(ship_pos.x, ship_pos.y, 0.0)
+		var shown := ship_shown()
+		ship_pivot.position = Vector3(shown.x, shown.y, 0.0)
 		var bank: float = clampf(-ship_vel.x * SHIP_BANK_PER_SPEED, -SHIP_BANK_MAX, SHIP_BANK_MAX)
 		var pitch: float = clampf(ship_vel.y * SHIP_PITCH_PER_SPEED, -SHIP_PITCH_MAX, SHIP_PITCH_MAX)
 		# Drawn in, the ship shrinks and rolls one full turn into the hole; the
@@ -1513,7 +1541,8 @@ func _update_fx(delta: float, running: bool) -> void:
 		ship_pivot.visible = main == null or main._hurt_blink_alpha() > 0.5
 	for i in drone_nodes.size():
 		var side: float = -1.0 if i == 0 else 1.0
-		var want := Vector3(ship_pos.x + side * 1.15, ship_pos.y + 0.35, 0.3)
+		var sp := ship_shown()
+		var want := Vector3(sp.x + side * 1.15, sp.y + 0.35, 0.3)
 		var d: Node3D = drone_nodes[i]
 		d.position = d.position.lerp(want, 1.0 - exp(-10.0 * delta))
 	for d in debris:
@@ -1871,7 +1900,8 @@ func _draw_arrow(ci: CanvasItem, c: Vector2, size: float, dir: int, color: Color
 
 ## The ship on screen, a square around its projected centre.
 func ship_screen_rect() -> Rect2:
-	var s := project(Vector3(ship_pos.x, ship_pos.y, 0.0))
+	var at := ship_shown()
+	var s := project(Vector3(at.x, at.y, 0.0))
 	var half: float = maxf(s.z * SHIP_WIDTH * 0.55, 20.0)
 	return Rect2(Vector2(s.x, s.y) - Vector2(half, half * 0.7), Vector2(half * 2.0, half * 1.4))
 
