@@ -75,49 +75,87 @@ hearts (`4a84936`).
 
 A ship seen from behind is steered up, down, left and right by **dragging
 anywhere**. The drag is relative, so the thumb never covers the ship. The
-ship fires on its own. Portrait, 480x854, as 1.x.
+ship fires on its own. Portrait, 480x854, as 1.x. For testing on PC, a
+debug build also steers with the arrow keys or WASD (`KEY_STEER_SPEED`); a
+release build ignores the keyboard.
 
 The same evening the owner said plainly that **the quiz itself is not fun**,
 which is why 1.x failed. The quiz was therefore made a gate to something
-else. One run goes round a cycle (`SpaceRun.Phase`):
+else. One run goes round a cycle (`SpaceRun.Phase`). It was quiz → roulette
+loot → boss → fever until 2026-11-27, when the owner replaced the one-off
+questions (a sum, a rock-paper-scissors hand, an arrow) with **patterns**:
+the quiz box states one rule, and a row of gate steps is flown under it,
+borrowing the rhythm of an endless-stairs game — many quick calls in a row,
+the next few in sight, faster the longer the run of right ones.
 
-1. **QUIZ.** A wave of gates brings one easy question. The kind is drawn
-   per wave from three. Each was picked because it is answered in a glance
-   and needs no translation.
-   - An arrow: fly to the gate it points at. A red arrow means the
-     opposite one, from the second cycle on.
-   - A rock-paper-scissors hand: fly to the hand that beats it.
-   - A single-digit sum.
+1. **PATTERN.** `PATTERN_LEN` (10) steps, one rule for the whole pattern,
+   one pattern kind per pattern (mixing kinds within one was judged too
+   hard). Each step is a row of `planets_for_cycle` gates.
+   - `Kind.COLOR`: the box shows a colour; fly through the gate of that
+     colour. Every gate in a step wears a different one of `GATE_COLORS`.
+   - `Kind.ARROW`: the box shows the front step's arrow; fly to the gate
+     it points at. A red arrow means the opposite one, from the second
+     cycle on.
+   - `Kind.SEQUENCE`: the box shows a row of symbols (`SEQ_LEN`: 3 in the
+     first cycle, then 4), the next one ringed in gold; fly through the
+     gates carrying them in that order, round again until the pattern
+     ends. The wrong gates carry the sequence's other symbols first. Each
+     mark sits in its gate's hole on every step in sight, so the next can
+     be read ahead; being drawn over the 3D world, a farther mark is
+     dropped wherever a nearer gate covers it (`_draw_gate_symbols`).
+     The marks are ten of the UI pack's 26 `Crest_Symbol` sprites, chosen
+     with the owner on 2026-11-27 as the ones whose outlines still tell
+     apart at 28 px, one from each family of look-alikes (the list and
+     why are in `build_ui_kit.gd`'s `SYMBOLS`). The owner preferred them
+     to the flat menu icons. Without the kit each falls back to its number.
+   - Still to come, in the owner's list: a sequence shown briefly and then
+     hidden, a colour-and-shape pair, and a route drawn as a little path.
 
-   Fly through the right gate and it lights up gold. Bullets pass through
-   the gates; only flying through answers. A wrong gate, or none, costs **a
-   weapon step and the combo, not a heart**. Hearts are spent only on
-   steering mistakes.
+   The first cycle is colour, then symbols; arrows, the closest to the old
+   quiz, join from the second cycle, which draws any of the three.
+   A right gate lights up gold, adds to the **streak** and pays stardust
+   (`STARDUST_PER_GATE` × the streak, so a whole pattern pays 55 against
+   10 for one broken every step). Every `POWER_EVERY` (3) in a row the
+   weapon steps up a level. A wrong gate, or a quarter with none, **only
+   breaks the streak and the combo** — no heart, no weapon, no stardust.
+   Bullets pass through the gates; only flying through counts. Hearts are
+   spent only on steering mistakes: asteroids in the gaps between steps
+   (`_spawn_gap_rocks`, kept `ROCK_CLEAR` off every slot's centre, where the
+   ship comes out of one gate and is drawn into the next) and boss shots.
+   The roulette and the old LOOT phase went with this change; the weapon
+   grows only with the streak and never drops.
 
    The targets were planets to ram at first, and became gates on
    2026-11-26 at the owner's call. The game is called Dual Gate, and the
    Synty pack has a warp gate in the same blue-and-orange as the ship. Only
    its inner ring and glow band are used (`GATE_RING_NODE`/`GATE_GLOW_NODE`).
    The outer ring's spurs reach 1.8 times the hole, and neighbouring slots
-   are 2.95 apart. The hole is judged exactly as a planet's disc was
-   (`GATE_RADIUS + SHIP_HIT_RADIUS`), so the slots, reach and fairness
-   below did not move. Every gate glows the same colour until judged; a
-   colour that differed would give the answer away. A passed gate shrinks
+   are 2.95 apart. The hole is 1.08 (`GATE_RADIUS`), as big as it goes
+   before two diagonal neighbours' rings meet at 1.10; since the ship is
+   drawn in (below), the size is only how it looks. An arrow gate glows
+   the plain cyan until judged, since a colour that differed would give
+   the answer away; a colour gate wears its colour, which is the
+   question's language. A passed gate shrinks
    away past the plane like the planets did: left at full size, the camera
    flew through the top slot's ring and it filled the screen. Fever planets and asteroids are still
    planets and rocks.
-2. **LOOT.** A right answer spins a roulette in the question box while an
-   asteroid field flies past, so the new weapon is tried at once. Nothing
-   stops. Every roulette result is a gain (`ROULETTE`); the weights are the
-   luck. Asteroids can be shot for points or dodged, and one that reaches
-   the ship costs a heart.
-3. **BOSS.** After `QUIZ_PER_CYCLE` (10) questions an enemy ship comes. A
-   strong weapon melts it, and a weak one can still win by dodging. Its
-   shots cost a heart.
-4. **FEVER.** The boss down: 8 s at speed with no questions. Every planet
-   touched or shot is smashed and nothing costs a heart. Then the next cycle
-   starts, with one more planet a wave (`planets_for_cycle`: 2, 3, then 4)
-   and a tougher boss.
+2. **FEVER.** Only after a pattern with **every** step right (owner's
+   call: all ten, not most): it also brings the next weapon, then drones
+   (`_power_up(true)`). 8 s at speed with no gates. Every planet touched or
+   shot is smashed for points and `STARDUST_FEVER_SMASH`, and nothing
+   costs a heart. A pattern with a miss goes straight on.
+3. **BOSS.** After `PATTERNS_PER_CYCLE` (2) patterns an enemy ship comes.
+   A strong weapon melts it, and a weak one can still win by dodging. Its
+   shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
+   cycle, and the next cycle starts, with one more gate a step
+   (`planets_for_cycle`: 2, 3, then 4), more rocks, a faster world and a
+   tougher boss.
+
+Stardust is won in a run (`Main.run_stardust`, shown in the slot right of
+the question box) and banked into the saved total (`[meta] stardust`) when
+the run is left, by game over or the pause menu (`_bank_stardust`). The
+mode select's top bar shows the total. It is what the upgrades and the
+BATTLE mode will spend.
 
 Flags, Stroop and MIX were removed with the rest of the 1.x code on
 2026-11-27 (phase 2).
@@ -133,30 +171,47 @@ question box. SpaceRun reports each outcome through Main's `_space_*`
 handlers. `space` is null only before boot. The old gate code that sat in
 Main, unreached, was removed on 2026-11-27.
 
-The fairness lives in one choice: **judging happens on the flight plane
-(z = 0), where the ship really is.** A wave is decided the frame it reaches
-the plane, by which planet's disc the ship's centre is inside
-(`PLANET_RADIUS + SHIP_HIT_RADIUS`). The camera sees the same 3D positions,
-so the picture at contact is the judgement. The slots are far enough apart
-that no point touches two planets.
+**The ship's quarter decides, not its aim** (2026-11-27). The answer used to
+be whichever hole the ship's centre was inside on the plane, and the owner
+found it both hard and unfair: lining a ship up with a hole is hard, and a
+ship sitting on the right side of the screen still slid past the right
+gate. Now the field is cut into four quarters along its diagonals, one per
+slot (`region_of`), and when a step reaches `CAPTURE_Z` the ship is pulled
+into the gate of the quarter it is in, right or wrong (`_draw_in`). The pull
+eases in and closes fast; the ship shrinks and rolls one full turn into the
+hole, and after the pass the world lunges (`WARP_BOOST`, with an FOV kick)
+before settling. A quarter with no gate pulls nothing and costs exactly
+what a wrong gate does. The cut is by quarter and not by nearest gate on
+purpose: with gates only left and right, a ship at the top of the screen
+being drawn sideways would look wrong. Once the front step is inside
+`AIM_Z`, the gate in the ship's quarter glows brighter (`GATE_GLOW_AIM`, or
+a colour gate's own colour lifted by `GATE_AIM_LIFT`; the same for right
+and wrong), so the player can see where they are about to go.
 
-**The answers are read off the plane, not off the planets.** A wave spawns
-eight times further from the camera than the plane, so its planets start
-bunched within about 40 px of each other with 8 px writing, and the answer
-could only be read in the last moment. The first playtest of the space game
-said exactly that. So the moment a wave appears, each slot it uses gets a
-ring and its answer plate at full size on the plane (`draw_labels`), and the
-planets fly in to fill them. The plate stays on the marker until judgement
-instead of moving onto the planet; a second plate riding the planet in sat
-beside the marker's for the last half second. The first markers — a filled
-disc, a solid ring, a plate at 0.8 of the planet — were said to hide too
-much, so the ring is now thin, faint and dashed, the plate 0.6, and the
-plate the ship is parked under goes see-through.
+**The speed is the streak's.** A single question wave used to take 2.9 s at
+full speed, and the owner said it was too fast both to decide and to steer;
+it was slowed near the gate for a while (`SLOW_START_Z`), but with steps
+`STEP_GAP` apart that pulsed the world every step. Now a
+pattern starts at `PACE_START` (0.6, 2.4 s a step), each right gate in a
+row adds `PACE_PER_STREAK`, up to `PACE_MAX`, and a miss eases the world
+back to the start, so whoever just missed gets the easy speed back. The gap
+was 22 at first, three steps in sight; the owner found the gates too close
+together and it went to 34 the same day, so two are in sight and the next
+can still be read while this one is flown. `pace` scales `speed()`, so the streaks and the sky follow it. The
+lunge after a pass is small (`WARP_BOOST` 0.5) for the same reason: at 1.6
+it ate half the gap to the next step.
 
-Judged planets also used to fly on into the camera; the top slot's sits
-almost on its line of sight and swelled to cover half the screen just as
-the next markers appeared. Past the plane they now shrink away over
-`PASS_SHRINK_DISTANCE`.
+**Answer plates on gates** (`draw_labels`) are kept for the symbol
+patterns to come; no gate carries a label now. From 2026-11-26 the answers
+were shown at full size on the plane, in dashed rings, from the moment a
+wave appeared; that covered every quarter of the screen, and it was removed
+on 2026-11-27. A plate sits in its gate's hole, at least `LABEL_MIN_FONT`,
+and fades in over `LABEL_FADE`; the plate of the gate the ship is being
+drawn into goes see-through.
+
+Judged gates also used to fly on into the camera; the top slot's sits
+almost on its line of sight and swelled to cover half the screen. Past the
+plane they now shrink away over `PASS_SHRINK_DISTANCE`.
 
 The camera keeps its **horizontal** field of view (`KEEP_WIDTH`). The game
 is 480 wide on every phone, so a taller phone sees more space above and
@@ -190,11 +245,12 @@ committed:
   |---|---|
   | Score bar | `Bar_Frame_01` |
   | Question box | `Button_Frame_01`, orange end caps; the most important panel gets the loudest frame |
-  | Health and roulette slots | `Frame_Box_Small_07`, one frame for both, so the question box sits centred between twins |
+  | Health and stardust slots | `Frame_Box_Small_07`, one frame for both, so the question box sits centred between twins |
   | Pause | `Frame_Box_Small_10`, with the II bars drawn on at build time; the pack has no pause icon |
   | Progress gauge | `Bar_Frame_08` |
   | Weapon readout's backing | `Menu_Item_Background_03_Blue` |
   | BEST mark | `Trophy_01`, tinted gold |
+  | Symbol pattern marks | ten `Crest_Symbol_NN`, cropped to their ink and centred in a 144 px square (`symbol_00`..`symbol_09.png`) |
 
 - Each frame is laid over its own `_Background` sprite, tinted dark, so
   white text on it reads against the space behind.
@@ -264,7 +320,7 @@ after a locked mode's line ran BATTLE's sentence out of the bar.
 
 | Mode | What it is | Currency |
 |---|---|---|
-| **QUIZ RUN**, the main mode | The game as it is: quiz gates, a roulette weapon on every right answer | The **only** source of currency |
+| **QUIZ RUN**, the main mode | The game as it is: gate patterns, the weapon growing with the streak | The **only** source of currency |
 | **BATTLE** | No quiz. The ship the player has upgraded fights enemies and bosses: a plain shooter | None |
 | **DAILY** | One quiz run a day, the same for everyone | A once-a-day bonus |
 
@@ -275,37 +331,40 @@ Boss rush was considered and dropped.
   let players skip the quiz, which is the game's identity and its title.
 - **Upgrades** apply in full in BATTLE and only slightly in QUIZ RUN (health
   and base attack), so growth is felt in the main mode too. QUIZ RUN's
-  weapons still come from the roulette alone.
+  weapons still come from the streak alone.
 - **DAILY uses no upgrades**, so its board ranks skill.
 - The mode select shows **three cards**: QUIZ RUN large, BATTLE and DAILY
   smaller beneath it.
 - Still to come: the hangar (Synty ships to collect), the upgrade shop, and
-  more roulette weapons. Three is too few for a random pick to stay exciting.
+  more weapons; three is a short ladder for a streak to climb.
 
 **The play-screen HUD, as laid out on 2026-11-26**, is meant to be redrawn
 around these slots:
 
 - The top row is the pause button, then one score bar running to the right
   edge: SCORE on the left, the best score on the right.
-- The second row has three slots, health | question box | roulette
-  (`_health_rect`, `_quiz_box_rect`, `_roulette_rect`). The row keeps the
+- The second row has three slots, health | question box | stardust
+  (`_health_rect`, `_quiz_box_rect`, `_stardust_rect`). The row keeps the
   old question box's position and height (`_quiz_row_rect`), so the gate
   zone under it did not move.
   - **Health** is three stacked cells instead of three hearts, so how many
     hits are left can still be counted at a glance.
-  - **The roulette slot** is always on screen. It spins only during LOOT;
-    it used to spin as text inside the question box, which now stays up,
-    empty, while it does. It is the same size as the health slot, so the
-    question box is centred; its result will be an icon once the art exists.
+  - **The stardust slot** holds the run's stardust, the kit's icon over the
+    count. It was the roulette's until the roulette went (2026-11-27). It
+    is the same size as the health slot, so the question box is centred.
+  - **The question box** draws the pattern's rule: a colour swatch, or the
+    front step's arrow.
   - **The question** keeps its old font size, which comes from the row's
     width rather than the narrower box's.
-- The progress gauge sits under the question box: questions to the boss,
+- The progress gauge sits under the question box: the pattern's steps
+  (gold while every one so far was right, the fever it is heading for),
   then the boss's health, then fever time. The combo sits on the right
   under the row, and the weapon readout bottom right.
 
 So nothing is drawn over the middle of the field where the gates fly. The
-mute button is gone, because sound belongs in settings. With it went the
-"won a power-up" banner, which drew the roulette's result a second time.
+mute button is gone, because sound belongs in settings. A weapon step is
+announced by a short banner under the gauge (`_space_powered_up`); while the
+roulette showed it in its slot, that banner was dropped as a duplicate.
 
 **Nine 1.x checkers were deleted on 2026-11-26**, once the gate game was
 gone from Main: `check_gate_reach`, `check_hearts`, `check_mix_mode`,
@@ -485,8 +544,8 @@ on failure.
 | `check_ads_wiring.gd` | with a fake plugin feeding the results: the revive continues only after a rewarded ad is watched to the end, stays on the popup when it is closed early, and continues free when no ad is ready or it fails to show — and on PC continues at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_revive_watch_ad`/`_on_revive_ad_finished`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and `debug_replay_tutorial` is not on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
-| `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed and therefore the **phase**, and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
-| `check_space.gd` | a run starts with full hearts on a question wave; 2, 3, then 4 gates a wave by cycle; every arrow, hand and sum question has exactly one right gate and it answers the question (a red arrow the opposite slot; sums never repeat a label); no point touches two slots, and every slot and field corner is on screen below the question box at 16:9 and 20:9; a right answer passes the gate, scores, keeps the hearts and starts the loot, where the roulette lands on a gain, asteroids fly and a new question follows; a wrong gate or none costs a weapon level and the combo, not a heart; an asteroid that reaches the ship costs a heart and one shot down scores; after 10 questions the boss comes, its shots cost a heart, and shooting it down scores, ends the cycle and starts FEVER; FEVER costs no heart and ends on a question; the last heart offers the revive and continuing keeps the score; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`, `_resolve_wave`, the roulette, weapons, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
+| `check_revive_continuity.gd` | a run ends only once every heart is lost; continuing after a rewarded ad keeps the score, the gates passed, the **patterns done** (a run is played through one perfect pattern and its fever first), and the peak combo — while the combo itself breaks and the leaderboard entry stays frozen at the pre-revive score through the second death | `_on_revive_continue`, `_offer_revive`, `_game_over`'s `leaderboard_score` capture, `_finish_run`, or `gates_passed`/`_get_phase_index` change |
+| `check_space.gd` | a run starts with full hearts on a colour pattern; 2, 3, then 4 gates a step by cycle; every colour, arrow and symbol step has exactly one right gate (the pattern's colour among distinct colours; the arrow's slot, a red arrow the opposite one; the sequence's symbol for that step, in order, among distinct symbols with the sequence's others as decoys); each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; rocks fly between the steps, never on a slot's centre, cost a heart on contact and score when shot; a perfect pattern brings the next weapon and FEVER (stardust per smash, no heart lost, then the next pattern), one with a miss does not; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart offers the revive and continuing keeps the score and restarts the pattern; a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`/`_on_revive_continue`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
 | `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the revive and game over popups both lay down `gameover_bgm` at `gameover_bgm_db` rather than silence, declining the revive does not restart the track, and every way out — PLAY AGAIN, revive-continue, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_offer_revive`/`_finish_run` touch the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |

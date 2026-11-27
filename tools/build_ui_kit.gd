@@ -70,6 +70,16 @@ const PIECES := {
 	# across the screen, so it is baked to that width.
 	"title_bar.png": ["SciFiMenus/SPR_SciFiMenus_Bar_11_Bottom", "", 17.0],
 }
+## The symbol pattern's marks (SpaceRun Kind.SEQUENCE), picked on 2026-11-27
+## from the pack's 26 Crest_Symbol sprites as the ten whose outlines still
+## tell apart at 28 px, one from each family of look-alikes: S1 the flat
+## wings, S2 the arrowhead, S3 the X, S4 the V shield, S7 the tall spiked
+## diamond, S17 the M block, S20 the trident, S23 the swirl, S24 the
+## octagon ring and S26 the gold star. Each is cropped to its ink and
+## centred in a SYMBOL_PX square, so a wide one and a tall one read the same
+## size; their canvases carry very different margins.
+const SYMBOLS := [1, 2, 3, 4, 7, 17, 20, 23, 24, 26]
+const SYMBOL_PX := 144      # 64 px at most on screen, x BAKE
 ## Copied as they are into assets/synty_ui/fonts/.
 const FONTS := ["Fonts/Zen_Dots/ZenDots-Regular.ttf", "Fonts/Zen_Dots/OFL.txt"]
 ## The pause sign drawn onto pause.png: two bars, as fractions of the canvas.
@@ -118,6 +128,22 @@ func _init() -> void:
 		_shrink(img, w, h)
 		img.save_png(ProjectSettings.globalize_path(OUT + out_name))
 		print("  %-16s %4dx%-4d from %s" % [out_name, w, h, p[0].get_file()])
+	for i in SYMBOLS.size():
+		var sym := _load(src, "Crests/SPR_SciFiMenus_Crest_Symbol_%02d" % SYMBOLS[i])
+		if sym == null:
+			quit(1)
+			return
+		var ink := _ink_rect(sym)
+		sym = sym.get_region(ink)
+		var k: float = float(SYMBOL_PX) / maxf(ink.size.x, ink.size.y)
+		var sw: int = maxi(1, int(round(ink.size.x * k)))
+		var sh: int = maxi(1, int(round(ink.size.y * k)))
+		_shrink(sym, sw, sh)
+		var square := Image.create(SYMBOL_PX, SYMBOL_PX, false, Image.FORMAT_RGBA8)
+		square.blit_rect(sym, Rect2i(Vector2i.ZERO, sym.get_size()), Vector2i((SYMBOL_PX - sw) / 2, (SYMBOL_PX - sh) / 2))
+		var name := "symbol_%02d.png" % i
+		square.save_png(ProjectSettings.globalize_path(OUT + name))
+		print("  %-16s %4dx%-4d from Crest_Symbol_%02d" % [name, SYMBOL_PX, SYMBOL_PX, SYMBOLS[i]])
 	# The title's face. Zen Dots is SIL OFL, so it could be committed, but it
 	# travels with the rest of the kit; its licence goes with it.
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT + "fonts/"))

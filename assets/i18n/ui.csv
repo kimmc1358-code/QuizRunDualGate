@@ -4,17 +4,20 @@ LEADERBOARD,LEADERBOARD,리더보드
 It fires on its own.","DRAG anywhere to steer the ship.
 It fires on its own.","화면 아무 데나 끌어서 우주선을 조종하세요.
 총은 저절로 쏩니다."
-"Read the question up here,
-then fly through the gate
-with the right answer.","Read the question up here,
-then fly through the gate
-with the right answer.","위쪽에 나오는 문제를 보고
-정답이 적힌 게이트를
-통과하세요."
-"Right answers power up your gun.
-After 10 questions, the boss comes!","Right answers power up your gun.
-After 10 questions, the boss comes!","정답을 맞히면 무기가 강해집니다.
-10문제가 끝나면 보스가 나타나요!"
+"Fly through the gate this box
+asks for: its colour, its arrow,
+or its symbols, in order.","Fly through the gate this box
+asks for: its colour, its arrow,
+or its symbols, in order.","이 칸이 알려 주는 게이트를 통과하세요.
+같은 색, 화살표가 가리키는 쪽,
+또는 기호를 순서대로요."
+"Right gates in a row speed you up,
+power your gun and pay more stardust.
+All 10 right: FEVER!","Right gates in a row speed you up,
+power your gun and pay more stardust.
+All 10 right: FEVER!","연달아 맞히면 빨라지고 무기가 강해지며
+스타더스트도 더 많이 받아요.
+10개 모두 맞히면 피버!"
 TAP TO CONTINUE,TAP TO CONTINUE,탭하면 다음
 TAP TO START,TAP TO START,탭하면 시작
 PAUSED,PAUSED,일시정지
@@ -71,7 +74,7 @@ CONTINUE,CONTINUE,이어하기
 QUIZ RUN,QUIZ RUN,퀴즈 런
 BATTLE,BATTLE,배틀
 DAILY,DAILY,데일리
-Answer quizzes to win random weapons and earn stardust!,Answer quizzes to win random weapons and earn stardust!,문제를 맞혀 랜덤 무기를 얻고 스타더스트를 모으세요!
+Fly through the right gates to power up and earn stardust!,Fly through the right gates to power up and earn stardust!,맞는 게이트를 지나 무기를 키우고 스타더스트를 모으세요!
 Your upgraded ship against enemies and bosses. No quiz.,Your upgraded ship against enemies and bosses. No quiz.,강화한 비행기로 적과 보스를 물리치세요. 퀴즈는 없어요.
 "One quiz run a day, the same for everyone. Bonus stardust!","One quiz run a day, the same for everyone. Bonus stardust!","하루 한 판, 모두 같은 문제! 보너스 스타더스트!"
 COMING SOON,COMING SOON,준비 중

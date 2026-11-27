@@ -1,25 +1,27 @@
 extends SceneTree
 
-# One quiz wave, from appearing to flying past, as a single strip image —
-# for any change to how a wave looks (the gates, the arrival markers, the
-# plates, the pass flash) where the question is "does it look right".
+# One pattern step, from appearing to flying past, as a single strip image —
+# for any change to how a step looks (the gates, their colours, the aim
+# glow, the draw, the pass flash) where the question is "does it look right".
 #
 #   Godot_v4.7.2-stable_win64_console.exe --path . --resolution 480x854 \
 #       --script res://tools/capture_space_wave.gd -- <out dir> [options]
 #
-#   --kind math|arrow|rps     the question (default math)
+#   --kind color|arrow|sequence   the pattern (default color)
 #   --cycle N                 0: 2 gates, 1: 3, 2 and up: 4 (default 2)
 #   --at 0.1,0.5,0.86,0.97    frames before judgement, as approach() fractions
-#   --fly right|wrong|stay    where the ship goes (default right)
+#   --fly right|wrong|stay|quarter   where the ship goes (default right);
+#                             quarter: the right gate's quarter but off its
+#                             hole, to watch the ship being drawn in
 #   --after 0.07,0.2,0.4      frames after judgement, in seconds
 #
 # Writes <out dir>/wave_<kind>_<fly>.png, the frames left to right.
 #
 # It goes straight into a run and drives SpaceRun.tick by hand, as
 # capture_space.gd does: no logo, splash or mode select to wait through,
-# no random question kind to wait for, and the same frames on any PC. Only
+# no random pattern kind to wait for, and the same frames on any PC. Only
 # the menus' state is skipped — what is drawn is the real game's draw code.
-# It plays a real wave, so the save file is backed up and written back.
+# It plays a real step, so the save file is backed up and written back.
 
 const SAVE_PATH := "user://savegame.cfg"
 const DT := 1.0 / 60.0
@@ -76,7 +78,7 @@ func _grab() -> void:
 func _go() -> void:
 	var args := OS.get_cmdline_user_args()
 	var out: String = args[0] if args.size() > 0 and not args[0].begins_with("--") else "user://"
-	var kind_name := _opt(args, "--kind", "math")
+	var kind_name := _opt(args, "--kind", "color")
 	var fly := _opt(args, "--fly", "right")
 	var at := _floats(_opt(args, "--at", "0.1,0.5,0.86,0.97"))
 	var after := _floats(_opt(args, "--after", "0.07,0.2,0.4"))
@@ -97,12 +99,12 @@ func _go() -> void:
 	m.pause_button.visible = true
 
 	sp.cycle = int(_opt(args, "--cycle", "2"))
-	var kind: int = {"math": sp.Kind.MATH, "arrow": sp.Kind.ARROW, "rps": sp.Kind.RPS}.get(kind_name, sp.Kind.MATH)
+	var kind: int = {"color": sp.Kind.COLOR, "arrow": sp.Kind.ARROW, "sequence": sp.Kind.SEQUENCE}.get(kind_name, sp.Kind.COLOR)
 	for w0 in sp.waves:
 		for p in w0.planets:
 			p.node.queue_free()
 	sp.waves.clear()
-	sp.spawn_wave(kind)
+	sp._begin_pattern(kind)
 	var w: Dictionary = sp.upcoming_wave()
 
 	var goal := Vector2.ZERO
@@ -111,6 +113,10 @@ func _go() -> void:
 			goal = p.pos
 			if fly == "wrong":
 				break
+	if fly == "quarter":
+		for p in w.planets:
+			if p.correct:
+				goal = p.pos * 0.4 + Vector2(-p.pos.y, p.pos.x).normalized() * 0.5
 	sp.ship_target = goal
 
 	for t in at:

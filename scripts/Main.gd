@@ -47,9 +47,9 @@ const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the singl
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
-# 둘째 줄 양옆 칸(체력 | 룰렛)의 폭 — 둘이 같은 크기라 문제 박스가 가운데에
-# 온다(_quiz_box_rect). 룰렛 결과는 아이콘으로 보일 것이라 체력 칸만 하면
-# 된다(2026-11-26). 문제 박스는 그 나머지 — 480 폭에서 약 316px.
+# 둘째 줄 양옆 칸(체력 | 스타더스트)의 폭 — 둘이 같은 크기라 문제 박스가
+# 가운데에 온다(_quiz_box_rect). 룰렛이 있던 칸을 2026-11-27 스타더스트가
+# 물려받았다. 문제 박스는 그 나머지 — 480 폭에서 약 316px.
 const SIDE_SLOT_WIDTH := 70.0
 const HUD_SLOT_GAP := 6.0
 # Pause is scaled so its height matches the score box's exactly, which is
@@ -157,7 +157,7 @@ const SCORE_PER_COMBO := 10           # a right answer scores SCORE_PER_COMBO x 
 # _pop_scale's overshoot (the START pop).
 const POP_PEAK_SCALE := 1.22
 
-# A weapon won on the roulette, and each planet smashed in fever.
+# A weapon step won by the streak, and each planet smashed in fever.
 const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
 # Background music: the menu track, each mode's track and the game over one,
 # crossfaded by _play_bgm on the Music bus (_setup_audio_buses). There is no
@@ -446,6 +446,13 @@ const SAVE_KEY_RESTARTS_SINCE_AD := "restarts_since_ad"
 # 답을 여기 적어 두고 켜자마자 따른다.
 const SAVE_KEY_ADS_REMOVED := "removed"
 
+# 스타더스트(2.0 의 재화). 게이트를 맞게 지날 때, 피버에서 행성을 부술 때,
+# 보스를 잡을 때 번다(SpaceRun.STARDUST_*). 판 안에서는 run_stardust 에 모아
+# 두었다가 판을 떠날 때(_bank_stardust) 합계에 더해 저장한다 — 게이트마다
+# 쓰면 디스크를 판당 수십 번 건드린다.
+const SAVE_SECTION_META := "meta"
+const SAVE_KEY_STARDUST := "stardust"
+
 const SAVE_SECTION_AUDIO := "audio"
 # 언어. 저장이 없으면 기기 언어를 따른다 — 처음 켠 사람이 설정을 찾을 필요가
 # 없어야 한다. 한 번 고르고 나면 그 선택이 기기 언어보다 앞선다.
@@ -578,18 +585,12 @@ var restarts_since_interstitial: int = 0
 #
 # 부활을 거절하면 이 값이 곧 최종 점수라 아무 차이가 없다.
 var leaderboard_score: int = 0
-# 이 판에서 맞힌 문제 수. 분석의 post_score 가 싣고, 부활해도 이어진다.
+# 이 판에서 맞게 지난 게이트 수. 분석의 post_score 가 싣고, 부활해도 이어진다.
 var gates_passed: int = 0
 
 var flash_color := Color(0, 0, 0, 0)
 var flash_time := 0.0
 const FLASH_DURATION := 0.25
-
-# Back-to-back repeat guard for the sums: the PREVIOUS question's text, and
-# SpaceRun._easy_problem re-rolls a new one that matches it. Only the
-# immediately previous one: repeats further back are fine. Cleared per run
-# in _reset_game.
-var last_quiz_key: String = ""
 
 
 var current_mode: int = Mode.SKY  # picked on the mode select — see _apply_mode
@@ -631,6 +632,8 @@ var ad_hold_countdown: bool = false
 # 광고 제거. Store 가 Google Play 결제를 감싼다 — PC 에서는 available 이 false 다.
 var store: Store
 var ads_removed: bool = false
+var stardust_total: int = 0   # 저장된 합계
+var run_stardust: int = 0     # 이번 판에서 번 것, 아직 합계에 안 더한 것
 # 에디터에서 로그인한 화면을 보는 길. PC 에서는 진짜 로그인이 안 되므로 이것
 # 말고는 볼 방법이 없다. 켜면 "Test Player" 로 로그인된 채로 시작한다.
 #
@@ -1407,6 +1410,7 @@ func _load_best_score() -> void:
 	if cfg.load(SAVE_PATH) != OK:
 		return   # no save yet — a fresh install starts at 0, not an error
 	tutorial_seen = bool(cfg.get_value(SAVE_SECTION, SAVE_KEY_TUTORIAL, false))
+	stardust_total = int(cfg.get_value(SAVE_SECTION_META, SAVE_KEY_STARDUST, 0))
 	for mode in range(Mode.size()):
 		best_scores[mode] = int(cfg.get_value(
 			SAVE_SECTION, SAVE_KEY_BEST_PREFIX + str(mode), 0))
@@ -1446,7 +1450,8 @@ func _save_best_score(mode: int) -> void:
 # 1.x 는 한 번 틀리면 끝이었다. 첫 28일 데이터에서 1인당 판이 8개 남짓, 하루 뒤
 # 다시 오는 사람이 12% 정도였고, 주변 테스터는 한결같이 "어렵다"고 했다. 그래서
 # 판에 하트를 MAX_HEARTS 개 준다. 우주 판에서 하트는 조작의 실수 — 소행성과 보스
-# 탄 — 에만 쓰고, 오답은 무기 한 단계와 콤보로 치른다(_space_wrong). 마지막
+# 탄, 게이트 사이의 소행성 — 에만 쓰고, 오답 게이트는 연속 기록과 콤보만
+# 끊는다(_space_wrong). 마지막
 # 하트를 잃는 순간이 예전의 죽음이고, 그 뒤 흐름(부활 제안 → 게임오버)은 그대로다.
 #
 # 맞은 순간 콤보는 끊긴다 — 점수가 콤보에 비례하므로 하트가 남아도 실수의 값은
@@ -1501,8 +1506,8 @@ func _space_correct() -> void:
 	_spawn_combo_popup()
 
 
-## 오답 행성에 부딪쳤거나 어느 행성에도 닿지 않았을 때. 하트는 그대로다 —
-## 값은 무기가 한 단계 떨어지는 것(SpaceRun._weapon_down)과 끊긴 콤보로 치른다.
+## 틀린 게이트를 지났거나 게이트 없는 구역에 있었을 때. 하트도 무기도 그대로다
+## — 값은 끊긴 연속 기록(속도와 스타더스트 보너스가 처음으로)과 콤보로 치른다.
 ## 하트는 조작의 실수(소행성·보스 탄)에만 쓴다.
 func _space_wrong() -> void:
 	combo = 0
@@ -1525,10 +1530,11 @@ func _space_points(points: int) -> void:
 	score += points
 
 
-## 룰렛이 멈춰 무기가 올랐을 때. 무엇을 얻었는지는 룰렛 칸이 이미 보여 주므로
-## (SpaceRun.roulette_rect, 2026-11-26) 알림 문구는 따로 띄우지 않는다 — 띄우면
-## 같은 글자가 룰렛 칸 뒤에 겹쳐 나왔다. 소리만 낸다.
-func _space_powered_up(_label: String) -> void:
+## 연속 통과로 무기가 올랐을 때(SpaceRun._power_up). 룰렛이 있을 때는 그 칸이
+## 결과를 보여 줘서 문구를 안 띄웠지만, 룰렛이 없어진 지금은 이것이 유일한
+## 알림이다.
+func _space_powered_up(label: String) -> void:
+	_spawn_space_banner(label, Color(0.55, 0.92, 1.0))
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
 		fx_sound_chime.play()
 
@@ -1541,7 +1547,7 @@ func _space_boss_down(points: int) -> void:
 	_spawn_space_banner("+%d" % points, Color(1.0, 0.85, 0.3))
 
 
-# 보스 처치 점수를 화면 가운데에 잠깐 띄운다(룰렛 결과는 룰렛 칸이 보여 준다).
+# 보스 처치 점수와 무기 강화를 화면 가운데에 잠깐 띄운다.
 const SPACE_BANNER_TIME := 1.1
 var space_banner_text := ""
 var space_banner_color := Color.WHITE
@@ -1578,9 +1584,35 @@ func _space_fever_ended() -> void:
 
 
 func _space_fever_smash() -> void:
+	run_stardust += SpaceRun.STARDUST_FEVER_SMASH
 	score += maxi(1, int(round(SCORE_PER_COMBO * maxi(combo, 1) * FEVER_SMASH_SHARE)))
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
 		fx_sound_chime.play()
+
+
+## 게이트를 맞게 지났거나 보스를 잡았을 때 SpaceRun 이 번 만큼을 알린다.
+func _space_stardust(amount: int) -> void:
+	run_stardust += amount
+
+
+## 이번 판에 번 스타더스트를 합계에 더해 저장한다. 판을 떠나는 길은 둘 —
+## 게임오버(_finish_run)와 일시정지에서 나가기(_reset_game) — 이고 둘 다 부른다.
+## 먼저 부른 쪽이 run_stardust 를 비우므로 두 번 더해지지 않는다.
+func _bank_stardust() -> void:
+	if run_stardust <= 0:
+		return
+	stardust_total += run_stardust
+	run_stardust = 0
+	var cfg := ConfigFile.new()
+	cfg.load(SAVE_PATH)   # keep anything else already stored there
+	cfg.set_value(SAVE_SECTION_META, SAVE_KEY_STARDUST, stardust_total)
+	var err := cfg.save(SAVE_PATH)
+	if err != OK:
+		push_warning("could not write %s (error %d) — stardust will not persist" % [SAVE_PATH, err])
+	if mode_select_panel != null:
+		mode_select_panel.set_stardust(stardust_total)
+
+
 var hurt_elapsed: float = -1.0       # -1 = 무적 아님
 var heart_lost_elapsed: float = -1.0 # -1 = 사라지는 하트 없음
 
@@ -1740,6 +1772,7 @@ func _on_ads_fullscreen(showing: bool) -> void:
 
 func _finish_run() -> void:
 	state = State.GAMEOVER
+	_bank_stardust()
 	_log_event("post_score", {
 		"level_name": Analytics.mode_name(current_mode),
 		"score": score,
@@ -2040,16 +2073,16 @@ func _tutorial_steps(view_size: Vector2) -> Array:
 		},
 		{
 			"holes": [{"rect": quiz, "round": quiz.size.y * 0.42}],
-			"text": tr("Read the question up here,\nthen fly through the gate\nwith the right answer."),
+			"text": tr("Fly through the gate this box\nasks for: its colour, its arrow,\nor its symbols, in order."),
 		},
 		{
-			# 게이지(10문제의 진행)와 무기 표시를 같이 밝힌다 — 맞힐수록 아래쪽
-			# 무기가 오르고, 위쪽 게이지가 차면 보스가 온다.
+			# 게이지(패턴 10칸의 진행)와 무기 표시를 같이 밝힌다 — 연달아 맞힐수록
+			# 아래쪽 무기가 오르고, 위쪽 게이지가 금색인 채로 차면 피버가 온다.
 			"holes": [
 				{"rect": gauge.grow(4.0), "round": gauge.size.y},
 				{"rect": weapon, "round": weapon.size.y * 0.5},
 			],
-			"text": tr("Right answers power up your gun.\nAfter 10 questions, the boss comes!"),
+			"text": tr("Right gates in a row speed you up,\npower your gun and pay more stardust.\nAll 10 right: FEVER!"),
 		},
 	]
 
@@ -2114,11 +2147,11 @@ func _reset_game() -> void:
 	if run_active:
 		_ad_note_run_left()
 		run_active = false
+	_bank_stardust()
 	score = 0
 	combo = 0
 	max_combo = 0
 	gates_passed = 0
-	last_quiz_key = ""  # repeat guard is per-run — see last_quiz_key
 	revive_offered = false
 	run_revived = false
 	leaderboard_score = 0
@@ -2353,6 +2386,7 @@ func _rebuild_for_language() -> void:
 		pause_panel.set_volumes(sfx_volume, music_volume)
 	if mode_select_panel != null:
 		mode_select_panel.set_best_scores(best_scores)
+		mode_select_panel.set_stardust(stardust_total)
 	queue_redraw()
 
 
@@ -2692,6 +2726,7 @@ func _set_state(new_state: int) -> void:
 	# 기록을 갈아치웠을 수 있다.
 	if state == State.MODE_SELECT:
 		mode_select_panel.set_best_scores(best_scores)
+		mode_select_panel.set_stardust(stardust_total)
 
 
 # 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
@@ -2779,7 +2814,7 @@ func _quiz_row_rect(view_size: Vector2) -> Rect2:
 	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
 
 
-# 두 번째 줄은 세 칸이다(2026-11-26): 체력 | 문제 박스 | 룰렛. 줄 전체의 자리와
+# 두 번째 줄은 세 칸이다(2026-11-26): 체력 | 문제 박스 | 스타더스트(처음엔 룰렛). 줄 전체의 자리와
 # 높이는 예전 문제 박스 그대로(_quiz_row_rect) 두고 폭만 나눈다 — 그래야 그
 # 아래 게이트가 놓이는 판이 한 픽셀도 안 움직인다. 하트가 게이지 아래,
 # 룰렛이 그 가운데에 따로 있던 것을 문제 박스 양옆으로 올려, 게이트가 날아오는
@@ -2796,7 +2831,7 @@ func _health_rect(view_size: Vector2) -> Rect2:
 	return Rect2(row.position, Vector2(SIDE_SLOT_WIDTH, row.size.y))
 
 
-func _roulette_rect(view_size: Vector2) -> Rect2:
+func _stardust_rect(view_size: Vector2) -> Rect2:
 	var row := _quiz_row_rect(view_size)
 	return Rect2(Vector2(row.end.x - SIDE_SLOT_WIDTH, row.position.y), Vector2(SIDE_SLOT_WIDTH, row.size.y))
 
@@ -2821,7 +2856,7 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	if state == State.PLAYING or state == State.COUNTDOWN:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
-		space.draw_hud(ci, _quiz_box_rect(view_size), _roulette_rect(view_size))
+		space.draw_hud(ci, _quiz_box_rect(view_size), _stardust_rect(view_size))
 		_draw_hearts(ci, view_size)
 	_draw_combo_glow(view_size, ci)
 
@@ -2916,7 +2951,7 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	var area_right: float = top_left.x + draw_size.x * QUIZ_TEXT_RIGHT_FRAC - pad
 	var max_width: float = area_right - area_left
 	# Sized off the WIDTH on purpose — see QUIZ_TEXT_MAX_FONT_FRAC — and off the
-	# whole row's, not the box's: since the health and roulette slots took
+	# whole row's, not the box's: since the health and stardust slots took
 	# the box's sides (2026-11-26) the box is narrower, and the question
 	# should not shrink with it. _fit_font_size still shrinks a long one.
 	var row_w: float = _quiz_row_rect(view_size).size.x

@@ -43,7 +43,7 @@ const CARD_NAMES := ["QUIZ RUN", "BATTLE", "DAILY"]
 ## it will be, but PLAY does nothing for it.
 const CARD_READY := [true, false, false]
 const CARD_EXPLAIN := [
-	"Answer quizzes to win random weapons and earn stardust!",
+	"Fly through the right gates to power up and earn stardust!",
 	"Your upgraded ship against enemies and bosses. No quiz.",
 	"One quiz run a day, the same for everyone. Bonus stardust!",
 ]
@@ -96,6 +96,22 @@ const EXPLAIN_FRAME_PATH := KIT + "explain_bar.png"
 const EXPLAIN_FRAME_CAP := 40.0
 const PLAY_TEXT_COLOR := Color(1.0, 0.98, 0.92)
 const PLAY_TEXT_RIM := Color(0.36, 0.12, 0.02)
+# PLAY answers a press (2026-11-27). Held, the button sinks a little and its
+# yellow face warms up; let go, the face flashes and a ghost of the frame
+# swells off it. Nothing else on this screen is the way into a run, so it is
+# the one button that gets a show. The run starts once the flash has peaked:
+# emitting at once swapped the screen in the same frame and the effect was
+# never seen. Both glows are drawn additively by _play_fx, so they light the
+# art instead of painting a flat colour over it.
+const PLAY_FACE_SRC := Rect2(87, 67, 233, 60)   # the yellow core in play_button.png, measured
+const PLAY_FACE_GROW := 1.45             # the glow spills past the core onto the face's darker edge
+const PLAY_HELD_SCALE := 0.95
+const PLAY_HELD_GLOW := 0.45             # face glow while held, 0..1
+const PLAY_GLOW_COLOR := Color(1.0, 0.78, 0.30)
+const PLAY_LAUNCH_TIME := 0.28           # s from release to the run starting
+const PLAY_GHOST_GROW := 0.30            # the ghost frame ends this much larger
+const PLAY_GHOST_COLOR := Color(1.0, 0.88, 0.55)   # paler than the glow: at the glow's orange the ghost read as a brown smudge on the dark sky
+const PLAY_EASE_RATE := 18.0             # 1/s, how fast the held glow follows the finger
 const BAR_FRAME_PATH := KIT + "score_bar.png"
 const BAR_FRAME_CAP := 60.0
 const PERSON_ICON := KIT + "icon_person.png"
@@ -151,6 +167,7 @@ const SFX_CREAM_FILE := "button_cream.wav"
 
 var selected_index := 0
 var _ads_removed := false
+var _stardust := 0
 var _best := PackedInt32Array()
 var _built := false
 
@@ -171,6 +188,10 @@ var _upgrade: Button
 var _leaderboard: Button
 var _remove_ads: Button
 var _explain_label: Label
+var _play_fx: Control      # additive layer for PLAY's glow and ghost
+var _play_held := 0.0      # 0..1, eased toward "is the finger on PLAY"
+var _launch_t := -1.0      # s since PLAY was released; < 0 when idle
+var _glow_tex: GradientTexture2D
 
 
 # 조립은 로고가 뜬 뒤에 Main 이 ensure_built() 로 켠다. 두 번 불러도 한 번만.
@@ -208,10 +229,22 @@ func _ready() -> void:
 	_layout()
 
 
-# Only the sweep moves on this screen; redrawn while it is up.
-func _process(_delta: float) -> void:
-	if _built and is_visible_in_tree():
-		queue_redraw()
+# The sweep and PLAY's press are what move on this screen; redrawn while it is up.
+func _process(delta: float) -> void:
+	if not _built or not is_visible_in_tree():
+		return
+	if _play != null:
+		var target := 1.0 if _play.get_draw_mode() == BaseButton.DRAW_PRESSED else 0.0
+		_play_held = lerpf(_play_held, target, 1.0 - exp(-PLAY_EASE_RATE * delta))
+	if _launch_t >= 0.0:
+		_launch_t += delta
+		if _launch_t >= PLAY_LAUNCH_TIME:
+			_launch_t = -1.0
+			_play_held = 0.0
+			start_pressed.emit(CARD_MODES[selected_index])
+	queue_redraw()
+	if _play_fx != null:
+		_play_fx.queue_redraw()
 
 
 func _notification(what: int) -> void:
@@ -251,6 +284,15 @@ func _build() -> void:
 	_remove_ads.add_theme_color_override("font_hover_color", REMOVE_ADS_COLOR)
 	_remove_ads.visible = not _ads_removed
 	_remove_ads.pressed.connect(func(): _play_sfx(_sfx_cream); remove_ads_pressed.emit())
+	_play_fx = Control.new()
+	_play_fx.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_play_fx.set_anchors_preset(Control.PRESET_FULL_RECT)
+	var add := CanvasItemMaterial.new()
+	add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	_play_fx.material = add
+	_play_fx.draw.connect(_draw_play_fx)
+	add_child(_play_fx)
+	_launch_t = -1.0
 	_explain_label = Label.new()
 	_explain_label.add_theme_font_override("font", _font)
 	_explain_label.add_theme_color_override("font_color", TEXT_COLOR)
@@ -357,8 +399,7 @@ func _draw() -> void:
 	var ih: float = _r.stardust.size.y * 0.55
 	var iw: float = ih * sd_icon.get_width() / sd_icon.get_height()
 	draw_texture_rect(sd_icon, Rect2(_r.stardust.position + Vector2(20.0 * k, (_r.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
-	# No currency is earned yet; the readout holds its place.
-	_text_right(_font, "0", Vector2(_r.stardust.end.x - 22.0 * k, _r.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
+	_text_right(_font, ScoreFormat.compact(_stardust), Vector2(_r.stardust.end.x - 22.0 * k, _r.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
 
 	TitleArt.draw_emblem(self, _r.emblem_mid, EMBLEM_H * k, EMBLEM_WREATH_H * k,
 		size.x, MARGIN * k, int(EMBLEM_WORD_MAX * k), _title_font, k * EMBLEM_WORD_MAX / 44.0)
@@ -369,9 +410,13 @@ func _draw() -> void:
 	_draw_bar(_r.explain, EXPLAIN_FRAME_PATH, EXPLAIN_FRAME_CAP)
 
 	var ready: bool = CARD_READY[selected_index]
+	var ps: float = _play_scale() if ready else 1.0
+	var pc: Vector2 = _r.play.get_center()
+	draw_set_transform(pc * (1.0 - ps), 0.0, Vector2(ps, ps))
 	_draw_bar(_r.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color.WHITE if ready else Color(1, 1, 1, 0.45))
-	_text_center(_title_font, tr(PLAY_TEXT) if ready else tr(COMING_SOON), _r.play.get_center(),
+	_text_center(_title_font, tr(PLAY_TEXT) if ready else tr(COMING_SOON), pc,
 		int((36 if ready else 22) * k), PLAY_TEXT_COLOR if ready else LOCK_TEXT, PLAY_TEXT_RIM if ready else NAME_RIM)
+	draw_set_transform(Vector2.ZERO)
 
 	var tools := [[_r.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true], [_r.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true],
 		[_r.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false]]
@@ -484,16 +529,85 @@ func _nine(tex: Texture2D, r: Rect2, margin: float) -> void:
 
 ## A bar with its ends kept whole and only the middle stretched — the same
 ## cut as Main._draw_horizontal_slice; `cap` is in the texture's pixels.
-func _draw_bar(r: Rect2, path: String, cap: float, tint := Color.WHITE) -> void:
+## PLAY's size: sunk while held, springing back past full size as it launches.
+func _play_scale() -> float:
+	var s: float = lerpf(1.0, PLAY_HELD_SCALE, _play_held)
+	if _launch_t >= 0.0:
+		var t: float = clampf(_launch_t / PLAY_LAUNCH_TIME, 0.0, 1.0)
+		s = lerpf(PLAY_HELD_SCALE, 1.0, minf(1.0, t * 3.0)) + 0.04 * sin(PI * t)
+	return s
+
+
+## Where the yellow core of play_button.png lands inside a drawn PLAY rect. The
+## art is three-sliced like _draw_bar does it, so x maps through the caps and
+## the stretched middle separately.
+func _play_face_rect(r: Rect2) -> Rect2:
+	var tex := ArtSlot.texture(PLAY_FRAME_PATH)
+	var tw: float = tex.get_width()
+	var s: float = r.size.y / tex.get_height()
+	var c: float = minf(PLAY_FRAME_CAP * s, r.size.x * 0.5)
+	var mid: float = (r.size.x - c * 2.0) / maxf(1.0, tw - PLAY_FRAME_CAP * 2.0)
+	var map_x := func(x: float) -> float:
+		if x <= PLAY_FRAME_CAP:
+			return x * c / PLAY_FRAME_CAP
+		if x >= tw - PLAY_FRAME_CAP:
+			return r.size.x - (tw - x) * c / PLAY_FRAME_CAP
+		return c + (x - PLAY_FRAME_CAP) * mid
+	var x0: float = map_x.call(PLAY_FACE_SRC.position.x)
+	var x1: float = map_x.call(PLAY_FACE_SRC.end.x)
+	return Rect2(r.position + Vector2(x0, PLAY_FACE_SRC.position.y * s),
+		Vector2(x1 - x0, PLAY_FACE_SRC.size.y * s))
+
+
+## The additive layer over PLAY: a warm glow on its face, and on launch a
+## flash and a ghost of the frame swelling off it.
+func _draw_play_fx() -> void:
+	if _r.is_empty() or not CARD_READY[selected_index]:
+		return
+	if _glow_tex == null:
+		_glow_tex = GradientTexture2D.new()
+		_glow_tex.fill = GradientTexture2D.FILL_RADIAL
+		_glow_tex.fill_from = Vector2(0.5, 0.5)
+		_glow_tex.fill_to = Vector2(1.0, 0.5)
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		_glow_tex.gradient = g
+	var glow: float = PLAY_HELD_GLOW * _play_held
+	var t := -1.0
+	if _launch_t >= 0.0:
+		t = clampf(_launch_t / PLAY_LAUNCH_TIME, 0.0, 1.0)
+		# Up to full in the first fifth, then fading as the screen goes.
+		glow = maxf(glow, minf(1.0, t * 5.0) * (1.0 - t * 0.6))
+	var ps: float = _play_scale()
+	var pc: Vector2 = _r.play.get_center()
+	if glow > 0.0:
+		var face := _play_face_rect(_r.play)
+		var fc := face.get_center()
+		var fs := face.size * PLAY_FACE_GROW * ps
+		var col := PLAY_GLOW_COLOR * glow
+		col.a = 1.0
+		_play_fx.draw_texture_rect(_glow_tex, Rect2(pc + (fc - pc) * ps - fs * 0.5, fs), false, col)
+	if t >= 0.0:
+		var gs: float = 1.0 + PLAY_GHOST_GROW * t
+		var a: float = 1.0 - t
+		_play_fx.draw_set_transform(pc * (1.0 - gs), 0.0, Vector2(gs, gs))
+		_draw_bar(_r.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color(PLAY_GHOST_COLOR.r * a, PLAY_GHOST_COLOR.g * a, PLAY_GHOST_COLOR.b * a, 1.0), _play_fx)
+		_play_fx.draw_set_transform(Vector2.ZERO)
+
+
+func _draw_bar(r: Rect2, path: String, cap: float, tint := Color.WHITE, ci: CanvasItem = null) -> void:
+	if ci == null:
+		ci = self
 	var tex := ArtSlot.texture(path)
 	var s: float = r.size.y / tex.get_height()
 	var c: float = minf(cap * s, r.size.x * 0.5)
 	var tw: float = tex.get_width()
 	var th: float = tex.get_height()
-	draw_texture_rect_region(tex, Rect2(r.position, Vector2(c, r.size.y)), Rect2(0, 0, cap, th), tint)
-	draw_texture_rect_region(tex, Rect2(Vector2(r.end.x - c, r.position.y), Vector2(c, r.size.y)), Rect2(tw - cap, 0, cap, th), tint)
+	ci.draw_texture_rect_region(tex, Rect2(r.position, Vector2(c, r.size.y)), Rect2(0, 0, cap, th), tint)
+	ci.draw_texture_rect_region(tex, Rect2(Vector2(r.end.x - c, r.position.y), Vector2(c, r.size.y)), Rect2(tw - cap, 0, cap, th), tint)
 	if r.size.x > c * 2.0:
-		draw_texture_rect_region(tex, Rect2(Vector2(r.position.x + c, r.position.y), Vector2(r.size.x - c * 2.0, r.size.y)), Rect2(cap, 0, tw - cap * 2.0, th), tint)
+		ci.draw_texture_rect_region(tex, Rect2(Vector2(r.position.x + c, r.position.y), Vector2(r.size.x - c * 2.0, r.size.y)), Rect2(cap, 0, tw - cap * 2.0, th), tint)
 
 
 func _text_left(f: Font, text: String, mid_left: Vector2, fs: int, col: Color, rim: Color) -> void:
@@ -548,10 +662,12 @@ func _on_start_pressed() -> void:
 	if not CARD_READY[selected_index]:
 		_play_sfx(_sfx_select)
 		return
-	# Started before the mode is handed over: emitting swaps the screen, and
-	# the cue should be underway before that.
+	if _launch_t >= 0.0:
+		return  # already launching; a second tap must not start two runs
+	# The cue starts with the flash; _process hands the mode over once the
+	# flash has peaked, because emitting swaps the screen.
 	_play_sfx(_sfx_start)
-	start_pressed.emit(CARD_MODES[selected_index])
+	_launch_t = 0.0
 
 
 func _on_coming_soon() -> void:
@@ -573,6 +689,12 @@ func set_ads_removed(removed: bool) -> void:
 	_ads_removed = removed
 	if _remove_ads != null:
 		_remove_ads.visible = not removed
+	queue_redraw()
+
+
+## The stardust saved so far (Main.stardust_total), for the top bar.
+func set_stardust(amount: int) -> void:
+	_stardust = amount
 	queue_redraw()
 
 

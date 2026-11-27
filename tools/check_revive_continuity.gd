@@ -20,9 +20,11 @@ extends SceneTree
 #   4. 순위표 기록은 첫 죽음 시점에 얼어붙는다. 광고로 순위를 살 수 없다는
 #      규칙이고, 개인 최고 기록은 반대로 끝까지 간 점수를 받는다.
 
-# 문제 수. 보스(SpaceRun.QUIZ_PER_CYCLE = 10) 전에 죽어야 퀴즈 진행도(quiz_index)가
-# 이어지는지를 볼 수 있다.
-const RUN_GATES := 7
+# 맞게 지날 게이트 수. 첫 패턴(SpaceRun.PATTERN_LEN = 10)을 다 맞혀 피버를 지나고
+# 둘째 패턴 몇 칸에서 죽는다 — 보스(패턴 PATTERNS_PER_CYCLE 개) 전이어야 패턴
+# 진행도(patterns_done)가 이어지는지를 볼 수 있다. 칸 진행(steps_done)은 부활하면
+# 그 패턴을 처음부터 다시 하므로 이어지지 않는 것이 규칙이다.
+const RUN_GATES := 13
 
 # 이 검사는 진짜 판을 굴리므로 진짜 저장 파일에 쓴다. 최고 기록도, 히든 모드
 # 해금 진행도도, 광고 카운터도 전부 여기 있다.
@@ -79,39 +81,39 @@ func _lose_all_hearts(m: Node2D) -> void:
 			return
 
 
-# 문제 하나를 실제 판정으로 푼다: 정답이면 맞는 행성에, 아니면 어느 행성에도
-# 안 닿는 자리에 세워 두고 행성이 비행면에 닿을 때까지 판을 돌린다. 정답 뒤의
-# 룰렛 구간은 바로 끝낸다.
+# 패턴의 한 칸을 실제 판정으로 푼다: 맞는(또는 틀린) 게이트 앞에 세워 두고 그 칸이
+# 비행면에 닿을 때까지 판을 돌린다. 피버 중이면 피버가 끝날 때까지 먼저 돌린다.
+# 칸 사이 소행성은 이 검사의 관심이 아니므로 그동안은 무적으로 둔다.
 func _gate(m: Node2D, correct: bool) -> void:
 	var sp = m.get("space")
-	var w: Dictionary = sp.upcoming_wave()
-	if w.is_empty():
-		sp.spawn_wave()
-		w = sp.upcoming_wave()
-	var pos := Vector2(2.2, -2.9)
-	if correct:
-		for p in w.planets:
-			if p.correct:
-				pos = p.pos
-	sp.ship_pos = pos
-	sp.ship_target = pos
 	var guard := 0
-	while not w.resolved and guard < 2000 and m.get("state") == 2:
+	while sp.phase == sp.Phase.FEVER and guard < 2000 and m.get("state") == 2:
+		m.set("hurt_elapsed", 0.1)
 		sp.tick(1.0 / 60.0, true, true)
 		guard += 1
-	if sp.phase == sp.Phase.LOOT:
-		for r in sp.rocks:
-			r.node.queue_free()
-		sp.rocks.clear()
-		sp.phase_time = sp.LOOT_DURATION
+	var w: Dictionary = sp.upcoming_wave()
+	if w.is_empty():
+		w = sp.spawn_wave()
+	# On the right gate, or on a wrong one: the quarter the ship is in decides.
+	var pos := Vector2.ZERO
+	for p in w.planets:
+		if p.correct == correct:
+			pos = p.pos
+	sp.ship_pos = pos
+	sp.ship_target = pos
+	guard = 0
+	while not w.resolved and guard < 2000 and m.get("state") == 2:
+		m.set("hurt_elapsed", 0.1)
 		sp.tick(1.0 / 60.0, true, true)
+		guard += 1
+	m.set("hurt_elapsed", -1.0)
 
 
 func _snap(m: Node2D) -> Dictionary:
 	return {
 		"score": m.get("score"),
 		"gates": m.get("gates_passed"),
-		"phase": m.get("space").quiz_index,
+		"phase": m.get("space").patterns_done,
 		"combo": m.get("combo"),
 		"max_combo": m.get("max_combo"),
 		"leaderboard": m.get("leaderboard_score"),
@@ -145,7 +147,7 @@ func _run() -> void:
 	var before: Dictionary = _snap(m)
 	_show("죽기 직전", before)
 	if before["phase"] <= 0:
-		_fail("%d 문제를 풀었는데 진행도가 %d 다 — 이 검사가 이어짐을 못 본다" % [RUN_GATES, before["phase"]])
+		_fail("%d 게이트를 지났는데 패턴 진행도가 %d 다 — 이 검사가 이어짐을 못 본다" % [RUN_GATES, before["phase"]])
 
 	_lose_all_hearts(m)   # 틀린 차선을 하트 수만큼 -> 진짜 죽음 -> 부활 제안
 	var dead: Dictionary = _snap(m)
