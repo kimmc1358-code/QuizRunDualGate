@@ -35,25 +35,42 @@ static var _bake_written: Dictionary = {}
 # Synty INTERFACE Sci-Fi Menus 키트에서 온다(tools/build_ui_kit.gd 가 굽고,
 # 유료라 git 에 들어가지 않는다). 판은 파란 불이 든 강철 모서리
 # 프레임(Frame_Box_Large_08)을 모서리 넷과 민무늬 변만 남겨 9-slice 로 잘라 둔 것,
-# 주 버튼은 주황으로 채운 Bar_Frame_02(양 끝 청록 화살촉), 보조 버튼은 두툼한
-# 은색 테두리에 모서리를 깎은 Frame_Box_Small_04 다(둘 다 2026-11-28 주인이 골랐다). 보조
-# 버튼은 판처럼 네 변을 모두 9-slice 해서, 모서리는 작게 남고 변만 길어진다 —
-# 팩 예시 화면의 Label_Button 모양. 키트가 없으면 ArtSlot 의 회색 틀로 그려진다.
+# 버튼은 양 끝을 강철 머리로 닫은 Frame_Box_Small_08 막대이고 면 색으로만 가른다 —
+# 주 버튼 주황, 보조 버튼 파랑. 좁은 버튼(LOGIN, x2)만 은빛 베벨(Frame_Box_Small_04)
+# 상자다. 거쳐 온 길(Bar_Frame_02, 베벨, 아이콘 칸)은 CLAUDE.md 의 팝업 항목에 있다.
+# 키트가 없으면 ArtSlot 의 회색 틀로 그려진다.
 #
 # 1.x 의 크림·골드 판(ART_DIR)은 2026-11-26 에 그림이 지워졌다. 이름은
 # 그대로 두었다 — GOLD 는 "주 버튼", CREAM 은 "보조 버튼"으로 읽는다.
 const KIT := "res://assets/synty_ui/"
 const PANEL_FILE := KIT + "popup_panel.png"
-const GOLD_FILE := KIT + "popup_primary.png"
-const CREAM_FILE := KIT + "popup_button.png"
+# 버튼은 주·보조 모두 Frame_Box_Small_08 막대(2026-11-28, 주인): 양 끝이 나사 박힌 강철
+# 머리다. 원래 그림은 오른쪽에만 머리가 있고 왼쪽은 아이콘 칸 밑에 들어가도록 가는
+# 테뿐이라, 혼자 쓰면 왼쪽이 잘려 보였다 — 굽기에서 오른쪽 머리를 뒤집어 왼쪽에도
+# 붙인다(build_ui_kit MIRROR_RIGHT). 면 색으로만 가른다 — 주 버튼 주황, 보조 버튼 파랑.
+# 양 끝을 고정하고 가운데만 늘이며, 높이는 그림째 맞춘다(_kit_patch, "height").
+const GOLD_FILE := KIT + "popup_bar_primary.png"
+const CREAM_FILE := KIT + "popup_bar.png"
+# 은빛 베벨(Frame_Box_Small_04) 작은 상자, 네 변 9-slice. 소리 막대의 손잡이, 그리고
+# 좁은 버튼(LOGIN, 게임오버의 x2) — 막대의 양 끝 머리가 면을 거의 다 먹었다.
+const BEVEL_FILE := KIT + "popup_button.png"
+const BEVEL_CORNER := 22
+const SMALL_GOLD_FILE := KIT + "popup_small_primary.png"
+const SMALL_CREAM_FILE := BEVEL_FILE
+const SMALL_CORNER := BEVEL_CORNER
+const BEVEL_FACE_INSET := Vector2(15, 17)   # 베벨 그림의 면 둘레(텍스처 px)
 
-# 9-slice 여백(텍스처 px). 판은 build_ui_kit 이 찍어 주는 값, 주 버튼은 양 끝
-# 화살촉 쇠붙이의 폭, 보조 버튼은 테두리에 깎은 모서리를 더한 폭이다(가로와
-# 세로가 같다). 키트를 다시 구우면 다시 잰다.
+# 9-slice 여백(텍스처 px). 판은 build_ui_kit 이 찍어 주는 값. 버튼 막대(222x104)는
+# 양 끝 강철 머리가 BUTTON_BAR_LEFT/RIGHT(같은 그림을 뒤집었으니 같고, 굽기에서 가로로
+# 60% 로 눌러 둔 폭이다), 위아래 테가 BUTTON_BAR_FACE_Y 다. 그림은 157x104. 키트를 다시 구우면 다시 잰다.
 const PANEL_CORNER := 96
-const GOLD_CORNER := 62
-const CREAM_CORNER := 22
-const CREAM_CORNER_Y := 22
+const BUTTON_BAR_LEFT := 49
+const BUTTON_BAR_RIGHT := 49
+const BUTTON_BAR_FACE_Y := 14
+# 버튼을 만들 때 넘기는 모서리 값. 막대는 _kit_patch 가 위 셋으로 자르므로 쓰지 않지만,
+# 키트가 없을 때의 자리표시 틀이 이 값으로 잘린다.
+const GOLD_CORNER := BUTTON_BAR_LEFT
+const CREAM_CORNER := BUTTON_BAR_LEFT
 # 보조 버튼 글자와 아이콘 — 짙은 면 위의 하늘색(Label_Button 과 같은 색).
 const SECONDARY_LABEL_COLOR := Color(0.55, 0.88, 1.0, 1.0)
 # 판의 9-slice 는 키트가 구운 배율(화면 1px 에 2.25px)로 그린다 — 모서리가
@@ -80,7 +97,7 @@ const BUTTON_SOUND_BUS := "SFX"
 #
 # 1.x 골드 아트는 아래쪽에 입체감을 주는 두툼한 턱이 있어, 눈에 보이는 판의
 # 한가운데가 사각형 한가운데보다 조금 위다. 그대로 가운데에 맞추면 글자가
-# 살짝 가라앉아 보였다. 2.0 의 주 버튼(Bar_Frame_02)은 면이 위아래 가운데라
+# 살짝 가라앉아 보였다. 2.0 의 버튼(Frame_Box_Small_08)은 면이 위아래 가운데라
 # 0 이다. 아트를 바꾸면 다시 본다 — 주 버튼들이 모두 같은 값을 쓴다.
 const GOLD_CONTENT_DY := 0.0
 
@@ -165,21 +182,45 @@ const PRIMARY_LABEL_OUTLINE_FRAC := 0.20   # 글자 크기 대비 외곽선 두�
 
 # 글자는 어두운 판 위의 흰 빛 도는 하늘색. 1.x 는 크림 판에 네이비였다.
 const INK := Color(0.88, 0.95, 1.0, 1.0)
-# 판 위의 상자(콤보, 안내, 스타더스트 줄)는 어둡게 비치는 유리판에 색 테를
-# 두른다(_info_box). 상자마다 정하는 색은 그 테와 은은한 바탕 빛이 된다.
-const BOX_FILL := Color(0.06, 0.12, 0.24, 0.85)
-const BOX_EDGE_PX := 2
 # 소리 조절 슬라이더 — 일시정지 팝업과 설정 팝업이 같은 것을 쓴다.
 const SLIDER_LABEL_FRAC := 0.062
-const SLIDER_TRACK_HEIGHT := 12.0
-const SLIDER_TRACK_COLOR := Color(0.10, 0.16, 0.28, 1.0)   # 빈 구간
-const SLIDER_FILL_COLOR := Color(0.30, 0.82, 1.0, 1.0)     # 채워진 구간 — 판 테두리의 파란 불 계열
-const SLIDER_TRACK_RADIUS := 6
-const SLIDER_KNOB_SIZE := 26        # 손잡이 지름(px). 손가락으로 잡을 만한 크기
-const SLIDER_KNOB_FILL := Color(0.92, 0.98, 1.0, 1.0)
-const SLIDER_KNOB_EDGE := Color(0.08, 0.40, 0.62, 1.0)
-const SLIDER_KNOB_EDGE_PX := 3.0
+# 줄 높이 = 이름표 글자 + 이만큼. 손잡이 트랙(12) + 6 이던 값을 그대로 두어
+# 막대로 바뀌어도 팝업의 줄 배치는 달라지지 않는다.
+const SLIDER_ROW_PAD := 18.0
+# 언어 토글이 같이 쓰는 두 색 — 빈 칸과 켜진 칸.
+const SLIDER_TRACK_COLOR := Color(0.10, 0.16, 0.28, 1.0)
+const SLIDER_FILL_COLOR := Color(0.30, 0.82, 1.0, 1.0)
 const SLIDER_ICON_GAP_FRAC := 0.34  # 글자 크기 대비 아이콘-글자 간격
+# 소리 막대(KitSlider, 2026-11-28). 주인이 보낸 견본을 따랐다: 양 끝에
+# 청록 불이 든 화살표 버튼(Button_Arrow_07), 그 사이 Bar_Frame_02 틀. 값을
+# 적은 금속 상자가 손잡이로 막대 위를 오가고, 그 왼쪽이 채워진다. 상자는
+# 보조 버튼의 은빛 테(popup_button.png)를 작게 9-slice 한 것이다 — 처음의
+# Frame_Box_Small_06 은 양옆 캡까지 달려 손잡이로는 번잡했다(주인). 화살표는
+# 한 칸씩(SLIDER_STEP) 올리고 내린다. 비율은 모두 막대 높이 대비이고, 구운
+# slider_frame.png(290x68)에서 쟀다.
+const SLIDER_FRAME_FILE := KIT + "slider_frame.png"
+const SLIDER_ARROW_LEFT_FILE := KIT + "slider_arrow_left.png"
+const SLIDER_ARROW_RIGHT_FILE := KIT + "slider_arrow_right.png"
+const SLIDER_BAR_HEIGHT := 30.0
+const SLIDER_ARROW_HEIGHT_FRAC := 1.0
+# 화살표가 막대 끝 조각을 이만큼 덮는다 — 틀 끝의 작은 청록 꼭지가 화살표와
+# 겹쳐 둘로 보이지 않게.
+const SLIDER_ARROW_OVERLAP := 0.30
+const SLIDER_CAP_FRAC := 0.40       # 틀 끝 조각 폭. 늘이지 않는 부분
+const SLIDER_FACE_INSET_X := 0.30   # 틀 안쪽 면이 시작하는 곳
+const SLIDER_FACE_INSET_Y := 0.19
+const SLIDER_HANDLE_HEIGHT_FRAC := 1.0
+const SLIDER_HANDLE_WIDTH_FRAC := 1.6    # 손잡이 폭, 막대 높이 대비 — "100" 이 들어가는 폭
+const SLIDER_HANDLE_HELD := Color(1.25, 1.25, 1.25)   # 끄는 동안 손잡이를 이만큼 밝힌다
+const SLIDER_FACE_COLOR := Color(0.03, 0.07, 0.16, 0.96)
+# 채움은 왼쪽이 어둡고 손잡이 쪽으로 갈수록 밝은 청록 — 견본의 결.
+const SLIDER_FILL_DARK := Color(0.04, 0.36, 0.56, 1.0)
+const SLIDER_FILL_BRIGHT := Color(0.32, 0.88, 1.0, 1.0)
+const SLIDER_FILL_SHINE := Color(1.0, 1.0, 1.0, 0.22)   # 채움 위쪽 3분의 1에 얹는 빛
+const SLIDER_NUMBER_COLOR := Color(1.0, 1.0, 1.0, 1.0)
+const SLIDER_NUMBER_FRAC := 0.46    # 손잡이 높이 대비 숫자 크기
+const SLIDER_STEP := 0.1
+const SLIDER_ARROW_FLASH := 0.22    # 화살표를 누르면 밝아졌다 꺼지는 시간
 # 판을 가로지르는 점선 구분선.
 const DIVIDER_DOTS := 22
 const DIVIDER_DOT_RADIUS := 2.6
@@ -239,8 +280,6 @@ const PRESS_ANIM_DURATION := 0.08
 # 면 위에 더하기(ADD)로 빛을 얹어 그림의 결은 살리고 밝기만 올린다. 테두리는
 # 그대로라 "면이 켜졌다"로 읽힌다. 면의 자리는 구운 그림에서 잰 안쪽 여백
 # (텍스처 px)이고, 그림과 같은 배율로 화면에 옮긴다(_place).
-const GOLD_FACE_INSET := Vector2(38, 31)    # popup_primary.png 의 주황 면 둘레
-const CREAM_FACE_INSET := Vector2(15, 17)   # popup_button.png 의 파란 면 둘레
 const PRESS_GLOW_GOLD := Color(1.0, 0.80, 0.40, 0.32)
 const PRESS_GLOW_CREAM := Color(0.30, 0.62, 1.0, 0.30)
 const PRESS_GLOW_RADIUS := 3
@@ -248,6 +287,10 @@ const PRESS_GLOW_FADE := 0.18     # 손을 뗀 뒤 꺼지는 시간 — 켜질 �
 
 var _font_bold: Font
 var _font_heavy: Font
+# 버튼 글자는 Zen Dots, 숫자와 설명은 Oxanium(한글은 Do Hyeon)(2026-11-28, 주인). 제목과 같은 글꼴이라
+# 누를 것이 한눈에 갈린다. Zen Dots 에는 한글이 없어 한국어 캡션은 _font_heavy 로
+# 떨어진다(TitleArt.font 의 fallbacks).
+var _font_button: Font
 var _backdrop: ColorRect
 var _panel: NinePatchRect
 var _elapsed := 0.0
@@ -299,6 +342,7 @@ func _ready() -> void:
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
 	_font_bold = _weighted(base, wght, FONT_WEIGHT_BOLD)
 	_font_heavy = _weighted(base, wght, FONT_WEIGHT_HEAVY)
+	_font_button = TitleArt.font(_font_heavy)
 
 	# 나머지 조립은 Main 이 로고 화면 뒤에서 ensure_built() 로 부른다 —
 	# 아직 열지도 않은 팝업 때문에 첫 프레임이 늦어지지 않도록.
@@ -458,12 +502,19 @@ func _nine_patch(file: String, corner: int, target_w: int, gradient := Vector2.Z
 # 키트 그림은 유료라 저장소에 들어가면 안 된다.
 func _kit_patch(np: NinePatchRect, file: String, corner: int) -> NinePatchRect:
 	np.texture = ArtSlot.texture(file)
-	var whole: bool = file == PANEL_FILE or file == CREAM_FILE
-	var corner_y: int = CREAM_CORNER_Y if file == CREAM_FILE else corner
+	if file == GOLD_FILE or file == CREAM_FILE:
+		# 버튼 막대: 양 끝의 폭이 다르다 — 왼쪽 가는 테, 오른쪽 강철 머리.
+		np.patch_margin_left = BUTTON_BAR_LEFT
+		np.patch_margin_right = BUTTON_BAR_RIGHT
+		np.patch_margin_top = 0
+		np.patch_margin_bottom = 0
+		np.set_meta("fit", "height")
+		return np
+	var whole: bool = file == PANEL_FILE or file == SMALL_GOLD_FILE or file == SMALL_CREAM_FILE
 	np.patch_margin_left = corner
 	np.patch_margin_right = corner
-	np.patch_margin_top = corner_y if whole else 0
-	np.patch_margin_bottom = corner_y if whole else 0
+	np.patch_margin_top = corner if whole else 0
+	np.patch_margin_bottom = corner if whole else 0
 	np.set_meta("fit", "fixed" if whole else "height")
 	return np
 
@@ -507,7 +558,7 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 	button.add_child(bg)
 
 	# 눌렸을 때 안쪽 면을 밝히는 빛. 글자와 아이콘 아래에 깔린다.
-	if file == GOLD_FILE or file == CREAM_FILE:
+	if file in [GOLD_FILE, CREAM_FILE, SMALL_GOLD_FILE, SMALL_CREAM_FILE]:
 		var glow := Control.new()
 		glow.name = "Glow"
 		glow.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -515,25 +566,24 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 		var add := CanvasItemMaterial.new()
 		add.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
 		glow.material = add
-		var tint: Color = PRESS_GLOW_GOLD if file == GOLD_FILE else PRESS_GLOW_CREAM
+		var tint: Color = PRESS_GLOW_GOLD if file in [GOLD_FILE, SMALL_GOLD_FILE] else PRESS_GLOW_CREAM
 		glow.draw.connect(func() -> void:
 			glow.draw_style_box(_pill(tint, PRESS_GLOW_RADIUS), Rect2(Vector2.ZERO, glow.size)))
-		glow.set_meta("inset", GOLD_FACE_INSET if file == GOLD_FILE else CREAM_FACE_INSET)
 		button.add_child(glow)
 
-	var label := _make_label(text, _font_heavy)
+	var label := _make_label(text, _font_button)
 	label.name = "Caption"
 	if primary:
 		label.add_theme_color_override("font_color", PRIMARY_LABEL_COLOR)
 		label.add_theme_color_override("font_outline_color", PRIMARY_LABEL_OUTLINE)
-	elif file == CREAM_FILE:
+	elif file in [CREAM_FILE, SMALL_CREAM_FILE]:
 		label.add_theme_color_override("font_color", SECONDARY_LABEL_COLOR)
 	button.add_child(label)
 
 	var icon_rect := TextureRect.new()
 	icon_rect.name = "Icon"
 	icon_rect.texture = icon
-	if file == CREAM_FILE:
+	if file in [CREAM_FILE, SMALL_CREAM_FILE]:
 		icon_rect.modulate = SECONDARY_LABEL_COLOR   # 흰 아이콘을 글자와 같은 하늘색으로
 	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	icon_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -542,7 +592,7 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 	button.add_child(icon_rect)
 
 	# 어느 아트로 만든 버튼인지 남겨 둔다 — _play_button_sound가 쓴다.
-	button.set_meta("sound", GOLD_SOUND_NAME if file == GOLD_FILE else CREAM_SOUND_NAME)
+	button.set_meta("sound", GOLD_SOUND_NAME if file in [GOLD_FILE, SMALL_GOLD_FILE] else CREAM_SOUND_NAME)
 	button.button_down.connect(_press.bind(button))
 	button.button_up.connect(_release.bind(button))
 	return button
@@ -577,15 +627,30 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	bg.position = Vector2.ZERO
 	_fit_patch(bg, Vector2(w, h))
 
+	# 막대의 보이는 면: 왼쪽 가는 테와 오른쪽 강철 머리 사이, 위아래 테 안쪽.
+	# 텍스처 px 를 그림과 같은 배율(bg.scale)로 화면 px 에 옮긴다.
+	var face := Rect2(Vector2.ZERO, Vector2(w, h))
+	if str(bg.get_meta("fit", "")) == "height" and bg.texture != null:
+		var k: float = bg.scale.x
+		var left: float = bg.patch_margin_left * k
+		var right: float = bg.patch_margin_right * k
+		var fy: float = BUTTON_BAR_FACE_Y * k if bg.patch_margin_top == 0 else 0.0
+		face = Rect2(left, fy, maxf(0.0, w - left - right), maxf(0.0, h - fy * 2.0))
+	elif str(bg.get_meta("fit", "")) == "fixed":
+		var inset: Vector2 = BEVEL_FACE_INSET * bg.scale.x
+		face = Rect2(inset, Vector2(maxf(0.0, w - inset.x * 2.0), maxf(0.0, h - inset.y * 2.0)))
+
 	var glow: Control = button.get_node_or_null("Glow")
 	if glow != null:
-		# 그림의 안쪽 여백을 그림과 같은 배율(bg.scale)로 화면 px 에 옮긴다.
-		var inset: Vector2 = Vector2(glow.get_meta("inset", Vector2.ZERO)) * bg.scale.x
-		glow.position = inset
-		glow.size = Vector2(maxf(0.0, w - inset.x * 2.0), maxf(0.0, h - inset.y * 2.0))
+		glow.position = face.position
+		glow.size = face.size
 		glow.queue_redraw()
 
 	var label: Label = button.get_node("Caption")
+	# 글꼴은 놓을 때마다 캡션 글자에서 고른다 — 캡션은 지은 뒤에도 바뀐다(x2 의
+	# AD NOT READY). 재는 글꼴과 그리는 글꼴이 같아야 폭이 맞는다.
+	var label_font: Font = _caption_font(label.text)
+	label.add_theme_font_override("font", label_font)
 	var icon: TextureRect = button.get_node("Icon")
 	var aspect := 0.0
 	if icon.texture != null:
@@ -597,18 +662,15 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	# 아이콘만 버튼 밖으로 삐져나가는 일이 없다.
 	# 캡션은 줄바꿈(\n)을 담을 수 있으므로 여러 줄 기준으로 잰다. 한 줄짜리
 	# 문구에는 한 줄로 잰 것과 같은 값이 나온다.
-	var fit_w: float = w * fit
-	# 키트 버튼은 양 끝 머리(PLAY 의 V 홈, 회색 버튼의 비스듬한 끝)가 높이에
-	# 비례해 굵다. 폭의 몇 할로만 재면 짧은 버튼에서 아이콘이 머리 위에 얹힌다.
-	if str(bg.get_meta("fit", "")) == "height" and bg.texture != null:
-		var cap: float = bg.patch_margin_left * h / float(bg.texture.get_height())
-		fit_w = minf(fit_w, (w - cap * 2.0) * KIT_BUTTON_FACE_FIT)
+	# 막대 버튼은 양 끝 머리가 높이에 비례해 굵고 오른쪽이 훨씬 두껍다. 버튼 폭의 몇
+	# 할이 아니라 면의 폭으로 재야, 짧은 버튼에서 글자가 강철 머리에 얹히지 않는다.
+	var fit_w: float = minf(w * fit, face.size.x * KIT_BUTTON_FACE_FIT)
 	var fit_h: float = h * BUTTON_TEXT_FIT_H
 	var text_w := 0.0
 	var icon_w := 0.0
 	var gap := 0.0
 	while true:
-		var text_size: Vector2 = _font_heavy.get_multiline_string_size(
+		var text_size: Vector2 = label_font.get_multiline_string_size(
 			label.text, HORIZONTAL_ALIGNMENT_CENTER, -1, font_size)
 		text_w = text_size.x
 		icon_w = 0.0
@@ -627,7 +689,8 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 		label.add_theme_constant_override("outline_size", int(round(font_size * PRIMARY_LABEL_OUTLINE_FRAC)))
 
 	var group_w: float = icon_w + gap + text_w
-	var start_x: float = (w - group_w) * 0.5
+	# 면 가운데에 — 강철 머리가 오른쪽에만 있어 버튼 가운데에 두면 오른쪽으로 쏠린다.
+	var start_x: float = face.position.x + (face.size.x - group_w) * 0.5
 	if icon.texture != null:
 		var icon_h: float = icon_px if icon_px > 0.0 else font_size * ICON_HEIGHT_FRAC * icon_scale
 		icon.size = Vector2(icon_w, icon_h)
@@ -635,6 +698,23 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	label.position = Vector2(start_x + icon_w + gap, content_dy)
 	label.size = Vector2(text_w, h)
 
+
+
+## 짧은 대문자 이름표(SCORE, BEST, MAX COMBO, STARDUST, SFX, MUSIC, LANGUAGE)의
+## 글꼴(2026-11-28, 주인). 라틴 글자만이면 버튼과 같은 Zen Dots, 한글이면 지금까지의
+## 기본 글꼴의 굵은 체 — 이유는 _caption_font 와 같다. 숫자와 문장은 기본 글꼴(Oxanium)이다.
+func _label_font(text: String) -> Font:
+	return _font_bold if _caption_font(text) == _font_heavy else _font_button
+
+
+## 버튼 캡션의 글꼴. 라틴 글자만이면 Zen Dots, 한글이 섞이면 기본 글꼴의 굵은 체
+## (한글은 AppFont 의 Do Hyeon). Zen Dots 에 한글이 없어 fallbacks 로 맡기면 그
+## 한글 글꼴이 아니라 기기의 가는 고딕이 나왔다 — 한국어 버튼만 힘이 빠져 보였다.
+func _caption_font(text: String) -> Font:
+	for i in text.length():
+		if text.unicode_at(i) >= 0x1100:
+			return _font_heavy
+	return _font_button
 
 
 # 캐릭터 아트는 알파가 0 아니면 255뿐이라 — 반투명 경계 픽셀이 한 개도 없다 —
@@ -1080,64 +1160,197 @@ func _unpremultiply(img: Image) -> void:
 				clampf(c.b / a, 0.0, 1.0), a))
 
 
-# 팔레트에 맞춘 HSlider. 트랙·채움·손잡이를 전부 갈아끼워 기본 회색 테마가
-# 남지 않게 한다.
-func _make_slider() -> HSlider:
-	var s := HSlider.new()
-	s.min_value = 0.0
-	s.max_value = 1.0
-	s.step = 0.01
-	s.focus_mode = Control.FOCUS_NONE
-	s.mouse_filter = Control.MOUSE_FILTER_STOP
-
-	var track := StyleBoxFlat.new()
-	track.bg_color = SLIDER_TRACK_COLOR
-	track.set_corner_radius_all(SLIDER_TRACK_RADIUS)
-	track.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
-	track.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
-	track.anti_aliasing = true
-	s.add_theme_stylebox_override("slider", track)
-
-	var fill := StyleBoxFlat.new()
-	fill.bg_color = SLIDER_FILL_COLOR
-	fill.set_corner_radius_all(SLIDER_TRACK_RADIUS)
-	fill.content_margin_top = SLIDER_TRACK_HEIGHT * 0.5
-	fill.content_margin_bottom = SLIDER_TRACK_HEIGHT * 0.5
-	fill.anti_aliasing = true
-	s.add_theme_stylebox_override("grabber_area", fill)
-	s.add_theme_stylebox_override("grabber_area_highlight", fill)
-
-	var knob := _make_knob()
-	s.add_theme_icon_override("grabber", knob)
-	s.add_theme_icon_override("grabber_highlight", knob)
+# 소리 막대 하나. 크기는 놓는 쪽이 정한다(높이 SLIDER_BAR_HEIGHT).
+func _make_slider() -> KitSlider:
+	var s := KitSlider.new()
+	s.frame = ArtSlot.texture(SLIDER_FRAME_FILE)
+	s.arrow_left = ArtSlot.texture(SLIDER_ARROW_LEFT_FILE)
+	s.arrow_right = ArtSlot.texture(SLIDER_ARROW_RIGHT_FILE)
+	# 손잡이는 보조 버튼과 같은 그림을 같은 셈으로 9-slice 한다: 구운 배율
+	# (KIT_BAKE)로 줄여 그리므로 모서리가 버튼의 그것과 같은 크기로 나온다.
+	var handle := StyleBoxTexture.new()
+	handle.texture = ArtSlot.texture(BEVEL_FILE)
+	handle.texture_margin_left = BEVEL_CORNER
+	handle.texture_margin_right = BEVEL_CORNER
+	handle.texture_margin_top = BEVEL_CORNER
+	handle.texture_margin_bottom = BEVEL_CORNER
+	s.handle = handle
+	s.font = _font_heavy   # 숫자는 기본 글꼴(Oxanium)
 	return s
 
 
-# 손잡이 텍스처를 코드로 그린다. 크림 채움 + 네이비 테두리, 가장자리는
-# 픽셀 단위로 부드럽게 — 팝업의 다른 테두리와 같은 결을 내기 위해서다.
-func _make_knob() -> Texture2D:
-	var ss := 2                       # 2배로 그린 뒤 줄여 가장자리를 더 곱게
-	var d: int = SLIDER_KNOB_SIZE * ss
-	var img := Image.create_empty(d, d, false, Image.FORMAT_RGBA8)
-	img.fill(Color(0, 0, 0, 0))
-	var r: float = d * 0.5
-	var edge: float = SLIDER_KNOB_EDGE_PX * ss
-	for y in range(d):
-		for x in range(d):
-			var dist: float = Vector2(x + 0.5 - r, y + 0.5 - r).length()
-			if dist > r:
-				continue
-			# 바깥 1px은 알파로 흐려 계단을 없앤다.
-			var a: float = clampf(r - dist, 0.0, 1.0)
-			var c: Color = SLIDER_KNOB_EDGE if dist > r - edge else SLIDER_KNOB_FILL
-			img.set_pixel(x, y, Color(c.r, c.g, c.b, c.a * a))
-	img.resize(SLIDER_KNOB_SIZE, SLIDER_KNOB_SIZE, Image.INTERPOLATE_LANCZOS)
-	img.generate_mipmaps()
-	return ImageTexture.create_from_image(img)
+## <====[99]-------> 꼴의 0~1 막대. 값은 HSlider 와 같은 뜻이라
+## (value, value_changed, set_value_no_signal) 팝업 쪽은 바뀐 것이 없다.
+##
+## 값을 적은 금속 상자가 손잡이다. 손잡이를 잡고 끌면 잡은 자리를 놓치지
+## 않고 따라오고, 막대의 다른 곳을 누르면 손잡이가 거기로 와서 그대로 끌린다.
+## 양 끝 화살표는 누를 때마다 한 칸씩 움직이는 버튼이다 — HSlider 를 덮어
+## 쓰지 않고 따로 짠 이유가 이것이다.
+##
+## 입력은 마우스만 받는다. 터치는 프로젝트가 마우스로 흉내 내 보내므로
+## (emulate_mouse_from_touch), 둘 다 받으면 한 번 누른 것이 두 번 든다.
+class KitSlider extends Control:
+	signal value_changed(value: float)
+
+	var value: float = 1.0
+	var frame: Texture2D
+	var arrow_left: Texture2D
+	var arrow_right: Texture2D
+	var handle: StyleBox
+	var font: Font
+	var _dragging := false
+	# 손잡이 가운데와 누른 자리의 거리. 손잡이를 잡고 끌 때 손가락 밑에서
+	# 손잡이가 튀지 않게 둔다.
+	var _grab_dx := 0.0
+	# 화살표의 밝기(0~1). 누르면 1 로 켜고 SLIDER_ARROW_FLASH 동안 끈다.
+	var flash_left: float = 0.0:
+		set(v):
+			flash_left = v
+			queue_redraw()
+	var flash_right: float = 0.0:
+		set(v):
+			flash_right = v
+			queue_redraw()
+
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_STOP
+		focus_mode = Control.FOCUS_NONE
+
+	func set_value_no_signal(v: float) -> void:
+		value = clampf(v, 0.0, 1.0)
+		queue_redraw()
+
+	## 화살표 하나의 폭. 그림이 없으면 정사각형 자리.
+	func _arrow_w() -> float:
+		var h: float = size.y * PopupBase.SLIDER_ARROW_HEIGHT_FRAC
+		if arrow_left == null or arrow_left.get_height() == 0:
+			return h
+		return h * float(arrow_left.get_width()) / arrow_left.get_height()
+
+	## 두 화살표 사이의 막대. 화살표가 막대 끝을 조금 덮는다.
+	func _bar() -> Rect2:
+		var inset: float = _arrow_w() - size.y * PopupBase.SLIDER_ARROW_OVERLAP
+		return Rect2(inset, 0.0, maxf(size.y, size.x - inset * 2.0), size.y)
+
+	## 틀 안쪽 면의 가로 구간.
+	func _face() -> Vector2:
+		var bar := _bar()
+		var ix: float = size.y * PopupBase.SLIDER_FACE_INSET_X
+		return Vector2(bar.position.x + ix, bar.end.x - ix)
+
+	func _handle_w() -> float:
+		return size.y * PopupBase.SLIDER_HANDLE_WIDTH_FRAC
+
+	## 손잡이 가운데가 0 에서 1 까지 오가는 구간. 손잡이가 면 밖으로 안 나간다.
+	func _handle_span() -> Vector2:
+		var face := _face()
+		var half: float = _handle_w() * 0.5
+		return Vector2(face.x + half, face.y - half)
+
+	func _handle_rect() -> Rect2:
+		var span := _handle_span()
+		var cx: float = lerpf(span.x, span.y, value)
+		var hh: float = size.y * PopupBase.SLIDER_HANDLE_HEIGHT_FRAC
+		return Rect2(cx - _handle_w() * 0.5, (size.y - hh) * 0.5, _handle_w(), hh)
+
+	func _value_at(centre_x: float) -> float:
+		var span := _handle_span()
+		return (centre_x - span.x) / maxf(1.0, span.y - span.x)
+
+	func _set_from_user(v: float) -> void:
+		v = clampf(snappedf(v, 0.01), 0.0, 1.0)
+		if is_equal_approx(v, value):
+			return
+		value = v
+		queue_redraw()
+		value_changed.emit(value)
+
+	func _flash(prop: String) -> void:
+		set(prop, 1.0)
+		create_tween().tween_property(self, prop, 0.0, PopupBase.SLIDER_ARROW_FLASH)
+
+	func _gui_input(event: InputEvent) -> void:
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			accept_event()
+			if not event.pressed:
+				_dragging = false
+				queue_redraw()
+				return
+			var x: float = event.position.x
+			if x < _arrow_w():
+				_set_from_user(value - PopupBase.SLIDER_STEP)
+				_flash("flash_left")
+			elif x > size.x - _arrow_w():
+				_set_from_user(value + PopupBase.SLIDER_STEP)
+				_flash("flash_right")
+			else:
+				_dragging = true
+				var hr := _handle_rect()
+				# 손잡이를 잡았으면 잡은 자리를 지키고, 아니면 손잡이를 그리로 부른다.
+				_grab_dx = x - hr.get_center().x if hr.has_point(Vector2(x, hr.get_center().y)) else 0.0
+				_set_from_user(_value_at(x - _grab_dx))
+				queue_redraw()
+		elif event is InputEventMouseMotion and _dragging:
+			accept_event()
+			_set_from_user(_value_at(event.position.x - _grab_dx))
+
+	func _draw() -> void:
+		var bar := _bar()
+		var h: float = size.y
+		var face := _face()
+		var iy: float = h * PopupBase.SLIDER_FACE_INSET_Y
+		var top: float = iy
+		var bottom: float = h - iy
+		# 1. 틀 안쪽 면. 틀 그림은 가운데가 비어 있어 바탕을 따로 깐다.
+		draw_rect(Rect2(face.x - h * 0.15, top, face.y - face.x + h * 0.3, bottom - top),
+			PopupBase.SLIDER_FACE_COLOR)
+		# 2. 채움. 면 왼쪽 끝에서 손잡이 가운데까지, 왼쪽 어둡고 오른쪽 밝게.
+		var hr := _handle_rect()
+		var x1: float = hr.get_center().x
+		if x1 > face.x + 0.5:
+			var right_col: Color = PopupBase.SLIDER_FILL_DARK.lerp(PopupBase.SLIDER_FILL_BRIGHT, value)
+			draw_polygon(PackedVector2Array([
+					Vector2(face.x, top), Vector2(x1, top), Vector2(x1, bottom), Vector2(face.x, bottom)]),
+				PackedColorArray([PopupBase.SLIDER_FILL_DARK, right_col, right_col, PopupBase.SLIDER_FILL_DARK]))
+			draw_rect(Rect2(face.x, top, x1 - face.x, (bottom - top) / 3.0), PopupBase.SLIDER_FILL_SHINE)
+		# 3. 틀. 양 끝 조각은 그대로, 가운데만 늘인다(_draw_horizontal_slice 와 같은 셈).
+		if frame != null:
+			var tw: float = frame.get_width()
+			var th: float = frame.get_height()
+			var cap: float = h * PopupBase.SLIDER_CAP_FRAC
+			var tcap: float = cap * th / h
+			var x0: float = bar.position.x
+			draw_texture_rect_region(frame, Rect2(x0, 0, cap, h), Rect2(0, 0, tcap, th))
+			draw_texture_rect_region(frame, Rect2(x0 + cap, 0, bar.size.x - cap * 2.0, h),
+				Rect2(tcap, 0, tw - tcap * 2.0, th))
+			draw_texture_rect_region(frame, Rect2(bar.end.x - cap, 0, cap, h), Rect2(tw - tcap, 0, tcap, th))
+		# 4. 양 끝 화살표. 누르면 잠깐 밝아진다.
+		var aw: float = _arrow_w()
+		var ah: float = h * PopupBase.SLIDER_ARROW_HEIGHT_FRAC
+		var ay: float = (h - ah) * 0.5
+		if arrow_left != null:
+			draw_texture_rect(arrow_left, Rect2(0, ay, aw, ah), false,
+				Color.WHITE.lerp(Color(1.6, 1.6, 1.6), flash_left))
+		if arrow_right != null:
+			draw_texture_rect(arrow_right, Rect2(size.x - aw, ay, aw, ah), false,
+				Color.WHITE.lerp(Color(1.6, 1.6, 1.6), flash_right))
+		# 5. 손잡이와 값(0~100). 9-slice 는 구운 배율로 키운 자리에 그리고 줄인다.
+		if handle != null:
+			var k: float = PopupBase.KIT_BAKE
+			draw_set_transform(hr.position, 0.0, Vector2.ONE / k)
+			var tint: Color = PopupBase.SLIDER_HANDLE_HELD if _dragging else Color.WHITE
+			handle.modulate_color = tint
+			draw_style_box(handle, Rect2(Vector2.ZERO, hr.size * k))
+			draw_set_transform(Vector2.ZERO)
+		if font != null:
+			var fs: int = maxi(8, int(round(hr.size.y * PopupBase.SLIDER_NUMBER_FRAC)))
+			var baseline: float = hr.get_center().y + (font.get_ascent(fs) - font.get_descent(fs)) * 0.5
+			draw_string(font, Vector2(hr.position.x, baseline), str(int(round(value * 100.0))),
+				HORIZONTAL_ALIGNMENT_CENTER, hr.size.x, fs, PopupBase.SLIDER_NUMBER_COLOR)
 
 
 # 슬라이더 두 줄의 왼쪽 칸(아이콘 + 이름표)을 ctrl 위에 그린다.
-# 트랙과 손잡이는 HSlider 자신이 그린다.
+# 막대는 KitSlider 자신이 그린다.
 func _draw_slider_labels(ctrl: Control, rows: Array, font_size: int, row_h: float, gap: float) -> void:
 	for i in range(rows.size()):
 		var text: String = rows[i][0]
@@ -1154,7 +1367,7 @@ func _draw_slider_labels(ctrl: Control, rows: Array, font_size: int, row_h: floa
 			x += iw + font_size * SLIDER_ICON_GAP_FRAC
 		# draw_string은 베이스라인 기준이라, 대문자 높이의 절반만큼 내려야
 		# 글자 가운데가 아이콘 가운데와 맞는다.
-		ctrl.draw_string(_font_bold, Vector2(x, centre_y + font_size * 0.36),
+		ctrl.draw_string(_label_font(text), Vector2(x, centre_y + font_size * 0.36),
 			text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, INK)
 
 
@@ -1162,7 +1375,7 @@ func _draw_slider_labels(ctrl: Control, rows: Array, font_size: int, row_h: floa
 func _slider_label_column(font_size: int, texts: Array) -> float:
 	var w := 0.0
 	for text in texts:
-		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+		w = maxf(w, _label_font(text).get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
 	# 아이콘(글자 높이와 같은 정사각형 가정) + 간격 + 글자 + 트랙까지 숨돌릴 틈
 	return w + font_size * (1.0 + SLIDER_ICON_GAP_FRAC) + font_size * 0.5
 
@@ -1173,7 +1386,7 @@ func _slider_label_column(font_size: int, texts: Array) -> float:
 func _row_label_column(font_size: int, texts: Array) -> float:
 	var w := 0.0
 	for text in texts:
-		w = maxf(w, _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
+		w = maxf(w, _label_font(text).get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x)
 	return w + font_size * 0.5
 
 
@@ -1240,24 +1453,11 @@ func _draw_side_toggle(t: Control) -> void:
 	var fs: int = maxi(9, int(round(h * TOGGLE_LABEL_FRAC)))
 	for i in range(2):
 		var text: String = str(texts[i]) if i < texts.size() else ""
-		var tw: float = _font_bold.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+		var tw: float = _font_button.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		var cx: float = TOGGLE_PAD + knob_w * (float(i) + 0.5)
 		var lit: bool = (i == 1) == second
-		t.draw_string(_font_bold, Vector2(cx - tw * 0.5, h * 0.5 + fs * 0.36),
+		t.draw_string(_font_button, Vector2(cx - tw * 0.5, h * 0.5 + fs * 0.36),
 			text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, TOGGLE_ON_TEXT if lit else TOGGLE_OFF_TEXT)
-
-
-## 판 위의 정보 상자: 어둡게 비치는 유리에 tint 색 테. 바탕에도 tint 를
-## 조금 섞어 상자마다 제 색이 은은하게 돈다. 1.x 의 크림·하늘색 알약을
-## 대신한다 — 밝은 바탕에 흰 글자는 읽히지 않는다.
-func _info_box(tint: Color, radius: float) -> StyleBoxFlat:
-	var box := StyleBoxFlat.new()
-	box.bg_color = BOX_FILL.lerp(Color(tint.r, tint.g, tint.b, BOX_FILL.a), 0.18)
-	box.border_color = Color(tint.r, tint.g, tint.b, 0.85)
-	box.set_border_width_all(BOX_EDGE_PX)
-	box.set_corner_radius_all(int(round(radius)))
-	box.anti_aliasing = true
-	return box
 
 
 func _pill(color: Color, radius: float) -> StyleBoxFlat:

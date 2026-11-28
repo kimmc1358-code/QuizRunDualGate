@@ -30,8 +30,8 @@ static func font(fallback: Font) -> Font:
 	if _font == null and ResourceLoader.exists(FONT_PATH):
 		_font = load(FONT_PATH)
 		# Zen Dots has no Hangul. Chained to the game's own face, a Korean
-		# mode name falls through to Cafe24 Ssurround rather than to a thin
-		# system gothic.
+		# mode name falls through to the game's Hangul face (AppFont) rather
+		# than to a thin system gothic.
 		if fallback != null and _font is FontFile:
 			(_font as FontFile).fallbacks = [fallback]
 	return _font if _font != null else fallback

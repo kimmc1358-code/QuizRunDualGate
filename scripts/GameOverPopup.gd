@@ -71,9 +71,10 @@ const CHARACTER_BOB_PERIOD := 2.2
 const CHARACTER_BOB_AMPLITUDE := 5.0
 
 # ---- 정보 상자 ----
-# 한 줄짜리 상자. 최대 콤보는 주황 테, 스타더스트는 하늘색 테(_info_box).
-const COMBO_BOX_COLOR := Color(1.0, 0.62, 0.20, 1.0)
-const BOX_RADIUS := 14
+# 한 줄짜리 결과 상자 — 판 안에 깔린 층(_draw_box).
+const ROW_FILL := Color(0.0, 0.015, 0.05, 0.55)       # 판 면보다 한 단 가라앉은 유리
+const ROW_EDGE := Color(0.35, 0.65, 0.95, 0.30)       # 판 테두리의 파란 불을 옅게
+const ROW_RADIUS := 8
 const COMBO_BOX_HEIGHT_FRAC := 0.082   # 성적이라 조금 두툼하게
 const BOX_PAD := 14.0               # 상자 안쪽 좌우 여백
 const BOX_ICON_HEIGHT_FRAC := 1.55  # 글자 크기 대비 아이콘 높이
@@ -125,9 +126,8 @@ const DUST_ICON := "res://assets/synty_ui/icon_stardust.png"
 const DUST_LABEL := "STARDUST"
 const DOUBLE_TEXT := "x2"
 const NO_AD_TEXT := "AD NOT READY"
-const DUST_BOX_COLOR := Color(0.55, 0.92, 1.0, 1.0)    # 스타더스트 아이콘의 색
 const DUST_BOX_HEIGHT_FRAC := 0.082
-const DUST_BUTTON_W_FRAC := 0.32        # 상자 폭 대비; 0.40 은 한국어 "스타더스트"와 숫자를 겹치게 했다
+const DUST_BUTTON_W_FRAC := 0.26        # 상자 폭 대비; 0.40 은 한국어 "스타더스트"와 숫자를 겹치게 했고, 0.32 는 Zen Dots 의 넓은 STARDUST 를 15px 까지 줄였다
 const DUST_GOLD := Color(1.0, 0.78, 0.25, 1.0)         # 2배가 된 뒤 x2 글자
 const FIRE_FILE := KIT + "icon_bolt.png"
 const COMBO_LABEL := "MAX COMBO"
@@ -297,7 +297,7 @@ func _build_content() -> void:
 	_dust_box.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_dust_box.draw.connect(_draw_dust_box)
 	add_child(_dust_box)
-	_double_button = _make_button(GOLD_FILE, GOLD_CORNER, DOUBLE_TEXT,
+	_double_button = _make_button(SMALL_GOLD_FILE, SMALL_CORNER, DOUBLE_TEXT,
 		_load_popup_icon(POPUP_ICON_AD), true)
 	_double_button.pressed.connect(func(): double_pressed.emit())
 	add_child(_double_button)
@@ -590,11 +590,11 @@ func _draw_best_plate() -> void:
 	# 자체는 그 안쪽에서 시작해야 왼쪽으로 치우치지 않는다 — 커서 x 는 건드리지
 	# 않는다. 숫자 자리가 그것을 기준으로 잡히기 때문이다.
 	var label_x: float = x + ring
-	_top_row.draw_string_outline(_font_bold, Vector2(label_x, baseline),
+	_top_row.draw_string_outline(_label_font(BEST_PLATE_LABEL), Vector2(label_x, baseline),
 		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, PRIMARY_LABEL_OUTLINE)
-	_top_row.draw_string(_font_bold, Vector2(label_x, baseline),
+	_top_row.draw_string(_label_font(BEST_PLATE_LABEL), Vector2(label_x, baseline),
 		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
-	_top_row.draw_string(_font_heavy, Vector2(x + label_w + text_gap, baseline),
+	_top_row.draw_string(_big_number_font(), Vector2(x + label_w + text_gap, baseline),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
 
 
@@ -605,16 +605,25 @@ func _best_label_ring(fs: int) -> int:
 
 # "BEST" 가 차지하는 폭 — 테두리가 글자 양옆으로 번지는 몫까지.
 func _best_label_width(fs: int) -> float:
-	return _font_bold.get_string_size(
+	return _label_font(BEST_PLATE_LABEL).get_string_size(
 		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + _best_label_ring(fs) * 2.0
 
 
 # 왕관 + BEST + 숫자를 합친 폭. 배지 크기를 정할 때와 그릴 때가 같은
 # 값을 써야 내용이 가운데에 정확히 선다.
+## 크게 혼자 서는 숫자(게임오버 점수, BEST 판의 값)의 글꼴 — 제목·이름표와 같은 Zen Dots
+## (2026-11-28, 주인). 화면의 주인공인 숫자라 GAME OVER, SCORE, BEST 와 한 덩어리로 읽히고,
+## 메뉴 카드의 BEST 숫자도 Zen Dots 라 둘의 모양이 같다. 작은 숫자(콤보, 스타더스트,
+## 안내 문구 속 숫자)는 기본 글꼴(Oxanium) 그대로 — Zen Dots 숫자는 넓고 장식이 있어
+## 좁은 자리와 작은 글자에서 덜 읽힌다. Oxanium 과 나란히 그려 보고 골랐다.
+func _big_number_font() -> Font:
+	return _font_button
+
+
 func _best_plate_group_width(fs: int) -> float:
 	var w: float = _best_label_width(fs)
 	w += fs * 0.42
-	w += _font_heavy.get_string_size(
+	w += _big_number_font().get_string_size(
 		_group(_best), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	if _crown != null:
 		var icon_h: float = fs * BEST_PLATE_ICON_FRAC
@@ -685,9 +694,43 @@ func _draw_trophy() -> void:
 	_top_row.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
-# 둥근 상자 하나. 두 상자가 같은 함수를 쓰므로 모양이 어긋날 일이 없다.
-func _draw_box(node: Control, color: Color) -> void:
-	node.draw_style_box(_info_box(color, BOX_RADIUS), Rect2(Vector2.ZERO, node.size))
+# 결과 줄 하나. 버튼이 아니므로 버튼의 틀을 입지 않고 판 안에 깔린 층으로 그린다
+# (2026-11-28, 주인 — 버튼과 같은 틀이라 눌러질 것처럼 보였다). 두 줄이 판보다 한 단
+# 가라앉은 유리판 하나를 나눠 쓰고 사이에 가는 선을 긋는다 — 성적표 한 덩어리로 읽혀
+# 아래 버튼들과 갈린다. 줄마다 띠를 깔고 왼쪽에 색 막대를 세운 안과 나란히 보고 골랐다.
+func _draw_box(node: Control) -> void:
+	var is_combo: bool = node == _combo_box
+	var dust_on: bool = _dust_box != null and _dust_box.visible
+	var w: float = node.size.x
+	var h: float = node.size.y
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = ROW_FILL
+	sb.anti_aliasing = true
+	# 두 줄 사이 틈(BUTTON_BLOCK_GAP)을 반씩 메워 한 판으로 잇는다.
+	var half: float = BUTTON_BLOCK_GAP * 0.5
+	var r := Rect2(0.0, 0.0, w, h)
+	sb.border_color = ROW_EDGE
+	if is_combo:
+		sb.border_width_top = 1
+		sb.corner_radius_top_left = ROW_RADIUS
+		sb.corner_radius_top_right = ROW_RADIUS
+		if dust_on:
+			r.size.y += half
+		else:
+			sb.border_width_bottom = 1
+			sb.corner_radius_bottom_left = ROW_RADIUS
+			sb.corner_radius_bottom_right = ROW_RADIUS
+	else:
+		r.position.y -= half
+		r.size.y += half
+		sb.border_width_bottom = 1
+		sb.corner_radius_bottom_left = ROW_RADIUS
+		sb.corner_radius_bottom_right = ROW_RADIUS
+	sb.border_width_left = 1
+	sb.border_width_right = 1
+	node.draw_style_box(sb, r)
+	if not is_combo:
+		node.draw_line(Vector2(BOX_PAD, -half), Vector2(w - BOX_PAD, -half), ROW_EDGE, 1.0)
 
 
 # 상자 안에 아이콘 + 글자를 한 줄로 그린다. start_x부터 오른쪽으로 흐른다.
@@ -701,13 +744,13 @@ func _draw_box_row(node: Control, icon: Texture2D, text: String, font_size: int,
 		var iw: float = ih * (float(icon.get_width()) / float(icon.get_height()))
 		node.draw_texture_rect(icon, Rect2(x, centre_y - ih * 0.5, iw, ih), false)
 		x += iw + font_size * BOX_ICON_GAP_FRAC
-	node.draw_string(_font_bold, Vector2(x, centre_y + font_size * 0.35),
+	node.draw_string(_label_font(text), Vector2(x, centre_y + font_size * 0.35),
 		text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, INK)
 
 
 # 아이콘 + 간격 + 글자를 합친 폭.
 func _box_row_width(icon: Texture2D, text: String, font_size: int) -> float:
-	var w: float = _font_bold.get_string_size(
+	var w: float = _label_font(text).get_string_size(
 		text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
 	if icon != null:
 		var ih: float = font_size * BOX_ICON_HEIGHT_FRAC
@@ -721,39 +764,56 @@ func _box_row_width(icon: Texture2D, text: String, font_size: int) -> float:
 ## 스타더스트 상자: 아이콘, STARDUST, +번 것. 2배를 받았으면 금색 x2 가
 ## 붙고 숫자도 두 배로 적힌다.
 func _draw_dust_box() -> void:
-	_draw_box(_dust_box, DUST_BOX_COLOR)
-	var value := "+%s" % ScoreFormat.grouped(_dust * (2 if _dust_doubled else 1))
-	var right: float = _dust_box.size.x - BOX_PAD
-	if _double_button != null and _double_button.visible:
-		right = _double_button.position.x - _dust_box.position.x - BOX_PAD * 0.6
-	# One size for the label and the numbers, shrunk until they fit side by
-	# side in what the x2 button leaves; a long label (Korean) would else run
-	# into the number.
+	_draw_box(_dust_box)
 	var fs: int = _combo_font
-	var label: String = tr(DUST_LABEL)
-	while fs > BOX_TEXT_MIN:
-		var need: float = _box_row_width(_dust_icon, label, fs) + BOX_PAD * 0.8
-		need += _font_heavy.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-		if _dust_doubled:
-			need += _font_heavy.get_string_size(DOUBLE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + BOX_PAD * 0.5
-		if BOX_PAD + need <= right:
-			break
-		fs -= 1
-	_draw_box_row(_dust_box, _dust_icon, label, fs, BOX_PAD)
+	var ls: int = _row_label_size()
+	_draw_box_row(_dust_box, _dust_icon, tr(DUST_LABEL), ls, BOX_PAD)
+	var right: float = _dust_right()
 	var y: float = _dust_box.size.y * 0.5 + fs * 0.35
 	if _dust_doubled:
 		var xw: float = _font_heavy.get_string_size(DOUBLE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 		_dust_box.draw_string(_font_heavy, Vector2(right - xw, y), DOUBLE_TEXT,
 			HORIZONTAL_ALIGNMENT_LEFT, -1, fs, DUST_GOLD)
 		right -= xw + BOX_PAD * 0.5
+	var value := _dust_value_text()
 	var vw: float = _font_heavy.get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
 	_dust_box.draw_string(_font_heavy, Vector2(right - vw, y), value,
 		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
 
 
+func _dust_value_text() -> String:
+	return "+%s" % ScoreFormat.grouped(_dust * (2 if _dust_doubled else 1))
+
+
+# 스타더스트 줄에서 글자가 쓸 수 있는 오른쪽 끝 — x2 버튼이 있으면 그 앞까지.
+func _dust_right() -> float:
+	if _double_button != null and _double_button.visible:
+		return _double_button.position.x - _dust_box.position.x - BOX_PAD * 0.6
+	return _dust_box.size.x - BOX_PAD
+
+
+## 두 결과 줄의 이름표(MAX COMBO, STARDUST) 크기. 숫자는 _combo_font 그대로 두고
+## 이름표만, 스타더스트 줄에서 x2 버튼이 남긴 폭에 들어갈 때까지 줄인다. 두 줄이
+## 같은 값을 써서 이름표 크기가 나란하다 — 스타더스트만 줄이면 Zen Dots 로 넓어진
+## STARDUST 하나만 작아져 따로 놀았다. 그리는 순서와 상관없게 매번 같은 셈을 한다.
+func _row_label_size() -> int:
+	var ls: int = _combo_font
+	if _dust_box == null or not _dust_box.visible:
+		return ls
+	var fs: int = _combo_font
+	var right: float = _dust_right()
+	var numbers: float = _font_heavy.get_string_size(_dust_value_text(), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	if _dust_doubled:
+		numbers += _font_heavy.get_string_size(DOUBLE_TEXT, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + BOX_PAD * 0.5
+	var label: String = tr(DUST_LABEL)
+	while ls > BOX_TEXT_MIN and BOX_PAD + _box_row_width(_dust_icon, label, ls) + BOX_PAD * 0.8 + numbers > right:
+		ls -= 1
+	return ls
+
+
 func _draw_combo_box() -> void:
-	_draw_box(_combo_box, COMBO_BOX_COLOR)
-	_draw_box_row(_combo_box, _fire, tr(COMBO_LABEL), _combo_font, BOX_PAD)
+	_draw_box(_combo_box)
+	_draw_box_row(_combo_box, _fire, tr(COMBO_LABEL), _row_label_size(), BOX_PAD)
 	var value := "x%d" % _max_combo
 	var vw: float = _font_heavy.get_string_size(
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _combo_font).x
@@ -766,10 +826,10 @@ func _draw_combo_box() -> void:
 # 크므로, 둘의 밑선(베이스라인)을 맞춰야 한 줄로 읽힌다.
 func _draw_score_row() -> void:
 	var extra := _gap_line_text()
-	var label_w: float = _font_bold.get_string_size(
+	var label_w: float = _label_font(tr(SCORE_LABEL)).get_string_size(
 		tr(SCORE_LABEL), HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font).x
 	var value := _group(_score)
-	var value_w: float = _font_heavy.get_string_size(
+	var value_w: float = _big_number_font().get_string_size(
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font).x
 	var gap: float = _score_label_font * SCORE_GAP_FRAC
 	var x: float = (_score_row.size.x - (label_w + gap + value_w)) * 0.5
@@ -778,9 +838,9 @@ func _draw_score_row() -> void:
 	if extra != "":
 		top_h -= GAP_LINE_TOP + _gap_line_font * 1.25
 	var baseline: float = top_h * 0.5 + _score_value_font * 0.35
-	_score_row.draw_string(_font_bold, Vector2(x, baseline),
+	_score_row.draw_string(_label_font(tr(SCORE_LABEL)), Vector2(x, baseline),
 		tr(SCORE_LABEL), HORIZONTAL_ALIGNMENT_LEFT, -1, _score_label_font, INK)
-	_score_row.draw_string(_font_heavy, Vector2(x + label_w + gap, baseline),
+	_score_row.draw_string(_big_number_font(), Vector2(x + label_w + gap, baseline),
 		value, HORIZONTAL_ALIGNMENT_LEFT, -1, _score_value_font, INK)
 	if extra == "":
 		return

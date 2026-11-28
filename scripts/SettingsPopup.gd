@@ -64,7 +64,7 @@ const REMOVE_ADS_ICON_HEIGHT := 128
 # 글자 높이에 맞춘다 — _place 의 기본값은 글자의 1.18 배라 그 역수를 준다.
 const REMOVE_ADS_ICON_SCALE := 1.15
 const REMOVE_ADS_HEIGHT_FRAC := 0.215    # 판 너비 대비
-const REMOVE_ADS_WIDTH_FRAC := 0.92      # 안쪽 폭 대비
+const REMOVE_ADS_WIDTH_FRAC := 1.0       # 안쪽 폭 대비 — 위아래 줄과 끝선을 맞춘다(2026-11-28)
 # 위아래 점선과의 간격은 따로 크게 잡는다 — 버튼이 커서 점선에 붙으면 답답하다.
 const REMOVE_ADS_GAP_FRAC := 0.048       # 판 너비 대비
 # 일시정지의 RESUME, 게임오버의 PLAY AGAIN 과 같은 그림으로 보이게 하려면
@@ -112,11 +112,13 @@ const ROW_HEIGHT_FRAC := 0.105          # 언어 줄 높이, 판 너비 대비
 # 안 되는 것이고, 그때는 판이나 담을 것을 다시 봐야 한다.
 const GAP_MIN := 6.0
 const SQUEEZE_FLOOR := 0.80
+# 이름표(SFX/MUSIC/LANGUAGE) 칸이 차지할 수 있는 몫, 안쪽 폭 대비. 넘으면 이름표를 줄인다.
+const LABEL_COLUMN_MAX := 0.47
 
 var _title: Control
 var _sliders: Control
-var _sfx_slider: HSlider
-var _music_slider: HSlider
+var _sfx_slider: KitSlider
+var _music_slider: KitSlider
 var _language_row: Control       # "LANGUAGE" 이름표 + ENG/KOR 두 칸
 var _language_toggle: Control
 var _korean := false
@@ -142,6 +144,8 @@ var _cancel: Button
 var _version: Control
 # 그릴 때마다 설정을 뒤질 이유가 없다 — 프로젝트 설정은 실행 중에 안 바뀐다.
 var _version_text: String = ""
+# 소리·언어 줄 이름표의 글자 크기. 배치에서 정하고 그릴 때 쓴다.
+var _label_size: int = 16
 
 
 func panel_size_frac() -> Vector2:
@@ -203,7 +207,7 @@ func _build_content() -> void:
 	# 크림 아트는 1939x613 에 모서리 202 라, 모서리는 늘 텍스처 높이의 33% 다 —
 	# 즉 텍스처 높이가 버튼 높이의 1.5 배를 넘으면 안 된다. 105 면 텍스처가
 	# 210x66, 모서리 22 로 50px 버튼 안에 넉넉히 들어온다.
-	_login = _make_button(CREAM_FILE, CREAM_CORNER, tr(LOGIN_TEXT), null, false,
+	_login = _make_button(SMALL_CREAM_FILE, SMALL_CORNER, tr(LOGIN_TEXT), null, false,
 		CREAM_GRADIENT, LOGIN_TEXTURE_WIDTH)
 	# 로그인 전용이다. 로그인하면 버튼이 사라진다 — set_account 참고.
 	_login.pressed.connect(func(): login_pressed.emit())
@@ -274,8 +278,14 @@ func _layout_content(inner: Rect2) -> void:
 
 	_place_title(_title)
 
+	# 이름표 크기. Zen Dots 의 LANGUAGE 는 넓어서, 기본 크기로는 이름표 칸이 언어 토글을
+	# 파고들었다 — 칸이 안쪽 폭의 LABEL_COLUMN_MAX 안에 들 때까지 줄인다. SFX/MUSIC 도
+	# 같은 크기를 써서 세 이름표가 나란하다.
 	var slider_font: int = int(round(pw * SLIDER_LABEL_FRAC))
-	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_TRACK_HEIGHT + 6.0
+	while slider_font > 10 and _row_label_column(slider_font, [tr(LANGUAGE_ROW_LABEL)]) > inner_w * LABEL_COLUMN_MAX:
+		slider_font -= 1
+	_label_size = slider_font
+	var slider_h: float = pw * SLIDER_LABEL_FRAC * 1.1 + SLIDER_ROW_PAD
 	var divider_h: float = DIVIDER_DOT_RADIUS * 2.0
 	var account_h: float = pw * ACCOUNT_ROW_HEIGHT_FRAC
 	var link_h: float = pw * LINK_ROW_HEIGHT_FRAC
@@ -329,19 +339,20 @@ func _layout_content(inner: Rect2) -> void:
 			_row_label_column(slider_font, [tr(LANGUAGE_ROW_LABEL)])),
 		inner_w * 0.55)
 	var track_w: float = inner_w - track_x
-	# 손잡이가 트랙 양끝에서 반쯤 걸치므로 그만큼 안쪽으로.
-	var knob_pad: float = SLIDER_KNOB_SIZE * 0.5
+	# 소리 막대는 제 이름표(SFX/MUSIC)만 재서 그 칸 바로 뒤에서 시작한다.
+	# LANGUAGE 칸에 맞추면 화살표·숫자 상자를 빼고 채움이 45px 남짓만 남았다.
+	# 언어 토글과 왼쪽 끝이 어긋나는 것은 그 대가다.
+	var bar_x: float = minf(_slider_label_column(slider_font, [tr("SFX"), tr("MUSIC")]), track_x)
 	for i in range(2):
-		var s: HSlider = _sfx_slider if i == 0 else _music_slider
-		s.position = Vector2(track_x + knob_pad,
-			i * (slider_h + gap) + slider_h * 0.5 - SLIDER_KNOB_SIZE * 0.5)
-		s.size = Vector2(maxf(10.0, track_w - knob_pad * 2.0), SLIDER_KNOB_SIZE)
+		var s: KitSlider = _sfx_slider if i == 0 else _music_slider
+		s.position = Vector2(bar_x,
+			i * (slider_h + gap) + slider_h * 0.5 - SLIDER_BAR_HEIGHT * 0.5)
+		s.size = Vector2(maxf(10.0, inner_w - bar_x), SLIDER_BAR_HEIGHT)
 	_sliders.queue_redraw()
 	y += slider_h * 2.0 + gap + gap
 
-	# 언어 줄. 이름표는 슬라이더와 같은 칸에 세우고(track_x), 토글은 트랙과
-	# 같은 폭·같은 왼쪽 끝 — 그래야 SFX/MUSIC 과 세로선이 맞는다. 높이는 알약이
-	# 뭉툭해지지 않게 상한을 둔다.
+	# 언어 줄. 토글은 LANGUAGE 이름표 칸 뒤에서 시작해 오른쪽 끝에서 소리
+	# 막대와 맞춘다. 높이는 알약이 뭉툭해지지 않게 상한을 둔다.
 	_language_row.position = Vector2(inner_x, y)
 	_language_row.size = Vector2(inner_w, row_h)
 	_language_row.queue_redraw()
@@ -424,7 +435,7 @@ func set_account(avatar: Texture2D, display_name: String, logged_in: bool) -> vo
 func _draw_sliders() -> void:
 	_draw_slider_labels(_sliders,
 		[[tr("SFX"), _sfx_icon], [tr("MUSIC"), _music_icon]],
-		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)),
+		_label_size,
 		_sliders.get_meta("row_h", 30.0), _sliders.get_meta("gap", 8.0))
 
 
@@ -432,7 +443,7 @@ func _draw_sliders() -> void:
 # 글자만 나가고, 세로 중심 계산이 같아 SFX/MUSIC 과 줄이 맞는다.
 func _draw_language_row() -> void:
 	_draw_slider_labels(_language_row, [[tr(LANGUAGE_ROW_LABEL), null]],
-		int(round(_panel_rect.size.x * SLIDER_LABEL_FRAC)), _language_row.size.y, 0.0)
+		_label_size, _language_row.size.y, 0.0)
 
 
 ## 어느 쪽이 켜져 있는지 표시만 바꾼다 — 신호는 보내지 않는다. Main 이 저장된

@@ -49,7 +49,7 @@ const MADE_WITH := [
 	["Game Engine", "Godot Engine"],
 	["Art & Image Generation", "PixelLab, Ludo.ai"],
 	["Image Editing", "Photopea"],
-	["Typography", "Fredoka"],
+	["Typography", "Oxanium, Do Hyeon, Zen Dots"],
 	["Music", "Suno, Audjust"],
 	["Sound Effects", "ElevenLabs"],
 ]

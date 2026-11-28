@@ -359,28 +359,72 @@ changed is the art and the palette (`PopupBase`):
   teal face with baked scanlines, was tried in the game the same day and
   the owner kept Large_08. Scanlines need the face tiled, not stretched
   (`axis_stretch_vertical` TILE_FIT), or their spacing grows with the panel.
-- The main button (`GOLD_FILE`, `popup_primary.png`) is `Bar_Frame_02`
-  filled orange, its cyan arrow tips matching the panel's blue; the others
-  (`CREAM_FILE`, `popup_button.png`) are `Frame_Box_Small_04`, a thick
-  silver bevel with cut corners round a dark face with a little blue in it
-  (the owner's ask), with a cyan caption and
-  icon (`SECONDARY_LABEL_COLOR`): the look of the pack's sample
-  `Label_Button`. It is a square frame, baked small and nine-sliced on all
-  four sides at the bake's scale like the panel (`CREAM_CORNER`,
-  `CREAM_CORNER_Y`), so the corners stay small and only the edges grow. The
-  owner picked the main one from a sheet of every button frame drawn dark
-  and orange. Secondaries tried on the way: the grey rounded
-  `Button_Frame_03` (first build, and again nine-sliced, whose faceted ends
-  never look like a cut corner), `Button_Frame_07` (rails above and below),
-  and a rounded box drawn in code. The names
-  GOLD and CREAM are kept from 1.x and mean main and secondary. Buttons are
-  three-sliced at their texture's height (`_fit_patch`), so the ends shrink
-  with the button instead of being squashed, and `_place` keeps the icon and
-  caption between the ends. Held, a button's inner face lights up, as the
-  menu's PLAY does: an additive layer over the face (`Glow`, placed from
-  `GOLD_FACE_INSET`/`CREAM_FACE_INSET`, measured off the baked art) fades in
-  with the press and out over `PRESS_GLOW_FADE` after it.
-- GAME OVER and SETTINGS (and OOPS! while the revive lasted) are large gold Zen Dots letters with a dark
+- Every full-width button is one frame, `Frame_Box_Small_08`, and only the
+  face tells them apart (2026-11-28): orange for the main button
+  (`GOLD_FILE`, `popup_bar_primary.png`), blue with a cyan caption and icon
+  for the others (`CREAM_FILE`, `popup_bar.png`, `SECONDARY_LABEL_COLOR`).
+  - The pack's bar has a screwed steel block on its right end only; its left
+    edge is a hairline meant to sit under an icon cell, and alone it read as
+    cut off. `build_ui_kit` mirrors the block onto the left and squeezes both
+    to 60% of their width (`MIRROR_RIGHT`, `_close_both_ends`): at full width
+    the two blocks left a short button half its face.
+  - The bar is three-sliced at its height (`_kit_patch`), its ends fixed at
+    `BUTTON_BAR_LEFT`/`RIGHT`, and `_place` centres the icon and caption on
+    the face between them (`face`), which the press glow also fills.
+  - The narrow buttons, settings' LOGIN and the game over's x2, are the
+    silver bevel box instead (`SMALL_GOLD_FILE`/`SMALL_CREAM_FILE`,
+    `Frame_Box_Small_04`, nine-sliced on all four sides at the bake's scale):
+    the bar's two ends ate almost all of them. The bevel is also the volume
+    bar's handle.
+  - Every button and row runs the same width, so their edges make one line
+    down the panel.
+  - How it got here, all on 2026-11-28 and each the owner's call:
+    - The main button was `Bar_Frame_02` filled orange with cyan arrow tips,
+      and the secondaries `Frame_Box_Small_04`. The owner found they did not
+      belong together.
+    - Each frame was drawn as a whole family (main, secondary, result row)
+      and the bevel kept; the `Bar_Frame_02` family was heavy.
+    - The owner then found the bevel flat. The pack's `Label_Button` sample
+      (an icon cell, `Frame_Box_Small_01` mirrored, clamped over the left end
+      of this bar) was built for the secondaries: with the cell apart from
+      the bar it read as two parts; on the taller main buttons it halved the
+      caption.
+    - Then every button became this bar, closed at both ends.
+  - Secondaries tried earlier: the grey rounded `Button_Frame_03` (faceted
+    ends that never look like a cut corner), `Button_Frame_07` (rails above
+    and below), and a rounded box drawn in code.
+  - The result rows were rounded boxes drawn in code with a coloured rim,
+    then the bevel with a near-black face for an hour; framed like the
+    buttons they looked pressable, and they became a layer drawn in the
+    panel (`GameOverPopup._draw_box`): the two rows share one dark recessed
+    glass plate, a faint blue edge round it and a thin line between them, so
+    they read as one score sheet apart from the buttons below. A flat strip
+    per row with a short coloured bar at its left (combo orange, stardust
+    cyan) was drawn beside it, and the owner chose the plate.
+  - The names GOLD and CREAM are kept from 1.x and mean main and secondary.
+  - Held, a button's inner face lights up, as the menu's PLAY does: an
+    additive layer over the face (`Glow`, placed on `face`; for the bevel,
+    `BEVEL_FACE_INSET`, measured off the baked art) fades in with the press
+    and out over `PRESS_GLOW_FADE` after it.
+- Button captions (and the language toggle's ENG/KOR) and the short
+  capital labels (SCORE, BEST, MAX COMBO, STARDUST, SFX, MUSIC, LANGUAGE,
+  `_label_font`) are in Zen Dots, the titles' face; numbers and sentences
+  stay in the base font, Oxanium (2026-11-28, owner). All English in Zen Dots was
+  considered and not done: it is a display face, wide and hard to read in
+  sentences, and its numbers overrun the narrow score slots. Zen Dots runs
+  wider than Oxanium, so settings shrinks its three labels until LANGUAGE
+  fits `LABEL_COLUMN_MAX` of the row, and the game over's two result rows
+  share one label size (`_row_label_size`), fitted to what the x2 button
+  (narrowed to 0.26 of the row for this) leaves STARDUST. A caption with Hangul in it is set in the base font's heavy weight
+  instead
+  (`_caption_font`). Left to Zen Dots' `fallbacks`, Hangul came out in the
+  device's thin gothic rather than the game's Do Hyeon, and the Korean buttons looked
+  faint. The font is picked in `_place`, since a caption can change after it
+  is built (the x2's AD NOT READY). The game over's two big numbers, the score
+  and the BEST plate's value, are Zen Dots too (`_big_number_font`): they
+  read as one block with GAME OVER and SCORE, and match the mode select
+  card's BEST figure. Small numbers stay in Oxanium.
+- GAME OVER, SETTINGS and PAUSED (and OOPS! while the revive lasted) are large gold Zen Dots letters with a dark
   rim and no plate (`_make_title`), standing just above the panel and clear
   of it (`_place_title`). They were on a header plate astride the panel's
   top edge first, then on the orange `Bar_Frame_08` above it; the owner
@@ -390,15 +434,29 @@ changed is the art and the palette (`PopupBase`):
   room above the panel where there is less (the settings popup at 16:9).
   The game over's title was TRY AGAIN; PLAY AGAIN under it already says
   that.
-- The 1.x popups were navy on cream. Text is now a pale blue (`INK`) and the
-  info boxes are dark glass with a coloured rim (`_info_box`); each box's old
-  fill colour constant is now its rim. Sliders and the toggle are cyan. The glow that breathed around the panel (gold in 1.x, then cyan) was removed at the owner's request: the kit frame carries its own light and colour.
+- The 1.x popups were navy on cream. Text is now a pale blue (`INK`). The toggle is cyan. The glow that breathed around the panel (gold in 1.x, then cyan) was removed at the owner's request: the kit frame carries its own light and colour.
+- PAUSED was pale blue letters inside the panel until 2026-11-28, when the
+  owner asked for it to match the other popups' titles; the pause panel came
+  down to `(0.88, 0.56)` and its centre to 0.54 to make room above it.
 - Icons are the pack's white ones (`KIT_ICONS`, and the game over's
   `*_FILE`s), the tick and lock baked tinted. The pack has no plain play
   triangle, so RESUME's is drawn (`_play_icon`).
 - The faces the game over shows are the kit's
   amber warning sign and gold star (`FACE_SAD_PATH`/`FACE_HAPPY_PATH`), since
   the ship has no face.
+- The volume rows (settings and pause) are `PopupBase.KitSlider` (2026-11-28,
+  after a sample the owner sent): `Button_Arrow_07` with its cyan light layer
+  at either end, stepping the value by `SLIDER_STEP`; between them
+  `Bar_Frame_02`, three-sliced, filled cyan up to the handle. The handle is a
+  small box carrying the value 0-100 in Oxanium, the secondary buttons'
+  silver bevel (`popup_button.png`) nine-sliced at the bake's scale; the owner
+  asked for it to move with the value and to be plainer than the
+  `Frame_Box_Small_06` with steel caps it started as, which sat fixed at the
+  bar's left. Grabbed, it keeps the finger's place on it; pressed elsewhere on
+  the bar, it comes there and drags from there. It takes mouse
+  input only, since touch arrives as emulated mouse. In settings the bars
+  start after the SFX/MUSIC labels rather than the wider LANGUAGE one, or the
+  fill was about 45 px long.
 - Kit art never goes through the popup bake (`_bake_store`): its output sits
   under `ui_assets/`, which git tracks.
 
@@ -659,7 +717,7 @@ blurbs, the leaderboard label, the tutorial, the pause and game over
 popups, and the settings and about popups. **Words that live in painted art stay English** — START, READY,
 OOPS, TRY AGAIN, SETTINGS, the logo — because translating them means redrawing
 them. The popup
-titles are drawn now (GAME OVER, SETTINGS as plain lettering), but in
+titles are drawn now (GAME OVER, SETTINGS, PAUSED as plain lettering), but in
 Zen Dots, which has no Hangul, so they stay English too.
 
 The 1.x quiz content was translated too — the eleven Stroop colour words
@@ -689,28 +747,35 @@ People's names in the about popup are **not** translated. Transliterating a
 name is rewriting it, and that is the owner's call, not the translator's.
 
 `scripts/AppFont.gd` is where the fonts are decided, and every screen takes
-its base font from there. Fredoka has no Hangul, so a Korean face is attached
-as its `fallbacks` — one chain on one base font, because the weights are
-`FontVariation`s over it and they look glyphs up through `base_font`.
+its base font from there. The base is **Oxanium**, a squared sci-fi face with
+a wght axis (200-800); it has no Hangul, so a Korean face, **Do Hyeon**, is
+attached as its `fallbacks` — one chain on one base font, because the weights
+are `FontVariation`s over it and they look glyphs up through `base_font`.
+Titles, buttons and short labels are Zen Dots instead (`TitleArt.font`; see
+the popup notes above).
 
-The Korean face is **Cafe24 Ssurround**, whose rounded shapes sit next to
-Fredoka without looking borrowed. `AppFont.KOREAN_CANDIDATES` lists the names
-Cafe24 ships under so a download needs no renaming, and takes the **OTF over
-the TTF**: the two render identically here and the OTF is 1.6MB against
-3.8MB, all of which would ride along in the APK.
+Both were picked on 2026-11-28, when the owner found the old pair, Fredoka
+and Cafe24 Ssurround, too rounded and soft beside Zen Dots. Oxanium with
+Orbit and Oxanium with Do Hyeon were tried in the real popups side by side;
+Orbit, a geometric Korean face with a single 400 weight, went thin in the
+Korean buttons and the "신기록!" banner. Both fonts are SIL OFL, downloaded
+from Google Fonts' repository (`ofl/oxanium`, `ofl/dohyeon`).
 
-If the file goes missing the game still runs and Hangul still renders — from
-whatever the device provides, which is a plain gothic beside Fredoka and
-differs per phone. Boot says so once.
+If the Korean file goes missing the game still runs and Hangul still renders
+— from whatever the device provides, which is a plain gothic and differs per
+phone. Boot says so once.
 
 Both font licences live in `licenses/`, behind a `.gdignore` like `store/`.
-They are redistribution terms, not something the game opens, and Cafe24's
-arrives as a 1.9MB PDF — larger than the font it covers. Keeping licences out
-of `assets/` is the rule here: put the paperwork in `licenses/`, and only
+They are redistribution terms, not something the game opens. Keeping licences
+out of `assets/` is the rule here: put the paperwork in `licenses/`, and only
 what the game loads under `assets/`.
 
 Changing that font moves every text measurement, so the fit checks — the
-explain bar, card names, tutorial captions — are what to re-run afterwards.
+explain bar, card names, tutorial captions — are what to re-run afterwards,
+and the glyph metrics measured off the font in Main (`DIGIT_*`,
+`QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC`) have to be measured again: render the
+string into an off-screen `SubViewport` at a known baseline and read the ink
+rows back (a draw on the root viewport is scaled by the window stretch).
 
 ## Verifying changes
 

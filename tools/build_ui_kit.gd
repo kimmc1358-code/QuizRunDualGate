@@ -3,7 +3,7 @@ extends SceneTree
 # Builds the play-screen HUD art from Synty's INTERFACE Sci-Fi Menus pack.
 #
 #   Godot_v4.7.2-stable_win64_console.exe --headless --path . \
-#       --script res://tools/build_ui_kit.gd -- <SourceFiles dir>
+#       --script res://tools/build_ui_kit.gd -- <SourceFiles dir> [piece.png ...]
 #
 # <SourceFiles dir> is the unzipped INTERFACE_SciFi_Menus_SourceSprites_v1
 # zip's SourceFiles/ folder. Only the sprites named in PIECES are read.
@@ -71,17 +71,42 @@ const PIECES := {
 	"title_bar.png": ["SciFiMenus/SPR_SciFiMenus_Bar_11_Bottom", "", 17.0],
 	# The popups (2026-11-28). The panel is the blue-lit frame with steel
 	# corner caps, its face nearly opaque so rows of text read over the
-	# space; it is cut down to a nine-patch (see NINE). The main button is
-	# Bar_Frame_02 filled orange, its cyan arrow tips matching the panel's blue;
-	# the secondary buttons are Frame_Box_Small_04, a thick silver bevel with cut
-	# corners (Button_Frame_03, faceted end to end, was tried first), baked small and
-	# nine-sliced on all four sides so its corners stay small, the look of the
-	# pack's sample Label_Button. The title is plain text over the panel (PopupBase.
-	# _make_title), with no plate. The owner went from this frame to the
-	# orange-bracketed Large_01 with a title bar and back again the same day.
+	# space; it is cut down to a nine-patch (see NINE). Every button is
+	# Frame_Box_Small_08, a bar whose screwed steel block closes the right end,
+	# mirrored onto the left too (MIRROR_RIGHT): its own left edge is a hairline
+	# meant to sit under an icon cell, and alone it read as cut off. Three-sliced
+	# at its height (PopupBase._kit_patch), and
+	# only the face tells them apart: orange for the main button, blue for the
+	# others. On the way, each owner's call: the main button was Bar_Frame_02
+	# with cyan tips, which did not belong with the rest; then every button was
+	# Frame_Box_Small_04, a thin silver bevel (still baked, as the volume bar's
+	# handle); then the secondaries were the pack's Label_Button sample, an icon
+	# cell (Frame_Box_Small_01) clamped over the end of this bar. The result
+	# rows left the button frame for a layer drawn in code
+	# (GameOverPopup._draw_box): framed like a button, they looked pressable.
+	# The title is plain text over the panel (PopupBase._make_title), with no
+	# plate. The owner went from this frame to the orange-bracketed Large_01 with
+	# a title bar and back again the same day.
 	"popup_panel.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Large_08", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Large_08_Background", 330.0, null, Color(0.035, 0.06, 0.13, 0.95)],
-	"popup_primary.png": ["SciFiMenus/SPR_SciFiMenus_Bar_Frame_02", "SciFiMenus/SPR_SciFiMenus_Bar_Frame_02_Background", 70.0, null, Color(1.0, 0.72, 0.22, 1.0)],
+	"popup_bar_primary.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_08", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_08_Background", 46.0, null, Color(1.0, 0.72, 0.22, 1.0)],
+	"popup_bar.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_08", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_08_Background", 46.0, null, Color(0.06, 0.24, 0.50, 0.97)],
 	"popup_button.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04_Background", 40.0, null, Color(0.06, 0.24, 0.50, 0.97)],
+	# The small buttons (LOGIN, the game over's x2) keep the bevel: even with the
+	# blocks squeezed, the bar's two steel ends left them almost no face.
+	"popup_small_primary.png": ["SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04", "SciFiMenus/SPR_SciFiMenus_Frame_Box_Small_04_Background", 40.0, null, Color(1.0, 0.72, 0.22, 1.0)],
+	# The volume bars in settings and pause (2026-11-28, after a sample the owner
+	# sent): Bar_Frame_02's frame alone, with the face, the fill and the handle
+	# drawn in code (PopupBase.KitSlider). The handle is popup_button.png; the
+	# Frame_Box_Small_06 tried first, with steel caps either side, was too busy
+	# for a handle. Baked at the bar's drawn height.
+	"slider_frame.png": ["SciFiMenus/SPR_SciFiMenus_Bar_Frame_02", "", 30.0],
+	# The step buttons either end: Button_Arrow_07 with its cyan light layer laid
+	# in its dark plate. Bar_Frame_02's own tips are too small to read as
+	# buttons at 30 px. The lights are drawn for the left arrow, so the right
+	# one takes them mirrored (FLIP_FRAME). The background slot is used to put
+	# the arrow under its lights, untinted.
+	"slider_arrow_left.png": ["SciFiMenus/SPR_SciFiMenus_Button_Arrow_07_Lights", "SciFiMenus/SPR_SciFiMenus_Button_Arrow_07_Left", 32.0, null, Color(1, 1, 1, 1)],
+	"slider_arrow_right.png": ["SciFiMenus/SPR_SciFiMenus_Button_Arrow_07_Lights", "SciFiMenus/SPR_SciFiMenus_Button_Arrow_07_Right", 32.0, null, Color(1, 1, 1, 1)],
 	"icon_restart.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Refresh_01_Clean", "", 48.0],
 	"icon_home.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Planet_01_Clean", "", 48.0],
 	"icon_ad.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Display_01_Clean", "", 48.0],
@@ -101,6 +126,18 @@ const PIECES := {
 const NINE := {
 	"popup_panel.png": [0.13, 0.27],
 }
+## Pieces closed at both ends: this share of the width, taken from the right end
+## (Frame_Box_Small_08's screwed steel block, which starts 147 px into the 222
+## px bar), is mirrored over the left, whose own edge is a 1-2 px line meant to
+## sit under an icon cell. Then both blocks are squeezed sideways to the second
+## value: at full width the two left the caption half the bar on a short button.
+## Cut after the crop, before the shrink.
+const MIRROR_RIGHT := {
+	"popup_bar.png": [0.37, 0.6],
+	"popup_bar_primary.png": [0.37, 0.6],
+}
+## Pieces whose frame sprite is mirrored before it is laid over the background.
+const FLIP_FRAME := ["slider_arrow_right.png"]
 ## A few pixels of plain edge between the corners, in source pixels.
 const NINE_STRIP := 16
 ## Copied as they are into assets/synty_ui/fonts/.
@@ -118,13 +155,20 @@ func _init() -> void:
 		quit(1)
 		return
 	var src: String = args[0].path_join("Sprites")
+	# Further arguments name the pieces to bake, so trying one piece does not
+	# wait on all of them; the fonts are copied only by a full build.
+	var only: Array = args.slice(1)
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT))
 	for out_name: String in PIECES:
+		if not only.is_empty() and not only.has(out_name):
+			continue
 		var p: Array = PIECES[out_name]
 		var img := _load(src, p[0])
 		if img == null:
 			quit(1)
 			return
+		if FLIP_FRAME.has(out_name):
+			img.flip_x()
 		if p[1] != "":
 			var back := _load(src, p[1])
 			if back == null:
@@ -146,6 +190,8 @@ func _init() -> void:
 		var used := _ink_rect(img)
 		if used.size.x > 0 and used.size.y > 0:
 			img = img.get_region(used)
+		if MIRROR_RIGHT.has(out_name):
+			img = _close_both_ends(img, float(MIRROR_RIGHT[out_name][0]), float(MIRROR_RIGHT[out_name][1]))
 		var h: int = int(round(float(p[2]) * BAKE))
 		var w: int = int(round(img.get_width() * float(h) / img.get_height()))
 		if NINE.has(out_name):
@@ -162,6 +208,10 @@ func _init() -> void:
 		print("  %-16s %4dx%-4d from %s" % [out_name, w, h, p[0].get_file()])
 	# The title's face. Zen Dots is SIL OFL, so it could be committed, but it
 	# travels with the rest of the kit; its licence goes with it.
+	if not only.is_empty():
+		print("wrote ", OUT)
+		quit()
+		return
 	DirAccess.make_dir_recursive_absolute(ProjectSettings.globalize_path(OUT + "fonts/"))
 	for f in FONTS:
 		var from: String = args[0].path_join(f)
@@ -216,6 +266,35 @@ func _tint_vertical(img: Image, top: Color, bottom: Color) -> void:
 		for x in img.get_width():
 			var c := img.get_pixel(x, y)
 			img.set_pixel(x, y, Color(minf(1.0, c.r * tint.r), minf(1.0, c.g * tint.g), minf(1.0, c.b * tint.b), c.a * tint.a))
+
+
+## `img` with its right end (`share` of the width) mirrored over the left, and
+## both ends squeezed sideways to `squeeze` of their width.
+func _close_both_ends(img: Image, share: float, squeeze: float) -> Image:
+	var w := img.get_width()
+	var h := img.get_height()
+	var cw: int = int(round(w * share))
+	var right := img.get_region(Rect2i(w - cw, 0, cw, h))
+	var mid := img.get_region(Rect2i(cw, 0, w - cw * 2, h))
+	var cw2: int = int(round(cw * squeeze))
+	right.premultiply_alpha()
+	right.resize(cw2, h, Image.INTERPOLATE_LANCZOS)
+	_unpremultiply(right)
+	var left := right.duplicate()
+	left.flip_x()
+	var out := Image.create(cw2 * 2 + mid.get_width(), h, false, Image.FORMAT_RGBA8)
+	out.blit_rect(left, Rect2i(0, 0, cw2, h), Vector2i(0, 0))
+	out.blit_rect(mid, Rect2i(Vector2i.ZERO, mid.get_size()), Vector2i(cw2, 0))
+	out.blit_rect(right, Rect2i(0, 0, cw2, h), Vector2i(cw2 + mid.get_width(), 0))
+	return out
+
+
+func _unpremultiply(img: Image) -> void:
+	for y in img.get_height():
+		for x in img.get_width():
+			var c := img.get_pixel(x, y)
+			if c.a > 0.0:
+				img.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
 
 
 ## The four c x c corners of `img` joined by NINE_STRIP pixels of each edge

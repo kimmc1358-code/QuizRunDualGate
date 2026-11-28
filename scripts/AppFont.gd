@@ -3,38 +3,36 @@ extends RefCounted
 
 ## 이 게임이 쓰는 글꼴을 잡는 한 곳.
 ##
-## Fredoka 한 벌로 시작했는데 한글 글리프가 없다. 없는 글리프는 Godot 이 기기의
-## 시스템 폰트에서 끌어다 쓰므로 글자가 사라지지는 않지만, 그 폰트가 무엇인지는
-## 기기마다 다르고 대개 Fredoka 의 둥근 라틴 옆에 밋밋한 고딕이 앉는다. 한글
-## 폰트를 fallback 으로 붙여 두면 어느 기기에서나 같은 얼굴이 나온다.
+## 라틴과 숫자는 Oxanium, 한글은 Do Hyeon(2026-11-28, 주인이 골랐다). 둘 다 SIL
+## OFL 이고 licenses/ 에 사용 허락서가 있다. 제목과 버튼의 Zen Dots(TitleArt)와
+## 같은 결 — 네모지고 기하학적인 SF 글꼴 — 이라 고른 것이다. 그 전의 Fredoka 와
+## Cafe24 Ssurround 는 둘 다 둥글고 말랑해서 Zen Dots 옆에서 따로 놀았다. 실제
+## 팝업에 Oxanium + Orbit, Oxanium + Do Hyeon 을 나란히 끼워 보고 골랐다: Orbit 은
+## 굵기가 하나(400)뿐이라 한글 버튼과 "신기록!" 에서 힘이 빠졌다.
 ##
-## fallback 은 '기본' 폰트 한 벌에만 걸면 된다. 이 프로젝트는 굵기를
-## FontVariation 으로 만드는데(_weighted), FontVariation 은 굵기만 바꾸고 글리프는
-## base_font 에서 찾으므로 굵기마다 따로 걸 필요가 없다.
+## Oxanium 은 wght 축(200-800)이 있는 가변 글꼴이라 굵기는 화면마다
+## FontVariation 으로 만든다(_weighted). Do Hyeon 은 굵기가 하나다.
+##
+## 한글은 Oxanium 에 없으므로 fallback 으로 붙인다. 붙이지 않으면 Godot 이 기기의
+## 시스템 폰트에서 끌어다 쓰는데, 그것이 무엇인지는 기기마다 다르고 대개 밋밋한
+## 고딕이다. fallback 은 '기본' 폰트 한 벌에만 걸면 된다. FontVariation 은 굵기만
+## 바꾸고 글리프는 base_font 에서 찾으므로 굵기마다 따로 걸 필요가 없다.
 ##
 ## 네 화면이 각자 load() 하던 것을 여기로 모았다. 따로 불러 두면 fallback 을
 ## 붙이는 곳도 넷이 되고, 그중 하나를 빠뜨리면 그 화면에서만 한글이 다른
 ## 폰트로 나온다 — 화면을 나란히 놓고 보기 전에는 알기 어려운 종류다.
 
-const BASE_PATH := "res://assets/fonts/Fredoka.ttf"
-## 한글용 — 카페24 써라운드. 없으면 시스템 폰트로 대체되므로 글자가 깨지지는
-## 않는다.
-##
-## 받은 파일 이름 그대로 두어도 되도록 몇 가지를 훑는다. 배포처에 따라
-## 버전이 파일 이름에 붙어 오는데, 그것 때문에 "왜 한글이 안 바뀌지"로
-## 시간을 쓰게 하고 싶지 않다.
+const BASE_PATH := "res://assets/fonts/Oxanium.ttf"
+## 한글용 — Do Hyeon. 없으면 시스템 폰트로 대체되므로 글자가 깨지지는 않는다.
 const KOREAN_CANDIDATES := [
-	"res://assets/fonts/Cafe24Ssurround-v2.0.otf",
-	"res://assets/fonts/Cafe24Ssurround.otf",
-	"res://assets/fonts/Cafe24Ssurround-v2.0.ttf",
-	"res://assets/fonts/Cafe24Ssurround.ttf",
+	"res://assets/fonts/DoHyeon-Regular.ttf",
 ]
 
 static var _base: Font = null
 static var _warned := false
 
 
-## 라틴은 Fredoka, 한글은 KOREAN_PATH. 한 번만 만들고 다시 쓴다.
+## 라틴은 Oxanium, 한글은 KOREAN_CANDIDATES. 한 번만 만들고 다시 쓴다.
 static func base() -> Font:
 	if _base != null:
 		return _base

@@ -93,17 +93,19 @@ const QUIZ_TEXT_CENTER_Y_FRAC := 0.5109   # of height — the frame's inner face
 # what we don't want. Width is untouched by the stretch, so the text holds
 # its size no matter how tall the box gets.
 #
-# The ceiling comes from descenders: measured on Fredoka, cap-height strings
-# ink 0.72 em above the baseline to 0.01 below, but a "Paraguay" reaches
-# 0.21 em below. Centred on the ink midpoint, that puts the descender
-# 0.565 em under the centre, which is what has to clear the frame.
+# The ceiling comes from descenders: measured on Oxanium at 600 (2026-11-28),
+# cap-height strings ink 0.69 em above the baseline to 0.00 below, but a
+# "Paraguay" reaches 0.21 em below. Centred on the cap band, that puts the
+# descender 0.555 em under the centre, which is what has to clear the frame.
+# (Fredoka measured 0.72 / 0.01 / 0.21.)
 const QUIZ_TEXT_MAX_FONT_FRAC := 0.062    # of box width
 const QUIZ_TEXT_MIN_FONT_FRAC := 0.030    # of box width — floor for very long questions
 # Baseline offset from the text's visual centre, as a fraction of font size.
 # Measured the same way as the digits: ink midpoint of cap-height strings
-# sits 0.355 em above the baseline. Centring on the cap band rather than on
+# sits 0.345 em above the baseline in Oxanium (0.355 in Fredoka).
+# Centring on the cap band rather than on
 # the full ink box keeps strings with descenders from jumping upward.
-const QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC := 0.355
+const QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC := 0.345
 
 const COLOR_TEXT := Color(0.95, 0.95, 0.95)
 const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps light text legible over the space behind
@@ -115,19 +117,17 @@ const COLOR_TEXT_OUTLINE := Color(0.05, 0.08, 0.12, 0.85)  # keeps light text le
 # This only ever reads `combo`. Four escalating tiers, 25 combo wide each,
 # capped at Tier 4 for anything >= COMBO_TIER_CAP.
 # ============================================================
-# Fredoka (SIL OFL, see assets/fonts/Fredoka_LICENSE.txt) — a rounded
-# geometric sans. Replaces Mulmaru, which is a Korean face whose Latin glyphs
-# were only a secondary concern.
+# Oxanium (SIL OFL, see licenses/Oxanium_LICENSE.txt) — a squared sci-fi
+# sans, picked on 2026-11-28 to sit beside the titles' Zen Dots. It replaced
+# Fredoka, a rounded face that did not; Fredoka had replaced Mulmaru. Hangul,
+# which Oxanium has none of, comes from a fallback face (Do Hyeon) — the whole
+# arrangement lives in scripts/AppFont.gd, and every screen takes its font
+# from there.
 #
-# That reasoning has since flipped once: the UI is translated now, so the
-# game does render Hangul, which Fredoka has none of. It comes from a
-# fallback face instead — the whole arrangement lives in scripts/AppFont.gd,
-# and every screen takes its font from there.
-#
-# It is a variable font with a wght axis (300-700, default 300 — too light
+# It is a variable font with a wght axis (200-800, default 400 — too light
 # for a HUD, so both weights below are set explicitly). The axis has to be
 # keyed by its integer OpenType tag, not the string "wght": a string key is
-# silently ignored and you get the 300 default back.
+# silently ignored and you get the 400 default back.
 const TEXT_FONT_WEIGHT := 600      # quiz text, combo popups, banners
 const SCORE_FONT_WEIGHT := 700     # the score/best digits, which want more punch
 const COMBO_TIER_SIZE := 25
@@ -546,14 +546,15 @@ const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.024  # of box width — keeps the ones 
 const SCORE_NUMBER_DIGIT_SPACING := 1.7     # extra px between digit cells, on top of the tabular cell width
 # Baseline offset from a digit row's visual center, as a fraction of the
 # font size — see _digit_positions. Measured by rendering
-# "0123456789" at a known baseline and reading the ink box back: Fredoka's
-# figures run 0.700 em above the baseline to 0.020 em below at this weight,
-# putting their visual middle 0.34 em up. (Mulmaru's sat at 0.38, which is
-# why this changed with the font.)
-const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.34
+# "0123456789" at a known baseline in an off-screen viewport and reading the
+# ink box back: Oxanium's figures run 0.695 em above the baseline to 0.000
+# below at this weight (700), putting their visual middle 0.35 em up
+# (2026-11-28). Fredoka's ran 0.700 / 0.020 and sat at 0.34; Mulmaru's at
+# 0.38. Re-measure whenever the font changes.
+const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.35
 # 그라데이션을 숫자 잉크 높이에 딱 맞추려고 쓰는, 같은 측정에서 나온 값.
-const DIGIT_INK_ABOVE_FRAC := 0.700
-const DIGIT_INK_BELOW_FRAC := 0.020
+const DIGIT_INK_ABOVE_FRAC := 0.695
+const DIGIT_INK_BELOW_FRAC := 0.000
 
 # Pause button press feedback — quick squash-in on press, springy release
 # back to full size. Needs pivot_offset centered on the button (set in
@@ -751,7 +752,7 @@ func _setup_fonts() -> void:
 	# 한글 fallback 까지 붙은 한 벌을 받는다 — scripts/AppFont.gd 참고.
 	var base_font: Font = AppFont.base()
 	# Real weight axis rather than the faux-bold this used to need: Mulmaru
-	# shipped a single weight, Fredoka carries 300-700.
+	# shipped a single weight, Oxanium carries 200-800.
 	var wght := TextServerManager.get_primary_interface().name_to_tag("wght")
 	combo_font = _weighted_font(base_font, wght, TEXT_FONT_WEIGHT)
 	score_font = _weighted_font(base_font, wght, SCORE_FONT_WEIGHT)
@@ -3004,7 +3005,7 @@ func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_col
 # 자리가 어긋나지 않도록, 계산은 여기 한 곳에만 둔다.
 #
 # 자리마다 폭이 같은 칸(가장 넓은 숫자 폭)을 주고 그 안에 가운데 정렬한다.
-# Fredoka 의 숫자는 폭이 제각각이라("1" 40, "2" 61), 글자 폭대로 밀면 숫자가
+# 숫자는 글자마다 폭이 달라서(Fredoka 는 "1" 40, "2" 61 이었다), 글자 폭대로 밀면 숫자가
 # 바뀔 때마다 점수 전체가 들썩인다. 칸을 고정하면 무엇을 세든 자리가 고정된다.
 #
 # 세로는 draw_string 이 베이스라인을 받는데 anchor.y 는 "눈에 가운데로 보이는"

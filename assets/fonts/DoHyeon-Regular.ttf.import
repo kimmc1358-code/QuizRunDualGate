@@ -2,13 +2,13 @@
 
 importer="font_data_dynamic"
 type="FontFile"
-uid="uid://bosl8ncwqyywa"
-path="res://.godot/imported/Fredoka.ttf-38db4f924b441151c6642ef65fe93e1f.fontdata"
+uid="uid://brk3vayfufhcc"
+path="res://.godot/imported/DoHyeon-Regular.ttf-199d7fec024e3023c65f7d36e6649216.fontdata"
 
 [deps]
 
-source_file="res://assets/fonts/Fredoka.ttf"
-dest_files=["res://.godot/imported/Fredoka.ttf-38db4f924b441151c6642ef65fe93e1f.fontdata"]
+source_file="res://assets/fonts/DoHyeon-Regular.ttf"
+dest_files=["res://.godot/imported/DoHyeon-Regular.ttf-199d7fec024e3023c65f7d36e6649216.fontdata"]
 
 [params]
 
