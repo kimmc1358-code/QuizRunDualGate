@@ -40,7 +40,8 @@ const FRAMES := [
 	"res://assets/synty_ui/weapon_back.png",
 	"res://assets/synty_ui/card_frame.png",
 	"res://assets/synty_ui/card_frame_on.png",
-	"res://assets/synty_ui/play_button.png",
+	"res://assets/synty_ui/popup_bar_primary.png",
+	"res://assets/synty_ui/popup_bar.png",
 	"res://assets/synty_ui/explain_bar.png",
 ]
 ## Each cell's box is inset this share of the cell, leaving a transparent gap.
@@ -67,7 +68,8 @@ const SIZES := {
 	"res://assets/synty_ui/best_icon.png": Vector2i(50, 50),
 	"res://assets/synty_ui/card_frame.png": Vector2i(692, 338),
 	"res://assets/synty_ui/card_frame_on.png": Vector2i(692, 338),
-	"res://assets/synty_ui/play_button.png": Vector2i(410, 194),
+	"res://assets/synty_ui/popup_bar_primary.png": Vector2i(157, 104),
+	"res://assets/synty_ui/popup_bar.png": Vector2i(157, 104),
 	"res://assets/synty_ui/explain_bar.png": Vector2i(428, 104),
 	"res://assets/synty_ui/icon_person.png": Vector2i(58, 90),
 	"res://assets/synty_ui/icon_settings.png": Vector2i(81, 90),
@@ -76,8 +78,6 @@ const SIZES := {
 	"res://assets/synty_ui/icon_hangar.png": Vector2i(132, 90),
 	"res://assets/synty_ui/icon_lock.png": Vector2i(72, 90),
 	"res://assets/synty_ui/icon_stardust.png": Vector2i(55, 63),
-	"res://assets/ui_assets/<mode>/Ready_v3.png": Vector2i(532, 240),
-	"res://assets/ui_assets/<mode>/Start_v3.png": Vector2i(532, 240),
 	# popups
 	"res://assets/ui_assets/popup/popup_panel.png": Vector2i(1024, 1536),
 	"res://assets/ui_assets/popup/button_gold_v2.png": Vector2i(848, 244),

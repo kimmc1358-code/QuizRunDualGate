@@ -317,9 +317,9 @@ const STARDUST_BOSS := 20
 const POWER_EVERY := 3
 
 # ---- asteroids between the steps ----
-# HUD art from the Synty UI kit (see Main.HUD_SCORE_BAR_PATH): the gauge's
-# track, and the backing under the weapon readout. The stardust slot wears
-# the same frame as the health slot, Main.HUD_SIDE_SLOT_PATH.
+# HUD art from the Synty UI kit (see Main.HUD_QUIZ_BOX_PATH): the gauge's
+# track, and the backing under the weapon readout. The stardust sits bare at the
+# top right with the kit's icon (_draw_stardust_bare).
 const HUD_GAUGE_PATH := "res://assets/synty_ui/gauge.png"
 const HUD_GAUGE_CAP := 18.0            # baked px: the pill's round end
 const HUD_GAUGE_INSET := Vector2(9.0, 5.0)   # track -> fill, on screen
@@ -766,14 +766,62 @@ func _build_ship() -> void:
 		wedge.material_override = m
 		ship_model = wedge
 	ship_pivot.add_child(ship_model)
+	engine_glows.clear()
 	for dx in [-0.25, 0.0, 0.25]:
 		var glow := MeshInstance3D.new()
 		var q := QuadMesh.new()
-		q.size = Vector2(0.28, 0.28)
+		q.size = Vector2(ENGINE_GLOW_SIZE, ENGINE_GLOW_SIZE)
 		glow.mesh = q
-		glow.material_override = _glow_material(Color(0.35, 0.85, 1.0), 2.0)
-		glow.position = Vector3(dx, 0.0, 0.62)
+		# One material each, so each nozzle flickers on its own.
+		var m := _glow_material(ENGINE_COLOR, ENGINE_ENERGY)
+		m.billboard_keep_scale = true
+		glow.material_override = m
+		glow.position = Vector3(dx, 0.0, ENGINE_Z)
 		ship_pivot.add_child(glow)
+		engine_glows.append(glow)
+	_update_engines(0.0)
+
+
+# ---- the engines (2026-11-28, owner) ----
+# The nozzles' glows burn with the run: each flickers on its own like a
+# flame, and they grow, brighten and stretch into a short plume as the
+# streak speeds the world up (pace) and leap on the lunge after a pass
+# (boost). A flame shader on a cone was tried first: the camera sits behind
+# the ship, so a cone trailing back points straight at it and shows almost
+# no length, and tilted down far enough to show some it hung like an icicle.
+# The glow, a billboard, reads the same from any angle.
+const ENGINE_COLOR := Color(0.35, 0.85, 1.0)
+const ENGINE_HOT := Color(0.85, 0.97, 1.0)   # what the core whitens toward at speed
+const ENGINE_ENERGY := 2.0
+const ENGINE_GLOW_SIZE := 0.28
+const ENGINE_Z := 0.62
+const ENGINE_PACE_GROW := 0.08     # a touch wider at full streak speed: the three overlap and add up to white
+const ENGINE_BOOST_GROW := 0.18    # and again on the lunge
+const ENGINE_PACE_STRETCH := 0.55  # taller (a plume), at full streak speed
+const ENGINE_BOOST_STRETCH := 0.8
+const ENGINE_FLICKER := 0.10       # size wobble, as a share
+const ENGINE_FLICKER_HZ := [17.0, 29.0]
+var engine_glows: Array[MeshInstance3D] = []
+var _engine_t := 0.0
+
+
+func _update_engines(delta: float) -> void:
+	_engine_t += delta
+	var speed: float = clampf((pace - PACE_START) / (PACE_MAX - PACE_START), 0.0, 1.0)
+	for i in engine_glows.size():
+		var g := engine_glows[i]
+		var ph: float = float(i) * 2.1
+		var flick: float = 0.6 * sin(_engine_t * TAU * ENGINE_FLICKER_HZ[0] + ph) + 0.4 * sin(_engine_t * TAU * ENGINE_FLICKER_HZ[1] + ph * 1.7)
+		var w: float = (1.0 + ENGINE_PACE_GROW * speed + ENGINE_BOOST_GROW * boost) * (1.0 + ENGINE_FLICKER * flick)
+		var stretch: float = 1.0 + ENGINE_PACE_STRETCH * speed + ENGINE_BOOST_STRETCH * boost
+		g.scale = Vector3(w, w * stretch, 1.0)
+		# Grown downward only, so the plume hangs off the nozzle rather than
+		# swallowing the hull above it.
+		g.position.y = -ENGINE_GLOW_SIZE * w * (stretch - 1.0) * 0.5
+		var heat: float = clampf(0.12 * speed + 0.3 * boost, 0.0, 1.0)
+		var e: float = ENGINE_ENERGY * (1.0 + 0.1 * speed + 0.25 * boost) * (1.0 + 0.12 * flick)
+		var c := ENGINE_COLOR.lerp(ENGINE_HOT, heat)
+		(g.material_override as StandardMaterial3D).albedo_color = Color(c.r * e, c.g * e, c.b * e, 1.0)
 
 
 func _radial_texture() -> GradientTexture2D:
@@ -2087,6 +2135,7 @@ func tick(delta: float, running: bool, steerable: bool) -> void:
 	if running and not held:
 		_update_run(delta)
 	_update_fx(delta, running)
+	_update_engines(delta)
 
 
 func _update_ship(delta: float) -> void:
@@ -2578,11 +2627,14 @@ func draw_hud(ci: CanvasItem, box: Rect2, side: Rect2) -> void:
 		fill.set_corner_radius_all(int(gh * 0.5))
 		fill.anti_aliasing = true
 		ci.draw_style_box(fill, Rect2(inner.position, Vector2(inner.size.x * frac, gh)))
-	# The slot beside the box holds the stardust won this run, the icon over
-	# the count.
-	var slot_tex := ArtSlot.texture(main.HUD_SIDE_SLOT_PATH)
-	main._draw_nine_patch(slot_tex, side, main.HUD_SIDE_SLOT_MARGIN, side.size.y / slot_tex.get_height(), ci)
-	_draw_stardust(ci, font, side, int(main.run_stardust))
+	# The stardust won this run, at the top right.
+	_draw_stardust_bare(ci, side, int(main.run_stardust))
+
+
+## The weapon readout, bottom right. Apart from draw_hud so Main can slide it
+## in from the right edge while the rest comes down from the top.
+func draw_weapon_hud(ci: CanvasItem) -> void:
+	var font: Font = main.combo_font if main.combo_font != null else ThemeDB.fallback_font
 	var wname: String = ["BLASTER", "SPREAD", "LASER"][weapon]
 	var txt := "%s  Lv%d%s" % [wname, level, ("  +%d DRONE" % drones) if drones > 0 else ""]
 	# Bottom right (2026-11-26; the health gauge took the top-left side).
@@ -2596,26 +2648,55 @@ func draw_hud(ci: CanvasItem, box: Rect2, side: Rect2) -> void:
 	ci.draw_string(font, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.86, 0.3))
 
 
-## The stardust slot: the kit's icon in the upper half, the count under it.
-func _draw_stardust(ci: CanvasItem, font: Font, rect: Rect2, amount: int) -> void:
-	var icon := ArtSlot.texture(HUD_STARDUST_ICON_PATH)
-	var ih: float = rect.size.y * 0.36
-	var iw: float = ih * icon.get_width() / maxf(1.0, icon.get_height())
-	ci.draw_texture_rect(icon, Rect2(Vector2(rect.get_center().x - iw * 0.5, rect.position.y + rect.size.y * 0.16), Vector2(iw, ih)), false)
+## The stardust bare at the top right: the icon, then the count, ending at
+## the rect's right edge.
+func _draw_stardust_bare(ci: CanvasItem, rect: Rect2, amount: int) -> void:
+	var font: Font = TitleArt.font(main.combo_font if main.combo_font != null else ThemeDB.fallback_font)
 	var text := ScoreFormat.compact(amount)
-	var fs := int(rect.size.y * 0.24)
+	var fs := int(rect.size.y * 0.42)
 	var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	if tw > rect.size.x * 0.8:
-		fs = int(fs * rect.size.x * 0.8 / tw)
-		tw = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	var pos := Vector2(rect.get_center().x - tw * 0.5, rect.position.y + rect.size.y * 0.8)
-	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, maxi(2, fs / 6), Color(0.05, 0.04, 0.12))
+	var base: float = rect.get_center().y + fs * 0.358
+	var pos := Vector2(rect.end.x - 4.0 - tw, base)
+	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, maxi(3, fs / 5), Color(0.05, 0.04, 0.12))
 	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, STARDUST_COLOR)
+	var icon := ArtSlot.texture(HUD_STARDUST_ICON_PATH)
+	var ih: float = rect.size.y * 0.62
+	var iw: float = ih * icon.get_width() / maxf(1.0, icon.get_height())
+	ci.draw_texture_rect(icon, Rect2(Vector2(pos.x - 6.0 - iw, rect.get_center().y - ih * 0.5), Vector2(iw, ih)), false)
 
 
 ## Kind.COLOR's rule: a round swatch of the colour to fly through, ringed so
 ## it holds on any background.
+# The question box's gem and arrow, from Synty's POLYGON Icons pack
+# (2026-11-28, owner), rendered grey by tools/build_icon_kit.gd and tinted
+# here. The flat ball and the thin drawn arrow read as placeholders beside the
+# kit frames; the gem's facets and the chunky arrow match the low-poly ship.
+# Paid and gitignored like the other kits: without them the ball and arrow are
+# drawn as before. MIX's no-entry sign stays drawn (_draw_cross): the pack's
+# Banned_01 ring is thick enough to hide the colour it crosses out.
+const ICON_GEM_PATH := "res://assets/polygon_icons/gem.png"
+const ICON_ARROW_PATH := "res://assets/polygon_icons/arrow.png"
+const ICON_GEM_SIZE := 2.6       # drawn square, x the ball's radius
+const ICON_ARROW_SIZE := 2.1     # drawn square, x the arrow's half-length
+const ICON_GEM_LIFT := 0.15      # the tint is lightened: the grey gem darkens it
+const ICON_ARROW_LIFT := 0.25
+# Kept here once loaded: a texture held by nothing is freed when the draw
+# returns, and the canvas draws white where it was (see ArtSlot.texture).
+var _icon_tex := {}
+
+
+func _icon(path: String) -> Texture2D:
+	if not _icon_tex.has(path):
+		_icon_tex[path] = load(path) if ResourceLoader.exists(path) else null
+	return _icon_tex[path]
+
+
 func _draw_swatch(ci: CanvasItem, c: Vector2, r: float, color: Color) -> void:
+	var gem := _icon(ICON_GEM_PATH)
+	if gem != null:
+		var s: float = r * ICON_GEM_SIZE
+		ci.draw_texture_rect(gem, Rect2(c - Vector2(s, s) * 0.5, Vector2(s, s)), false, color.lightened(ICON_GEM_LIFT))
+		return
 	ci.draw_circle(c, r + 3.0, Color(0.05, 0.04, 0.12))
 	ci.draw_circle(c, r, color)
 	ci.draw_circle(c + Vector2(-r, -r) * 0.3, r * 0.28, Color(1, 1, 1, 0.35))
@@ -2676,7 +2757,10 @@ func _draw_memory(ci: CanvasItem, font: Font, c: Vector2, box: Rect2) -> void:
 			_draw_arrow(ci, p, r * 0.9, int(round[i]), Color(ARROW_NORMAL, MEMORY_DONE_ALPHA))
 		else:
 			var k: Color = GATE_COLORS[round[i]]
-			ci.draw_circle(p, r * 0.8, Color(k, MEMORY_DONE_ALPHA))
+			if _icon(ICON_GEM_PATH) != null:
+				_draw_swatch(ci, p, r * 0.8, Color(k, MEMORY_DONE_ALPHA))
+			else:
+				ci.draw_circle(p, r * 0.8, Color(k, MEMORY_DONE_ALPHA))
 
 
 ## ARROW_SUM's box: its two arrows with a plus between them.
@@ -2719,6 +2803,17 @@ func _draw_arrow(ci: CanvasItem, c: Vector2, size: float, dir: int, color: Color
 		Vector2(-0.9, -0.28), Vector2(0.15, -0.28), Vector2(0.15, -0.62),
 		Vector2(0.95, 0.0), Vector2(0.15, 0.62), Vector2(0.15, 0.28), Vector2(-0.9, 0.28)])
 	var ang: float = [PI, 0.0, -PI * 0.5, PI * 0.5, -PI * 0.75, -PI * 0.25, PI * 0.75, PI * 0.25][dir]
+	var arrow_tex := _icon(ICON_ARROW_PATH)
+	if arrow_tex != null:
+		# Turned as a quad rather than through draw_set_transform, which would
+		# replace the offset Main lays over the HUD while it slides in.
+		var h: float = size * ICON_ARROW_SIZE * 0.5
+		var quad := PackedVector2Array()
+		for corner in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+			quad.append(c + (corner * h).rotated(ang))
+		var uv := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+		ci.draw_polygon(quad, PackedColorArray([color.lightened(ICON_ARROW_LIFT)]), uv, arrow_tex)
+		return
 	var out := PackedVector2Array()
 	for p in pts:
 		out.append(c + p.rotated(ang) * size)

@@ -81,10 +81,13 @@ const SWEEP_H := 0.22                    # share of the face's height
 const SWEEP_PERIOD := 2.6                # s, top to bottom
 const BUTTON_FRAME_PATH := KIT + "side_slot.png"
 const BUTTON_FRAME_MARGIN := 34.0
-# The menu's own PLAY button and explain bar (2026-11-27): the question box
-# and score bar they used to borrow made the menu read as the play screen.
-const PLAY_FRAME_PATH := KIT + "play_button.png"
-const PLAY_FRAME_CAP := 62.0             # baked px: the V-notched ends
+# The menu's own explain bar (2026-11-27): the score bar it used to borrow made
+# the menu read as the play screen. PLAY is the popups' main button, the orange
+# Frame_Box_Small_08 bar closed by a steel block at each end (2026-11-28, owner):
+# it was Button_Frame_06 with V-notched ends, and the two screens' main buttons
+# looked like different games.
+const PLAY_FRAME_PATH := KIT + "popup_bar_primary.png"
+const PLAY_FRAME_CAP := 49.0             # baked px: the steel blocks (PopupBase.BUTTON_BAR_LEFT)
 const EXPLAIN_FRAME_PATH := KIT + "explain_bar.png"
 const EXPLAIN_FRAME_CAP := 40.0
 const PLAY_TEXT_COLOR := Color(1.0, 0.98, 0.92)
@@ -96,7 +99,7 @@ const PLAY_TEXT_RIM := Color(0.36, 0.12, 0.02)
 # emitting at once swapped the screen in the same frame and the effect was
 # never seen. Both glows are drawn additively by _play_fx, so they light the
 # art instead of painting a flat colour over it.
-const PLAY_FACE_SRC := Rect2(87, 67, 233, 60)   # the yellow core in play_button.png, measured
+const PLAY_FACE_SRC := Rect2(40, 16, 77, 72)    # the orange face in popup_bar_primary.png (157x104), measured
 const PLAY_FACE_GROW := 1.45             # the glow spills past the core onto the face's darker edge
 const PLAY_HELD_SCALE := 0.95
 const PLAY_HELD_GLOW := 0.45             # face glow while held, 0..1
@@ -186,6 +189,123 @@ var _play_held := 0.0      # 0..1, eased toward "is the finger on PLAY"
 var _launch_t := -1.0      # s since PLAY was released; < 0 when idle
 var _glow_tex: GradientTexture2D
 
+# ---- Slide in and out (2026-11-28, owner) ----
+# The menu sits over the live space world, which is also the game's own screen,
+# so it arrives and leaves as a set of panels sliding in from the screen's edges
+# and back out to them: after the title's "tap to start" each block comes in
+# from its own edge, one after another, and settles with a small overshoot; on
+# PLAY, once its flash is done, they go back out (the lower blocks first) and
+# the run starts straight away, its HUD sliding in in turn (Main.HUD_IN_*).
+# Every block's edge and its start delay: SLIDES. The layout (_r) never moves —
+# _slid_rects() lays the offsets over it for drawing and for the buttons.
+enum Edge { TOP, BOTTOM, LEFT, RIGHT }
+const SLIDES := {
+	"login": [Edge.TOP, 0.00], "stardust": [Edge.TOP, 0.04], "setting": [Edge.TOP, 0.08],
+	"emblem": [Edge.TOP, 0.06],
+	"card0": [Edge.LEFT, 0.12], "card1": [Edge.LEFT, 0.18], "card2": [Edge.RIGHT, 0.18],
+	"explain": [Edge.RIGHT, 0.24],
+	"play": [Edge.BOTTOM, 0.28],
+	"tool0": [Edge.BOTTOM, 0.32], "tool1": [Edge.BOTTOM, 0.35], "tool2": [Edge.BOTTOM, 0.38],
+	"remove_ads": [Edge.BOTTOM, 0.42],
+}
+const SLIDE_IN_TIME := 0.42          # s, one block's trip in
+const SLIDE_OUT_TIME := 0.24         # s, one block's trip out — leaving is quicker
+const SLIDE_OUT_SPREAD := 0.45       # leaving delays are this share of the arriving ones, reversed
+const SLIDE_OVERSHOOT := 1.4         # the back-ease's overshoot as a block lands
+const SLIDE_LAST_DELAY := 0.42       # the largest delay in SLIDES
+var _slide := 0                      # 1 arriving, -1 leaving, 0 at rest
+var _slide_t := 0.0
+var _blocker: Control                # swallows taps while the blocks move
+
+
+## Main calls this every time the menu comes up: after the title, and on the way
+## back from a run.
+func play_enter() -> void:
+	if not _built:
+		return
+	_slide = 1
+	_slide_t = 0.0
+	_launch_t = -1.0
+	_play_held = 0.0
+	_sync_slide()
+
+
+func _slide_total() -> float:
+	if _slide > 0:
+		return SLIDE_LAST_DELAY + SLIDE_IN_TIME
+	return SLIDE_LAST_DELAY * SLIDE_OUT_SPREAD + SLIDE_OUT_TIME
+
+
+## How far off its edge `name` is now, as a vector added to its layout rect.
+func _slide_offset(name: String, r: Rect2) -> Vector2:
+	if _slide == 0:
+		return Vector2.ZERO
+	var spec: Array = SLIDES[name]
+	var away := Vector2.ZERO
+	match int(spec[0]):
+		Edge.TOP:
+			away = Vector2(0.0, -(r.end.y + 12.0))
+		Edge.BOTTOM:
+			away = Vector2(0.0, size.y - r.position.y + 12.0)
+		Edge.LEFT:
+			away = Vector2(-(r.end.x + 12.0), 0.0)
+		_:
+			away = Vector2(size.x - r.position.x + 12.0, 0.0)
+	if _slide > 0:
+		var p: float = clampf((_slide_t - float(spec[1])) / SLIDE_IN_TIME, 0.0, 1.0)
+		# Back-ease: runs a touch past its place and settles.
+		var q: float = p - 1.0
+		var e: float = 1.0 + (SLIDE_OVERSHOOT + 1.0) * q * q * q + SLIDE_OVERSHOOT * q * q
+		return away * (1.0 - e)
+	var start: float = (SLIDE_LAST_DELAY - float(spec[1])) * SLIDE_OUT_SPREAD
+	var u: float = clampf((_slide_t - start) / SLIDE_OUT_TIME, 0.0, 1.0)
+	return away * u * u
+
+
+## The layout's rects with the slide laid over them.
+func _slid_rects() -> Dictionary:
+	if _slide == 0:
+		return _r
+	var out := _r.duplicate()
+	for key in ["login", "stardust", "setting", "card0", "card1", "card2", "explain", "play",
+			"tool0", "tool1", "tool2", "remove_ads"]:
+		if _r.has(key):
+			var r: Rect2 = _r[key]
+			out[key] = Rect2(r.position + _slide_offset(key, r), r.size)
+	if _r.has("emblem_mid"):
+		var k: float = size.x / 480.0
+		var er := Rect2(Vector2(0.0, _r.emblem_mid.y - EMBLEM_H * 0.5 * k), Vector2(size.x, EMBLEM_H * k))
+		out.emblem_mid = _r.emblem_mid + _slide_offset("emblem", er)
+	return out
+
+
+## The menu's dimming of the world behind fades with the slide, so the world
+## comes up to full brightness as the run takes it over.
+func _dim_share() -> float:
+	if _slide == 0:
+		return 1.0
+	var u: float = clampf(_slide_t / _slide_total(), 0.0, 1.0)
+	return u if _slide > 0 else 1.0 - u
+
+
+## Puts the buttons and the explain line where their art is drawn this frame.
+func _sync_slide() -> void:
+	var R := _slid_rects()
+	for i in _cards.size():
+		_place(_cards[i], R["card%d" % i])
+	_place(_login, R.login)
+	_place(_setting, R.setting)
+	_place(_play, R.play)
+	_place(_hangar, R.tool0)
+	_place(_upgrade, R.tool1)
+	_place(_leaderboard, R.tool2)
+	_place(_remove_ads, R.remove_ads)
+	var k: float = size.x / 480.0
+	_explain_label.position = R.explain.position + Vector2(24.0, 4.0) * k
+	if _blocker != null:
+		_blocker.visible = _slide != 0 or _launch_t >= 0.0
+		_blocker.size = size
+
 
 # 조립은 로고가 뜬 뒤에 Main 이 ensure_built() 로 켠다. 두 번 불러도 한 번만.
 func ensure_built() -> void:
@@ -232,9 +352,21 @@ func _process(delta: float) -> void:
 	if _launch_t >= 0.0:
 		_launch_t += delta
 		if _launch_t >= PLAY_LAUNCH_TIME:
+			# The flash is done: the blocks go out to the edges, then the run starts.
 			_launch_t = -1.0
 			_play_held = 0.0
-			start_pressed.emit(CARD_MODES[selected_index])
+			_slide = -1
+			_slide_t = 0.0
+	if _slide != 0:
+		_slide_t += delta
+		if _slide_t >= _slide_total():
+			var leaving: bool = _slide < 0
+			_slide = 0
+			_sync_slide()
+			if leaving:
+				start_pressed.emit(CARD_MODES[selected_index])
+		else:
+			_sync_slide()
 	queue_redraw()
 	if _play_fx != null:
 		_play_fx.queue_redraw()
@@ -285,6 +417,11 @@ func _build() -> void:
 	_play_fx.material = add
 	_play_fx.draw.connect(_draw_play_fx)
 	add_child(_play_fx)
+	# Last, so it lies over the buttons: while the blocks move, a tap lands here.
+	_blocker = Control.new()
+	_blocker.mouse_filter = Control.MOUSE_FILTER_STOP
+	_blocker.visible = false
+	add_child(_blocker)
 	_launch_t = -1.0
 	_explain_label = Label.new()
 	_explain_label.add_theme_font_override("font", _font)
@@ -383,36 +520,37 @@ func _draw() -> void:
 	if _r.is_empty():
 		return
 	var k: float = size.x / 480.0
-	draw_rect(Rect2(Vector2.ZERO, size), DIM)
+	var R := _slid_rects()
+	draw_rect(Rect2(Vector2.ZERO, size), Color(DIM, DIM.a * _dim_share()))
 
-	_draw_square_button(_r.login, PERSON_ICON, false)
-	_draw_square_button(_r.setting, SETTINGS_ICON, false)
-	_draw_bar(_r.stardust, BAR_FRAME_PATH, BAR_FRAME_CAP)
+	_draw_square_button(R.login, PERSON_ICON, false)
+	_draw_square_button(R.setting, SETTINGS_ICON, false)
+	_draw_bar(R.stardust, BAR_FRAME_PATH, BAR_FRAME_CAP)
 	var sd_icon := ArtSlot.texture(STARDUST_ICON)
-	var ih: float = _r.stardust.size.y * 0.55
+	var ih: float = R.stardust.size.y * 0.55
 	var iw: float = ih * sd_icon.get_width() / sd_icon.get_height()
-	draw_texture_rect(sd_icon, Rect2(_r.stardust.position + Vector2(20.0 * k, (_r.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
-	_text_right(_font, ScoreFormat.compact(_stardust), Vector2(_r.stardust.end.x - 22.0 * k, _r.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
+	draw_texture_rect(sd_icon, Rect2(R.stardust.position + Vector2(20.0 * k, (R.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
+	_text_right(_font, ScoreFormat.compact(_stardust), Vector2(R.stardust.end.x - 22.0 * k, R.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
 
-	TitleArt.draw_emblem(self, _r.emblem_mid, EMBLEM_H * k, EMBLEM_WREATH_H * k,
+	TitleArt.draw_emblem(self, R.emblem_mid, EMBLEM_H * k, EMBLEM_WREATH_H * k,
 		size.x, MARGIN * k, int(EMBLEM_WORD_MAX * k), _title_font, k * EMBLEM_WORD_MAX / 44.0)
 
 	for i in CARD_MODES.size():
-		_draw_card(i, _r["card%d" % i], k)
+		_draw_card(i, R["card%d" % i], k)
 
-	_draw_bar(_r.explain, EXPLAIN_FRAME_PATH, EXPLAIN_FRAME_CAP)
+	_draw_bar(R.explain, EXPLAIN_FRAME_PATH, EXPLAIN_FRAME_CAP)
 
 	var ready: bool = CARD_READY[selected_index]
 	var ps: float = _play_scale() if ready else 1.0
-	var pc: Vector2 = _r.play.get_center()
+	var pc: Vector2 = R.play.get_center()
 	draw_set_transform(pc * (1.0 - ps), 0.0, Vector2(ps, ps))
-	_draw_bar(_r.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color.WHITE if ready else Color(1, 1, 1, 0.45))
+	_draw_bar(R.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color.WHITE if ready else Color(1, 1, 1, 0.45))
 	_text_center(_title_font, tr(PLAY_TEXT) if ready else tr(COMING_SOON), pc,
 		int((36 if ready else 22) * k), PLAY_TEXT_COLOR if ready else LOCK_TEXT, PLAY_TEXT_RIM if ready else NAME_RIM)
 	draw_set_transform(Vector2.ZERO)
 
-	var tools := [[_r.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true], [_r.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true],
-		[_r.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false]]
+	var tools := [[R.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true], [R.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true],
+		[R.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false]]
 	for t in tools:
 		var rect: Rect2 = t[0]
 		_draw_square_button(rect, t[1], t[3])
@@ -421,8 +559,8 @@ func _draw() -> void:
 
 	if _remove_ads.visible:
 		var tw: float = _font.get_string_size(_remove_ads.text, HORIZONTAL_ALIGNMENT_LEFT, -1, int(16 * k)).x
-		var uy: float = _r.remove_ads.get_center().y + 10.0 * k
-		draw_line(Vector2(_r.remove_ads.get_center().x - tw * 0.5, uy), Vector2(_r.remove_ads.get_center().x + tw * 0.5, uy), REMOVE_ADS_COLOR, 1.5)
+		var uy: float = R.remove_ads.get_center().y + 10.0 * k
+		draw_line(Vector2(R.remove_ads.get_center().x - tw * 0.5, uy), Vector2(R.remove_ads.get_center().x + tw * 0.5, uy), REMOVE_ADS_COLOR, 1.5)
 
 
 func _draw_card(i: int, r: Rect2, k: float) -> void:
@@ -531,7 +669,7 @@ func _play_scale() -> float:
 	return s
 
 
-## Where the yellow core of play_button.png lands inside a drawn PLAY rect. The
+## Where the orange face of PLAY_FRAME_PATH lands inside a drawn PLAY rect. The
 ## art is three-sliced like _draw_bar does it, so x maps through the caps and
 ## the stretched middle separately.
 func _play_face_rect(r: Rect2) -> Rect2:
@@ -573,9 +711,10 @@ func _draw_play_fx() -> void:
 		# Up to full in the first fifth, then fading as the screen goes.
 		glow = maxf(glow, minf(1.0, t * 5.0) * (1.0 - t * 0.6))
 	var ps: float = _play_scale()
-	var pc: Vector2 = _r.play.get_center()
+	var play_r: Rect2 = _slid_rects().play
+	var pc: Vector2 = play_r.get_center()
 	if glow > 0.0:
-		var face := _play_face_rect(_r.play)
+		var face := _play_face_rect(play_r)
 		var fc := face.get_center()
 		var fs := face.size * PLAY_FACE_GROW * ps
 		var col := PLAY_GLOW_COLOR * glow
@@ -585,7 +724,7 @@ func _draw_play_fx() -> void:
 		var gs: float = 1.0 + PLAY_GHOST_GROW * t
 		var a: float = 1.0 - t
 		_play_fx.draw_set_transform(pc * (1.0 - gs), 0.0, Vector2(gs, gs))
-		_draw_bar(_r.play, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color(PLAY_GHOST_COLOR.r * a, PLAY_GHOST_COLOR.g * a, PLAY_GHOST_COLOR.b * a, 1.0), _play_fx)
+		_draw_bar(play_r, PLAY_FRAME_PATH, PLAY_FRAME_CAP, Color(PLAY_GHOST_COLOR.r * a, PLAY_GHOST_COLOR.g * a, PLAY_GHOST_COLOR.b * a, 1.0), _play_fx)
 		_play_fx.draw_set_transform(Vector2.ZERO)
 
 

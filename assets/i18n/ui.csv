@@ -25,13 +25,15 @@ TAP TO START,TAP TO START,탭하면 시작
 RESUME,RESUME,이어하기
 RESTART,RESTART,다시 시작
 HOME,HOME,홈으로
-NEW BEST!,NEW BEST!,신기록!
+NEW BEST!,NEW BEST!,최고 기록 경신!
+Best record,BEST,최고 기록
 MAX COMBO,MAX COMBO,최대 콤보
 SCORE,SCORE,점수
 PLAY AGAIN,PLAY AGAIN,다시 하기
 Not logged in,Not logged in,로그인하지 않음
 Logged in as %s,Logged in as %s,%s 님으로 로그인됨
 LOGIN,LOGIN,로그인
+CLOSE,CLOSE,닫기
 REMOVE ADS,REMOVE ADS,광고 제거
 Privacy Policy,Privacy Policy,개인정보 처리방침
 Ad Privacy Choices,Ad Privacy Choices,광고 개인정보 설정

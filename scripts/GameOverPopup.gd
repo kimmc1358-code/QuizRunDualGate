@@ -3,14 +3,14 @@ extends PopupBase
 ## 게임오버 팝업.
 ##
 ## 하트를 다 잃으면 곧장 이게 뜬다(부활은 2026-11-28 에 뺐다). 판 위에 GAME OVER 가 얹히고,
-## 판 안은 위에서부터 신기록 리본 → 로그인 유도 → 점수 → 최대 콤보 →
+## 판 안은 위에서부터 NEW BEST! 또는 BEST 머리글 → 점수 → 최대 콤보 →
 ## 이번 판의 스타더스트(광고 보고 2배) → PLAY AGAIN → HOME 순서다.
 ##
 ## 판·버튼은 PopupBase가 맡는다. 여기에는 이 팝업만의 내용과
 ## 배치만 있다.
 ##
-## 신기록이냐 아니냐로 맨 윗줄만 갈라진다. 신기록이면 트로피와 리본,
-## 아니면 넘어야 할 기록을 적은 판. 나머지 줄은 그대로다 — 두 화면이 아주
+## 신기록이냐 아니냐로 맨 윗줄만 갈라진다. 신기록이면 반짝이는 NEW BEST!,
+## 아니면 넘어야 할 기록을 적은 머리글. 나머지 줄은 그대로다 — 두 화면이 아주
 ## 달라 보이면 "졌다"는 느낌이 화면 전환으로까지 번진다.
 ##
 ## 로그인과 순위표 이야기는 이 화면에 없다(2026-11-28 주인의 결정). 순위표
@@ -26,49 +26,42 @@ signal double_pressed
 # 그림 자리다. PLAY AGAIN 버튼이 바로 아래에서 같은 말을 하므로 제목은 GAME OVER.
 const TITLE_TEXT := "GAME OVER"
 
-# ---- 맨 윗줄: 리본 위에 트로피와 캐릭터가 올라탄다 ----
-# 리본은 판 테두리에 닿을 만큼 넓게 편다. 트로피와 캐릭터는 그 양 끝에
-# 겹쳐 놓는다 — 옆에 나란히 세우면 리본이 그만큼 좁아진다.
-const RIBBON_FILE := KIT + "quiz_box.png"   # 2.0: 문제 상자와 같은 주황 머리 틀 — 화면에서 가장 큰 소리
-const RIBBON_WIDTH_FRAC := 0.95     # 판 너비 대비 — 리본 끝이 판 테두리에 살짝 걸친다
-const RIBBON_TEXTURE_HEIGHT := 320  # 미리 줄여 둘 높이(px)
+# ---- 맨 윗줄 ----
+# 다시 그렸다(2026-11-28, 주인): 신기록이 아니면 BEST 를 적은 판(메뉴 설명 줄 틀),
+# 신기록이면 주황 리본 위에 트로피와 별이 올라타 흔들렸다. 판은 눌러야 할 버튼처럼
+# 보였고, 리본 밖으로 튀어나온 트로피·별은 팝업에 녹지 않았다. 이제 둘 다 틀 없이
+# 판에 바로 쓴 글자다 — 결과 줄이 판 안의 층이 된 것과 같은 까닭이다.
+# 줄 높이는 두 경우가 같다. 아래 줄들이 신기록 여부로 들썩이지 않게.
+const TOP_ROW_FRAC := 0.17              # 판 너비 대비
 const BEST_TEXT := "NEW BEST!"
-# 글자는 트로피와 캐릭터 사이에 남는 폭에 맞춰 줄인다. 리본 높이만 보고
-# 정하면 양 끝 그림에 물린다.
-const BEST_TEXT_MAX_FRAC := 0.44    # 리본 높이 대비 상한
-const BEST_TEXT_MIN := 12
-const BEST_TEXT_SIDE_PAD := 4.0     # 양 끝 그림과 글자 사이 최소 간격
-# 글자는 리본 띠의 휨을 그대로 따라간다.
-#
-# 띠는 양 끝보다 가운데가 위로 휘어 있어서, 곧게 쓴 글자를 얹으면 가운데는
-# 띠 위로 뜨고 양 끝은 띠 아래로 빠진다. 그래서 아트를 세로로 훑어 띠의
-# 중심선을 재 두고(_measure_ribbon_curve), 글자를 한 자씩 그 선 위에 얹으며
-# 그 지점의 기울기만큼 돌린다. 리본 그림이 바뀌어도 저절로 따라간다.
-const RIBBON_CURVE_SAMPLES := 65    # 중심선을 몇 군데서 잴지
-const BEST_TEXT_Y_NUDGE := 0.02     # 리본 높이 대비 미세 조정(양수면 아래로)
-
-const TROPHY_FILE := KIT + "icon_trophy_gold.png"
-const TROPHY_HEIGHT_FRAC := 0.62    # 리본 높이 대비 — 위아래로 살짝 넘친다
-const TROPHY_TEXTURE_HEIGHT := 260
-# 트로피가 밑동을 축으로 좌우로 갸웃거린다. 캐릭터는 위아래로 움직이므로
-# 서로 다른 결로 움직여야 둘이 같이 흔들리는 것처럼 보이지 않는다.
-const TROPHY_SWAY_PERIOD := 1.7     # 한 번 갔다 오는 데 걸리는 초
-const TROPHY_SWAY_DEGREES := 5.5    # 좌우로 기우는 각도
-const TROPHY_PIVOT_FRAC := 0.86     # 트로피 높이 중 회전축이 오는 위치(밑동)
-
-# 캐릭터는 게임 화면에서 그리던 크기 그대로. Main이 넘겨 준다.
-const CHARACTER_FALLBACK_SIZE := 100.0
-
-# 트로피와 캐릭터는 리본 양 끝에서 같은 거리에 둔다. 둘의 폭이 달라서
-# "중심 위치"로 잡으면 바깥 여백이 어긋나므로, 바깥쪽 모서리를 기준으로
-# 잡는다.
-#
-# 리본 텍스처에는 둘레에 투명 여백이 들어 있어(PopupBase의 ICON_PAD_FRAC),
-# 그려지는 사각형은 눈에 보이는 리본보다 조금 크다. 이 값은 그 여백만큼이라,
-# 트로피와 캐릭터의 바깥쪽 모서리가 리본의 실제 끝과 나란히 선다.
-const EDGE_INSET_FRAC := 0.012      # 리본 너비 대비
-const CHARACTER_BOB_PERIOD := 2.2
-const CHARACTER_BOB_AMPLITUDE := 5.0
+# 신기록: 제목(GAME OVER)과 같은 금색·테두리의 큰 글자, 뒤에 둥근 금빛, 양옆에
+# 반짝이는 작은 별 둘. 별은 BEST 판에서 쓰던 키트의 별이다.
+const NEW_BEST_FONT_FRAC := 0.10        # 판 너비 대비 — 넘치면 줄인다
+const NEW_BEST_FILL := Color(1.0, 0.86, 0.45, 1.0)
+const NEW_BEST_RIM := Color(0.20, 0.08, 0.0, 1.0)
+const NEW_BEST_RIM_FRAC := 0.12         # 글자 크기 대비
+const NEW_BEST_GLOW := Color(1.0, 0.72, 0.28, 0.32)
+const NEW_BEST_GLOW_SIZE := Vector2(1.35, 2.6)   # 글자 폭·크기 대비
+const SPARKLE_FRAC := 0.62              # 글자 크기(줄이기 전의 NEW_BEST_FONT_FRAC) 대비 별 높이
+const SPARKLE_GAP_FRAC := 0.40          # 글자 크기 대비 별과 글자 사이
+const SPARKLE_PERIOD := 1.6             # 초. 두 별은 함께 반짝인다 — 반 박자 어긋나게 했더니
+                                        # 한 순간에 크기·밝기가 달라 서로 다른 별로 보였다
+const SPARKLE_PULSE := 0.16             # 크기가 오르내리는 몫
+# 신기록이 아니면: 넘어야 할 기록을 한 줄로. 별 + BEST + 숫자를 가운데에 두고 양옆에
+# 바깥으로 옅어지는 가는 선을 그어, 판에 새긴 머리글처럼 읽히게 한다.
+const CROWN_FILE := KIT + "icon_star.png"
+# 번역 키다 — 영어로는 BEST, 한국어로는 "최고 기록"(ui.csv). "BEST" 를 그대로 키로 쓰지
+# 않는 것은 그 낱말이 HUD 와 모드 카드에서 일부러 영어로 남아 있어서다(check_translations
+# 의 ENGLISH_ON_PURPOSE). 한국어를 "신기록"으로 하지 않는 것은, 이 머리글이 기록을 못
+# 넘긴 판에 뜨기 때문이다 — 새로 세운 기록은 NEW BEST!(최고 기록 경신!)의 몫이다.
+const BEST_PLATE_LABEL := "Best record"
+# BEST 한 낱말만 노랑 — HUD 와 모드 카드의 BEST 와 같은 색이라 셋이 같은 것을 가리킨다.
+const BEST_PLATE_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)
+const BEST_PLATE_TEXT_FRAC := 0.058     # 판 너비 대비 — 라벨과 숫자 모두. 0.068 에서는 양옆 선이 점처럼 짧았다
+const BEST_PLATE_ICON_GAP_FRAC := 0.40  # 글자 크기 대비
+const BEST_LINE_COLOR := Color(0.35, 0.65, 0.95, 0.60)
+const BEST_LINE_GAP_FRAC := 0.70        # 글자 크기 대비 — 글자 덩어리와 선 사이
+const BEST_LINE_PX := 1.5
 
 # ---- 정보 상자 ----
 # 한 줄짜리 결과 상자 — 판 안에 깔린 층(_draw_box).
@@ -83,34 +76,6 @@ const BOX_TEXT_MIN := 9             # 더 줄이면 읽히지 않는다
 const COMBO_TEXT_FRAC := 0.057      # 판 너비 대비 — 성적이라 조금 크게
 
 
-# ---- 신기록이 아닐 때의 맨 윗줄 ----
-# 리본 대신 "넘어야 할 숫자"를 적은 판을 가운데에 놓는다. 빈자리를 메우는 게
-# 아니라, 다시하기 버튼을 누를 이유를 그 자리에 두는 것이다.
-#
-# 캐릭터는 이쪽에 나오지 않는다. 기록을 못 넘겼다고 우는 얼굴을 띄우면
-# 판을 나무라는 화면이 된다.
-const CROWN_FILE := KIT + "icon_star.png"
-# 배지 바탕은 전용 아트를 9-slice로 늘려 쓴다. 실루엣이 2148x555(약 3.9:1)로
-# 배지 비율과 거의 같아서, 다른 9-slice들처럼 폭에 맞춰 줄여도 모서리 곡률이
-# 그려진 대로 나온다.
-const BEST_BOX_FILE := KIT + "explain_bar.png"   # 메뉴 설명 줄과 같은 틀
-const BEST_BOX_CORNER := 40            # 구운 텍스처의 양 끝 머리 폭(px) — ModeSelectScreen.EXPLAIN_FRAME_CAP
-const BEST_BOX_TEXTURE_WIDTH := 340    # 미리 줄여 둘 폭(논리 px). 가장 넓은 배지보다 조금 크게
-const BEST_PLATE_HEIGHT_FRAC := 0.105  # 판 높이 대비 — 안내 상자들보다 두툼하게
-# 판은 내용에 맞춰 폭이 정해지는 배지다. 좌우로 길게 늘이면 아래 안내
-# 상자들과 구분이 안 되고, 한 줄짜리 정보에 비해 너무 크다.
-const BEST_PLATE_PAD := 30.0           # 내용 양옆 여백
-const BEST_PLATE_LABEL := "BEST"
-# 이 한 낱말만 노랑에 네이비 테두리다. 옆의 숫자와 같은 네이비로 두면 왕관과
-# 글자와 숫자가 한 덩어리 파란 줄로 뭉쳐 읽히는데, 정작 눈이 가야 하는 것은
-# 숫자다. HUD 와 모드 카드의 BEST 도 같은 노랑을 쓰고 있어 셋이 같은 것을
-# 가리킨다는 신호도 된다 — 그쪽 테두리는 검정이지만, 크림색 판 위에서는
-# 검정이 너무 무거워 판의 네이비를 쓴다.
-const BEST_PLATE_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)
-const BEST_PLATE_LABEL_OUTLINE_FRAC := 0.16   # 글자 크기 대비
-const BEST_PLATE_TEXT_FRAC := 0.075    # 판 너비 대비 — 라벨과 숫자 모두
-const BEST_PLATE_ICON_FRAC := 1.28     # 글자 크기 대비 왕관 높이
-const BEST_PLATE_ICON_GAP_FRAC := 0.40
 
 # 얼마나 모자랐는지 알려주는 한 줄. 아깝게 놓쳤을 때만 띄운다 — 최고 기록이
 # 5,000인데 40점 내고 "4,960 남았다"가 뜨면 격려가 아니라 조롱이다.
@@ -147,15 +112,10 @@ const WIDE_FRAC := 0.86             # 판 너비 대비 — 버튼과 상자가 
 # 기준)의 두 배보다 넉넉히 높아야 한다.
 const PLAY_BUTTON_HEIGHT_FRAC := 0.125
 const PLAY_BUTTON_TEXT := "PLAY AGAIN"
-const PLAY_ICON_SCALE := 1.15
 const HOME_BUTTON_HEIGHT_FRAC := 0.082
-# HOME 의 아이콘은 버튼 높이에서 직접 뽑는다 — 글자 크기에 맡기면 아이콘이
-# 지나치게 작다.
-#
 # 이 줄에는 LOGIN WITH GOOGLE(로그인 뒤 LEADERBOARD)과 SHARE 가 나란히 있었다.
 # 2026-11-28 주인의 결정으로 뺐다: 결과 화면은 x2·다시 하기·홈만 남긴다.
 # 로그인은 설정과 메뉴의 사람 아이콘에, 순위표는 메뉴의 트로피에 있다.
-const CREAM_ICON_HEIGHT_FRAC := 0.52     # 버튼 높이 대비
 # 골드 버튼 위아래로 똑같이 띄우는 간격. 주 동작 버튼이 콤보 상자와 크림
 # 버튼 사이 한가운데에 놓이게 한다.
 const PLAY_BUTTON_GAP := 14.0
@@ -163,7 +123,6 @@ const PLAY_BUTTON_GAP := 14.0
 const BUTTON_BLOCK_GAP := 8.0
 
 var _tryagain: Control
-var _character: TextureRect
 var _top_row: Control
 var _score_row: Control
 var _combo_box: Control
@@ -178,107 +137,93 @@ var _dust_ad_free := false
 var _play_button: Button
 var _home_button: Button
 
-var _ribbon: Texture2D
-var _trophy: Texture2D
 var _fire: Texture2D
-
-# 레이아웃이 잡아 준 캐릭터의 제자리. 흔들림은 여기서부터 위아래로만 더한다 —
-# 매 프레임 position을 직접 누적하면 조금씩 떠내려간다.
-var _character_rest_y := 0.0
-var _character_size := CHARACTER_FALLBACK_SIZE
 var _score := 0
 var _max_combo := 0
 var _best := 0
 var _is_new_record := true
 var _crown: Texture2D
-var _best_plate: NinePatchRect
-var _best_plate_rect := Rect2()
 var _best_plate_font := 0
 var _gap_line_font := 0
 
-# 맨 윗줄 치수 — _layout_content가 재서 담아 두고 _draw_top_row가 쓴다.
-var _ribbon_rect := Rect2()
-# 리본 띠의 세로 중심선. 텍스처 높이 대비 비율을 가로로 균등하게 재 둔다.
-var _ribbon_curve := PackedFloat32Array()
-var _trophy_rect := Rect2()
+# 맨 윗줄 글자 크기 — _layout_content가 재서 담아 두고 _draw_top_row가 쓴다.
 var _best_font := 0
+# NEW BEST! 양옆 별의 높이. 글자 크기가 아니라 판 너비에서 — 영어는 넓어서 글자가 줄어드는데,
+# 별까지 따라 줄면 한국어 화면의 별과 크기가 달라진다.
+var _sparkle_h := 0.0
 var _combo_font := 0
 var _score_label_font := 0
 var _score_value_font := 0
 
 
-# 캐릭터를 제자리에서 아주 조금 띄웠다 내린다. 시계(_elapsed)는 부모가 돌리므로
-# super를 먼저 부른다.
+# 신기록 줄의 별이 반짝이므로 그 동안만 맨 윗줄을 매 프레임 다시 그린다. 시계
+# (_elapsed)는 부모가 돌리므로 super를 먼저 부른다.
 func _process(delta: float) -> void:
 	super._process(delta)
-	if not visible or _character == null:
-		return
-	_character.position.y = _character_rest_y + sin(
-		_elapsed / CHARACTER_BOB_PERIOD * TAU) * CHARACTER_BOB_AMPLITUDE
-	# 트로피가 흔들리므로 맨 윗줄은 매 프레임 다시 그려야 한다.
-	if _top_row != null:
+	if visible and _is_new_record and _top_row != null:
 		_top_row.queue_redraw()
 
 
 const PANEL_MAX_H := 700.0   # 논리 px — 16:9 의 0.82 와 같은 높이
+# 판 윗변이 내려와야 하는 가장 높은 자리(논리 px, 화면 위에서). 판 위에 GAME OVER 가
+# 서는데, 그 위로는 게임 화면의 HUD(점수판·체력 칸·문제 상자·진행 막대)가 그대로
+# 보인다 — 16:9 에서 제목이 그 위에 겹쳤다(2026-11-28, 주인). HUD 는 화면 위에 붙어
+# 어느 비율에서나 같은 자리라, 진행 막대 밑(캡처로 잰 160)에 제목 높이(48)와 간격을
+# 더한 값이다. HUD 를 옮기면 다시 잰다.
+const PANEL_TOP_MIN := 222.0
+const PANEL_BOTTOM_MARGIN := 16.0   # 판을 줄일 때 화면 아래와 남기는 간격
+const PANEL_CENTER_FRAC := 0.54     # 걸리는 것이 없을 때 판 가운데의 높이(화면 높이 대비)
+
+
+## 판의 윗변과 높이(논리 px). 높이는 PANEL_MAX_H 에서 멈춘다 — 줄 높이는 판 너비(곧
+## 화면 너비)를 따라 어느 폰에서나 같은데, 판은 화면 높이를 따라 길어진다. 안내 상자와
+## 버튼 한 줄이 빠진 뒤로(2026-11-28) 20:9 에서는 빈 간격만 커다랗게 남았다.
+## 그렇게 놓은 판이 PANEL_TOP_MIN 보다 위로 올라가면(16:9), 판을 그 아래로 내리고 남는
+## 화면만큼으로 줄인다. 줄 높이가 판 높이를 따르므로 내용도 함께 줄어든다.
+func _panel_box() -> Vector2:
+	var view_h: float = size.y if size.y > 0.0 else 854.0
+	var h: float = minf(view_h * 0.82, PANEL_MAX_H)
+	var top: float = view_h * PANEL_CENTER_FRAC - h * 0.5
+	if top < PANEL_TOP_MIN:
+		top = PANEL_TOP_MIN
+		h = minf(h, view_h - PANEL_BOTTOM_MARGIN - top)
+	return Vector2(top, h)
+
 
 func panel_size_frac() -> Vector2:
 	# 화면 끝까지 넓히지는 않는다 — 판 양옆에 바깥 화면이 조금은 보여야
 	# 팝업으로 읽힌다.
-	#
-	# 높이는 PANEL_MAX_H 에서 멈춘다. 줄 높이는 판 너비(곧 화면 너비)를 따라
-	# 어느 폰에서나 같은데, 판은 화면 높이를 따라 길어진다. 안내 상자와 버튼
-	# 한 줄이 빠진 뒤로(2026-11-28) 20:9 에서는 빈 간격만 커다랗게 남았다.
-	var h: float = 0.82
-	if size.y > 0.0:
-		h = minf(h, PANEL_MAX_H / size.y)
-	return Vector2(0.90, h)
+	var view_h: float = size.y if size.y > 0.0 else 854.0
+	return Vector2(0.90, _panel_box().y / view_h)
 
 
 func panel_center_y_frac() -> float:
-	# 제목이 판 위에 놓이므로 판을 살짝 내려 머리 공간을 만든다(_place_title).
-	return 0.54
+	var view_h: float = size.y if size.y > 0.0 else 854.0
+	var box := _panel_box()
+	return (box.x + box.y * 0.5) / view_h
 
 
 func panel_texture_width() -> int:
 	return 470
 
 
-## 리본 위의 신기록 문구. 여섯 군데에서 쓰이는데 전부 같은 문자열이어야 한다 —
-## 글자를 하나씩 휘어 그리는 코드가 섞여 있어, 한 군데라도 다른 문자열을 재면
-## 글자 수와 그리는 자리가 어긋난다.
+## 맨 윗줄의 신기록 문구 — 영어 NEW BEST!, 한국어 "최고 기록 경신!". 한국어는 "신기록!"
+## 이었는데(2026-11-28 까지), 기록을 못 넘긴 화면의 "최고 기록" 과 낱말을 맞췄다(주인).
+## 재는 쪽(_layout_content)과 그리는 쪽(_draw_new_best)이 같은 문자열을 쓰도록 한 곳에 둔다.
 func _best_label() -> String:
 	return tr(BEST_TEXT)
 
 
 func _build_content() -> void:
-	_ribbon = _load_icon_from(RIBBON_FILE, Vector2i(1, 1), 0, RIBBON_TEXTURE_HEIGHT)
-	_measure_ribbon_curve()
-	_trophy = _load_icon_from(TROPHY_FILE, Vector2i(1, 1), 0, TROPHY_TEXTURE_HEIGHT)
 	_fire = _load_icon_from(FIRE_FILE, Vector2i(1, 1), 0)
 	_crown = _load_icon_from(CROWN_FILE, Vector2i(1, 1), 0)
 
-	# 배지 바탕. _top_row보다 먼저 붙여야 왕관과 글자 아래에 깔린다.
-	_best_plate = _nine_patch(BEST_BOX_FILE, BEST_BOX_CORNER,
-		int(BEST_BOX_TEXTURE_WIDTH * UI_SUPERSAMPLE))
-	_best_plate.visible = false
-	add_child(_best_plate)
-
-	# 리본·트로피·NEW BEST!는 서로 겹치는 한 덩어리라 하나의 캔버스에 직접
-	# 그린다. 노드로 쪼개면 겹침 순서를 맞추기가 오히려 번거롭다.
+	# 맨 윗줄(BEST 머리글 또는 NEW BEST!)은 한 캔버스에 직접 그린다.
 	_top_row = Control.new()
 	_top_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_top_row.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	_top_row.draw.connect(_draw_top_row)
 	add_child(_top_row)
-
-	# 캐릭터만 노드로 둔다 — 혼자 위아래로 흔들리기 때문이다.
-	_character = TextureRect.new()
-	_character.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_character.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_character.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_character.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-	add_child(_character)
 
 	_score_row = Control.new()
 	_score_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -318,19 +263,7 @@ func _build_content() -> void:
 
 
 ## 이번 판의 결과를 Main이 넣어 준다.
-##
-## face는 신기록이면 happy, 아니면 sad 표정이다. Main이 골라 넘긴다 —
-## 팝업은 어느 모드인지 모른다.
-##
-## draw_size는 게임 화면에서 이 캐릭터를 그리던 크기(논리 px)다. 팝업도 같은
-## 좌표계라 그대로 쓰면 크기가 정확히 일치한다.
-func set_result(face: Texture2D, draw_size: float, score: int, max_combo: int,
-		best: int, is_new_record: bool) -> void:
-	if _character != null:
-		# 아트의 알파 경계가 딱딱해서 그대로 크게 띄우면 계단이 보인다.
-		_character.texture = _smoothed(face)
-	if draw_size > 0.0:
-		_character_size = draw_size
+func set_result(score: int, max_combo: int, best: int, is_new_record: bool) -> void:
 	_score = score
 	_max_combo = max_combo
 	_best = best
@@ -393,17 +326,8 @@ func _layout_content(inner: Rect2) -> void:
 	_score_label_font = int(round(pw * SCORE_LABEL_FRAC))
 	_score_value_font = int(round(pw * SCORE_VALUE_FRAC))
 
-	# 맨 윗줄: 리본이 판 폭을 거의 다 쓰고, 트로피와 캐릭터가 그 위에 올라탄다.
-	# 둘 다 리본보다 크므로 줄 높이는 그중 가장 큰 것이 정한다.
-	var ribbon_w: float = pw * RIBBON_WIDTH_FRAC
-	var ribbon_h: float = ribbon_w
-	if _ribbon != null:
-		ribbon_h = ribbon_w * (float(_ribbon.get_height()) / float(_ribbon.get_width()))
-	var trophy_h: float = ribbon_h * TROPHY_HEIGHT_FRAC
-	# 신기록이 아니면 리본도 캐릭터도 없으므로 배지 하나 높이면 된다.
-	var top_row_h: float = maxf(ribbon_h, maxf(trophy_h, _character_size))
-	if not _is_new_record:
-		top_row_h = ph * BEST_PLATE_HEIGHT_FRAC
+	# 맨 윗줄 — 신기록이든 아니든 같은 높이.
+	var top_row_h: float = pw * TOP_ROW_FRAC
 
 	var combo_h: float = ph * COMBO_BOX_HEIGHT_FRAC
 	_gap_line_font = int(round(pw * GAP_LINE_FRAC))
@@ -424,46 +348,15 @@ func _layout_content(inner: Rect2) -> void:
 	var y := top
 
 	# --- 맨 윗줄 ---
-	_top_row.position = Vector2(_panel_rect.position.x + (pw - ribbon_w) * 0.5, y)
-	_top_row.size = Vector2(ribbon_w, top_row_h)
-	_ribbon_rect = Rect2(0.0, (top_row_h - ribbon_h) * 0.5, ribbon_w, ribbon_h)
-
-	# 바깥쪽 모서리를 리본 양 끝에서 같은 거리에 놓는다 — 폭이 달라도
-	# 좌우 여백이 정확히 같아진다.
-	var edge: float = ribbon_w * EDGE_INSET_FRAC
-	var trophy_w: float = trophy_h
-	if _trophy != null:
-		trophy_w = trophy_h * (float(_trophy.get_width()) / float(_trophy.get_height()))
-	_trophy_rect = Rect2(edge, (top_row_h - trophy_h) * 0.5, trophy_w, trophy_h)
-
-	var char_w: float = _character_size
-	if _character.texture != null:
-		char_w = _character_size * (float(_character.texture.get_width())
-			/ float(_character.texture.get_height()))
-	var char_left: float = ribbon_w - edge - char_w
-
-	# 신기록이 아니면 리본 자리에 BEST 배지가 들어가고 캐릭터는 나오지 않는다.
-	_character.visible = _is_new_record
-	_best_plate.visible = not _is_new_record
-	if not _is_new_record:
-		_best_plate_font = int(round(pw * BEST_PLATE_TEXT_FRAC))
-		var plate_w: float = minf(ribbon_w,
-			_best_plate_group_width(_best_plate_font) + BEST_PLATE_PAD * 2.0)
-		_best_plate_rect = Rect2(
-			(ribbon_w - plate_w) * 0.5, 0.0, plate_w, top_row_h)
-		# 바탕 노드는 _top_row가 아니라 팝업에 직접 붙어 있으므로 화면 좌표로.
-		_best_plate.position = _best_plate_rect.position + Vector2(
-			_panel_rect.position.x + (pw - ribbon_w) * 0.5, y)
-		_fit_patch(_best_plate, _best_plate_rect.size)
-	_character.size = Vector2(char_w, _character_size)
-	_character_rest_y = y + (top_row_h - _character_size) * 0.5
-	_character.position = Vector2(_top_row.position.x + char_left, _character_rest_y)
-
-	# NEW BEST!는 트로피와 캐릭터 사이에 남는 폭에 맞춰 줄인다.
-	var text_room: float = char_left - _trophy_rect.end.x - BEST_TEXT_SIDE_PAD * 2.0
-	_best_font = int(round(ribbon_h * BEST_TEXT_MAX_FRAC))
-	while _best_font > BEST_TEXT_MIN and _font_heavy.get_string_size(
-			_best_label(), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x > text_room:
+	_top_row.position = Vector2(wide_x, y)
+	_top_row.size = Vector2(wide_w, top_row_h)
+	_best_plate_font = int(round(pw * BEST_PLATE_TEXT_FRAC))
+	# NEW BEST! 는 양옆 별 자리를 남기고 들어갈 때까지 줄인다.
+	_best_font = int(round(pw * NEW_BEST_FONT_FRAC))
+	_sparkle_h = pw * NEW_BEST_FONT_FRAC * SPARKLE_FRAC
+	var best_font: Font = _caption_font(_best_label())
+	while _best_font > 12 and best_font.get_string_size(_best_label(), HORIZONTAL_ALIGNMENT_LEFT, -1,
+			_best_font).x + (_sparkle_h + _best_font * SPARKLE_GAP_FRAC) * 2.0 > wide_w * 0.92:
 		_best_font -= 1
 	_top_row.queue_redraw()
 	y += top_row_h + gap
@@ -492,144 +385,113 @@ func _layout_content(inner: Rect2) -> void:
 			var bw: float = wide_w * DUST_BUTTON_W_FRAC
 			var bh: float = dust_h * 0.86
 			_place(_double_button, wide_x + wide_w - bw - dust_h * 0.07, y + (dust_h - bh) * 0.5, bw, bh,
-				1.3, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+				BUTTON_CONTENT_FIT, GOLD_CONTENT_DY)
 		y += dust_h
 
 	y += PLAY_BUTTON_GAP
 
 	# --- 버튼들 ---
-	_place(_play_button, wide_x, y, wide_w, play_h, PLAY_ICON_SCALE,
-		BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	_place(_play_button, wide_x, y, wide_w, play_h, BUTTON_CONTENT_FIT, GOLD_CONTENT_DY)
 	y += play_h + PLAY_BUTTON_GAP
 
-	# 아이콘 높이는 버튼 높이에서 — 이유는 CREAM_ICON_HEIGHT_FRAC 주석 참고.
-	var cream_icon: float = home_h * CREAM_ICON_HEIGHT_FRAC
-	_place(_home_button, wide_x, y, wide_w, home_h, 1.0, BUTTON_CONTENT_FIT, cream_icon)
+	_place(_home_button, wide_x, y, wide_w, home_h)
 
 	_place_title(_tryagain)
 
 
-# 리본 아트를 세로로 훑어 띠의 중심선을 재 둔다. 각 표본은 그 세로줄에서
-# 불투명한 구간의 한가운데를 텍스처 높이 대비 비율로 나타낸다.
-#
-# 리본은 양 끝이 뾰족한 꼬리라 거기서는 띠가 아니라 꼬리를 재게 되지만,
-# 글자는 가운데 부분에만 놓이므로 문제되지 않는다.
-func _measure_ribbon_curve() -> void:
-	_ribbon_curve = PackedFloat32Array()
-	if _ribbon == null:
-		return
-	var img: Image = _ribbon.get_image()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
-	img.clear_mipmaps()
-	var w := img.get_width()
-	var h := img.get_height()
-	for i in range(RIBBON_CURVE_SAMPLES):
-		var x: int = int(round(float(i) / float(RIBBON_CURVE_SAMPLES - 1) * (w - 1)))
-		var top := -1
-		var bot := -1
-		for y in range(h):
-			if img.get_pixel(x, y).a > 0.5:
-				if top < 0:
-					top = y
-				bot = y
-		_ribbon_curve.append(0.5 if top < 0 else (top + bot) * 0.5 / h)
-
-
-# 리본 가로 위치 u(0~1)에서 띠 중심선의 높이(리본 높이 대비 비율).
-func _curve_at(u: float) -> float:
-	if _ribbon_curve.is_empty():
-		return 0.5
-	var t: float = clampf(u, 0.0, 1.0) * (_ribbon_curve.size() - 1)
-	var i: int = int(floor(t))
-	if i >= _ribbon_curve.size() - 1:
-		return _ribbon_curve[_ribbon_curve.size() - 1]
-	return lerpf(_ribbon_curve[i], _ribbon_curve[i + 1], t - i)
-
-
-# 리본 → 그 위의 NEW BEST! → 왼쪽 끝에 올라탄 트로피 순서로 겹쳐 그린다.
-# (캐릭터는 따로 흔들려야 해서 별도 노드다.)
+# 맨 윗줄: 신기록이면 NEW BEST!, 아니면 넘어야 할 BEST 머리글.
 func _draw_top_row() -> void:
-	if not _is_new_record:
-		_draw_best_plate()
-		return
-	if _ribbon != null:
-		_top_row.draw_texture_rect(_ribbon, _ribbon_rect, false)
-	_draw_best_text()
-	_draw_trophy()
+	if _is_new_record:
+		_draw_new_best()
+	else:
+		_draw_best_header()
 
 
-# 신기록이 아닐 때의 맨 윗줄: 왕관 + BEST + 넘어야 할 숫자.
-#
-# 왕관과 글자를 한 덩어리로 묶어 판 가운데에 놓는다. 왼쪽에 붙이면 넓은
-# 판의 오른쪽이 통째로 비어 보인다.
-func _draw_best_plate() -> void:
-	# 바탕(_best_plate)은 9-slice 노드라 여기서는 내용만 그린다.
-	var fs := _best_plate_font
+# 별 + BEST + 숫자를 가운데에 두고, 양옆에 바깥으로 옅어지는 가는 선을 긋는다.
+# 별은 버튼 아이콘처럼 글자의 대문자 높이에 맞춘다(PopupBase.ICON_CAP_*).
+func _draw_best_header() -> void:
+	var fs: int = _best_plate_font
+	var w: float = _top_row.size.x
+	var h: float = _top_row.size.y
+	var label: String = tr(BEST_PLATE_LABEL)
+	var label_font: Font = _label_font(label)
 	var value := _group(_best)
-	var label_w: float = _best_label_width(fs)
-	var icon_h: float = fs * BEST_PLATE_ICON_FRAC
+	var label_w: float = label_font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var value_w: float = _big_number_font().get_string_size(value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var gap: float = fs * BEST_PLATE_ICON_GAP_FRAC
+	var cap: float = fs * ICON_CAP_LATIN
+	var icon_h: float = cap * ICON_CAP_MATCH
 	var icon_w := 0.0
-	var icon_gap := 0.0
 	if _crown != null:
-		icon_w = icon_h * (float(_crown.get_width()) / float(_crown.get_height()))
-		icon_gap = fs * BEST_PLATE_ICON_GAP_FRAC
-	var text_gap: float = fs * 0.42
-	var group_w: float = _best_plate_group_width(fs)
-	var x: float = _best_plate_rect.position.x + (_best_plate_rect.size.x - group_w) * 0.5
-	var centre_y: float = _best_plate_rect.position.y + _best_plate_rect.size.y * 0.5
+		icon_w = icon_h * float(_crown.get_width()) / float(_crown.get_height())
+	var group_w: float = icon_w + gap + label_w + gap + value_w
+	var x: float = (w - group_w) * 0.5
+	var baseline: float = h * 0.5 + cap * 0.5
 	if _crown != null:
-		_top_row.draw_texture_rect(_crown,
-			Rect2(x, centre_y - icon_h * 0.5, icon_w, icon_h), false)
-		x += icon_w + icon_gap
-	# draw_string은 베이스라인 기준이라 대문자 높이의 절반만큼 내린다.
-	var baseline: float = centre_y + fs * 0.35
-	var ring: int = _best_label_ring(fs)
-	# 테두리는 글자 양옆으로 번지므로 label_w 가 그 몫까지 품고 있다. 글자
-	# 자체는 그 안쪽에서 시작해야 왼쪽으로 치우치지 않는다 — 커서 x 는 건드리지
-	# 않는다. 숫자 자리가 그것을 기준으로 잡히기 때문이다.
-	var label_x: float = x + ring
-	_top_row.draw_string_outline(_label_font(BEST_PLATE_LABEL), Vector2(label_x, baseline),
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, ring, PRIMARY_LABEL_OUTLINE)
-	_top_row.draw_string(_label_font(BEST_PLATE_LABEL), Vector2(label_x, baseline),
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
-	_top_row.draw_string(_big_number_font(), Vector2(x + label_w + text_gap, baseline),
-		value, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+		_top_row.draw_texture_rect(_crown, Rect2(x, baseline - cap * 0.5 - icon_h * 0.5, icon_w, icon_h), false)
+	x += icon_w + gap
+	_top_row.draw_string(label_font, Vector2(x, baseline), label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, BEST_PLATE_LABEL_FILL)
+	x += label_w + gap
+	_top_row.draw_string(_big_number_font(), Vector2(x, baseline), value,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, fs, INK)
+	# 양옆 선: 글자 덩어리 쪽이 진하고 판 가장자리 쪽으로 사라진다.
+	var line_gap: float = fs * BEST_LINE_GAP_FRAC
+	var left_end: float = (w - group_w) * 0.5 - line_gap
+	var right_start: float = (w + group_w) * 0.5 + line_gap
+	var ly: float = baseline - cap * 0.5
+	var clear := Color(BEST_LINE_COLOR, 0.0)
+	_draw_fade_line(Vector2(0.0, ly), Vector2(left_end, ly), clear, BEST_LINE_COLOR)
+	_draw_fade_line(Vector2(right_start, ly), Vector2(w, ly), BEST_LINE_COLOR, clear)
 
 
-# 테두리 두께. 재는 쪽과 그리는 쪽이 같은 값을 써야 한다.
-func _best_label_ring(fs: int) -> int:
-	return maxi(1, int(round(fs * BEST_PLATE_LABEL_OUTLINE_FRAC)))
+func _draw_fade_line(a: Vector2, b: Vector2, ca: Color, cb: Color) -> void:
+	if b.x - a.x < 2.0:
+		return
+	var t: float = BEST_LINE_PX * 0.5
+	_top_row.draw_polygon(PackedVector2Array([a + Vector2(0, -t), b + Vector2(0, -t), b + Vector2(0, t), a + Vector2(0, t)]),
+		PackedColorArray([ca, cb, cb, ca]))
 
 
-# "BEST" 가 차지하는 폭 — 테두리가 글자 양옆으로 번지는 몫까지.
-func _best_label_width(fs: int) -> float:
-	return _label_font(BEST_PLATE_LABEL).get_string_size(
-		BEST_PLATE_LABEL, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x + _best_label_ring(fs) * 2.0
+# NEW BEST!: 금빛이 뒤에서 은은히 번지고, 제목과 같은 금색·테두리 글자 양옆에서 작은
+# 별 둘이 함께 반짝인다. 한국어(최고 기록 경신!)는 Zen Dots 에 한글이 없어 기본
+# 글꼴의 굵은 체로 쓴다(_caption_font).
+func _draw_new_best() -> void:
+	var fs: int = _best_font
+	var text := _best_label()
+	var font: Font = _caption_font(text)
+	var w: float = _top_row.size.x
+	var h: float = _top_row.size.y
+	var tw: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var cap: float = fs * (ICON_CAP_HANGUL if font != _font_button else ICON_CAP_LATIN)
+	var mid := Vector2(w * 0.5, h * 0.5)
+	var gs := Vector2(tw * NEW_BEST_GLOW_SIZE.x, fs * NEW_BEST_GLOW_SIZE.y)
+	_top_row.draw_texture_rect(_press_glow_texture(), Rect2(mid - gs * 0.5, gs), false, NEW_BEST_GLOW)
+	var base := Vector2((w - tw) * 0.5, mid.y + cap * 0.5)
+	_top_row.draw_string_outline(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs,
+		maxi(2, int(round(fs * NEW_BEST_RIM_FRAC))), NEW_BEST_RIM)
+	_top_row.draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, NEW_BEST_FILL)
+	if _crown == null:
+		return
+	var sh: float = _sparkle_h
+	var sw: float = sh * float(_crown.get_width()) / float(_crown.get_height())
+	var off: float = tw * 0.5 + fs * SPARKLE_GAP_FRAC + sw * 0.5
+	for i in 2:
+		var phase: float = _elapsed / SPARKLE_PERIOD * TAU
+		var k: float = 1.0 + SPARKLE_PULSE * sin(phase)
+		var c := Vector2(mid.x + (off if i == 1 else -off), mid.y)
+		var s := Vector2(sw, sh) * k
+		_top_row.draw_texture_rect(_crown, Rect2(c - s * 0.5, s), false,
+			Color(1, 1, 1, 0.75 + 0.25 * sin(phase)))
 
 
-# 왕관 + BEST + 숫자를 합친 폭. 배지 크기를 정할 때와 그릴 때가 같은
-# 값을 써야 내용이 가운데에 정확히 선다.
-## 크게 혼자 서는 숫자(게임오버 점수, BEST 판의 값)의 글꼴 — 제목·이름표와 같은 Zen Dots
+## 크게 혼자 서는 숫자(게임오버 점수, BEST 의 값)의 글꼴 — 제목·이름표와 같은 Zen Dots
 ## (2026-11-28, 주인). 화면의 주인공인 숫자라 GAME OVER, SCORE, BEST 와 한 덩어리로 읽히고,
 ## 메뉴 카드의 BEST 숫자도 Zen Dots 라 둘의 모양이 같다. 작은 숫자(콤보, 스타더스트,
 ## 안내 문구 속 숫자)는 기본 글꼴(Oxanium) 그대로 — Zen Dots 숫자는 넓고 장식이 있어
 ## 좁은 자리와 작은 글자에서 덜 읽힌다. Oxanium 과 나란히 그려 보고 골랐다.
 func _big_number_font() -> Font:
 	return _font_button
-
-
-func _best_plate_group_width(fs: int) -> float:
-	var w: float = _best_label_width(fs)
-	w += fs * 0.42
-	w += _big_number_font().get_string_size(
-		_group(_best), HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-	if _crown != null:
-		var icon_h: float = fs * BEST_PLATE_ICON_FRAC
-		w += icon_h * (float(_crown.get_width()) / float(_crown.get_height()))
-		w += fs * BEST_PLATE_ICON_GAP_FRAC
-	return w
 
 
 # 기록까지 얼마나 모자랐는지. 아깝게 놓쳤을 때만 문구를 돌려주고, 아니면
@@ -640,58 +502,6 @@ func _gap_line_text() -> String:
 	if float(_score) < float(_best) * GAP_LINE_MIN_RATIO:
 		return ""
 	return tr(GAP_LINE_FORMAT) % _group(_best - _score)
-
-
-# NEW BEST!를 리본의 휨을 따라 한 자씩 얹는다.
-#
-# 글자마다 제 위치의 중심선 높이로 내리고, 그 지점의 기울기만큼 돌린다.
-# 한 자씩 그리지만 자리는 누적 문자열 폭으로 잡으므로 커닝은 그대로 살아 있다.
-func _draw_best_text() -> void:
-	if _best_font <= 0:
-		return
-	var ci := _top_row.get_canvas_item()
-	var full_w: float = _font_heavy.get_string_size(
-		_best_label(), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
-	var start_x: float = _ribbon_rect.position.x + (_ribbon_rect.size.x - full_w) * 0.5
-	# 기울기를 잴 때 쓸 아주 작은 가로 간격.
-	var du: float = 1.0 / float(RIBBON_CURVE_SAMPLES - 1) * 0.5
-	var prev_w := 0.0
-	for i in range(_best_label().length()):
-		var next_w: float = _font_heavy.get_string_size(
-			_best_label().substr(0, i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, _best_font).x
-		var advance: float = next_w - prev_w
-		var cx: float = start_x + (prev_w + next_w) * 0.5
-		prev_w = next_w
-		if _best_label()[i] == " ":
-			continue
-		var u: float = (cx - _ribbon_rect.position.x) / _ribbon_rect.size.x
-		# 띠 중심 + 대문자 높이의 절반 = 베이스라인. draw_char는 베이스라인
-		# 기준으로 그린다.
-		var centre: float = (_curve_at(u) + BEST_TEXT_Y_NUDGE) * _ribbon_rect.size.y
-		var baseline := Vector2(cx, _ribbon_rect.position.y + centre + _best_font * 0.35)
-		# 화면 기울기 = 세로 변화량 / 가로 변화량. 둘 다 실제 픽셀로 환산한다.
-		var dy: float = (_curve_at(u + du) - _curve_at(u - du)) * _ribbon_rect.size.y
-		var dx: float = du * 2.0 * _ribbon_rect.size.x
-		var angle: float = atan2(dy, dx)
-		_top_row.draw_set_transform_matrix(Transform2D(angle, baseline))
-		_font_heavy.draw_char(ci, Vector2(-advance * 0.5, 0.0),
-			_best_label().unicode_at(i), _best_font, INK)
-	_top_row.draw_set_transform_matrix(Transform2D.IDENTITY)
-
-
-# 트로피가 밑동을 축으로 좌우로 갸웃거린다.
-func _draw_trophy() -> void:
-	if _trophy == null:
-		return
-	var angle: float = deg_to_rad(TROPHY_SWAY_DEGREES) * sin(
-		_elapsed / TROPHY_SWAY_PERIOD * TAU)
-	var pivot := Vector2(
-		_trophy_rect.position.x + _trophy_rect.size.x * 0.5,
-		_trophy_rect.position.y + _trophy_rect.size.y * TROPHY_PIVOT_FRAC)
-	_top_row.draw_set_transform_matrix(Transform2D(angle, pivot))
-	_top_row.draw_texture_rect(_trophy,
-		Rect2(_trophy_rect.position - pivot, _trophy_rect.size), false)
-	_top_row.draw_set_transform_matrix(Transform2D.IDENTITY)
 
 
 # 결과 줄 하나. 버튼이 아니므로 버튼의 틀을 입지 않고 판 안에 깔린 층으로 그린다

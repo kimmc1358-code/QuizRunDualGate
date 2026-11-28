@@ -78,7 +78,7 @@ func _run() -> void:
 		# 가장 빡빡한 16:9 에서 넘칠 수 있다.
 		for dust in [0, 1250]:
 			for case in over_cases:
-				over.call("set_result", null, 0.0, int(case[1]), 24, int(case[2]),
+				over.call("set_result", int(case[1]), 24, int(case[2]),
 					bool(case[3]))
 				over.call("set_stardust", dust, dust > 0, false)
 				await _measure("gameover (%s%s)" % [case[0], ", 스타더스트" if dust > 0 else ""], over, view)

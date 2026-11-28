@@ -64,7 +64,7 @@ func _run() -> void:
 		# 결과 화면의 x2: 광고를 지운 사람에게는 광고 표시 없이 뜬다.
 		var over: Control = main.get("gameover_popup")
 		over.call("ensure_built")
-		over.call("set_result", null, 0.0, 12600, 24, 14000, false)
+		over.call("set_result", 12600, 24, 14000, false)
 		over.call("set_stardust", 186, true, bool(main.get("ads_removed")))
 		over.visible = true
 		await _shot("%s_gameover" % tag)

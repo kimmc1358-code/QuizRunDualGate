@@ -322,13 +322,13 @@ committed:
 
   | Slot | Sprite |
   |---|---|
-  | Score bar | `Bar_Frame_01` |
+  | Score bar (gone from the play screen on 2026-11-28; the mode select's stardust readout still uses it) | `Bar_Frame_01` |
   | Question box | `Button_Frame_01`, orange end caps; the most important panel gets the loudest frame |
-  | Health and stardust slots | `Frame_Box_Small_07`, one frame for both, so the question box sits centred between twins |
+  | Health and stardust slots (until 2026-11-28; both now sit bare on the top line, and the frame stays the mode select's square buttons) | `Frame_Box_Small_07`, one frame for both, so the question box sat centred between twins |
   | Pause | `Frame_Box_Small_10`, with the II bars drawn on at build time; the pack has no pause icon |
   | Progress gauge | `Bar_Frame_08` |
   | Weapon readout's backing | `Menu_Item_Background_03_Blue` |
-  | BEST mark | `Trophy_01`, tinted gold |
+  | BEST mark (the mode select's cards; the play screen dropped it on 2026-11-28) | `Trophy_01`, tinted gold |
 
 - Each frame is laid over its own `_Background` sprite, tinted dark, so
   white text on it reads against the space behind.
@@ -378,6 +378,11 @@ changed is the art and the palette (`PopupBase`):
     bar's handle.
   - Every button and row runs the same width, so their edges make one line
     down the panel.
+  - The mode select's PLAY is the same orange bar (`PLAY_FRAME_PATH`), since
+    2026-11-28: it was `Button_Frame_06` with V-notched ends, and the two
+    screens' main buttons looked like different games. Its press glow and
+    launch ghost follow the new art (`PLAY_FACE_SRC`, `PLAY_FRAME_CAP`). The
+    menu's square icon buttons stay square.
   - How it got here, all on 2026-11-28 and each the owner's call:
     - The main button was `Bar_Frame_02` filled orange with cyan arrow tips,
       and the secondaries `Frame_Box_Small_04`. The owner found they did not
@@ -401,11 +406,24 @@ changed is the art and the palette (`PopupBase`):
     they read as one score sheet apart from the buttons below. A flat strip
     per row with a short coloured bar at its left (combo orange, stardust
     cyan) was drawn beside it, and the owner chose the plate.
+  - A button's icon matches its caption (2026-11-28, owner): as tall as the
+    caption's capitals (`ICON_CAP_LATIN` 0.72 em for Zen Dots,
+    `ICON_CAP_HANGUL` 0.78 for Do Hyeon, both measured, times
+    `ICON_CAP_MATCH`), centred on them rather than on the line box, and on
+    the main buttons filled the caption's cream with its brown outline
+    (`IconRim`, the icon stamped round a small circle). The per-button
+    scales went (PLAY AGAIN 1.15, HOME at 0.52 of the button, x2 1.3, REMOVE
+    ADS 1.15): bigger than the letters and unoutlined, the icons read as
+    stickers. At half the caption's outline the rim filled the restart
+    arrow's ring; it is a quarter (`ICON_RIM_SHARE`).
   - The names GOLD and CREAM are kept from 1.x and mean main and secondary.
   - Held, a button's inner face lights up, as the menu's PLAY does: an
-    additive layer over the face (`Glow`, placed on `face`; for the bevel,
-    `BEVEL_FACE_INSET`, measured off the baked art) fades in with the press
-    and out over `PRESS_GLOW_FADE` after it.
+    additive soft radial glow (`Glow`, `_press_glow_texture`) centred on the
+    face and `PRESS_GLOW_GROW` larger than it (`face`; for the bevel,
+    `BEVEL_FACE_INSET`, measured off the baked art), fading in with the press
+    and out over `PRESS_GLOW_FADE` after it. It was a flat rounded box the
+    size of the face until 2026-11-28; between the bar's steel blocks it read
+    as a patch stuck on, and the owner called it broken.
 - Button captions (and the language toggle's ENG/KOR) and the short
   capital labels (SCORE, BEST, MAX COMBO, STARDUST, SFX, MUSIC, LANGUAGE,
   `_label_font`) are in Zen Dots, the titles' face; numbers and sentences
@@ -429,10 +447,16 @@ changed is the art and the palette (`PopupBase`):
   of it (`_place_title`). They were on a header plate astride the panel's
   top edge first, then on the orange `Bar_Frame_08` above it; the owner
   asked for them clear of the panel, larger, and then for the letters
-  alone. Their width stops at `TITLE_WIDTH_FRAC` of the panel so SETTINGS
-  misses the close button (at 0.74 it touched it), and they shrink to the
-  room above the panel where there is less (the settings popup at 16:9).
-  The game over's title was TRY AGAIN; PLAY AGAIN under it already says
+  alone. All three share one size (2026-11-28, owner; PAUSED had come out
+  bigger than SETTINGS): each popup works out the largest its title can be,
+  within `TITLE_WIDTH_FRAC` (0.88) of its panel and the room above it, and
+  every title takes the smallest (`_title_caps`, `_shared_title_size`). The
+  widest, GAME OVER, sets it. The width cap was 0.66 while the close button
+  sat on the panel's top right corner (at 0.74 SETTINGS touched it).
+  The game over's panel keeps its top below `PANEL_TOP_MIN` (222 px: the
+  HUD's progress bar ends at 160, then the title), so GAME OVER never sits on
+  the HUD; at 16:9 that moves the panel down and shortens it
+  (`_panel_box`), and its rows, sized from its height, shrink with it.  The game over's title was TRY AGAIN; PLAY AGAIN under it already says
   that.
 - The 1.x popups were navy on cream. Text is now a pale blue (`INK`). The toggle is cyan. The glow that breathed around the panel (gold in 1.x, then cyan) was removed at the owner's request: the kit frame carries its own light and colour.
 - PAUSED was pale blue letters inside the panel until 2026-11-28, when the
@@ -440,10 +464,32 @@ changed is the art and the palette (`PopupBase`):
   down to `(0.88, 0.56)` and its centre to 0.54 to make room above it.
 - Icons are the pack's white ones (`KIT_ICONS`, and the game over's
   `*_FILE`s), the tick and lock baked tinted. The pack has no plain play
-  triangle, so RESUME's is drawn (`_play_icon`).
-- The faces the game over shows are the kit's
-  amber warning sign and gold star (`FACE_SAD_PATH`/`FACE_HAPPY_PATH`), since
-  the ship has no face.
+  triangle, so RESUME's is drawn (`_play_icon`). Synty's POLYGON Icons, its
+  coloured low-poly 3D icons rendered to PNG, replaced them for an hour on
+  2026-11-28; the owner preferred these.
+- The countdown before a run (2026-11-28, owner) is READY, then GO!, in the
+  popup titles' gold Zen Dots with its rim, between the HUD and the ship
+  (`COUNTDOWN_Y_FRAC`), not over it. READY grows in and breathes; GO! pops
+  and the world lunges as on a gate pass (`SpaceRun.boost`,
+  `SpaceRun.punch`). Both glow softly gold: a round light behind the word
+  and a halo in the letters' shape, stacked from six faint outlines
+  (`COUNTDOWN_HALO_*`; one wide outline came out a flat band). A cyan ring
+  and speed lines burst out of GO! at first; the owner took them out. It was the 1.x
+  READY/START banner art, deleted with the rest of 1.x, which had left a
+  grey placeholder box on the ship.
+- The game over's top row is written straight onto the panel (2026-11-28,
+  owner), the same height either way so nothing below moves
+  (`TOP_ROW_FRAC`). Not a record: a header of the kit's gold star (sized
+  like a button icon), BEST in yellow and the number in Zen Dots, with thin
+  lines either side fading out to the panel's edges. A new record: NEW
+  BEST! (최고 기록 경신!, which was 신기록! until the owner matched it to the
+  other screen's 최고 기록) in the title's gold and rim, a soft gold glow behind it
+  and a small star either side twinkling half a beat apart. Before, the
+  BEST sat in a framed plate that read as a button, and NEW BEST! bent
+  along an orange ribbon with a gold trophy swaying at one end and a
+  bobbing star (the "face" Main passed in, once the 1.x bird) at the other;
+  the owner found neither belonged in the popup. The faces, the ribbon,
+  the trophy and the warning-sign icon went with it.
 - The volume rows (settings and pause) are `PopupBase.KitSlider` (2026-11-28,
   after a sample the owner sent): `Button_Arrow_07` with its cyan light layer
   at either end, stepping the value by `SLIDER_STEP`; between them
@@ -459,6 +505,16 @@ changed is the art and the palette (`PopupBase`):
   fill was about 45 px long.
 - Kit art never goes through the popup bake (`_bake_store`): its output sits
   under `ui_assets/`, which git tracks.
+
+**The engines burn with the run** (2026-11-28, owner). Each nozzle's glow
+flickers on its own, grows into a short plume and warms toward white as the
+streak raises the pace, and leaps on the lunge after a pass
+(`SpaceRun._update_engines`, `ENGINE_*`). A flame shader on a cone was tried
+first and dropped: the camera sits behind the ship, so a cone trailing back
+points straight at it, and tilted down enough to show length it hung like an
+icicle. The first tuning grew the three glows until they ran together into
+a white blob over the hull, so the width barely grows and the plume
+stretches downward instead.
 
 **A right pass bursts in colour** (2026-11-27). The gate lights up gold (red
 when wrong), and a right one throws a shockwave ring, shards out of the ring
@@ -525,9 +581,34 @@ with colour instead.
 - The portal takes the gate's glow colour every frame (`_portal_color`), so
   it gives nothing away that the ring does not.
 - Without the kit the hole stays empty, as before. A release must be
-  exported from a machine that has all three kits.
+  exported from a machine that has all four kits (with the icons below).
 - Each portal runs eight noise layers per pixel. That has not been
   measured on a phone; `PORTAL_LAYERS` is the knob if it costs frames.
+
+**The question box's gem and arrow come from Synty's POLYGON Icons pack**
+(2026-11-28, owner), under the same rule: paid, never committed.
+
+- The colour balls became the pack's faceted `SM_Icon_Gem_01` and the thin
+  drawn arrows its chunky `SM_Icon_Arrow_03`. They are drawn by
+  `SpaceRun._draw_swatch` and `_draw_arrow`, so every pattern takes them: the
+  rule, SPOT's dots, MEMORY's rounds (a flown colour is a dimmed gem) and
+  ARROW_SUM's pair.
+- `tools/build_icon_kit.gd` renders the two into `assets/polygon_icons/`
+  (gitignored). The pack comes as a Godot project, so the tool runs inside it
+  and not headless: `... --path <unzipped pack project> --script
+  <repo>/tools/build_icon_kit.gd -- <repo>`, then `--import` here. The
+  owner's copy is `POLYGON_Icons_Godot_4_6_2_v1_0_0.zip`.
+- Each icon is rendered grey and tinted in the game (`ICON_*_LIFT`), so one gem
+  serves every gate colour. The arrow is turned as a textured quad rather than
+  through `draw_set_transform`, which would replace the offset Main lays over
+  the HUD while it slides in.
+- MIX's no-entry sign stays drawn (`_draw_cross`). The pack's `Banned_01`
+  was tried over the gem, and its thick ring hid the colour it crosses out.
+- The pack has no bars, so the gauge stays the UI kit's.
+- An hour earlier the same day, the pack's icons replaced the popups' white
+  ones and were turned down (see the popups).
+- Without the kit the old ball and arrow are drawn. A release must be
+  exported from a machine that has all four kits.
 
 **The title screen is built from the same kit** (2026-11-27). It follows the
 pack's own promotional banner, turned for a portrait screen; the banner
@@ -589,6 +670,34 @@ the lit face would go dark under it. The explain bar holds one line and
 shrinks its font to fit (`_fit_explain`); the "(COMING SOON)" it used to add
 after a locked mode's line ran BATTLE's sentence out of the bar.
 
+**The menu slides in and out over the live world** (2026-11-28, owner's
+idea). The menu's background is the game's own screen, so instead of a cut:
+
+- **Arriving.** Each time the menu comes up (after the title's tap, and on
+  HOME from a run; `play_enter`, called from Main's `_set_state`), its blocks
+  come in from the screen's edges one after another and land with a small
+  overshoot. The top bar and emblem drop from the top, the cards and the
+  explain bar come in from the sides, and PLAY, the tool row and Remove Ads
+  rise from the bottom. Each block's edge and delay are in `SLIDES`.
+- **Leaving.** On PLAY, once its flash is done (`PLAY_LAUNCH_TIME`), the
+  blocks go back out, the lower ones first. `start_pressed` is sent only when
+  the last has gone, so the run starts on an empty screen. The world's dimming
+  fades with the slide (`_dim_share`).
+- **The layout stays put.** `_r` never moves: `_slid_rects` lays the offsets
+  over it for drawing, and `_sync_slide` moves the buttons to match. A
+  full-screen `_blocker` takes taps while anything moves.
+- **The run's HUD then slides in** (Main, `HUD_IN_*`, `_hud_in_offsets`). The
+  score, question row, hearts and gauge drop from the top, and the weapon
+  readout comes from the right a beat later (`SpaceRun.draw_weapon_hud`,
+  split out of `draw_hud` for this). Only the drawn place moves; the rect
+  helpers the tutorial and the checkers read still answer with where the HUD
+  rests.
+  - The pause button and the score-fill canvas are nodes, so `_process`
+    moves them by the same offset.
+  - `_start_countdown` starts the slide only when the run is not already in
+    COUNTDOWN. A run started after the tutorial therefore does not slide its
+    HUD in a second time.
+
 | Mode | What it is | Currency |
 |---|---|---|
 | **QUIZ RUN**, the main mode | The game as it is: gate patterns, the weapon growing with the streak | The **only** source of currency |
@@ -612,17 +721,43 @@ Boss rush was considered and dropped.
 **The play-screen HUD, as laid out on 2026-11-26**, is meant to be redrawn
 around these slots:
 
-- The top row is the pause button, then one score bar running to the right
-  edge: SCORE on the left, the best score on the right.
-- The second row has three slots, health | question box | stardust
-  (`_health_rect`, `_quiz_box_rect`, `_stardust_rect`). The row keeps the
-  old question box's position and height (`_quiz_row_rect`), so the gate
-  zone under it did not move.
-  - **Health** is three stacked cells instead of three hearts, so how many
-    hits are left can still be counted at a glance.
-  - **The stardust slot** holds the run's stardust, the kit's icon over the
-    count. It was the roulette's until the roulette went (2026-11-27). It
-    is the same size as the health slot, so the question box is centred.
+- The top row is the pause button, then the score, bare and centred on the
+  screen (2026-11-28, owner), in Zen Dots like the game over's big numbers
+  (`DIGIT_*` were measured again for it). The NEW BEST! banner is Zen Dots
+  too (`space_banner_title`); its Korean line stays in the base font, since
+  Zen Dots has no Hangul. It was a framed bar, SCORE on the left and the
+  best on the right; the owner chose this over keeping the bar with SCORE
+  alone. The stored best sat unchanged all run, and it is already on the mode
+  select's card and the game over. During a run it appears only once, as a
+  NEW BEST! banner at the moment it is beaten (`_check_new_best`, in the
+  power-up banner's place). A mode with no record gets no banner. The row
+  keeps the bar's scale (`SCORE_BOX_SRC`), so the pause button is the same
+  size as before. A smaller pause, which let the question row rise about
+  19 px, was tried and turned down as too small to press. With the bar gone,
+  `SCORE_BOX_TOP` went from 16 to 10. The question row's place follows the
+  top line (`_score_line_rect`); the gate field, set by the camera, did not
+  move.
+  - Score and stardust are still near-duplicates: a right gate pays
+    `SCORE_PER_COMBO` × combo points and `STARDUST_PER_GATE` × streak
+    stardust, and the two break together. Merging them would touch the
+    leaderboards and the upgrade economy, so it has been left for now.
+- The top line also carries the health and the stardust, both bare
+  (2026-11-28, owner):
+  - **Health** is three cells in a row right of the pause button
+    (`_health_rect`, `heart_hud_rect`). They are cells rather than hearts, so
+    the hits left can be counted at a glance. Each cell carries its own dark
+    rim, since there is no frame behind it. A full cell is lit across its top;
+    an empty one keeps a faint red rim.
+  - **The stardust** sits at the right end: the kit's icon, then the count in
+    Zen Dots (`_stardust_rect`, `SpaceRun._draw_stardust_bare`). In the corner,
+    apart from the score in the middle, it reads as currency rather than as a
+    second score.
+- The second row is the question box alone, the row's full width
+  (`_quiz_box_rect` = `_quiz_row_rect`). From 2026-11-26 it was three framed
+  slots, health | question box | stardust. Moving only the stardust up was
+  tried: the box then grew to the right, and the swatch sat off the screen's
+  middle, away from the gates and the ship. The row kept its position and
+  height, so the gate zone under it did not move.
   - **The question box** draws the pattern's rule: a colour swatch, or the
     front step's arrow.
   - **The question** keeps its old font size, which comes from the row's
@@ -737,11 +872,10 @@ deliberate exceptions (`ENGLISH_ON_PURPOSE`, `LEAVE_ALONE`) is the record of
 which words stay English and why; adding a string now forces that decision
 instead of deferring it to whoever next reads the screen in Korean.
 
-The **HUD's own `SCORE` and `BEST` stay English** while the game-over popup
-says 점수 — the Korean scope was drawn around the menus and popups, and those
-two labels belong to the play screen, sitting on painted plates beside the
-mode cards' English `BEST`. It is a real inconsistency and it is on purpose;
-`LEAVE_ALONE` carries the reason.
+The play screen's HUD had English `SCORE` and `BEST` labels while the game
+over said 점수. Both labels went with the score bar on 2026-11-28, and the
+score is now a bare number. The mid-run NEW BEST! banner goes through `tr()`
+(최고 기록 경신!).
 
 People's names in the about popup are **not** translated. Transliterating a
 name is rewriting it, and that is the owner's call, not the translator's.
@@ -943,7 +1077,7 @@ the player still has to find the real one afterwards.
 
 The game is held in `State.COUNTDOWN` throughout: the one state that draws
 the world without running the run's rules. `tutorial_active` freezes its
-clock and folds away the READY/START art. Main hands the overlay the rects,
+clock and folds away the READY/GO! words. Main hands the overlay the rects,
 read from the same helpers that place the real widgets, so moving the HUD
 cannot leave a highlight behind on empty background.
 
@@ -1009,9 +1143,7 @@ tools; it is history until new art arrives.
 The code that loaded the rest of the 1.x art without a slot — the 2D gate
 rings, backgrounds, ambient particles and the tap sparkles — was removed on
 2026-11-27. The sparkles were last drawn as the combo burst, so a combo now
-only punches and shakes until it gets new art or a drawn effect. The SCORE/
-BEST labels are drawn only while `score_box_texture` is set, which is why
-the score box always gets one, placeholder or not.
+only punches and shakes until it gets new art or a drawn effect.
 
 Art arrives as a **sheet**, is cut by a script in `tools/`, and both the
 sheet and the cut pieces are committed. Never hand-edit a cut piece — change
@@ -1684,7 +1816,7 @@ What each format does:
   button stays. No ad ready, or an ad that fails to show, grants nothing and
   the button reads AD NOT READY (see the Rewarded x2 row above).
 - **Interstitial** — shown at the existing decision point. While it is up,
-  `ad_hold_countdown` stops the READY/START clock; otherwise the run would start
+  `ad_hold_countdown` stops the READY/GO! clock; otherwise the run would start
   behind the ad. The counter resets when the ad closes, not when it is asked
   for; with nothing loaded it stays due and the next exit tries again. On PC
   the old "count it as shown" path remains, because `check_ad_policy.gd`

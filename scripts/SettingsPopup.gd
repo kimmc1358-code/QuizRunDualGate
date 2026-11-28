@@ -7,8 +7,8 @@ extends PopupBase
 ##   계정         — 동그란 자리 + 상태 글자 + LOGIN 크림 버튼(로그인 전에만)
 ##   약관         — Privacy Policy / Terms of Service, 밑줄 + 오른쪽 ">"
 ##
-## 닫기 버튼은 따로 두지 않았다. 판 바깥을 누르면 닫힌다 — 설정은 되돌릴 것이
-## 없는 화면이라 "확인/취소"가 필요 없고, 버튼 하나를 아끼는 편이 깔끔하다.
+## 맨 아래에 닫기 버튼(보조 버튼 막대)이 있고, 판 바깥을 눌러도 닫힌다. 되돌릴 것이
+## 없는 화면이라 "확인/취소"는 없다. 닫기는 오른쪽 위 X 상자였다(2026-11-28 까지).
 
 signal close_pressed
 signal login_pressed
@@ -56,13 +56,8 @@ const REMOVE_ADS_TEXT := "REMOVE ADS"
 # 산 뒤에 같은 자리에 남는 글자. 버튼을 치우면 판의 줄 배치가 달라지고, 산
 # 사람에게는 무엇을 샀는지 보이는 편이 낫다.
 const ADS_REMOVED_TEXT := "ADS REMOVED"
-const REMOVE_ADS_ICON := KIT + "icon_ad.png"
-# 아이콘 텍스처는 그릴 크기보다 넉넉히 구워 둔다 — 작게 구워 놓고 늘리면
-# 가장자리가 뭉갠다. _load_icon_from 이 둘레에 투명 여백까지 둘러 주므로
-# 실루엣이 텍스처 가장자리에 닿아 잘려 보이는 일도 없다.
-const REMOVE_ADS_ICON_HEIGHT := 128
-# 글자 높이에 맞춘다 — _place 의 기본값은 글자의 1.18 배라 그 역수를 준다.
-const REMOVE_ADS_ICON_SCALE := 1.15
+# 아이콘은 없다(2026-11-28, 주인) — 글자만으로 뜻이 분명하고, TV 모양 광고 아이콘은
+# 오히려 "광고를 본다"로 읽힐 수 있었다.
 const REMOVE_ADS_HEIGHT_FRAC := 0.215    # 판 너비 대비
 const REMOVE_ADS_WIDTH_FRAC := 1.0       # 안쪽 폭 대비 — 위아래 줄과 끝선을 맞춘다(2026-11-28)
 # 위아래 점선과의 간격은 따로 크게 잡는다 — 버튼이 커서 점선에 붙으면 답답하다.
@@ -214,8 +209,7 @@ func _build_content() -> void:
 	add_child(_login)
 
 	var remove_text: String = tr(ADS_REMOVED_TEXT) if _ads_removed else tr(REMOVE_ADS_TEXT)
-	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, remove_text,
-		_load_icon_from(REMOVE_ADS_ICON, Vector2i(1, 1), 0, REMOVE_ADS_ICON_HEIGHT),
+	_remove_ads = _make_button(GOLD_FILE, GOLD_CORNER, remove_text, null,
 		true, Vector2.ZERO, REMOVE_ADS_TEXTURE_WIDTH)
 	# 산 뒤에는 눌리지 않고 흐리게. 다시 눌러 봐야 "이미 샀다"는 말밖에 없다.
 	_remove_ads.disabled = _ads_removed
@@ -294,6 +288,8 @@ func _layout_content(inner: Rect2) -> void:
 	var remove_h: float = pw * REMOVE_ADS_HEIGHT_FRAC
 	var link_gap: float = pw * LINK_GAP_FRAC
 	var version_gap: float = pw * VERSION_GAP_FRAC
+	var close_h: float = pw * CLOSE_HEIGHT_FRAC
+	var close_gap: float = pw * CLOSE_GAP_FRAC
 	var link_count: int = LINK_TEXTS.size()
 	var remove_gap: float = pw * REMOVE_ADS_GAP_FRAC
 	# 따로 정한 간격(광고 제거 버튼 위아래 + 약관 줄 사이 + 약관-버전)을 뺀
@@ -301,7 +297,7 @@ func _layout_content(inner: Rect2) -> void:
 	var row_h: float = pw * ROW_HEIGHT_FRAC
 	var used: float = slider_h * 2.0 + row_h + divider_h * 3.0 + account_h + remove_h \
 		+ link_h * link_count + version_h + link_gap * (link_count - 1) + version_gap \
-		+ remove_gap * 2.0
+		+ remove_gap * 2.0 + close_h + close_gap
 	# 고르게 나눌 간격 여섯: 슬라이더 사이 / 슬라이더-언어 / 언어-점선 /
 	# 점선-계정 / 계정-점선 / 점선-첫 약관.
 	#
@@ -325,6 +321,8 @@ func _layout_content(inner: Rect2) -> void:
 		link_gap *= k
 		version_gap *= k
 		remove_gap *= k
+		close_h *= k
+		close_gap *= k
 		# used 의 모든 항이 방금 같은 비율로 줄었다.
 		used *= k
 	var gap: float = maxf(GAP_MIN, (room - used) / 6.0)
@@ -384,7 +382,7 @@ func _layout_content(inner: Rect2) -> void:
 
 	var remove_w: float = inner_w * REMOVE_ADS_WIDTH_FRAC
 	_place(_remove_ads, inner_x + (inner_w - remove_w) * 0.5, y, remove_w, remove_h,
-		REMOVE_ADS_ICON_SCALE, BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+		BUTTON_CONTENT_FIT, GOLD_CONTENT_DY)
 	y += remove_h + remove_gap
 
 	_divider_bottom.position = Vector2(inner_x, y)
@@ -396,14 +394,17 @@ func _layout_content(inner: Rect2) -> void:
 		_links[i].position = Vector2(inner_x, y)
 		_links[i].size = Vector2(inner_w, link_h)
 		_links[i].queue_redraw()
-		# 약관 줄끼리는 좁게, 마지막 줄과 버전 사이는 넓게.
-		y += link_h + (version_gap if i == _links.size() - 1 else link_gap)
+		# 약관 줄끼리는 좁게, 마지막 줄과 닫기 버튼 사이는 넓게.
+		y += link_h + (close_gap if i == _links.size() - 1 else link_gap)
+
+	# 닫기 — 오른쪽 위 X 상자 자리에서 내려왔다(PopupBase.CLOSE_TEXT).
+	_place(_cancel, inner_x, y, inner_w, close_h)
+	y += close_h + version_gap
 
 	_version.position = Vector2(inner_x, y)
 	_version.size = Vector2(inner_w, version_h)
 	_version.queue_redraw()
 
-	_place_close_button(_cancel)
 
 
 ## 팝업을 열 때 Main이 현재 볼륨을 넣어 준다. value_changed를 잠시 끊어,

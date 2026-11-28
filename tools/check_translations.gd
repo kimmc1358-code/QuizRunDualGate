@@ -60,7 +60,6 @@ const LEAVE_ALONE := {
 	"BUS_SFX": "오디오 버스 이름 — 프로젝트 설정의 버스와 이름이 맞아야 한다",
 	"BUS_MUSIC": "오디오 버스 이름",
 	"BUTTON_SOUND_BUS": "오디오 버스 이름",
-	"SCORE_LABEL_TEXT": "게임 화면 HUD 의 SCORE. 한글화 범위는 메뉴·팝업까지고 HUD 는 빠져 있다 — 옆의 BEST 와도 짝이 맞아야 한다",
 	"TITLE_SUBTITLE": "타이틀 화면의 금색 QUIZ RUN — 타이틀 글자는 그림처럼 영어로 둔다. 같은 글자의 메인 화면 카드 이름은 번역한다",
 }
 

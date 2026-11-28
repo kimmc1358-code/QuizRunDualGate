@@ -94,7 +94,7 @@ func _run() -> void:
 		var over: Control = main.get("gameover_popup")
 		over.call("ensure_built")
 		# BEST 판은 신기록이 아닐 때만 뜬다.
-		over.call("set_result", null, 0.0, 12600, 24, 14000, false)
+		over.call("set_result", 12600, 24, 14000, false)
 		over.visible = true
 		await _shot("gameover_%s" % lang[0])
 		over.visible = false

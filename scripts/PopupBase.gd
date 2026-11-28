@@ -161,9 +161,20 @@ const POPUP_ICON_GRID := Vector2i(3, 1)
 const POPUP_ICON_PLAY := 0
 const POPUP_ICON_RESTART := 1
 const POPUP_ICON_AD := 2
-# 글자 크기 대비 아이콘 높이. 1.0이면 오히려 작아 보인다 — 글자는 대문자
-# 높이만 차지하는 반면 아이콘은 제 높이를 다 쓰기 때문이다.
-const ICON_HEIGHT_FRAC := 1.18
+# 버튼 안 아이콘은 옆 글자와 한 벌로 보이게 한다(2026-11-28, 주인): 높이는 글자의
+# 대문자 높이에 맞추고, 가운데도 글자의 대문자 띠 가운데에 놓고, 주 버튼에서는 글자와
+# 같은 색에 같은 테두리를 두른다(IconRim). 버튼마다 따로 키우던 배율(PLAY AGAIN 1.15,
+# HOME 은 버튼 높이의 0.52, x2 1.3, REMOVE ADS 1.15)은 걷었다 — 아이콘이 글자보다
+# 크고 테두리 없는 흰 그림이라 따로 노는 스티커처럼 보였다.
+# 대문자 높이(em)는 그려 보고 잰 값이다: Zen Dots 0.72, Do Hyeon 의 한글 0.78.
+const ICON_CAP_LATIN := 0.72
+const ICON_CAP_HANGUL := 0.78
+# 아이콘 그림은 둘레에 투명 여백(ICON_PAD_FRAC)이 있고, 획이 가는 그림은 꽉 찬 글자보다
+# 작아 보여서 대문자 높이보다 이만큼 크게 잡는다.
+const ICON_CAP_MATCH := 1.28
+# 아이콘 테두리의 반지름, 글자 외곽선 굵기(PRIMARY_LABEL_OUTLINE_FRAC) 대비. 0.5 에서는 고리
+# 모양 아이콘(다시 하기)의 속이 테두리로 메워져 갈색 덩어리가 됐다.
+const ICON_RIM_SHARE := 0.25
 const ICON_TEXT_GAP_FRAC := 0.42      # 글자 크기 대비 아이콘과 글자 사이 간격
 # 아이콘을 미리 줄여 둘 높이(px). 시트 한 칸은 230px가 넘는데 실제로는 26px
 # 안팎으로 그려져서, GPU에 9배 축소를 통째로 맡기면 얇은 획이 뭉개진다.
@@ -226,17 +237,12 @@ const DIVIDER_DOTS := 22
 const DIVIDER_DOT_RADIUS := 2.6
 const DIVIDER_COLOR := Color(0.30, 0.62, 0.85, 0.55)
 
-# 오른쪽 위 모서리의 닫기 버튼. 틀은 빈 네모라 X 는 직접 그린다.
-const CANCEL_FILE := KIT + "side_slot.png"   # HUD 의 네모 슬롯과 같은 틀
-const CANCEL_SIZE_FRAC := 0.125        # 판 너비 대비 지름
-# 버튼 가운데를 판의 "보이는" 테두리 위에 얹는다 — 반은 안, 반은 밖.
-# _panel_rect 는 아트 사각형이라 투명 여백이 있으므로, PANEL_ART_INSET_* 만큼
-# 안으로 들어온 자리가 실제로 그려진 테두리다.
-# 지름 대비: x 는 오른쪽 테두리에서 이만큼 왼쪽, y 는 위 테두리에서 이만큼 아래.
-const CANCEL_ON_BORDER := Vector2(0.45, 0.0)
-const CANCEL_X_COLOR := Color(0.88, 0.95, 1.0, 1.0)
-const CANCEL_X_ARM_FRAC := 0.19        # 지름 대비 X 팔 길이(중심에서)
-const CANCEL_X_WIDTH_FRAC := 0.095     # 지름 대비 선 굵기
+# 닫기 버튼 — 판 맨 아래의 보조 버튼(2026-11-28, 주인). 오른쪽 위 모서리에 걸친 X
+# 상자였는데, 주인이 다른 버튼과 같은 막대로 바꿔 달라고 했다. 판 바깥을 눌러도
+# 여전히 닫힌다(설정과 정보 팝업의 _gui_input).
+const CLOSE_TEXT := "CLOSE"
+const CLOSE_HEIGHT_FRAC := 0.115   # 판 너비 대비 — 일시정지의 RESTART·HOME 과 비슷한 높이
+const CLOSE_GAP_FRAC := 0.04       # 판 너비 대비 — 버튼 위의 간격
 const FONT_WEIGHT_BOLD := 600
 const FONT_WEIGHT_HEAVY := 700
 
@@ -277,12 +283,13 @@ const PRESS_SINK := 3.0
 const PRESS_ANIM_DURATION := 0.08
 
 # 눌린 동안 버튼 안쪽 면이 밝아진다(2026-11-28, 주인의 요청 — 메뉴의 PLAY 처럼).
-# 면 위에 더하기(ADD)로 빛을 얹어 그림의 결은 살리고 밝기만 올린다. 테두리는
-# 그대로라 "면이 켜졌다"로 읽힌다. 면의 자리는 구운 그림에서 잰 안쪽 여백
-# (텍스처 px)이고, 그림과 같은 배율로 화면에 옮긴다(_place).
-const PRESS_GLOW_GOLD := Color(1.0, 0.80, 0.40, 0.32)
-const PRESS_GLOW_CREAM := Color(0.30, 0.62, 1.0, 0.30)
-const PRESS_GLOW_RADIUS := 3
+# 면 위에 더하기(ADD)로 빛을 얹어 그림의 결은 살리고 밝기만 올린다. 빛은 메뉴의 PLAY 와
+# 같은 둥근 그라데이션이라 가장자리가 흐려진다 — 면 크기의 네모를 깔았더니 막대의
+# 양 끝 강철 머리 사이에 각진 판이 붙은 것처럼 보였다(주인: "발광 효과가 깨졌다").
+# 면(_place 의 face)보다 PRESS_GLOW_GROW 만큼 크게 깔아 머리 쪽으로 번지게 한다.
+const PRESS_GLOW_GOLD := Color(1.0, 0.80, 0.40, 0.50)
+const PRESS_GLOW_CREAM := Color(0.30, 0.62, 1.0, 0.45)
+const PRESS_GLOW_GROW := Vector2(1.30, 1.25)
 const PRESS_GLOW_FADE := 0.18     # 손을 뗀 뒤 꺼지는 시간 — 켜질 때보다 느긋하게
 
 var _font_bold: Font
@@ -568,7 +575,7 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 		glow.material = add
 		var tint: Color = PRESS_GLOW_GOLD if file in [GOLD_FILE, SMALL_GOLD_FILE] else PRESS_GLOW_CREAM
 		glow.draw.connect(func() -> void:
-			glow.draw_style_box(_pill(tint, PRESS_GLOW_RADIUS), Rect2(Vector2.ZERO, glow.size)))
+			glow.draw_texture_rect(_press_glow_texture(), Rect2(Vector2.ZERO, glow.size), false, tint))
 		button.add_child(glow)
 
 	var label := _make_label(text, _font_button)
@@ -580,9 +587,20 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 		label.add_theme_color_override("font_color", SECONDARY_LABEL_COLOR)
 	button.add_child(label)
 
+	# 주 버튼 아이콘의 테두리 — 글자의 테두리(PRIMARY_LABEL_OUTLINE)와 같은 색·두께로,
+	# 아이콘 그림을 둘레로 조금씩 밀어 찍어 만든다. 아이콘보다 아래에 깔린다.
+	if primary:
+		var rim := Control.new()
+		rim.name = "IconRim"
+		rim.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		rim.draw.connect(_draw_icon_rim.bind(rim, button))
+		button.add_child(rim)
+
 	var icon_rect := TextureRect.new()
 	icon_rect.name = "Icon"
 	icon_rect.texture = icon
+	if primary:
+		icon_rect.modulate = PRIMARY_LABEL_COLOR   # 글자와 같은 채움
 	if file in [CREAM_FILE, SMALL_CREAM_FILE]:
 		icon_rect.modulate = SECONDARY_LABEL_COLOR   # 흰 아이콘을 글자와 같은 하늘색으로
 	icon_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
@@ -602,18 +620,12 @@ func _make_button(file: String, corner: int, text: String, icon: Texture2D, prim
 # 왼쪽에 고정하고 글자만 가운데 두면 덩어리 전체는 왼쪽으로 치우쳐 보인다.
 ## 버튼을 놓고 그 안의 아이콘·글자를 한 덩어리로 가운데 맞춘다.
 ##
-## icon_scale은 아이콘만 글자보다 크게 키우고 싶을 때, fit은 좌우 여백을
-## 기본보다 좁혀 글자를 더 키우고 싶을 때 쓴다.
+## fit은 좌우 여백을 기본보다 좁혀 글자를 더 키우고 싶을 때 쓴다. 아이콘 크기는
+## 버튼마다 정하지 않는다 — 언제나 옆 글자의 대문자 높이를 따른다(ICON_CAP_*).
 ##
 ## content_dy는 아이콘과 글자를 통째로 위아래로 밀어 준다. 버튼 아트에 따라
 ## 눈에 보이는 한가운데가 사각형 한가운데와 조금 어긋날 때 쓴다.
-##
-## icon_px는 아이콘 높이를 픽셀로 못박는다. 나란히 놓인 버튼들은 글자 길이가
-## 제각각이라 글자 크기가 달라지는데, 아이콘까지 따라 달라지면 한 줄에 놓인
-## 아이콘들의 크기가 어긋난다. 버튼을 아이콘
-## 때문에 일부러 두툼하게 잡은 경우(부활 팝업의 광고 버튼), 아이콘까지
-## 글자 크기를 따라가면 애써 늘린 높이가 빈 공간으로 남는다.
-func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale := 1.0, fit := BUTTON_CONTENT_FIT, icon_px := 0.0, content_dy := 0.0) -> void:
+func _place(button: Button, x: float, y: float, w: float, h: float, fit := BUTTON_CONTENT_FIT, content_dy := 0.0) -> void:
 	button.position = Vector2(x, y)
 	button.size = Vector2(w, h)
 	button.pivot_offset = Vector2(w, h) * 0.5
@@ -642,8 +654,9 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 
 	var glow: Control = button.get_node_or_null("Glow")
 	if glow != null:
-		glow.position = face.position
-		glow.size = face.size
+		var gs: Vector2 = face.size * PRESS_GLOW_GROW
+		glow.position = face.get_center() - gs * 0.5
+		glow.size = gs
 		glow.queue_redraw()
 
 	var label: Label = button.get_node("Caption")
@@ -662,6 +675,8 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	# 아이콘만 버튼 밖으로 삐져나가는 일이 없다.
 	# 캡션은 줄바꿈(\n)을 담을 수 있으므로 여러 줄 기준으로 잰다. 한 줄짜리
 	# 문구에는 한 줄로 잰 것과 같은 값이 나온다.
+	# 글자의 대문자 높이(em) — 아이콘 크기와 세로 자리가 여기서 나온다.
+	var cap: float = ICON_CAP_HANGUL if label_font != _font_button else ICON_CAP_LATIN
 	# 막대 버튼은 양 끝 머리가 높이에 비례해 굵고 오른쪽이 훨씬 두껍다. 버튼 폭의 몇
 	# 할이 아니라 면의 폭으로 재야, 짧은 버튼에서 글자가 강철 머리에 얹히지 않는다.
 	var fit_w: float = minf(w * fit, face.size.x * KIT_BUTTON_FACE_FIT)
@@ -676,8 +691,7 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 		icon_w = 0.0
 		gap = 0.0
 		if icon.texture != null:
-			var ih: float = icon_px if icon_px > 0.0 else font_size * ICON_HEIGHT_FRAC * icon_scale
-			icon_w = ih * aspect
+			icon_w = font_size * cap * ICON_CAP_MATCH * aspect
 			gap = font_size * ICON_TEXT_GAP_FRAC
 		var fits: bool = icon_w + gap + text_w <= fit_w and text_size.y <= fit_h
 		if font_size <= BUTTON_LABEL_MIN or fits:
@@ -692,12 +706,56 @@ func _place(button: Button, x: float, y: float, w: float, h: float, icon_scale :
 	# 면 가운데에 — 강철 머리가 오른쪽에만 있어 버튼 가운데에 두면 오른쪽으로 쏠린다.
 	var start_x: float = face.position.x + (face.size.x - group_w) * 0.5
 	if icon.texture != null:
-		var icon_h: float = icon_px if icon_px > 0.0 else font_size * ICON_HEIGHT_FRAC * icon_scale
+		var icon_h: float = font_size * cap * ICON_CAP_MATCH
+		# 글자 줄은 Label 이 위아래 가운데에 놓는다(ascent+descent 의 가운데). 대문자 띠의
+		# 가운데는 그보다 기준선 쪽에 있어, 거기에 아이콘 가운데를 맞춘다.
+		var asc: float = label_font.get_ascent(font_size)
+		var desc: float = label_font.get_descent(font_size)
+		var baseline: float = (h - (asc + desc)) * 0.5 + asc
+		var mid: float = baseline - font_size * cap * 0.5
 		icon.size = Vector2(icon_w, icon_h)
-		icon.position = Vector2(start_x, (h - icon_h) * 0.5 + content_dy)
+		icon.position = Vector2(start_x, mid - icon_h * 0.5 + content_dy)
+	var rim: Control = button.get_node_or_null("IconRim")
+	if rim != null:
+		rim.visible = icon.texture != null
+		rim.position = icon.position
+		rim.size = icon.size
+		rim.set_meta("r", font_size * PRIMARY_LABEL_OUTLINE_FRAC * ICON_RIM_SHARE)
+		rim.queue_redraw()
 	label.position = Vector2(start_x + icon_w + gap, content_dy)
 	label.size = Vector2(text_w, h)
 
+
+
+## 주 버튼 아이콘의 테두리: 아이콘 그림을 반지름 r 의 원 둘레 16 방향으로 밀어 테두리
+## 색으로 찍는다. 글꼴의 외곽선과 같은 굵기로 보인다.
+func _draw_icon_rim(rim: Control, button: Button) -> void:
+	var icon: TextureRect = button.get_node("Icon")
+	if icon.texture == null:
+		return
+	var r: float = float(rim.get_meta("r", 0.0))
+	if r <= 0.0:
+		return
+	for i in 16:
+		var a: float = TAU * i / 16.0
+		rim.draw_texture_rect(icon.texture, Rect2(Vector2(cos(a), sin(a)) * r, rim.size), false,
+			PRIMARY_LABEL_OUTLINE)
+
+
+## 누른 버튼의 빛 — 가운데가 희고 가장자리로 갈수록 투명한 둥근 그라데이션. 버튼마다
+## 같은 것을 쓰므로 한 번만 만든다. 메뉴의 PLAY(ModeSelectScreen._glow_tex)와 같은 모양.
+static var _press_glow_tex: GradientTexture2D
+func _press_glow_texture() -> Texture2D:
+	if _press_glow_tex == null:
+		_press_glow_tex = GradientTexture2D.new()
+		_press_glow_tex.fill = GradientTexture2D.FILL_RADIAL
+		_press_glow_tex.fill_from = Vector2(0.5, 0.5)
+		_press_glow_tex.fill_to = Vector2(1.0, 0.5)
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		_press_glow_tex.gradient = g
+	return _press_glow_tex
 
 
 ## 짧은 대문자 이름표(SCORE, BEST, MAX COMBO, STARDUST, SFX, MUSIC, LANGUAGE)의
@@ -1479,47 +1537,12 @@ func _draw_dotted_divider(ctrl: Control) -> void:
 
 # 오른쪽 위 닫기 버튼. 누르면 넘겨준 Callable 을 부른다.
 # 크림 버튼과 같은 누름 효과와 소리를 쓴다(_press/_release 가 "sound" 메타를 본다).
+## 닫기 버튼을 만든다. 놓는 것은 팝업마다 _place 로 — 판 맨 아래, 안쪽 폭 그대로.
 func _make_close_button(on_pressed: Callable) -> Button:
-	var button := Button.new()
-	button.flat = true
-	button.focus_mode = Control.FOCUS_NONE
-	var empty := StyleBoxEmpty.new()
-	for slot in ["normal", "hover", "pressed", "focus", "disabled"]:
-		button.add_theme_stylebox_override(slot, empty)
-	button.set_meta("sound", CREAM_SOUND_NAME)
-	button.set_meta("art", ArtSlot.texture(CANCEL_FILE))
-	button.button_down.connect(_press.bind(button))
-	button.button_up.connect(_release.bind(button))
-	button.draw.connect(_draw_close_button.bind(button))
+	var button := _make_button(CREAM_FILE, CREAM_CORNER, tr(CLOSE_TEXT), null, false)
 	button.pressed.connect(on_pressed)
 	add_child(button)
 	return button
-
-
-# 판 오른쪽 위 테두리에 가운데가 얹히도록 놓는다.
-func _place_close_button(button: Button) -> void:
-	var pw: float = _panel_rect.size.x
-	var ph: float = _panel_rect.size.y
-	var d: float = pw * CANCEL_SIZE_FRAC
-	button.size = Vector2(d, d)
-	button.pivot_offset = Vector2(d, d) * 0.5
-	var centre := Vector2(
-		_panel_rect.end.x - pw * PANEL_ART_INSET_X - d * CANCEL_ON_BORDER.x,
-		_panel_rect.position.y + ph * PANEL_ART_INSET_Y + d * CANCEL_ON_BORDER.y)
-	button.position = centre - Vector2(d, d) * 0.5
-	button.queue_redraw()
-
-
-func _draw_close_button(button: Button) -> void:
-	var d: float = button.size.x
-	var art: Texture2D = button.get_meta("art", null)
-	if art != null:
-		button.draw_texture_rect(art, Rect2(Vector2.ZERO, Vector2(d, d)), false)
-	var c := Vector2(d, d) * 0.5
-	var arm: float = d * CANCEL_X_ARM_FRAC
-	var w: float = d * CANCEL_X_WIDTH_FRAC
-	button.draw_line(c + Vector2(-arm, -arm), c + Vector2(arm, arm), CANCEL_X_COLOR, w, true)
-	button.draw_line(c + Vector2(arm, -arm), c + Vector2(-arm, arm), CANCEL_X_COLOR, w, true)
 
 
 ## 판 바로 위에 크게 쓰는 제목(2026-11-28): 틀 없이 Zen Dots 글자만, 금색에
@@ -1532,11 +1555,14 @@ func _draw_close_button(button: Button) -> void:
 const TITLE_TEXT_COLOR := Color(1.0, 0.86, 0.45, 1.0)
 const TITLE_TEXT_RIM := Color(0.20, 0.08, 0.0, 1.0)
 const TITLE_RIM_FRAC := 0.14       # 글자 크기 대비 테두리 두께
-const TITLE_FONT_FRAC := 0.12      # 판 너비 대비 글자 크기 — 이보다 크게는 안 쓴다
-# 글자 폭의 상한(판 너비 대비). 닫기 버튼(판 오른쪽 위 모서리에 반쯤 걸친)이
-# 판 폭의 87% 지점부터 시작하므로, 가운데 놓인 글자가 거기 닿지 않을 만큼 —
-# 0.74 에서는 SETTINGS 의 끝 글자가 테두리째 버튼에 닿았다.
-const TITLE_WIDTH_FRAC := 0.66
+# 모든 팝업 제목은 한 크기다(2026-11-28, 주인): 팝업마다 제 판에 맞춰 줄이던 때는
+# PAUSED 가 SETTINGS 보다 컸다. 팝업마다 제 제목이 쓸 수 있는 가장 큰 크기 — 판 폭의
+# TITLE_WIDTH_FRAC 안, 판 위 빈 공간 안 — 를 재어 모아 두고(_title_caps), 그중 가장
+# 작은 값을 모두가 쓴다. 지금은 가장 넓은 GAME OVER 가 폭으로 정한다.
+const TITLE_FONT_FRAC := 0.16      # 판 너비 대비 글자 크기의 상한
+# 글자 폭의 상한(판 너비 대비). 닫기 버튼이 판 오른쪽 위에 걸쳐 있던 동안(2026-11-28
+# 까지)은 0.66 이었다 — 그 버튼에 닿지 않을 만큼. 버튼이 판 아래로 내려가 넓혔다.
+const TITLE_WIDTH_FRAC := 0.88
 const TITLE_GAP := 6.0             # 판 윗변과 글자 바닥 사이
 const TITLE_SCREEN_MARGIN := 2.0   # 화면 위 끝과의 최소 간격
 
@@ -1549,17 +1575,51 @@ func _make_title(text: String) -> Control:
 
 
 ## 판 위 공간이 모자란 화면(16:9 의 설정 팝업은 판 위가 60px 남짓이다)에서는
-## 그 공간에 맞춰 글자를 줄인다.
+## 그 공간에 맞춰 글자를 줄인다. 크기는 제목이 있는 모든 팝업이 함께 쓴다.
+static var _title_caps := {}          # 팝업 instance_id -> 그 팝업 제목이 쓸 수 있는 가장 큰 크기
+static var _titled: Array[WeakRef] = []
+
 func _place_title(title: Control) -> void:
 	if title == null:
 		return
 	var text: String = title.get_meta("text", "")
 	var font: Font = TitleArt.font(_font_heavy)
 	var room: float = _panel_rect.position.y - TITLE_GAP - TITLE_SCREEN_MARGIN
-	var fs: int = int(round(_panel_rect.size.x * TITLE_FONT_FRAC))
-	while fs > 10 and (font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
-			> _panel_rect.size.x * TITLE_WIDTH_FRAC or font.get_ascent(fs) > room):
-		fs -= 1
+	var cap: int = int(round(_panel_rect.size.x * TITLE_FONT_FRAC))
+	while cap > 10 and (font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, cap).x
+			> _panel_rect.size.x * TITLE_WIDTH_FRAC or font.get_ascent(cap) > room):
+		cap -= 1
+	set_meta("title_node", title)
+	var id := get_instance_id()
+	var known := false
+	for ref in _titled:
+		if ref.get_ref() == self:
+			known = true
+	if not known:
+		_titled.append(weakref(self))
+	var changed: bool = int(_title_caps.get(id, -1)) != cap
+	_title_caps[id] = cap
+	var fs: int = _shared_title_size()
+	_apply_title_size(title, fs)
+	# 이 팝업 때문에 공용 크기가 바뀌었으면 다른 팝업 제목도 맞춘다.
+	if changed:
+		for ref in _titled:
+			var other: PopupBase = ref.get_ref()
+			if other != null and other != self and other.has_meta("title_node"):
+				other._apply_title_size(other.get_meta("title_node"), fs)
+
+
+func _shared_title_size() -> int:
+	var fs: int = 1 << 20
+	for ref in _titled:
+		var p: Object = ref.get_ref()
+		if p != null and _title_caps.has(p.get_instance_id()):
+			fs = mini(fs, int(_title_caps[p.get_instance_id()]))
+	return fs if fs < (1 << 20) else 10
+
+
+func _apply_title_size(title: Control, fs: int) -> void:
+	var font: Font = TitleArt.font(_font_heavy)
 	title.set_meta("font_size", fs)
 	var h: float = font.get_ascent(fs)
 	title.size = Vector2(_panel_rect.size.x, h)

@@ -113,8 +113,7 @@ func _layout_content(inner: Rect2) -> void:
 
 	# 보조 버튼은 좁으므로 안쪽 폭 안에서 가운데로 맞춘다.
 	var sec_x: float = inner_x + (inner_w - secondary_w) * 0.5
-	_place(_resume, inner_x, y, inner_w, primary_h, 1.0,
-		BUTTON_CONTENT_FIT, 0.0, GOLD_CONTENT_DY)
+	_place(_resume, inner_x, y, inner_w, primary_h, BUTTON_CONTENT_FIT, GOLD_CONTENT_DY)
 	y += primary_h + gap
 	_place(_restart, sec_x, y, secondary_w, secondary_h)
 	y += secondary_h + gap

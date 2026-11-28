@@ -16,8 +16,8 @@ extends SceneTree
 #      경계값(99,999 / 100,000 / 999,999 / ...)을 전부 짚는다 — 넘치는 곳이
 #      있다면 거기다.
 #   2. 게임이 그걸 쓰는가. 1 만 보면 포맷터는 완벽한데 HUD 가 여전히
-#      "%05d" 를 쓰고 있어도 통과한다. 그래서 실제 _score_digit_layout /
-#      _best_digit_layout 을 불러 나온 문자열을 잰다.
+#      "%05d" 를 쓰고 있어도 통과한다. 그래서 실제 _score_digit_layout 을
+#      불러 나온 문자열을 잰다. (HUD 의 BEST 는 2026-11-28 에 빠졌다.)
 
 const MAX_CHARS := 5
 
@@ -95,20 +95,18 @@ func _run() -> void:
 	var view := Vector2(
 		float(ProjectSettings.get_setting("display/window/size/viewport_width")),
 		float(ProjectSettings.get_setting("display/window/size/viewport_height")))
-	var box: Rect2 = main.call("_score_box_rect", view)
+	var box: Rect2 = main.call("_score_line_rect", view)
 	print("")
-	print("  %-12s %-8s %-8s" % ["score", "HUD", "BEST"])
+	print("  %-12s %-8s" % ["score", "HUD"])
 	for v in [0, 85, 1250, 99999, 123456, 1250000]:
 		main.set("score", v)
-		main.get("best_scores")[main.get("current_mode")] = v
 		var hud: String = main.call("_score_digit_layout", view)["text"]
-		var best: String = main.call("_best_digit_layout", box)["text"]
 		var want: String = ScoreFormat.compact(v)
-		var ok: bool = hud == want and best == want
+		var ok: bool = hud == want
 		if not ok:
-			_fail("score %d draws HUD %s / BEST %s, but compact() says %s — a call site is still formatting on its own" % [
-				v, hud, best, want])
-		print("  %-12d %-8s %-8s %s" % [v, hud, best, "ok" if ok else "FAIL"])
+			_fail("score %d draws HUD %s, but compact() says %s — a call site is still formatting on its own" % [
+				v, hud, want])
+		print("  %-12d %-8s %s" % [v, hud, "ok" if ok else "FAIL"])
 
 	# 그리고 그린 자리가 점수판을 넘지 않는가. 글자 수 계약이 지켜져도 글꼴이
 	# 커지면 넘칠 수 있고, 그건 글자 수로는 안 잡힌다.

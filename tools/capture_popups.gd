@@ -75,13 +75,12 @@ func _run() -> void:
 
 		var over: Control = main.get("gameover_popup")
 		over.call("ensure_built")
-		var size: float = main.get("FACE_DRAW_SIZE")
-		over.call("set_result", main.get("sad_face_texture"), size, 12600, 24, 14000, false)
+		over.call("set_result", 12600, 24, 14000, false)
 		over.call("set_stardust", 186, true, false)
 		over.visible = true
 		await _shot("gameover_%s" % lang[0])
 		over.call("set_stardust_doubled")
-		over.call("set_result", main.get("happy_face_texture"), size, 15200, 31, 14000, true)
+		over.call("set_result", 15200, 31, 14000, true)
 		await _shot("gameover_best_%s" % lang[0])
 		over.visible = false
 

@@ -275,15 +275,17 @@ func _spacer(frac: float) -> void:
 
 
 func _layout_content(inner: Rect2) -> void:
-	_scroll.position = inner.position
-	_scroll.size = inner.size
 	var pw: float = _panel_rect.size.x
+	# 맨 아래에 닫기 버튼, 그 위를 스크롤하는 본문이 채운다.
+	var close_h: float = pw * CLOSE_HEIGHT_FRAC
+	var close_gap: float = pw * CLOSE_GAP_FRAC
+	_scroll.position = inner.position
+	_scroll.size = Vector2(inner.size.x, maxf(0.0, inner.size.y - close_h - close_gap))
+	_place(_cancel, inner.position.x, inner.end.y - close_h, inner.size.x, close_h)
 	var ph: float = _panel_rect.size.y
 	var w: float = inner.size.x
 	# 세로 스크롤 막대가 뜨면 그만큼 좁아지므로, 글자를 그 폭으로 잰다.
 	_body.custom_minimum_size.x = w
-
-	_place_close_button(_cancel)
 
 	for row in _rows:
 		if row.has_meta("pad"):

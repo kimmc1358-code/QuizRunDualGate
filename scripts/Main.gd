@@ -11,15 +11,6 @@ extends Node2D
 # RUN (0) can start a run yet.
 enum Mode { SKY, JUNGLE, OCEAN, DREAM }
 
-# The faces the game over popup shows: happy for a new record, sad
-# otherwise. The 1.x bird's are gone and 2.0's ship has
-# no face, so since the popups' reskin (2026-11-28) they are the UI kit's gold
-# star and amber warning sign; without the kit, ArtSlot placeholders.
-const FACE_HAPPY_PATH := "res://assets/synty_ui/icon_star.png"
-const FACE_SAD_PATH := "res://assets/synty_ui/icon_warning.png"
-# The size the popups draw a face at (logical px) — the bird's in-game size
-# in 1.x (100px x its 0.92 scale), which the popup layouts were built around.
-const FACE_DRAW_SIZE := 92.0
 
 
 # ============================================================
@@ -35,24 +26,19 @@ const FACE_DRAW_SIZE := 92.0
 # smooth regardless — see scripts/HudCanvas.gd.
 const SMOOTH_WORLD_FILTER := true
 
-# Top HUD: one row of pause | score box (the mute button left on 2026-11-26;
-# sound lives in settings), with the quiz row directly under it. The row is
-# laid out at a single shared scale, so the button keeps its size
-# relationship to the score box.
+# Top HUD: one row of pause | the bare score (the mute button left on
+# 2026-11-26, the SCORE | BEST bar on 2026-11-28), with the quiz row directly
+# under it. The row is still laid out at the scale the bar had (SCORE_BOX_SRC),
+# so the pause button kept its size when the bar went.
 #
 # The scale falls out of filling the screen width (see _hud_row_scale), so
-# the knobs here are the margins and gaps, not the widths. _score_box_rect,
+# the knobs here are the margins and gaps, not the widths. _score_line_rect,
 # _quiz_row_rect and the three slots split from it are the only places that
 # turn any of this into screen rects.
-const SCORE_BOX_TOP := 16.0          # screen y of the top HUD row — the single knob that moves the whole HUD (button, score box and quiz row all derive from it)
+const SCORE_BOX_TOP := 10.0          # screen y of the top HUD row — the single knob that moves the whole HUD (button, score and quiz row all derive from it). 16 while the SCORE | BEST bar was there; 10 once the score went bare (2026-11-28)
 const HUD_ROW_SIDE_MARGIN := 6.0     # screen edge -> pause button
 const HUD_ROW_GAP := 4.0             # button -> score box
 const QUIZ_BOX_GAP := 7.0            # score box bottom edge -> quiz box top edge
-# 둘째 줄 양옆 칸(체력 | 스타더스트)의 폭 — 둘이 같은 크기라 문제 박스가
-# 가운데에 온다(_quiz_box_rect). 룰렛이 있던 칸을 2026-11-27 스타더스트가
-# 물려받았다. 문제 박스는 그 나머지 — 480 폭에서 약 316px.
-const SIDE_SLOT_WIDTH := 70.0
-const HUD_SLOT_GAP := 6.0
 # Pause is scaled so its height matches the score box's exactly, which is
 # what makes the top row read as one flush band. Derived from the art rather
 # than hard-coded, so it still holds if the art is redrawn — see
@@ -73,7 +59,7 @@ const HUD_BUTTON_Y_OFFSET := 0.0     # nudge the button down (+) or up (-) from 
 const QUIZ_BOX_HEIGHT_STRETCH := 1.429
 # 세 조각의 '그려질 비율'. 아트를 재서 나온 값이 아니라 정해 둔 값이다 —
 # 점수 박스와 퀴즈 박스는 늘려 그리므로 원본 비율을 따르면 각각 세 배, 1.6 배로
-# 두꺼워진다(_score_box_rect / _quiz_row_rect 의 주석 참고). 즉 이 셋은
+# 두꺼워진다(_score_line_rect / _quiz_row_rect 의 주석 참고). 즉 이 셋은
 # 측정값이 아니라 튜닝값이다.
 #
 # 아트가 없을 때의 대체 비율로도 쓰인다 — 실제 텍스처가 있으면 그쪽이 이긴다.
@@ -325,31 +311,39 @@ var state: int = State.SPLASH   # _ready moves it to LOGO before the first frame
 # Only gates the run's own updates in _process; the space world keeps
 # drifting while paused, as it does on every other screen.
 var paused: bool = false
-# "READY" -> "START" pop-in shown before every run.
+# "READY" -> "GO!" shown before every run.
 enum CountdownPhase { READY_TEXT, START_TEXT }
 var countdown_phase: int = CountdownPhase.READY_TEXT
 var countdown_timer: float = 0.0
 const COUNTDOWN_READY_DURATION := 0.9
 const COUNTDOWN_START_DURATION := 0.4
 
-# "READY" / "START" countdown pop art (see the State.COUNTDOWN block in
-# _draw_overlay_layers). Slots (ArtSlot) at SKY's 1.x paths until 2.0 art
-# lands; the word's centre sits at the canvas centre, so drawing the canvas
-# centred is what keeps it still.
-const READY_TEXTURE_PATH := "res://assets/ui_assets/sky/Ready_v3.png"
-const START_TEXTURE_PATH := "res://assets/ui_assets/sky/Start_v3.png"
-# 화면에 그릴 가로 폭(px). 높이는 원본 비율을 따른다. START 를 READY 보다
-# 크게 잡아 "준비 -> 출발"이 커지면서 이어지게 한다. 캔버스 664px 중 배너가
-# 636px 이므로, 화면 폭 480 을 넘지 않으려면 START 는 pop 최고점까지 쳐서
-# 480 * 664 / 636 = 501 이하여야 한다.
-const COUNTDOWN_READY_WIDTH := 360.0
-const COUNTDOWN_START_WIDTH := 400.0
-# 배너 아트는 픽셀아트 풍이라 테두리가 원본에서부터 계단으로 꺾이기 쉽다.
-# 시트 캔버스를 그대로 GPU 밉맵에 맡겨 줄이면 그 계단이 그대로 남으므로,
-# 미리 Lanczos 로 구워 풀어 준다. 굽는 폭은 그릴 폭의 이 배수 —
-# 1.0 이면 가장 부드럽지만 고해상도 기기에서 다시 확대돼 뭉개지고, 1.2 면
-# 계단은 충분히 사라지면서 여유도 남는다.
-const COUNTDOWN_ART_OVERSAMPLE := 1.2
+# The countdown's words (2026-11-28, owner): READY, then GO!, written in the
+# popups' title style (Zen Dots, gold, dark rim) rather than painted art. The
+# 1.x READY/START banners were deleted with the rest of the 1.x art and left a
+# grey placeholder box sitting on the ship. The words sit between the HUD and
+# the ship (COUNTDOWN_Y_FRAC) so the ship stays in view. READY grows in and
+# breathes; GO! pops (_pop_scale) and the world lunges forward as on a gate
+# pass (SpaceRun.boost, SpaceRun.punch). Both words glow softly gold: a wide
+# faint halo in the letters' own shape and a round light behind them. A cyan
+# ring and speed lines burst out of GO! at first; the owner took them out. English only, like the titles: Zen Dots has no Hangul.
+const COUNTDOWN_Y_FRAC := 0.36         # of the screen height
+const COUNTDOWN_READY_FONT := 62       # logical px
+const COUNTDOWN_GO_FONT := 92
+const COUNTDOWN_FILL := Color(1.0, 0.86, 0.45, 1.0)   # PopupBase.TITLE_TEXT_COLOR
+const COUNTDOWN_RIM := Color(0.20, 0.08, 0.0, 1.0)    # PopupBase.TITLE_TEXT_RIM
+const COUNTDOWN_RIM_FRAC := 0.14
+const COUNTDOWN_READY_GROW := 0.25     # s for READY to grow from COUNTDOWN_READY_START_SCALE
+const COUNTDOWN_READY_START_SCALE := 0.8
+const COUNTDOWN_BREATHE_HZ := 2.0      # READY's breathing
+const COUNTDOWN_GLOW := Color(1.0, 0.78, 0.30, 1.0)
+const COUNTDOWN_HALO_FRAC := 0.50       # of the font size, the letter-shaped halo's widest outline
+# The halo is this many outlines, widest first, each fainter than a solid one would
+# be: stacked, they fall off toward the edge. One wide outline came out a flat band.
+const COUNTDOWN_HALO_LAYERS := 6
+const COUNTDOWN_HALO_ALPHA := 0.07       # each layer
+const COUNTDOWN_LIGHT_ALPHA := 0.22     # the round light behind the word
+const COUNTDOWN_LIGHT_SIZE := Vector2(1.5, 2.6)   # of the word's width and font size
 
 # Play-screen HUD art (2026-11-27): Synty's INTERFACE Sci-Fi Menus pieces,
 # baked by tools/build_ui_kit.gd into assets/synty_ui/ — gitignored, like the
@@ -357,13 +351,9 @@ const COUNTDOWN_ART_OVERSAMPLE := 1.2
 # mode; without the kit each is an ArtSlot placeholder. The bars are drawn
 # with their ends kept whole and the middle stretched (_draw_horizontal_slice;
 # the caps are in baked pixels), the square frames as nine-patches.
-const HUD_SCORE_BAR_PATH := "res://assets/synty_ui/score_bar.png"
 const HUD_QUIZ_BOX_PATH := "res://assets/synty_ui/quiz_box.png"
 const HUD_PAUSE_PATH := "res://assets/synty_ui/pause.png"
-const HUD_SIDE_SLOT_PATH := "res://assets/synty_ui/side_slot.png"
-const HUD_SCORE_BAR_CAP := 60.0
 const HUD_QUIZ_BOX_CAP := 95.0
-const HUD_SIDE_SLOT_MARGIN := 34.0
 ## Text on the HUD frames: their insides are dark.
 const HUD_TEXT_COLOR := Color(0.93, 0.96, 1.0)
 const HUD_CANVAS_SCRIPT_PATH := "res://scripts/HudCanvas.gd"
@@ -473,24 +463,19 @@ const BUS_MUSIC := "Music"
 const VOLUME_MIN_DB := -32.0
 @export_range(0.0, 1.0, 0.01) var sfx_volume: float = 0.8
 @export_range(0.0, 1.0, 0.01) var music_volume: float = 0.7
-# The score box: the SCORE label and the live score in the left half, the
-# BEST mark and the stored best in the right. All fractions are of the box's
-# *display* size, so they hold at whatever the row scale works out to.
+# The score, bare at the top (2026-11-28, owner): no bar, no SCORE label and
+# no BEST beside it. The stored best is on the mode select's card and the game
+# over, and during a run it shows only the moment it is beaten
+# (NEW_BEST_BANNER). The bar with SCORE | BEST read as two numbers to the
+# player, and score already climbs with the stardust in its slot.
 #
-# 빈 패널 위에 직접 그린다. 왼쪽 칸은 "SCORE" 글자 + 점수, 오른쪽 칸은 왕관 +
-# "BEST" + 최고 점수다.
-const SCORE_LABEL_TEXT := "SCORE"
-const SCORE_LABEL_FONT_FRAC := 0.485     # 박스 높이 대비
-const SCORE_LABEL_LEFT_FRAC := 0.065      # 박스 너비 대비 — UI 킷 점수판의 왼쪽 끝 장식을 비켜서
-# 박스를 걷어 내고 배경 위에 바로 얹으므로, 글자는 스스로 읽히게 꾸민다.
+# 배경 위에 바로 얹으므로, 글자는 스스로 읽히게 꾸민다.
 # 바깥부터 음영 -> 검은 테두리 -> 속 순서로 겹쳐 그린다.
-const SCORE_LABEL_FILL := Color(1.0, 1.0, 1.0, 1.0)
 const SCORE_TEXT_OUTLINE := Color(0.06, 0.06, 0.09, 1.0)
 # 음영은 여덟 방향으로 겹쳐 그려 만든다. 겹치는 만큼 진해지므로 한 겹은
 # 아주 옅게 둔다 — 글자 아래로 삐져나온 부분만 보이면 된다.
 const SCORE_TEXT_SHADOW := Color(0.0, 0.0, 0.0, 0.11)
-# 테두리 두께와 음영 거리는 글꼴 크기에 비례한다. 고정 px 로 두면 작은
-# 글자("BEST")에서 테두리가 글자 사이를 메워 검은 덩어리로 보인다.
+# 테두리 두께와 음영 거리는 글꼴 크기에 비례한다.
 const TEXT_OUTLINE_FONT_FRAC := 0.068
 const TEXT_SHADOW_FONT_FRAC := 0.092
 # 점수 숫자 속색 — 위는 밝게, 아래는 어둡게. 세로 그라데이션은 평범한
@@ -498,63 +483,32 @@ const TEXT_SHADOW_FONT_FRAC := 0.092
 # (score_fill_canvas / SCORE_FILL_SHADER).
 const SCORE_NUMBER_TOP := Color(1.00, 0.95, 0.55, 1.0)
 const SCORE_NUMBER_BOTTOM := Color(0.92, 0.55, 0.04, 1.0)
-# 최고 점수는 하늘색. 위아래 차이는 점수보다 얕게 둔다.
-const BEST_NUMBER_TOP := Color(0.88, 0.98, 1.00, 1.0)
-const BEST_NUMBER_BOTTOM := Color(0.44, 0.75, 0.96, 1.0)
 # 테두리/음영을 한 번에 두르려고 여덟 방향으로 겹쳐 그린다.
 const TEXT_OUTLINE_RING: Array[Vector2] = [
 	Vector2(-1, -1), Vector2(0, -1), Vector2(1, -1),
 	Vector2(-1, 0), Vector2(1, 0),
 	Vector2(-1, 1), Vector2(0, 1), Vector2(1, 1),
 ]
-const SCORE_DIVIDER_COLOR := Color(0.55, 0.47, 0.36, 0.55)
-const SCORE_DIVIDER_WIDTH := 2.0
-const SCORE_DIVIDER_INSET_FRAC := 0.20   # 박스 높이 대비 위아래 여백
-# The BEST mark: the UI kit's trophy, tinted gold (tools/build_ui_kit.gd).
-const BEST_CROWN_PATH := "res://assets/synty_ui/best_icon.png"
-const BEST_CROWN_LEFT_FRAC := 0.016      # 구분선에서 왕관까지(박스 너비 대비)
-const BEST_CROWN_HEIGHT_FRAC := 0.40     # 박스 높이 대비
-# 오른쪽 칸은 왕관 + "BEST" + 최고 점수 셋이 한 줄에 들어간다. 칸 폭이
-# 정해져 있으니 셋 다 그 안에 맞도록 줄여 잡은 값들이다.
-const BEST_LABEL_TEXT := "BEST"
-const BEST_LABEL_FONT_FRAC := 0.30       # 박스 높이 대비
-const BEST_LABEL_FILL := Color(0.99, 0.80, 0.22, 1.0)   # 노란색
-const BEST_LABEL_GAP_FRAC := 0.011       # 박스 너비 대비 — 왕관과 "BEST" 사이
-# 왕관은 숫자 가운데선보다 살짝 위로. 왕관 그림은 아래쪽 받침이 무거워서
-# 가운데를 맞추면 내려앉아 보인다.
-const BEST_CROWN_Y_OFFSET_FRAC := -0.055 # 박스 높이 대비
-# 최고 점수는 오른쪽 끝자리를 박스 오른쪽 테두리 가까이에 붙여 오른쪽 정렬한다.
-const BEST_NUMBER_RIGHT_INSET_FRAC := 0.075    # 박스 너비 대비 — UI 킷 점수판(2026-11-27)의 오른쪽 끝 장식을 비켜서
-# 버튼 사이를 꽉 채우지 않고 살짝 줄여 그린다 — 버튼과의 간격이 그만큼 넓어진다.
-const SCORE_BOX_WIDTH_TRIM := 0.96
-# 패널 그림을 깔지 않고 글자만 배경 위에 얹는다. 자리와 크기는 그대로
-# _score_box_rect 에서 나오므로, 다시 켜면 예전 모습으로 돌아온다.
-# 2026-11-26: 다시 켰다 — 2.0 아트가 올 때까지 HUD 를 임시 박스로 채우는
-# 동안, 점수판이 어디까지인지 보여야 배치를 정할 수 있다.
-const SCORE_BOX_PANEL_VISIBLE := true
-# 구분선 위치 = 왼쪽 칸(SCORE)과 오른쪽 칸(최고 점수)의 비율 3:2.
-const SCORE_NUM_RIGHT_FRAC := 0.55        # of width
-const SCORE_NUMBER_FONT_FRAC := 0.52      # of height
-# 두 칸의 내용이 한 줄에 놓인다. 예전 값(0.548 / 0.696)은 아트에 그려져
-# 있던 SCORE/BEST 두 줄에 맞춘 것이라, 빈 패널에서는 어긋나 보인다.
-const SCORE_NUMBER_MID_Y_FRAC := 0.50     # of height
-# 최고 점수도 점수와 같은 크기, 같은 줄. 예전 값(0.336 / 0.696)은 아트에
-# 그려져 있던 BEST 줄에 맞춘 것이었다.
-const BEST_NUMBER_FONT_FRAC := 0.34       # of height
-const BEST_NUMBER_MID_Y_FRAC := 0.50      # of height
-const SCORE_NUMBER_RIGHT_INSET_FRAC := 0.024  # of box width — keeps the ones digit off the divider
+const SCORE_NUMBER_FONT_FRAC := 0.60      # of the top line's height (the pause button's); 0.78 read as too big (owner, 2026-11-28)
 const SCORE_NUMBER_DIGIT_SPACING := 1.7     # extra px between digit cells, on top of the tabular cell width
+# Beating the stored best mid-run: once a run, in the power-up banner's place.
+# Not for a mode with no record yet, where every first point would be one.
+const NEW_BEST_BANNER := "NEW BEST!"
+const NEW_BEST_BANNER_COLOR := Color(1.0, 0.82, 0.25)
+var run_beat_best := false
 # Baseline offset from a digit row's visual center, as a fraction of the
 # font size — see _digit_positions. Measured by rendering
 # "0123456789" at a known baseline in an off-screen viewport and reading the
-# ink box back: Oxanium's figures run 0.695 em above the baseline to 0.000
-# below at this weight (700), putting their visual middle 0.35 em up
-# (2026-11-28). Fredoka's ran 0.700 / 0.020 and sat at 0.34; Mulmaru's at
-# 0.38. Re-measure whenever the font changes.
-const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.35
+# ink box back. The score is Zen Dots since 2026-11-28 (owner), the face of
+# the titles and the game over's big numbers: its figures run 0.720 em above
+# the baseline to 0.005 below, putting their visual middle 0.358 em up. The
+# same probe read Oxanium 700, the score's face before, at 0.695 / 0.000 as
+# measured earlier that day, so it agrees with itself. Fredoka's ran
+# 0.700 / 0.020; Mulmaru's sat at 0.38. Re-measure whenever the font changes.
+const DIGIT_BASELINE_FROM_CENTER_FRAC := 0.358
 # 그라데이션을 숫자 잉크 높이에 딱 맞추려고 쓰는, 같은 측정에서 나온 값.
-const DIGIT_INK_ABOVE_FRAC := 0.695
-const DIGIT_INK_BELOW_FRAC := 0.000
+const DIGIT_INK_ABOVE_FRAC := 0.720
+const DIGIT_INK_BELOW_FRAC := 0.005
 
 # Pause button press feedback — quick squash-in on press, springy release
 # back to full size. Needs pivot_offset centered on the button (set in
@@ -587,10 +541,6 @@ const FLASH_DURATION := 0.25
 
 var current_mode: int = Mode.SKY  # picked on the mode select — see _apply_mode
 
-var happy_face_texture: Texture2D
-var sad_face_texture: Texture2D
-var ready_texture: Texture2D
-var start_texture: Texture2D
 # 모드마다 순위표 하나. Play Console 이 준 ID 이고, 어차피 앱 안에 그대로 실려
 # 나가는 공개 값이다(비밀이 아니다). 인덱스가 곧 Mode 값이다.
 const MODE_LEADERBOARD_ID := [
@@ -667,8 +617,6 @@ var tutorial_active: bool = false
 @export_enum("Off", "COLOR", "ARROW", "SPOT", "MEMORY", "MIX", "ARROW_MIX", "ARROW_SUM", "ARROW_MEMORY", "SHELL")
 var debug_force_pattern: int = 0
 @export_range(0, 5) var debug_force_level: int = 0
-var score_box_texture: Texture2D
-var score_crown_texture: Texture2D
 var score_font: Font
 var quiz_box_texture: Texture2D
 var logo_texture: Texture2D
@@ -683,10 +631,6 @@ var hud_canvas: Node2D
 # 점수 숫자의 속만 그리는 캔버스. HUD 캔버스보다 뒤에 붙어 테두리 위에 얹힌다.
 var score_fill_canvas: Node2D
 var score_fill_material: ShaderMaterial
-# 최고 점수도 같은 방식으로. 셰이더 uniform 은 캔버스마다 하나씩이라,
-# 그라데이션이 둘이면 캔버스도 둘이어야 한다.
-var best_fill_canvas: Node2D
-var best_fill_material: ShaderMaterial
 var combo_display_punch_elapsed: float = 0.0  # time since the last right answer — drives the punch/bounce, then just sits at rest (never expires while combo > 0)
 var combo_display_time: float = 0.0           # free-running clock while combo > 0, drives the Tier 3/4 color animation
 var fx_shake_elapsed: float = -1.0   # -1 = inactive
@@ -780,14 +724,11 @@ func _boot_load() -> void:
 	hud_canvas.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	hud_canvas.main = self
 	add_child(hud_canvas)
-	# 숫자 속칠 전용 캔버스 둘. 셰이더가 캔버스 전체에 걸리므로, 여기에는
+	# 숫자 속칠 전용 캔버스. 셰이더가 캔버스 전체에 걸리므로, 여기에는
 	# 해당 숫자의 속 말고 아무것도 그리지 않는다.
 	score_fill_canvas = _make_gradient_canvas("ScoreFillCanvas", "draw_score_fill_into",
 		SCORE_NUMBER_TOP, SCORE_NUMBER_BOTTOM)
 	score_fill_material = score_fill_canvas.material
-	best_fill_canvas = _make_gradient_canvas("BestFillCanvas", "draw_best_fill_into",
-		BEST_NUMBER_TOP, BEST_NUMBER_BOTTOM)
-	best_fill_material = best_fill_canvas.material
 	_load_best_score()
 	_load_audio_settings()
 	_load_ad_state()
@@ -992,44 +933,6 @@ func _ink_rect(img: Image) -> Rect2i:
 		mini(h - 1, bottom + 1) - maxi(0, top - 1) + 1)
 
 
-# READY/START 배너를 그릴 크기 가까이로 미리 구워 테두리 계단을 푼다.
-# 알파를 곱한 채 줄여야 투명한 쪽 RGB 가 끌려 들어오지 않는다.
-# 모드 전환 때 한 번만 돌므로 캐시해 둔다.
-var _word_art_cache := {}
-
-func _softened_word_art(tex: Texture2D, draw_width: float) -> Texture2D:
-	if tex == null:
-		return null
-	var key: String = "%s@%d" % [tex.resource_path, int(draw_width)]
-	if _word_art_cache.has(key):
-		return _word_art_cache[key]
-	var img: Image = tex.get_image()
-	if img.is_compressed():
-		img.decompress()
-	img.convert(Image.FORMAT_RGBA8)
-	img.clear_mipmaps()
-	var target: int = int(round(draw_width * COUNTDOWN_ART_OVERSAMPLE))
-	if target < img.get_width():
-		var h: int = int(round(img.get_height() * float(target) / img.get_width()))
-		img.premultiply_alpha()
-		img.resize(target, h, Image.INTERPOLATE_LANCZOS)
-		img = _unpremultiplied(img)
-	img.generate_mipmaps()
-	var out: Texture2D = ImageTexture.create_from_image(img)
-	_word_art_cache[key] = out
-	return out
-
-
-# 알파를 곱해 둔 이미지를 되돌린다.
-func _unpremultiplied(img: Image) -> Image:
-	for y in range(img.get_height()):
-		for x in range(img.get_width()):
-			var c: Color = img.get_pixel(x, y)
-			if c.a > 0.0:
-				img.set_pixel(x, y, Color(c.r / c.a, c.g / c.a, c.b / c.a, c.a))
-	return img
-
-
 func _load_trimmed(path: String, by_ink := false) -> Texture2D:
 	var img: Image = ArtSlot.image(path)
 	img.clear_mipmaps()
@@ -1232,6 +1135,7 @@ func _process(delta: float) -> void:
 	if not paused:
 		if state == State.PLAYING:
 			_update_hearts(delta)
+			_check_new_best()
 		elif state == State.COUNTDOWN and not tutorial_active:
 			# 튜토리얼이 도는 동안은 시계를 세워 둔다 — 안 그러면 설명을 읽는
 			# 중에 카운트다운이 끝나고 판이 시작된다.
@@ -1239,13 +1143,17 @@ func _process(delta: float) -> void:
 		if flash_time > 0.0:
 			flash_time = max(0.0, flash_time - delta)
 		_update_fx(delta)
+		hud_in_t += delta
+	# The HUD's slide-in moves the pieces drawn apart from the HUD canvas too.
+	var hud_off := _hud_in_offsets(get_viewport_rect().size)
+	pause_button.position.y = _pause_base_pos.y + hud_off.y
+	if score_fill_canvas != null:
+		score_fill_canvas.position.y = hud_off.y
 	queue_redraw()
 	if hud_canvas != null:
 		hud_canvas.queue_redraw()
 	if score_fill_canvas != null:
 		score_fill_canvas.queue_redraw()
-	if best_fill_canvas != null:
-		best_fill_canvas.queue_redraw()
 
 
 func _update_countdown(delta: float) -> void:
@@ -1260,6 +1168,10 @@ func _update_countdown(delta: float) -> void:
 		countdown_timer = COUNTDOWN_START_DURATION
 		if fx_sound_countdown_start.stream != null:
 			fx_sound_countdown_start.play()
+		# GO! — the world lunges forward as it does through a gate.
+		if space != null:
+			space.boost = 1.0
+			space.punch = 1.0
 	else:
 		_set_state(State.PLAYING)
 
@@ -1398,7 +1310,7 @@ func _draw_combo_glow(view_size: Vector2, ci: CanvasItem = null) -> void:
 	ci.draw_rect(Rect2(Vector2(view_size.x - b, 0), Vector2(b, view_size.y)), c)
 
 
-# ---- Best score (the BEST half of the score box) ----
+# ---- Best score (shown on the mode select card and the game over; mid-run only as NEW BEST!) ----
 
 # 한 모드의 최고 점수. 저장본이 아직 없거나 모드가 늘어난 직후에도
 # 안전하게 0을 돌려준다.
@@ -1473,16 +1385,21 @@ const HURT_INVULN_DURATION := 1.2
 const HURT_BLINK_PERIOD := 0.12
 const HURT_BLINK_ALPHA := 0.25
 const HURT_FLASH_COLOR := Color(0.85, 0.12, 0.12, 0.35)
-# HUD 체력 — 문제 박스 왼쪽 칸(_health_rect)의 세로 3칸 게이지(2026-11-26).
-# 하트 아이콘이 게이지 아래 왼쪽에 있던 것을 문제 박스 옆으로 올리면서 칸으로
-# 바꿨다. 칸으로 나눈 것은 "몇 번 남았나"가 하트처럼 한눈에 세어지게 하려는 것 —
-# 이어진 막대면 그게 흐려진다. 칸 테두리 안쪽 여백과 칸 사이 간격(px).
-
-const HEALTH_INSET := Vector2(14.0, 12.0)   # inside the side_slot frame's bevel
+# HUD 체력 — 세 칸(2026-11-26). 칸으로 나눈 것은 "몇 번 남았나"가 하트처럼
+# 한눈에 세어지게 하려는 것 — 이어진 막대면 그게 흐려진다. 처음엔 문제 박스
+# 왼쪽 칸에 세로로 쌓였고, 2026-11-28 (owner) 일시정지 버튼 옆 맨 윗줄로
+# 올라가 가로로 섰다(_health_rect). 스타더스트도 같은 날 오른쪽 위로 가서,
+# 문제 박스가 둘째 줄을 혼자 쓴다.
+const HEALTH_W := 66.0                # the three cells together, px
+const HEALTH_H_FRAC := 0.46           # of the top line's height
+const HEALTH_LEFT_GAP := 6.0          # pause button -> first cell
 const HEALTH_CELL_GAP := 4.0
+const HEALTH_CELL_RADIUS := 3
 const HEART_FILL := Color(0.93, 0.16, 0.24, 1.0)
-const HEART_EMPTY := Color(0.10, 0.12, 0.20, 0.45)
-const HEART_EDGE := Color(1.0, 1.0, 1.0, 0.95)
+const HEART_GLOSS := Color(1.0, 0.62, 0.62, 0.55)   # a lit band across the top third of a full cell
+const HEART_EMPTY := Color(0.10, 0.12, 0.20, 0.55)
+const HEART_EDGE := Color(0.05, 0.04, 0.12, 1.0)
+const HEART_EMPTY_EDGE := Color(0.93, 0.16, 0.24, 0.45)
 # 잃은 칸이 하얗게 번쩍이며 사라지는 시간과 최대 배율.
 const HEART_LOSS_POP_DURATION := 0.45
 const HEART_LOSS_POP_SCALE := 1.9
@@ -1571,10 +1488,25 @@ const SPACE_BANNER_TIME := 1.1
 var space_banner_text := ""
 var space_banner_color := Color.WHITE
 var space_banner_elapsed := -1.0
+# The banner in the titles' Zen Dots (NEW BEST!, 2026-11-28, owner) rather
+# than the base font the power-up banners use. Zen Dots has no Hangul, so a
+# Korean line stays in the base font, whose fallback is the game's Do Hyeon.
+var space_banner_title := false
 
 
-func _spawn_space_banner(text: String, color: Color) -> void:
+## The stored best is written only at the run's end (_finish_run), so it can
+## be compared against all the way through.
+func _check_new_best() -> void:
+	var best := _best_for(current_mode)
+	if run_beat_best or best <= 0 or score <= best:
+		return
+	run_beat_best = true
+	_spawn_space_banner(tr(NEW_BEST_BANNER), NEW_BEST_BANNER_COLOR, true)
+
+
+func _spawn_space_banner(text: String, color: Color, title := false) -> void:
 	space_banner_text = text
+	space_banner_title = title
 	space_banner_color = color
 	space_banner_elapsed = 0.0
 
@@ -1584,11 +1516,21 @@ func _draw_space_banner(view_size: Vector2) -> void:
 		return
 	var t: float = space_banner_elapsed / SPACE_BANNER_TIME
 	var font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	if space_banner_title and not _has_hangul(space_banner_text):
+		font = TitleArt.font(font)
 	var size := int(round(lerpf(30.0, 40.0, minf(t * 4.0, 1.0))))
 	var col := space_banner_color
 	col.a = clampf(1.0 - (t - 0.6) / 0.4, 0.0, 1.0)
 	var outline := Color(0.05, 0.04, 0.12, col.a)
 	_draw_centered_text(space_banner_text, Vector2(view_size.x * 0.5, _quiz_box_rect(view_size).end.y + 70.0 - t * 16.0), size, col, outline, font)
+
+
+func _has_hangul(text: String) -> bool:
+	for i in text.length():
+		var c := text.unicode_at(i)
+		if c >= 0xAC00 and c <= 0xD7A3:
+			return true
+	return false
 
 
 func _space_fever_started() -> void:
@@ -1673,23 +1615,32 @@ func _hurt_blink_alpha() -> float:
 	return 1.0 if int(hurt_elapsed / HURT_BLINK_PERIOD) % 2 == 0 else HURT_BLINK_ALPHA
 
 
-## i 번째 체력 칸의 화면 사각형 — 아래부터 쌓는다(0 이 맨 아래). 칸을 잃는
-## 순서가 위에서부터라, 남은 체력이 바닥부터 차 있는 게이지로 읽힌다.
+## i 번째 체력 칸의 화면 사각형 — 왼쪽부터 늘어선다(0 이 맨 왼쪽). 잃는 칸은
+## 오른쪽 끝부터라, 남은 체력이 왼쪽부터 차 있는 줄로 읽힌다.
 func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
-	var inner := _health_rect(view_size).grow_individual(-HEALTH_INSET.x, -HEALTH_INSET.y, -HEALTH_INSET.x, -HEALTH_INSET.y)
-	var h: float = (inner.size.y - HEALTH_CELL_GAP * (MAX_HEARTS - 1)) / MAX_HEARTS
-	var y: float = inner.end.y - h - i * (h + HEALTH_CELL_GAP)
-	return Rect2(inner.position.x, y, inner.size.x, h)
+	var r := _health_rect(view_size)
+	var w: float = (r.size.x - HEALTH_CELL_GAP * (MAX_HEARTS - 1)) / MAX_HEARTS
+	return Rect2(r.position.x + i * (w + HEALTH_CELL_GAP), r.position.y, w, r.size.y)
 
 
 func _draw_hearts(ci: CanvasItem, view_size: Vector2) -> void:
-	var slot_tex := ArtSlot.texture(HUD_SIDE_SLOT_PATH)
-	_draw_nine_patch(slot_tex, _health_rect(view_size), HUD_SIDE_SLOT_MARGIN,
-		_health_rect(view_size).size.y / slot_tex.get_height(), ci)
+	# Bare on the space behind, so each cell carries its own dark rim; a full
+	# cell is lit across its top, an empty one keeps a faint red rim so the
+	# three still read as three.
 	for i in range(MAX_HEARTS):
 		var rect: Rect2 = heart_hud_rect(i, view_size)
-		ci.draw_rect(rect, HEART_FILL if i < hearts else HEART_EMPTY)
-		ci.draw_rect(rect, HEART_EDGE, false, 1.5)
+		var full: bool = i < hearts
+		var box := StyleBoxFlat.new()
+		box.bg_color = HEART_FILL if full else HEART_EMPTY
+		box.set_corner_radius_all(HEALTH_CELL_RADIUS)
+		box.set_border_width_all(2)
+		box.border_color = HEART_EDGE
+		box.anti_aliasing = true
+		ci.draw_style_box(box, rect.grow(2.0))
+		if full:
+			ci.draw_rect(Rect2(rect.position + Vector2(2.0, 1.0), Vector2(rect.size.x - 4.0, rect.size.y * 0.3)), HEART_GLOSS)
+		else:
+			ci.draw_rect(rect, HEART_EMPTY_EDGE, false, 1.0)
 	# 방금 잃은 칸은 빈 칸 위에서 부풀며 사라진다.
 	if heart_lost_elapsed >= 0.0 and hearts < MAX_HEARTS:
 		var t: float = heart_lost_elapsed / HEART_LOSS_POP_DURATION
@@ -1754,10 +1705,7 @@ func _finish_run() -> void:
 	_submit_leaderboard(current_mode)
 	flash_color = Color(0.8, 0.15, 0.15, 0.45)
 	flash_time = FLASH_DURATION
-	# 신기록이면 웃는 얼굴, 아니면 우는 얼굴.
-	var face: Texture2D = happy_face_texture if is_new_record else sad_face_texture
-	gameover_popup.set_result(face, FACE_DRAW_SIZE,
-		score, max_combo, previous_best, is_new_record)
+	gameover_popup.set_result(score, max_combo, previous_best, is_new_record)
 	gameover_popup.set_stardust(last_run_stardust, last_run_stardust >= DOUBLE_DUST_MIN, ads_removed)
 	gameover_popup.visible = true
 	_play_gameover_bgm()
@@ -2062,15 +2010,6 @@ func _on_tutorial_finished() -> void:
 # 1.x); the mode itself still keys the best scores and the leaderboards.
 func _apply_mode(mode: int) -> void:
 	current_mode = mode
-	happy_face_texture = ArtSlot.texture(FACE_HAPPY_PATH)
-	sad_face_texture = ArtSlot.texture(FACE_SAD_PATH)
-	ready_texture = _softened_word_art(ArtSlot.texture(READY_TEXTURE_PATH), COUNTDOWN_READY_WIDTH)
-	start_texture = _softened_word_art(ArtSlot.texture(START_TEXTURE_PATH), COUNTDOWN_START_WIDTH)
-	if score_crown_texture == null:
-		# 아이콘 캔버스에 투명 여백이 넉넉히 붙어 있어, 잘라 내지 않으면 같은
-		# 높이로 그려도 왕관만 작아 보인다.
-		score_crown_texture = _load_trimmed(BEST_CROWN_PATH, true)
-	score_box_texture = ArtSlot.texture(HUD_SCORE_BAR_PATH)
 	quiz_box_texture = ArtSlot.texture(HUD_QUIZ_BOX_PATH)
 	pause_button.icon = ArtSlot.texture(HUD_PAUSE_PATH)
 	# Re-run now that the icon is loaded: _boot_load lays the row out before
@@ -2083,6 +2022,8 @@ func _start_countdown() -> void:
 	_log_event("level_start", {"level_name": Analytics.mode_name(current_mode)})
 	countdown_phase = CountdownPhase.READY_TEXT
 	countdown_timer = COUNTDOWN_READY_DURATION
+	if state != State.COUNTDOWN:
+		hud_in_t = 0.0
 	_set_state(State.COUNTDOWN)
 	if fx_sound_countdown_ready.stream != null:
 		fx_sound_countdown_ready.play()
@@ -2102,6 +2043,7 @@ func _reset_game() -> void:
 	combo = 0
 	max_combo = 0
 	gates_passed = 0
+	run_beat_best = false
 	run_rewarded = false
 	hearts = MAX_HEARTS
 	hurt_elapsed = -1.0
@@ -2671,6 +2613,7 @@ func _set_state(new_state: int) -> void:
 	if state == State.MODE_SELECT:
 		mode_select_panel.set_best_scores(best_scores)
 		mode_select_panel.set_stardust(stardust_total)
+		mode_select_panel.play_enter()
 
 
 # 지금 화면에 무엇이 보여야 하는가. _set_state 말고 _boot_load 끝에서도 부른다 —
@@ -2690,7 +2633,7 @@ func _apply_screen_visibility() -> void:
 		about_popup.visible = false
 
 
-# ---- The play-screen HUD: score bar + quiz row (drawn on HudCanvas, above
+# ---- The play-screen HUD: the score + quiz row (drawn on HudCanvas, above
 # the world) ----
 
 # Source size of a HUD piece: the loaded texture's own size, or the
@@ -2711,7 +2654,7 @@ func _hud_button_mult() -> float:
 # One scale for the whole top row, chosen so pause + score box + mute exactly
 # fill the screen width inside the margins. (Mute has gone; the formula still
 # counts it so the row keeps its scale, and the score box takes its width —
-# see _score_box_rect.) Everything in the row is sized from this, so enlarging
+# see _score_line_rect.) Everything in the row is sized from this, so enlarging
 # the button automatically takes width back off the score box instead of
 # overflowing the screen.
 func _hud_row_scale(view_size: Vector2) -> float:
@@ -2721,24 +2664,15 @@ func _hud_row_scale(view_size: Vector2) -> float:
 	return available / (score_src.x + button_src.x * 2.0 * _hud_button_mult())
 
 
-# Screen rect of the score box art. The art is cropped tight to its frame, so
-# this rect IS what you see.
-func _score_box_rect(view_size: Vector2) -> Rect2:
-	# 크기는 아트가 아니라 SCORE_BOX_SRC 비율로 정한다. 패널 아트는 2.9:1이라
-	# 아트 비율을 따르면 박스가 세 배 높아진다 — 9-slice로 늘려 그리므로
-	# 아트 비율에 맞출 이유가 없다.
-	var src := SCORE_BOX_SRC
-	# 높이는 버튼과 같은 식으로 뽑는다(HUD_BUTTON_EXTRA 한 번 더). 그래야
-	# 세 조각의 위/아래 테두리가 한 줄에 딱 맞는다.
-	var draw_size := Vector2(src.x * SCORE_BOX_WIDTH_TRIM, src.y * HUD_BUTTON_EXTRA) * _hud_row_scale(view_size)
-	# 소리 끄기 버튼이 빠진 뒤로는(2026-11-26, 설정으로 옮겨 감) 일시정지 버튼
-	# 오른쪽부터 화면 오른쪽 여백까지가 점수판이다. 높이는 그대로 두고 폭만
-	# 그 자리를 채운다 — SCORE 는 왼쪽 칸, 최고 점수는 오른쪽 칸.
-	var button_w: float = _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC).x \
-		* _hud_row_scale(view_size) * _hud_button_mult()
+# The top line: from the pause button's right to the screen's right margin,
+# as tall as the button. The score sits bare on it, centred on the screen
+# (2026-11-28; it was a framed SCORE | BEST bar the same size).
+func _score_line_rect(view_size: Vector2) -> Rect2:
+	var scale := _hud_row_scale(view_size)
+	var h: float = SCORE_BOX_SRC.y * HUD_BUTTON_EXTRA * scale
+	var button_w: float = _hud_src(pause_button.icon if pause_button != null else null, HUD_BUTTON_SRC).x * scale * _hud_button_mult()
 	var left: float = HUD_ROW_SIDE_MARGIN + button_w + HUD_ROW_GAP
-	draw_size.x = view_size.x - HUD_ROW_SIDE_MARGIN - left
-	return Rect2(Vector2(left, SCORE_BOX_TOP), draw_size)
+	return Rect2(Vector2(left, SCORE_BOX_TOP), Vector2(view_size.x - HUD_ROW_SIDE_MARGIN - left, h))
 
 
 # Screen rect of the quiz box art, parked directly under the score box. It
@@ -2754,42 +2688,74 @@ func _quiz_row_rect(view_size: Vector2) -> Rect2:
 	var src := QUIZ_BOX_SRC
 	var width: float = view_size.x - HUD_ROW_SIDE_MARGIN * 2.0
 	var draw_size := Vector2(width, width * src.y / src.x * QUIZ_BOX_HEIGHT_STRETCH)
-	var top: float = _score_box_rect(view_size).end.y + QUIZ_BOX_GAP
+	var top: float = _score_line_rect(view_size).end.y + QUIZ_BOX_GAP
 	return Rect2(Vector2(view_size.x * 0.5 - draw_size.x * 0.5, top), draw_size)
 
 
-# 두 번째 줄은 세 칸이다(2026-11-26): 체력 | 문제 박스 | 스타더스트(처음엔 룰렛). 줄 전체의 자리와
-# 높이는 예전 문제 박스 그대로(_quiz_row_rect) 두고 폭만 나눈다 — 그래야 그
-# 아래 게이트가 놓이는 판이 한 픽셀도 안 움직인다. 하트가 게이지 아래,
-# 룰렛이 그 가운데에 따로 있던 것을 문제 박스 양옆으로 올려, 게이트가 날아오는
-# 판 위에는 아무것도 걸리지 않게 했다.
+# 두 번째 줄은 문제 박스 하나다(2026-11-28, owner). 2026-11-26 부터는
+# 체력 | 문제 박스 | 스타더스트 세 칸이었는데, 체력과 스타더스트가 맨 윗줄로
+# 올라가면서 박스가 줄 전체를 쓴다. 줄의 자리와 높이는 그대로라 그 아래
+# 게이트 판은 움직이지 않았다.
 func _quiz_box_rect(view_size: Vector2) -> Rect2:
-	var row := _quiz_row_rect(view_size)
-	var left: float = row.position.x + SIDE_SLOT_WIDTH + HUD_SLOT_GAP
-	var right: float = row.end.x - SIDE_SLOT_WIDTH - HUD_SLOT_GAP
-	return Rect2(Vector2(left, row.position.y), Vector2(right - left, row.size.y))
+	return _quiz_row_rect(view_size)
 
 
+## The three health cells, on the top line just right of the pause button.
 func _health_rect(view_size: Vector2) -> Rect2:
-	var row := _quiz_row_rect(view_size)
-	return Rect2(row.position, Vector2(SIDE_SLOT_WIDTH, row.size.y))
+	var line := _score_line_rect(view_size)
+	var h: float = line.size.y * HEALTH_H_FRAC
+	return Rect2(Vector2(line.position.x + HEALTH_LEFT_GAP, line.get_center().y - h * 0.5), Vector2(HEALTH_W, h))
 
 
+## The run's stardust, bare at the top line's right end (2026-11-28, owner):
+## a currency counter in the corner, apart from the score in the middle, so
+## the two numbers that rise together read as different things.
+const STARDUST_HUD_W := 96.0
 func _stardust_rect(view_size: Vector2) -> Rect2:
-	var row := _quiz_row_rect(view_size)
-	return Rect2(Vector2(row.end.x - SIDE_SLOT_WIDTH, row.position.y), Vector2(SIDE_SLOT_WIDTH, row.size.y))
+	var line := _score_line_rect(view_size)
+	return Rect2(Vector2(line.end.x - STARDUST_HUD_W, line.position.y), Vector2(STARDUST_HUD_W, line.size.y))
+
+
+# ---- The HUD slides in (2026-11-28, owner) ----
+# As the menu's blocks leave for the screen's edges, the run's HUD comes in
+# from them: the score, the question row and the gauge drop from the top,
+# the weapon readout slides in from the right a beat later, each settling
+# with a small overshoot like the menu's blocks (ModeSelectScreen.SLIDES).
+# Only the drawn place moves; every rect helper (the tutorial's highlights,
+# the checkers) still answers with where the HUD rests.
+const HUD_IN_TIME := 0.5            # s, the top block's trip
+const HUD_IN_RIGHT_DELAY := 0.10    # s, the weapon readout follows
+const HUD_IN_OVERSHOOT := 1.4       # the same back-ease as the menu's
+const HUD_IN_RIGHT_TRAVEL := 280.0  # px, more than the readout's widest
+var hud_in_t := 99.0                # time since the HUD began to come in; large = at rest
+var _pause_base_pos := Vector2.ZERO
+
+func _hud_back_ease(p: float) -> float:
+	var q: float = clampf(p, 0.0, 1.0) - 1.0
+	return 1.0 + (HUD_IN_OVERSHOOT + 1.0) * q * q * q + HUD_IN_OVERSHOOT * q * q
+
+
+## How far the top blocks (y) and the weapon readout (x) are off their places.
+func _hud_in_offsets(view_size: Vector2) -> Vector2:
+	if hud_in_t >= HUD_IN_TIME + HUD_IN_RIGHT_DELAY or space == null:
+		return Vector2.ZERO
+	var top_travel: float = space.gauge_rect(_quiz_box_rect(view_size)).end.y + 16.0
+	var top: float = -top_travel * (1.0 - _hud_back_ease(hud_in_t / HUD_IN_TIME))
+	var right: float = HUD_IN_RIGHT_TRAVEL * (1.0 - _hud_back_ease((hud_in_t - HUD_IN_RIGHT_DELAY) / HUD_IN_TIME))
+	return Vector2(right, top)
 
 
 # Sizes and parks the pause button off the score box, so the two stay on one
 # line if SCORE_BOX_TOP gets retuned.
 func _layout_hud_buttons() -> void:
 	var view_size := get_viewport_rect().size
-	var box := _score_box_rect(view_size)
+	var box := _score_line_rect(view_size)
 	var size: Vector2 = _hud_src(pause_button.icon, HUD_BUTTON_SRC) * _hud_row_scale(view_size) * _hud_button_mult()
 	# Hung off the score box's bottom edge, so the two bottoms land on one line.
 	var top: float = box.end.y - size.y + HUD_BUTTON_Y_OFFSET
 	pause_button.set_deferred("size", size)
-	pause_button.set_deferred("position", Vector2(HUD_ROW_SIDE_MARGIN, top))
+	_pause_base_pos = Vector2(HUD_ROW_SIDE_MARGIN, top)
+	pause_button.set_deferred("position", _pause_base_pos)
 	pause_button.set_deferred("pivot_offset", size * 0.5)
 
 
@@ -2800,77 +2766,23 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 	var step: Dictionary = tutorial_overlay.call("_current") if tutorial_active and tutorial_overlay != null and tutorial_overlay.visible else {}
 	space.demo_avoid = step.get("demo", "") == "avoid"
 	if state == State.PLAYING or state == State.COUNTDOWN:
+		var off := _hud_in_offsets(view_size)
+		ci.draw_set_transform(Vector2(0.0, off.y))
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
 		space.draw_hud(ci, _quiz_box_rect(view_size), _stardust_rect(view_size))
 		_draw_hearts(ci, view_size)
+		ci.draw_set_transform(Vector2(off.x, 0.0))
+		space.draw_weapon_hud(ci)
+		ci.draw_set_transform(Vector2.ZERO)
 	_draw_combo_glow(view_size, ci)
-
-
-# 빈 패널 위에 "SCORE" / 구분선 / 왕관+"BEST"를 얹는다. 예전 스코어 박스
-# 아트에 그려져 있던 것들이라, 패널로 갈아끼우면서 코드로 옮겼다.
-func _draw_score_box_labels(rect: Rect2, ci: CanvasItem) -> void:
-	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
-	# SCORE — 왼쪽. 숫자와 같은 높이에 맞춘다.
-	var score_size := int(round(rect.size.y * SCORE_LABEL_FONT_FRAC))
-	var score_y: float = rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC + score_size * 0.35
-	_draw_outlined_string(ci, font,
-		Vector2(rect.position.x + rect.size.x * SCORE_LABEL_LEFT_FRAC, score_y),
-		SCORE_LABEL_TEXT, score_size, SCORE_LABEL_FILL)
-
-	# 두 칸을 가르는 세로 점선 대신 얇은 실선. 숫자가 오른쪽 정렬로 붙는 기준선이다.
-	var dx: float = rect.position.x + rect.size.x * SCORE_NUM_RIGHT_FRAC
-	var inset: float = rect.size.y * SCORE_DIVIDER_INSET_FRAC
-	ci.draw_line(Vector2(dx, rect.position.y + inset), Vector2(dx, rect.end.y - inset),
-		SCORE_DIVIDER_COLOR, SCORE_DIVIDER_WIDTH)
-
-	# 왕관 + 최고 점수 — 오른쪽 칸. 글자 없이 왕관이 곧 "BEST"다.
-	var best_mid_y: float = rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC
-	# 왕관 -> "BEST" -> 숫자 순서로 왼쪽부터 놓는다. 숫자만 오른쪽 테두리에
-	# 붙여 오른쪽 정렬해, 자릿수가 늘어도 끝자리가 움직이지 않는다.
-	var gap: float = rect.size.x * BEST_LABEL_GAP_FRAC
-	var x: float = dx + rect.size.x * BEST_CROWN_LEFT_FRAC
-	if score_crown_texture != null:
-		# BEST_CROWN_HEIGHT_FRAC / LEFT_FRAC 은 "눈에 보이는 왕관" 기준이다.
-		# 텍스처에 두른 투명 여백만큼 키우고 왼쪽으로 되돌려 그린다.
-		var ink_frac: Vector2 = score_crown_texture.get_meta("ink_frac", Vector2.ONE)
-		var ch: float = rect.size.y * BEST_CROWN_HEIGHT_FRAC / ink_frac.y
-		var cw: float = ch * (float(score_crown_texture.get_width()) / float(score_crown_texture.get_height()))
-		var cy: float = best_mid_y + rect.size.y * BEST_CROWN_Y_OFFSET_FRAC
-		ci.draw_texture_rect(score_crown_texture,
-			Rect2(x - cw * (1.0 - ink_frac.x) * 0.5, cy - ch * 0.5, cw, ch), false)
-		x += cw * ink_frac.x + gap
-	var best_size := int(round(rect.size.y * BEST_LABEL_FONT_FRAC))
-	_draw_outlined_string(ci, font, Vector2(x, best_mid_y + best_size * 0.35),
-		BEST_LABEL_TEXT, best_size, BEST_LABEL_FILL)
-	# 점수와 마찬가지로 음영/테두리만 여기서. 속은 draw_best_fill_into 가
-	# 전용 캔버스에 칠한다.
-	var best_layout := _best_digit_layout(rect)
-	var best_digits: String = best_layout["text"]
-	var best_pos: PackedVector2Array = best_layout["pos"]
-	for i in range(best_digits.length()):
-		_draw_outlined_string(ci, font, best_pos[i], best_digits[i],
-			best_layout["size"], Color(0, 0, 0, 0))
 
 
 func _draw_hud_bar(view_size: Vector2, ci: CanvasItem = null) -> void:
 	if ci == null:
 		ci = self
 	# PauseButton (a real Button node, see scene) occupies the top-left
-	# corner; nothing drawn here for it. Combo lives under the quiz row's
-	# right end (see _draw_combo_popups), not here — this only ever draws the
-	# score box.
-	if score_box_texture == null:
-		return
-	var rect := _score_box_rect(view_size)
-	if SCORE_BOX_PANEL_VISIBLE:
-		_draw_horizontal_slice(score_box_texture, rect, HUD_SCORE_BAR_CAP, ci)
-	_draw_score_box_labels(rect, ci)
-	# Two halves of the same box, each number matched to its own painted
-	# label rather than sharing one size and line: the live score is the
-	# big one, right-aligned to just inside the divider so its ones digit
-	# never moves; the stored best is the small one, left-aligned so it
-	# sits directly beside the word BEST.
+	# corner; nothing drawn here for it. This draws only the bare score.
 	# 음영과 테두리만 여기서. 속(그라데이션)은 draw_score_fill_into 가
 	# 전용 캔버스에 칠한다.
 	var layout := _score_digit_layout(view_size)
@@ -2940,12 +2852,7 @@ func _draw_overlay_layers(view_size: Vector2) -> void:
 	# score box, and it has to stay on top of it the way it was here.
 
 	if state == State.COUNTDOWN and not tutorial_active:
-		var countdown_center := Vector2(view_size.x * 0.5, view_size.y * 0.5)
-		if countdown_phase == CountdownPhase.READY_TEXT:
-			_draw_countdown_image(ready_texture, countdown_center, 1.0, COUNTDOWN_READY_WIDTH)
-		else:
-			var t: float = 1.0 - (countdown_timer / COUNTDOWN_START_DURATION)
-			_draw_countdown_image(start_texture, countdown_center, _pop_scale(t), COUNTDOWN_START_WIDTH)
+		_draw_countdown(view_size)
 
 	if flash_time > 0.0:
 		var a: float = flash_color.a * (flash_time / FLASH_DURATION)
@@ -2955,22 +2862,57 @@ func _draw_overlay_layers(view_size: Vector2) -> void:
 	# content — nothing to do here for it.
 
 
-func _draw_countdown_image(texture: Texture2D, center: Vector2, scale_mult: float, width: float) -> void:
-	# 슬라이서가 글자 중심을 캔버스 정가운데에 맞춰 두었으므로, 캔버스를
-	# `center` 에 가운데 맞춰 그리기만 하면 모드가 바뀌어도 글자가 안 움직인다.
-	var tex_size := Vector2(texture.get_width(), texture.get_height())
-	var draw_size: Vector2 = tex_size * (width / tex_size.x) * scale_mult
-	draw_texture_rect(texture, Rect2(center - draw_size * 0.5, draw_size), false)
+## READY, then GO!. See COUNTDOWN_Y_FRAC.
+func _draw_countdown(view_size: Vector2) -> void:
+	var c := Vector2(view_size.x * 0.5, view_size.y * COUNTDOWN_Y_FRAC)
+	if countdown_phase == CountdownPhase.READY_TEXT:
+		var t: float = COUNTDOWN_READY_DURATION - countdown_timer
+		var grow: float = clampf(t / COUNTDOWN_READY_GROW, 0.0, 1.0)
+		var s: float = lerpf(COUNTDOWN_READY_START_SCALE, 1.0, 1.0 - (1.0 - grow) * (1.0 - grow))
+		# Breathes: a little dimmer and back, so the wait reads as "about to".
+		var a: float = minf(1.0, grow * 2.0) * (0.86 + 0.14 * cos(t * TAU * COUNTDOWN_BREATHE_HZ))
+		_draw_countdown_word("READY", c, COUNTDOWN_READY_FONT, s, a)
+		return
+	var u: float = clampf(1.0 - countdown_timer / COUNTDOWN_START_DURATION, 0.0, 1.0)
+	# The word fades out over the last third, as the run takes over.
+	var a: float = 1.0 if u < 0.66 else lerpf(1.0, 0.0, (u - 0.66) / 0.34)
+	_draw_countdown_word("GO!", c, COUNTDOWN_GO_FONT, _pop_scale(u), a)
+
+
+func _draw_countdown_word(text: String, center: Vector2, font_size: int, s: float, alpha: float) -> void:
+	var font: Font = title_font if title_font != null else combo_font
+	var w: float = font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x
+	var cap: float = font_size * 0.72          # Zen Dots' capitals, measured (PopupBase.ICON_CAP_LATIN)
+	draw_set_transform(center * (1.0 - s), 0.0, Vector2(s, s))
+	# Glow: a round light behind the word, then a wide faint halo in the letters' shape.
+	if _countdown_light == null:
+		_countdown_light = GradientTexture2D.new()
+		_countdown_light.fill = GradientTexture2D.FILL_RADIAL
+		_countdown_light.fill_from = Vector2(0.5, 0.5)
+		_countdown_light.fill_to = Vector2(1.0, 0.5)
+		var g := Gradient.new()
+		g.set_color(0, Color(1, 1, 1, 1))
+		g.set_color(1, Color(1, 1, 1, 0))
+		_countdown_light.gradient = g
+	var ls := Vector2(w * COUNTDOWN_LIGHT_SIZE.x, font_size * COUNTDOWN_LIGHT_SIZE.y)
+	draw_texture_rect(_countdown_light, Rect2(center - ls * 0.5, ls), false,
+		Color(COUNTDOWN_GLOW, COUNTDOWN_LIGHT_ALPHA * alpha))
+	var base := Vector2(center.x - w * 0.5, center.y + cap * 0.5)
+	for i in COUNTDOWN_HALO_LAYERS:
+		var k: float = 1.0 - float(i) / COUNTDOWN_HALO_LAYERS
+		draw_string_outline(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
+			int(round(font_size * COUNTDOWN_HALO_FRAC * k)), Color(COUNTDOWN_GLOW, COUNTDOWN_HALO_ALPHA * alpha))
+	draw_string_outline(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size,
+		maxi(2, int(round(font_size * COUNTDOWN_RIM_FRAC))), Color(COUNTDOWN_RIM, alpha))
+	draw_string(font, base, text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, Color(COUNTDOWN_FILL, alpha))
+	draw_set_transform(Vector2.ZERO)
+
+var _countdown_light: GradientTexture2D
 
 
 func _pop_scale(t: float) -> float:
-	# t: 0..1 progress through the "START" display. Quick overshoot, then
-	# eases back down to 1.0x for a short "pop" feel.
-	#
-	# 최고점은 START 가 화면 밖으로 나가지 않는 선에서 최대로 잡는다. 캔버스
-	# 664px 중 START 그림이 616px(0.928)이므로, 화면 폭 480 을 넘지 않으려면
-	# COUNTDOWN_START_WIDTH * PEAK_SCALE * 0.928 <= 480, 즉 400 기준 1.29 까지.
-	# 여유를 두고 1.22 — 튀는 맛이 있어야 "출발" 느낌이 산다.
+	# t: 0..1 progress through GO!. Quick overshoot, then eases back down to
+	# 1.0x for a short "pop" feel — the punch is what makes it read as "go".
 	const PEAK_T := 0.35
 	if t < PEAK_T:
 		return lerpf(1.0, POP_PEAK_SCALE, t / PEAK_T)
@@ -3012,7 +2954,7 @@ func _draw_centered_text(text: String, center: Vector2, font_size: int, fill_col
 # 높이다. 줄 높이로 가운데를 잡으면 숫자가 쓰지 않는 디센더 공간 때문에 위로
 # 뜬다 — DIGIT_BASELINE_FROM_CENTER_FRAC 이 그래서 있다.
 func _digit_positions(text: String, anchor: Vector2, font_size: int, extra_spacing: float,
-		align_right: bool, font: Font) -> PackedVector2Array:
+		align_right: bool, font: Font, centre := false) -> PackedVector2Array:
 	# 숫자는 가장 넓은 자릿수에 맞춘 고정 칸에 하나씩 넣는다. 점수가 오르며
 	# 1 이 7 로 바뀔 때 그 앞뒤가 흔들리지 않게 하는 것이 이 함수의 존재
 	# 이유이고, 비례폭 글꼴에 draw_string 한 번으로는 얻을 수 없다.
@@ -3033,6 +2975,10 @@ func _digit_positions(text: String, anchor: Vector2, font_size: int, extra_spaci
 		cells.append(cell if text[i].is_valid_int() else w)
 		total_width += cells[i]
 	var cursor_x: float = anchor.x - total_width if align_right else anchor.x
+	if centre:
+		# The cells, not the glyphs, are centred, so the number does not shift
+		# sideways as its digits change.
+		cursor_x = anchor.x - total_width * 0.5
 	var y: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	var out := PackedVector2Array()
 	for i in range(text.length()):
@@ -3060,19 +3006,18 @@ func _draw_outlined_string(ci: CanvasItem, font: Font, pos: Vector2, text: Strin
 # 점수 숫자의 글꼴 크기와 자리, 그리고 잉크의 위/아래 끝. 테두리(HUD 캔버스)와
 # 속(그라데이션 캔버스)을 따로 그리므로 두 곳에서 같은 답이 나와야 한다.
 func _score_digit_layout(view_size: Vector2) -> Dictionary:
-	var rect := _score_box_rect(view_size)
-	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
+	var rect := _score_line_rect(view_size)
+	var font: Font = TitleArt.font(score_font if score_font != null else ThemeDB.fallback_font)
 	var font_size := int(round(rect.size.y * SCORE_NUMBER_FONT_FRAC))
 	var text: String = ScoreFormat.compact(score)
-	var anchor := Vector2(
-		rect.position.x + rect.size.x * (SCORE_NUM_RIGHT_FRAC - SCORE_NUMBER_RIGHT_INSET_FRAC),
-		rect.position.y + rect.size.y * SCORE_NUMBER_MID_Y_FRAC)
+	# Centred on the screen, not on the line, so it sits over the question box.
+	var anchor := Vector2(view_size.x * 0.5, rect.get_center().y)
 	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
 	return {
 		"font": font,
 		"size": font_size,
 		"text": text,
-		"pos": _digit_positions(text, anchor, font_size, SCORE_NUMBER_DIGIT_SPACING, true, font),
+		"pos": _digit_positions(text, anchor, font_size, SCORE_NUMBER_DIGIT_SPACING, true, font, true),
 		"ink_top": baseline - font_size * DIGIT_INK_ABOVE_FRAC,
 		"ink_bottom": baseline + font_size * DIGIT_INK_BELOW_FRAC,
 	}
@@ -3098,47 +3043,12 @@ func _make_gradient_canvas(node_name: String, method: String, top: Color, bottom
 	return canvas
 
 
-# 최고 점수 숫자의 글꼴 크기와 자리. 점수와 달리 왕관/"BEST" 흐름과 무관하게
-# 박스 오른쪽 테두리에 오른쪽 정렬이라, 박스 사각형만 있으면 나온다.
-func _best_digit_layout(rect: Rect2) -> Dictionary:
-	var font: Font = score_font if score_font != null else ThemeDB.fallback_font
-	var font_size := int(round(rect.size.y * BEST_NUMBER_FONT_FRAC))
-	var text: String = ScoreFormat.compact(_best_for(current_mode))
-	var anchor := Vector2(rect.end.x - rect.size.x * BEST_NUMBER_RIGHT_INSET_FRAC,
-		rect.position.y + rect.size.y * BEST_NUMBER_MID_Y_FRAC)
-	var baseline: float = anchor.y + font_size * DIGIT_BASELINE_FROM_CENTER_FRAC
-	return {
-		"font": font,
-		"size": font_size,
-		"text": text,
-		"pos": _digit_positions(text, anchor, font_size, SCORE_NUMBER_DIGIT_SPACING, true, font),
-		"ink_top": baseline - font_size * DIGIT_INK_ABOVE_FRAC,
-		"ink_bottom": baseline + font_size * DIGIT_INK_BELOW_FRAC,
-	}
-
-
-# BestFillCanvas._draw 에서 불린다. 최고 점수 숫자의 속만.
-func draw_best_fill_into(ci: CanvasItem, view_size: Vector2) -> void:
-	if state != State.PLAYING and state != State.COUNTDOWN:
-		return
-	if score_box_texture == null or best_fill_material == null:
-		return
-	var layout := _best_digit_layout(_score_box_rect(view_size))
-	best_fill_material.set_shader_parameter("y_top", layout["ink_top"])
-	best_fill_material.set_shader_parameter("y_bottom", layout["ink_bottom"])
-	var positions: PackedVector2Array = layout["pos"]
-	var text: String = layout["text"]
-	for i in range(text.length()):
-		ci.draw_string(layout["font"], positions[i], text[i],
-			HORIZONTAL_ALIGNMENT_LEFT, -1, layout["size"], Color(1.0, 1.0, 1.0, 1.0))
-
-
 # ScoreFillCanvas._draw 에서 불린다. 이 캔버스에는 세로 그라데이션 셰이더가
 # 걸려 있으므로 점수 숫자의 속 말고는 아무것도 그리지 않는다.
 func draw_score_fill_into(ci: CanvasItem, view_size: Vector2) -> void:
 	if state != State.PLAYING and state != State.COUNTDOWN:
 		return
-	if score_box_texture == null or score_fill_material == null:
+	if score_fill_material == null:
 		return
 	var layout := _score_digit_layout(view_size)
 	score_fill_material.set_shader_parameter("y_top", layout["ink_top"])

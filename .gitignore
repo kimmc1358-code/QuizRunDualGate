@@ -59,3 +59,6 @@ desktop.ini
 /assets/synty_ui/
 # BinbunVFX Portal VFX (paid), copied in by tools/build_vfx_kit.gd
 /assets/binbun_vfx/
+# Synty POLYGON Icons (paid): the gem and arrow rendered out by
+# tools/build_icon_kit.gd; never commit them.
+/assets/polygon_icons/

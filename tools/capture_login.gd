@@ -51,7 +51,7 @@ func _run() -> void:
 	main.call("_open_settings")
 	await _shot("settings_signed_out")
 	settings.visible = false
-	over.call("set_result", null, 0.0, 12600, 24, 14000, false)
+	over.call("set_result", 12600, 24, 14000, false)
 	over.visible = true
 	await _shot("gameover_signed_out")
 

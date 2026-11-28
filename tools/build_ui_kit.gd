@@ -56,10 +56,8 @@ const PIECES := {
 	"icon_hangar.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Planet_02_Clean", "", 40.0],
 	"icon_lock.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Lock_Closed_01_Clean", "", 40.0],
 	"icon_stardust.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Currency_01_Clean", "", 28.0, Color(0.55, 0.92, 1.0)],
-	# Its own PLAY button and explain bar (2026-11-27), not the question box and
-	# score bar again: the menu read as the play screen's HUD. PLAY is filled
-	# orange, the one loud thing on the screen.
-	"play_button.png": ["SciFiMenus/SPR_SciFiMenus_Button_Frame_06", "SciFiMenus/SPR_SciFiMenus_Button_Frame_06_Background", 86.0, null, Color(1.0, 0.72, 0.22, 1.0)],
+	# Its own explain bar (2026-11-27), not the score bar again: the menu read as
+	# the play screen's HUD. Its PLAY is the popups' main button (popup_bar_primary).
 	"explain_bar.png": ["SciFiMenus/SPR_SciFiMenus_Button_Frame_05", "SciFiMenus/SPR_SciFiMenus_Button_Frame_05_Background", 46.0],
 	# The title screen, after the pack's own banner: a gold star on a wreath
 	# between the two halves of the name, a metal bar under it.
@@ -114,8 +112,6 @@ const PIECES := {
 	"icon_music.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Music_On_01_Clean", "", 48.0],
 	"icon_bolt.png": ["Icons_Menu/ICON_SciFiMenus_Menu_LightningBolt_01_Clean", "", 48.0, Color(1.0, 0.72, 0.22)],
 	"icon_star.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Star_01_Clean", "", 64.0, Color(1.0, 0.82, 0.25)],
-	"icon_trophy_gold.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Trophy_01_Clean", "", 96.0, Color(1.0, 0.80, 0.25)],
-	"icon_warning.png": ["Icons_Menu/ICON_SciFiMenus_Menu_Warning_01_Clean", "", 96.0, Color(1.0, 0.72, 0.22)],
 }
 ## Frames cut down to a nine-patch: out file -> [corner, as a share of the
 ## frame's height; where along each edge the plain stretch is sampled].
