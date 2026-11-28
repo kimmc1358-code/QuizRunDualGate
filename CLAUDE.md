@@ -229,7 +229,9 @@ the next few in sight, faster the longer the run of right ones.
    shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
    cycle, and the next cycle starts, a level higher in the bank (for now:
    see `_pick_pattern`), with more rocks, a faster world and a tougher
-   boss.
+   boss. It goes down to one of two cinematic ship-destruction takes
+   from ElevenLabs, picked at random (`boss_explode_1..2.wav`, 2026-11-28,
+   owner; it went down in silence before).
 
 Stardust is won in a run (`Main.run_stardust`, shown in the slot right of
 the question box) and banked into the saved total (`[meta] stardust`) when
@@ -553,8 +555,10 @@ turned down: planets break close in front of it, so the flight was short
 and the counter's change went unseen. The count goes up as each
 lands, and the counter's icon swells. The stardust is paid at once (Main), so
 the run's total is right whatever becomes of a mote; only the shown count
-waits (`dust_pending`). Gates pay without motes: they come every second or
-so and already have the pass burst.
+waits (`dust_pending`). A right gate throws its stardust the same way, one star a
+gate in the streak up to `DUST_PER_GATE_MAX` (4), out of the gate flown
+through; at first gates paid without stars, and the owner wanted to see it
+come.
 
 **The engines burn with the run** (2026-11-28, owner). Each nozzle has a
 round glow at its mouth and a jet of small flames shot out of it toward the

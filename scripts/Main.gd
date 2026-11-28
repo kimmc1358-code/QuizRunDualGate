@@ -147,8 +147,9 @@ const POP_PEAK_SCALE := 1.22
 # A weapon step won by the streak, and each planet smashed in fever.
 const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
 # A right gate flown through (2026-11-28, owner): an ElevenLabs sound the
-# owner chose (a short UI alert; a "shadow step blink" came first the same
-# day), trimmed to its 1.17 s and faded. It still
+# owner chose (a "legendary reveal" impact; a "shadow step blink" and a short
+# UI alert came first the same day), trimmed to its 1.46 s, faded and lifted
+# 5.5 dB to sit with the other sounds. It still
 # rises with the streak (PASS_PITCH_*). The chime above was the pass sound
 # too until then, and stands in if this file is missing.
 const FX_SOUND_PASS_PATH := "res://assets/audio/gate_pass.wav"
@@ -169,6 +170,13 @@ const FX_SOUND_SMASH_PATHS := [
 const SMASH_VOICES := 4
 const SMASH_VOLUME_DB := -3.0
 const SMASH_PITCH_SPREAD := 0.08     # each smash pitched 1 +- this
+# The boss shot down (2026-11-28, owner): two cinematic ship-destruction takes
+# from ElevenLabs, about 4.4 s each, one at random per boss, trimmed and
+# faded at 4.6 s. The boss went down in silence before.
+const FX_SOUND_BOSS_DOWN_PATHS := [
+	"res://assets/audio/boss_explode_1.wav",
+	"res://assets/audio/boss_explode_2.wav",
+]
 # Background music: the menu track, each mode's track and the game over one,
 # crossfaded by _play_bgm on the Music bus (_setup_audio_buses). There is no
 # music at the moment — every name below is a slot, and a file dropped in
@@ -670,6 +678,8 @@ var fx_sound_wrong: AudioStreamPlayer
 var fx_sound_smash: Array[AudioStreamPlayer] = []
 var _smash_streams: Array[AudioStream] = []
 var _smash_next := 0
+var fx_sound_boss_down: AudioStreamPlayer
+var _boss_down_streams: Array[AudioStream] = []
 const PASS_PITCH_STEP := 0.04
 const PASS_PITCH_MAX := 1.5
 const PASS_VOLUME_DB := -4.0
@@ -802,6 +812,12 @@ func _boot_load() -> void:
 		sp.bus = BUS_SFX
 		sp.volume_db = SMASH_VOLUME_DB
 		fx_sound_smash.append(sp)
+	for path in FX_SOUND_BOSS_DOWN_PATHS:
+		if ResourceLoader.exists(path):
+			_boss_down_streams.append(load(path))
+	fx_sound_boss_down = AudioStreamPlayer.new()
+	add_child(fx_sound_boss_down)
+	fx_sound_boss_down.bus = BUS_SFX
 	fx_sound_wrong = AudioStreamPlayer.new()
 	add_child(fx_sound_wrong)
 	fx_sound_wrong.bus = BUS_SFX
@@ -1527,6 +1543,9 @@ func _space_rule_changed() -> void:
 
 func _space_boss_down(points: int) -> void:
 	score += points
+	if not _boss_down_streams.is_empty():
+		fx_sound_boss_down.stream = _boss_down_streams[randi() % _boss_down_streams.size()]
+		fx_sound_boss_down.play()
 	flash_color = Color(1.0, 0.9, 0.6, 0.5)
 	flash_time = FLASH_DURATION
 	fx_shake_elapsed = 0.0

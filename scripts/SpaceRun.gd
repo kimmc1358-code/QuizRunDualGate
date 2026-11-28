@@ -1949,6 +1949,7 @@ func _resolve_wave(w: Dictionary) -> void:
 		streak += 1
 		main._space_correct()
 		main._space_stardust(STARDUST_PER_GATE * streak)
+		_spawn_dust(Vector3(hit.pos.x, hit.pos.y, float(w.z)), STARDUST_PER_GATE * streak, mini(streak, DUST_PER_GATE_MAX))
 		if streak % POWER_EVERY == 0:
 			_power_up(false)
 	else:
@@ -2896,8 +2897,10 @@ func _draw_stardust_bare(ci: CanvasItem, rect: Rect2, amount: int) -> void:
 # at the top right; the count goes up as each lands, and the counter's icon
 # swells. The stardust itself is paid at once (Main), so the run's total is
 # right whatever happens to a mote; only the shown count waits
-# (dust_pending). Gates pay without motes: they come every second or so and
-# are already lit up by the pass burst.
+# (dust_pending). A right gate throws its stardust too (2026-11-28, owner),
+# one star a gate in the streak up to DUST_PER_GATE_MAX, out of the gate the
+# ship flew through. Gates paid without stars at first, on the thought that
+# the pass burst lit them enough; the owner wanted to see the stardust come.
 #
 # The motes are real 3D stars, spinning as they go (DUST_STAR_MESH, the
 # Gems and Crystals star the counter's icon is rendered from, by
@@ -2908,6 +2911,7 @@ func _draw_stardust_bare(ci: CanvasItem, rect: Rect2, amount: int) -> void:
 # the flat icon, drawn on the HUD.
 const DUST_PER_SMASH := 2          # motes from a fever planet
 const DUST_PER_BOSS := 8           # from the boss; its stardust shared among them
+const DUST_PER_GATE_MAX := 4       # stars from a right gate, at most
 const DUST_FLY_TIME := 0.6         # s from the break to the counter
 const DUST_BURST_SHARE := 0.28     # of that, spent bursting outward
 const DUST_BURST_PX := 48.0
