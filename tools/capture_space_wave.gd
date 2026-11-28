@@ -70,6 +70,10 @@ func _step() -> void:
 		m.space_banner_elapsed += DT
 		if m.space_banner_elapsed >= m.SPACE_BANNER_TIME:
 			m.space_banner_elapsed = -1.0
+	if m.power_banner_t >= 0.0:
+		m.power_banner_t += DT
+		if m.power_banner_t >= m.POWER_BANNER_TIME:
+			m.power_banner_t = -1.0
 
 
 func _grab() -> void:

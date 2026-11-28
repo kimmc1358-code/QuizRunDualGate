@@ -394,6 +394,20 @@ const FEVER_MIN_RIGHT := 6
 const FEVER_SPEED := 2.2
 const FEVER_SPAWN_INTERVAL := 0.28
 const FEVER_FOV_BOOST := 7.0
+# FEVER's mood, "supernova" (2026-11-28, owner): as the fever opens, the
+# nebula turns crimson, the space streaks orange and the glow brighter, and
+# back again after it (_update_fever_mood). Picked from three: this; a deeper
+# blue with white-cyan streaks, too near the painted sky to tell apart; and
+# the sky and streaks turning through the rainbow. The sky is tinted, not
+# repainted: SKY_TINT is the 1.25 grey it is drawn at otherwise.
+const FEVER_SKY_TINT := Color(1.9, 0.95, 0.65)
+const FEVER_STREAK_COLOR := Color(1.0, 0.62, 0.25, 0.85)
+const FEVER_GLOW := 1.0
+const FEVER_MOOD_IN := 0.5             # s to turn, as the fever opens
+const FEVER_MOOD_OUT := 0.9            # s to turn back
+const SKY_TINT := Color(1.25, 1.25, 1.25)
+const STREAK_COLOR := Color(0.55, 0.75, 1.0, 0.7)
+const ENV_GLOW := 0.6
 
 # ---- control ----
 # Raised on 2026-11-27 at the owner's call, the ship felt slow: the drag
@@ -645,6 +659,9 @@ var orb_material: StandardMaterial3D
 var streaks: MultiMeshInstance3D
 var streak_pos: PackedVector3Array = PackedVector3Array()
 var sky_material: ShaderMaterial
+var streak_material: StandardMaterial3D
+var world_env: Environment
+var fever_mood := 0.0             # 0 as painted, 1 the fever's colours
 ## How far the sky has slid, in picture heights.
 var sky_scroll := 0.0
 var kit_loaded := false
@@ -685,9 +702,10 @@ func setup(main_node: Node, size: Vector2) -> void:
 	env.ambient_light_color = Color(0.55, 0.5, 0.75)
 	env.ambient_light_energy = 0.6
 	env.glow_enabled = true
-	env.glow_intensity = 0.6
+	env.glow_intensity = ENV_GLOW
 	env.glow_bloom = 0.05
 	camera.environment = env
+	world_env = env
 
 	_add_sun(Vector3(0.6, 0.8, 0.5), 1.6, Color(1.0, 0.95, 0.88))
 	_add_sun(Vector3(-0.7, -0.2, -0.6), 0.6, Color(0.55, 0.45, 1.0))
@@ -1065,7 +1083,7 @@ func _build_sky() -> void:
 	sky_material = ShaderMaterial.new()
 	sky_material.shader = load(SKY_SHADER_PATH)
 	sky_material.set_shader_parameter("sky", load(SKY_PATH))
-	sky_material.set_shader_parameter("tint", Color(1.25, 1.25, 1.25))
+	sky_material.set_shader_parameter("tint", SKY_TINT)
 	sky.material_override = sky_material
 	root3d.add_child(sky)
 	# Square to the camera's line of sight, so it fills the view however the
@@ -1085,7 +1103,8 @@ func _build_streaks() -> void:
 	mm.instance_count = count
 	streaks = MultiMeshInstance3D.new()
 	streaks.multimesh = mm
-	streaks.material_override = _add_material(Color(0.55, 0.75, 1.0, 0.7))
+	streak_material = _add_material(STREAK_COLOR)
+	streaks.material_override = streak_material
 	root3d.add_child(streaks)
 	streak_pos.resize(count)
 	for i in count:
@@ -1130,6 +1149,7 @@ static func spec_of(kind: int, level: int) -> Dictionary:
 
 func reset_run() -> void:
 	_clear_world()
+	fever_mood = 0.0
 	for f in smash_fx:
 		_free(f.node)
 	smash_fx.clear()
@@ -2617,6 +2637,7 @@ func _update_fx(delta: float, running: bool) -> void:
 		pass_lines.t += delta
 		if pass_lines.t >= PASS_LINE_LIFE:
 			pass_lines = {}
+	_update_fever_mood(delta)
 	var flow: float = speed() if running else BASE_SPEED * 0.25
 	var stretch: float = (3.0 if phase == Phase.FEVER else 1.0) * (1.0 + PASS_STREAK_STRETCH * boost)
 	if streaks != null:
@@ -3275,3 +3296,18 @@ func gauge_window(rect: Rect2) -> Rect2:
 ## The weapon readout, bottom right (draw_hud writes it here).
 func weapon_label_rect() -> Rect2:
 	return Rect2(Vector2(view_size.x - 238.0, view_size.y - 40.0), Vector2(230.0, 30.0))
+
+
+## FEVER's mood: eases the sky, the streaks and the glow to the fever's
+## colours while it runs, and back after it.
+func _update_fever_mood(delta: float) -> void:
+	var want: float = 1.0 if phase == Phase.FEVER else 0.0
+	var rate: float = 1.0 / (FEVER_MOOD_IN if want > fever_mood else FEVER_MOOD_OUT)
+	fever_mood = move_toward(fever_mood, want, rate * delta)
+	var u: float = fever_mood * fever_mood * (3.0 - 2.0 * fever_mood)
+	if sky_material != null:
+		sky_material.set_shader_parameter("tint", SKY_TINT.lerp(FEVER_SKY_TINT, u))
+	if streak_material != null:
+		streak_material.albedo_color = STREAK_COLOR.lerp(FEVER_STREAK_COLOR, u)
+	if world_env != null:
+		world_env.glow_intensity = lerpf(ENV_GLOW, FEVER_GLOW, u)

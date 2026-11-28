@@ -210,7 +210,8 @@ the next few in sight, faster the longer the run of right ones.
    still also brings the next weapon, then drones
    (`_power_up(true)`). At speed with no gates; every planet touched or
    shot is smashed for points and `STARDUST_FEVER_SMASH`, and nothing
-   costs a heart. A smash bursts with one of BinbunVFX's explosions
+   costs a heart. It opens to an ElevenLabs ship surging into hyperdrive
+   (`fever_start.wav`, 2026-11-28, owner; the 1.x boost ignition before). A smash bursts with one of BinbunVFX's explosions
    (Stylized Explosion FX, CC0; `SpaceRun._smash_fx`, 2026-11-28, owner:
    "more dazzling"): the orange-ringed air explosion, the white-cored burst
    for the biggest planets, at most `SMASH_FX_MAX` at once since each is
@@ -224,6 +225,10 @@ the next few in sight, faster the longer the run of right ones.
    heavy sci-fi explosion from ElevenLabs (`planet_explode_1..3.wav`), picked
    at random at a slightly varied pitch on the next of four players, so
    smashes overlap instead of cutting each other off (2026-11-28, owner).
+   The space turns "supernova" for it (2026-11-28, owner): the nebula
+   crimson, the streaks orange and the glow brighter, eased in over 0.5 s and
+   out over 0.9 s (`_update_fever_mood`, `FEVER_*` tints). A deeper blue and a
+   rainbow sky were compared; the blue was too near the painted sky.
 3. **BOSS.** After `PATTERNS_PER_CYCLE` (2) patterns an enemy ship comes.
    A strong weapon melts it, and a weak one can still win by dodging. Its
    shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
@@ -501,11 +506,18 @@ changed is the art and the palette (`PopupBase`):
   triangle, so RESUME's is drawn (`_play_icon`). Synty's POLYGON Icons, its
   coloured low-poly 3D icons rendered to PNG, replaced them for an hour on
   2026-11-28; the owner preferred these.
+- The countdown is voiced (2026-11-28, owner): a starship-AI announcer the
+  owner made in ElevenLabs says "Ready." calmly as READY appears and "Go!"
+  excitedly at GO! (`voice_ready.wav`, `voice_go.wav`), in place of the 1.x
+  beeps.
 - The countdown before a run (2026-11-28, owner) is READY, then GO!, in the
   popup titles' gold Zen Dots with its rim, between the HUD and the ship
   (`COUNTDOWN_Y_FRAC`), not over it. READY grows in and breathes; GO! pops
   and the world lunges as on a gate pass (`SpaceRun.boost`,
-  `SpaceRun.punch`). Both glow softly gold: a round light behind the word
+  `SpaceRun.punch`). For an hour on 2026-11-28 GO! sat on a
+  band of blue light after the UI pack's own "GAME SAVED" banner (scanlines,
+  bright edges, turning holographic rings, the word flying in); the owner
+  moved that band to the weapon power-up and gave GO! back its pop. Both glow softly gold: a round light behind the word
   and a halo in the letters' shape, stacked from six faint outlines
   (`COUNTDOWN_HALO_*`; one wide outline came out a flat band). A cyan ring
   and speed lines burst out of GO! at first; the owner took them out. It was the 1.x
@@ -898,7 +910,10 @@ around these slots:
 
 So nothing is drawn over the middle of the field where the gates fly. The
 mute button is gone, because sound belongs in settings. A weapon step is
-announced by a short banner under the gauge (`_space_powered_up`); while the
+announced by a short banner under the gauge (`_space_powered_up`), on a
+slim band of blue light with bright edges and turning holographic rings
+(`_draw_power_banner`, `_draw_holo_band`; 2026-11-28, owner: the band was
+GO!'s for an hour and was moved here); while the
 roulette showed it in its slot, that banner was dropped as a duplicate.
 
 **Nine 1.x checkers were deleted on 2026-11-26**, once the gate game was

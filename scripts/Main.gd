@@ -147,9 +147,10 @@ const POP_PEAK_SCALE := 1.22
 # A weapon step won by the streak, and each planet smashed in fever.
 const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
 # A right gate flown through (2026-11-28, owner): an ElevenLabs sound the
-# owner chose (a "legendary reveal" impact; a "shadow step blink" and a short
-# UI alert came first the same day), trimmed to its 1.46 s, faded and lifted
-# 5.5 dB to sit with the other sounds. It still
+# owner chose (a "legendary reveal" impact; a shadow step blink and a short UI
+# alert came first the same day, and a prompted portal-pass chime after, which
+# the owner liked less), trimmed to its 1.46 s, faded and lifted 5.5 dB to
+# sit with the other sounds. It still
 # rises with the streak (PASS_PITCH_*). The chime above was the pass sound
 # too until then, and stands in if this file is missing.
 const FX_SOUND_PASS_PATH := "res://assets/audio/gate_pass.wav"
@@ -212,11 +213,13 @@ const BGM_SILENT_DB := -40.0
 # 팝업으로 바뀌는데 곡이 다르면 거기서 한 번 끊긴다 — _play_bgm 은 같은
 # 경로면 아무 일도 안 하므로, 이름만 같으면 저절로 이어진다.
 const BGM_GAMEOVER_NAME := "gameover_bgm"
-# Countdown beat sounds — one played the instant the READY image appears,
-# the other the instant it swaps to START (see _start_countdown and
-# _update_countdown).
-const COUNTDOWN_READY_SOUND_PATH := "res://assets/audio/countdown_ready.mp3"
-const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/countdown_start.mp3"
+# The countdown's voice (2026-11-28, owner): "Ready." the instant READY
+# appears and "Go!" the instant it turns to GO! (_start_countdown,
+# _update_countdown), in a starship-AI announcer voice the owner made in
+# ElevenLabs (calm for READY, excited for GO!), the lead-in silence and tail
+# cut off. They were the 1.x countdown beeps.
+const COUNTDOWN_READY_SOUND_PATH := "res://assets/audio/voice_ready.wav"
+const COUNTDOWN_START_SOUND_PATH := "res://assets/audio/voice_go.wav"
 # Failure sound — every heart lost (_take_hit), and the game over. A softer per-hit cue is still to be chosen.
 const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 
@@ -226,20 +229,21 @@ const FX_SOUND_GAMEOVER_PATH := "res://assets/audio/gameover.wav"
 # a missing file just means the transition stays silent.
 const FX_SOUND_SPLASH_START_PATH := "res://assets/audio/splash_start.wav"
 
-# Fever's opening cue (_space_fever_started) — the 1.x boost's ignition, a
-# 0.68 s one-shot, so it is never looped.
-const FX_SOUND_BOOST_START_PATH := "res://assets/audio/boost_start.wav"
+# Fever's opening cue (_space_fever_started), a one-shot (2026-11-28, owner):
+# an ElevenLabs sci-fi ship surging into hyperdrive, its near-silent first
+# 0.11 s and quiet tail cut off so it hits the moment the fever starts
+# (1.31 s, faded). It was the 1.x boost's 0.68 s ignition.
+const FX_SOUND_BOOST_START_PATH := "res://assets/audio/fever_start.wav"
 # 판이 도는 동안의 곡보다 낮게 깐다. 읽을 것이 있는 화면이고 게임오버 효과음이
 # 그 위에 울리므로, 같은 크기면 둘이 서로를 밟는다. 0 이 기본 크기이고 음수가
 # 작아지는 쪽이다(데시벨).
 @export_group("Music")
 @export_range(-30.0, 0.0, 0.5) var gameover_bgm_db: float = -9.0
 @export_group("")  # closes "Music"
-# 점화음의 크기. 짧은 트랜지언트라 RMS 가 낮아(피크는 -5.1 dBFS) 다른 소리
-# 옆에서 묻히므로 올린다. +4 면 피크에 1 dB 를 남긴다 — +5 면 이 클립 혼자
-# 0 dBFS 를 친다.
+# 피버 시작음의 크기. 지금 소리는 피크가 -1.8 dBFS 라 올리지 않는다(0). 1.x 의
+# 점화음은 피크 -5.1 dBFS 의 짧은 트랜지언트라 +4 를 줬었다.
 @export_group("Boost Audio")
-@export_range(-12.0, 12.0, 0.5) var boost_start_volume_db: float = 4.0
+@export_range(-12.0, 12.0, 0.5) var boost_start_volume_db: float = 0.0
 @export_group("")  # closes "Boost Audio"
 
 
@@ -1196,6 +1200,10 @@ func _process(delta: float) -> void:
 		space_banner_elapsed += delta
 		if space_banner_elapsed >= SPACE_BANNER_TIME:
 			space_banner_elapsed = -1.0
+	if power_banner_t >= 0.0 and not paused:
+		power_banner_t += delta
+		if power_banner_t >= POWER_BANNER_TIME:
+			power_banner_t = -1.0
 	if not paused:
 		if state == State.PLAYING:
 			_update_hearts(delta)
@@ -1523,11 +1531,13 @@ func _space_points(points: int) -> void:
 	score += points
 
 
-## 연속 통과로 무기가 올랐을 때(SpaceRun._power_up). 룰렛이 있을 때는 그 칸이
-## 결과를 보여 줘서 문구를 안 띄웠지만, 룰렛이 없어진 지금은 이것이 유일한
-## 알림이다.
+## 연속 통과로 무기가 올랐을 때(SpaceRun._power_up). 룰렛이 없어진 지금은
+## 이것이 유일한 알림이고, GO! 가 내려놓은 홀로그램 띠에 실어 띄운다
+## (_draw_power_banner).
 func _space_powered_up(label: String) -> void:
-	_spawn_space_banner(label, Color(0.55, 0.92, 1.0))
+	power_banner_text = label
+	power_banner_t = 0.0
+	space_banner_elapsed = -1.0
 	if fx_sound_chime != null and fx_sound_chime.stream != null:
 		fx_sound_chime.pitch_scale = 1.0
 		fx_sound_chime.play()
@@ -1574,6 +1584,7 @@ func _check_new_best() -> void:
 
 
 func _spawn_space_banner(text: String, color: Color, title := false) -> void:
+	power_banner_t = -1.0
 	space_banner_text = text
 	space_banner_title = title
 	space_banner_color = color
@@ -2133,6 +2144,7 @@ func _reset_game() -> void:
 	paused = false
 	pause_panel.visible = false
 	space_banner_elapsed = -1.0
+	power_banner_t = -1.0
 	# 첫 문제는 바로 띄운다 — 카운트다운 동안 이미 읽을 수 있게.
 	space.reset_run()
 
@@ -2919,6 +2931,7 @@ func _draw() -> void:
 		draw_texture_rect(tex, Rect2(Vector2.ZERO, view_size), false)
 	space.draw_labels(self, combo_font if combo_font != null else ThemeDB.fallback_font)
 	_draw_space_banner(view_size)
+	_draw_power_banner(view_size)
 	_draw_overlay_layers(view_size)
 
 
@@ -2991,6 +3004,106 @@ func _draw_countdown_word(text: String, center: Vector2, font_size: int, s: floa
 	draw_set_transform(Vector2.ZERO)
 
 var _countdown_light: GradientTexture2D
+
+
+## 0..1 -> 0..1, overshooting a touch past 1 and settling: a word flying in.
+func _fly_in(u: float) -> float:
+	var q: float = clampf(u, 0.0, 1.0) - 1.0
+	return 1.0 + 2.2 * q * q * q + 1.2 * q * q
+
+
+## A band of blue light across the screen, `h` tall now and `full_h` open,
+## centred on `cy`: its face, fine scanlines and a soft light at the middle.
+## With the UI pack sample's bright edges top and bottom and its holographic
+## rings turning behind. It was made for GO! (2026-11-28, after the pack's
+## "GAME SAVED" banner); the owner moved it to the weapon's power-up and gave
+## GO! back its gold pop.
+func _draw_holo_band(view_size: Vector2, cy: float, h: float, full_h: float, a: float, t: float, face: Color) -> void:
+	var band := Rect2(0.0, cy - h * 0.5, view_size.x, h)
+	draw_rect(band.grow_individual(0, 6, 0, 6), Color(HOLO_EDGE, 0.10 * a))
+	draw_rect(band, Color(face, face.a * a))
+	var y: float = band.position.y + 2.0
+	while y < band.end.y - 1.0:
+		draw_line(Vector2(0.0, y), Vector2(view_size.x, y), Color(HOLO_LINE, HOLO_LINE.a * a), 1.0)
+		y += HOLO_LINE_STEP
+	if _countdown_light != null:
+		var ls := Vector2(view_size.x * 0.9, h * 1.6)
+		draw_texture_rect(_countdown_light, Rect2(Vector2(view_size.x * 0.5, cy) - ls * 0.5, ls), false, Color(0.35, 0.70, 1.0, 0.30 * a))
+	# Rings turning, kept inside the band: only the arcs whose height fits
+	# are drawn, broken into dashes that turn.
+	var spin: float = t * 1.6
+	var centre := Vector2(view_size.x * 0.5, cy)
+	for i in 3:
+		var r: float = full_h * (0.55 + 0.38 * i)
+		var reach: float = asin(clampf((h * 0.5 - 2.0) / r, 0.0, 1.0))
+		var ring_c := Color(HOLO_RING, HOLO_RING.a * a * (1.0 - 0.25 * i))
+		var off: float = spin * (1.0 if i % 2 == 0 else -1.0)
+		for side in [0.0, PI]:
+			var steps := 6
+			for k in steps:
+				var a0: float = lerpf(side - reach, side + reach, float(k) / steps)
+				var a1: float = lerpf(side - reach, side + reach, (k + 0.6) / steps)
+				if fmod(k + off * 2.0, 2.0) < 1.0:
+					draw_arc(centre, r, a0, a1, 8, ring_c, 2.0, true)
+	draw_line(Vector2(0.0, band.position.y), Vector2(view_size.x, band.position.y), Color(HOLO_EDGE, a), 2.0)
+	draw_line(Vector2(0.0, band.end.y), Vector2(view_size.x, band.end.y), Color(HOLO_EDGE, a), 2.0)
+
+
+# ---- the power-up banner (2026-11-28, owner) ----
+# A weapon step (SPREAD!, LASER!, DRONE!, POWER +1/+2; SpaceRun._power_up) is
+# announced on a slimmer band of the same blue light, with bright edges and
+# turning holographic rings (it was GO!'s for an hour), where the plain power-up line
+# sat, under the gauge. The word is the hologram's: blue in a white rim,
+# flying in from the right. The face is thinner than GO!'s, since the top
+# of the gate field shows through it while the next step comes in. It shares
+# its slot with the plain banner (NEW BEST!, the boss's points): whichever
+# came last is shown.
+const POWER_BANNER_TIME := 1.1
+const POWER_BANNER_OPEN := 0.10
+const POWER_BANNER_CLOSE := 0.25
+const POWER_BANNER_H := 64.0
+const POWER_BANNER_FACE := Color(0.03, 0.16, 0.40, 0.60)
+const POWER_TEXT_FONT := 34
+const POWER_TEXT_FILL := Color(0.30, 0.62, 1.0, 1.0)
+const POWER_TEXT_RIM := Color(0.92, 0.98, 1.0, 1.0)
+const POWER_TEXT_SHADOW := Color(0.01, 0.05, 0.16, 0.85)
+const HOLO_EDGE := Color(0.50, 0.88, 1.0, 0.95)
+const HOLO_RING := Color(0.40, 0.80, 1.0, 0.22)
+const HOLO_LINE := Color(0.35, 0.72, 1.0, 0.16)
+const HOLO_LINE_STEP := 4.0           # px between scanlines
+const POWER_TEXT_FLY := 0.16          # s for the word to fly in
+var power_banner_t := -1.0
+var power_banner_text := ""
+
+
+func _draw_power_banner(view_size: Vector2) -> void:
+	if power_banner_t < 0.0 or power_banner_t >= POWER_BANNER_TIME:
+		return
+	var t: float = power_banner_t
+	var open: float = clampf(t / POWER_BANNER_OPEN, 0.0, 1.0)
+	open = 1.0 - (1.0 - open) * (1.0 - open)
+	var close: float = clampf((POWER_BANNER_TIME - t) / POWER_BANNER_CLOSE, 0.0, 1.0)
+	var h: float = POWER_BANNER_H * open * close
+	if h < 1.0:
+		return
+	var a: float = close
+	var cy: float = _power_banner_y(view_size)
+	_draw_holo_band(view_size, cy, h, POWER_BANNER_H, a, t, POWER_BANNER_FACE)
+	var base_font: Font = combo_font if combo_font != null else ThemeDB.fallback_font
+	var font: Font = base_font if _has_hangul(power_banner_text) else (title_font if title_font != null else base_font)
+	var fs := POWER_TEXT_FONT
+	var w: float = font.get_string_size(power_banner_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+	var x: float = lerpf(view_size.x, view_size.x * 0.5 - w * 0.5, _fly_in(t / POWER_TEXT_FLY))
+	var ta: float = a * minf(1.0, clampf(t / POWER_TEXT_FLY, 0.0, 1.0) * 3.0)
+	var base := Vector2(x, cy + fs * DIGIT_BASELINE_FROM_CENTER_FRAC)
+	draw_string_outline(font, base + Vector2(0, 3), power_banner_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(fs * 0.16), Color(POWER_TEXT_SHADOW, POWER_TEXT_SHADOW.a * ta))
+	draw_string_outline(font, base, power_banner_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, int(fs * 0.10), Color(POWER_TEXT_RIM, ta))
+	draw_string(font, base, power_banner_text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, Color(POWER_TEXT_FILL, ta))
+
+
+## Where the plain banner settles, under the gauge.
+func _power_banner_y(view_size: Vector2) -> float:
+	return _quiz_box_rect(view_size).end.y + 74.0
 
 
 func _pop_scale(t: float) -> float:

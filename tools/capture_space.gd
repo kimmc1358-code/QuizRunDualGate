@@ -43,6 +43,10 @@ func _tick(seconds: float) -> void:
 			m.space_banner_elapsed += dt
 			if m.space_banner_elapsed >= m.SPACE_BANNER_TIME:
 				m.space_banner_elapsed = -1.0
+		if m.power_banner_t >= 0.0:
+			m.power_banner_t += dt
+			if m.power_banner_t >= m.POWER_BANNER_TIME:
+				m.power_banner_t = -1.0
 	m.hurt_elapsed = -1.0
 
 
