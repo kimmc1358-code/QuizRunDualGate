@@ -79,6 +79,8 @@ func _run() -> void:
 	# 검사기의 판이 한 패턴으로 굳는다.
 	if int(m.get("debug_force_pattern")) != 0:
 		_fail("debug_force_pattern 이 켜져 있다 — Main 인스펙터에서 Off 로 돌리고 Main.tscn 을 저장할 것")
+	if int(m.get("debug_stage")) != 0:
+		_fail("debug_stage 가 켜져 있다 — Main 인스펙터에서 SPACE 로 돌리고 Main.tscn 을 저장할 것")
 	print("check_tutorial:")
 	print("")
 

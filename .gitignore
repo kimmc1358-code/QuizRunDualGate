@@ -68,3 +68,6 @@ desktop.ini
 # BinbunVFX Stylized Explosion FX and Stylized Hit FX (CC0), copied in by
 # tools/build_vfx_kit.gd at the path their scenes name.
 /assets/BinbunVFX_Vol2/
+# Stage backgrounds from POLYGON Sci-Fi Space and Sci-Fi City (paid), copied
+# in by tools/build_stage_kit.gd
+/assets/stage_kit/

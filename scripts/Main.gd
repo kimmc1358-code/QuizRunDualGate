@@ -653,6 +653,15 @@ var tutorial_active: bool = false
 @export_enum("Off", "COLOR", "ARROW", "SPOT", "MEMORY", "MIX", "ARROW_MIX", "ARROW_SUM", "ARROW_MEMORY", "SHELL")
 var debug_force_pattern: int = 0
 @export_range(0, 5) var debug_force_level: int = 0
+
+## 배경(장소) 하나를 골라 플레이한다 (2026-11-28, owner: 워프로 옮겨 갈 장소와
+## 배틀모드 스테이지 후보를 직접 날아 보려고). SpaceRun.scenery(StageScenery)가
+## 만들고, 디버그 빌드에서는 B 키로 그 자리에서 다음 배경으로 넘어간다. 우주
+## 말고는 tools/build_stage_kit.gd 가 구운 키트가 있어야 하고, 없으면 우주로
+## 돈다. 디버그 빌드에서만 듣고, 위와 같은 @export 함정이라
+## tools/check_tutorial.gd 가 켜진 채로 커밋된 것을 잡는다.
+@export_enum("SPACE", "SKY_02", "SKY_03", "SKY_04", "HALL", "TRENCH", "CITY")
+var debug_stage: int = 0
 var score_font: Font
 var quiz_box_texture: Texture2D
 var logo_texture: Texture2D
@@ -1457,22 +1466,23 @@ const HURT_INVULN_DURATION := 1.2
 const HURT_BLINK_PERIOD := 0.12
 const HURT_BLINK_ALPHA := 0.25
 const HURT_FLASH_COLOR := Color(0.85, 0.12, 0.12, 0.35)
-# HUD 체력 — 세 칸(2026-11-26). 칸으로 나눈 것은 "몇 번 남았나"가 하트처럼
-# 한눈에 세어지게 하려는 것 — 이어진 막대면 그게 흐려진다. 처음엔 문제 박스
-# 왼쪽 칸에 세로로 쌓였고, 2026-11-28 (owner) 일시정지 버튼 옆 맨 윗줄로
-# 올라가 가로로 섰다(_health_rect). 스타더스트도 같은 날 오른쪽 위로 가서,
-# 문제 박스가 둘째 줄을 혼자 쓴다.
-const HEALTH_W := 66.0                # the three cells together, px
-const HEALTH_H_FRAC := 0.46           # of the top line's height
-const HEALTH_LEFT_GAP := 6.0          # pause button -> first cell
-const HEALTH_CELL_GAP := 4.0
-const HEALTH_CELL_RADIUS := 3
-const HEART_FILL := Color(0.93, 0.16, 0.24, 1.0)
-const HEART_GLOSS := Color(1.0, 0.62, 0.62, 0.55)   # a lit band across the top third of a full cell
-const HEART_EMPTY := Color(0.10, 0.12, 0.20, 0.55)
-const HEART_EDGE := Color(0.05, 0.04, 0.12, 1.0)
-const HEART_EMPTY_EDGE := Color(0.93, 0.16, 0.24, 0.45)
-# 잃은 칸이 하얗게 번쩍이며 사라지는 시간과 최대 배율.
+# HUD 체력 — 남은 목숨만큼 위에서 본 우리 우주선이 왼쪽 아래에 늘어선다
+# (2026-11-28, owner: 옛날 슈팅 게임처럼). 무기 표시(오른쪽 아래)와 한 줄이다.
+# 그 전에는 일시정지 버튼 옆 맨 윗줄의 빨간 세 칸이었고(2026-11-28), 처음엔
+# 문제 박스 왼쪽 칸에 세로로 쌓였다(2026-11-26). 위에서 본 그림은
+# tools/build_ship_icon.gd 가 키트에서 굽는다(gitignored); 없으면 화살촉을 그린다.
+# 잃은 목숨은 그 자리에서 부풀며 사라지고, 빈자리는 남기지 않는다 — 옛 게임들이
+# 그렇듯 남은 수만 보인다. 뒤에 판이 없어 각 아이콘에 어두운 그림자를 깐다.
+const LIVES_ICON_PATH := "res://assets/synty_space/ship_top.png"
+const LIVES_ICON := 38.0              # px, each ship; at 30 the grey hull sank into the sky
+const LIVES_GAP := 2.0
+const LIVES_LIFT := Color(1.35, 1.35, 1.35)   # the render brightened, for the same reason
+const LIVES_LEFT := 8.0               # from the screen's left edge
+const LIVES_BOTTOM := 8.0             # from the bottom: centred on the weapon readout
+const LIVES_SHADOW := Color(0.02, 0.02, 0.08, 0.6)
+const LIVES_FALLBACK := Color(0.55, 0.75, 1.0, 1.0)
+var _lives_icon: Texture2D
+# 잃은 목숨이 하얗게 번쩍이며 사라지는 시간과 최대 배율.
 const HEART_LOSS_POP_DURATION := 0.45
 const HEART_LOSS_POP_SCALE := 1.9
 
@@ -1701,41 +1711,41 @@ func _hurt_blink_alpha() -> float:
 	return 1.0 if int(hurt_elapsed / HURT_BLINK_PERIOD) % 2 == 0 else HURT_BLINK_ALPHA
 
 
-## i 번째 체력 칸의 화면 사각형 — 왼쪽부터 늘어선다(0 이 맨 왼쪽). 잃는 칸은
-## 오른쪽 끝부터라, 남은 체력이 왼쪽부터 차 있는 줄로 읽힌다.
+## i 번째 목숨 아이콘의 화면 사각형 — 왼쪽 아래에서 오른쪽으로 늘어선다(0 이
+## 맨 왼쪽). 잃는 것은 오른쪽 끝부터라 남은 수가 왼쪽부터 찬 줄로 읽힌다.
 func heart_hud_rect(i: int, view_size: Vector2) -> Rect2:
 	var r := _health_rect(view_size)
-	var w: float = (r.size.x - HEALTH_CELL_GAP * (MAX_HEARTS - 1)) / MAX_HEARTS
-	return Rect2(r.position.x + i * (w + HEALTH_CELL_GAP), r.position.y, w, r.size.y)
+	return Rect2(r.position.x + i * (LIVES_ICON + LIVES_GAP), r.position.y, LIVES_ICON, LIVES_ICON)
 
 
 func _draw_hearts(ci: CanvasItem, view_size: Vector2) -> void:
-	# Bare on the space behind, so each cell carries its own dark rim; a full
-	# cell is lit across its top, an empty one keeps a faint red rim so the
-	# three still read as three.
-	for i in range(MAX_HEARTS):
-		var rect: Rect2 = heart_hud_rect(i, view_size)
-		var full: bool = i < hearts
-		var box := StyleBoxFlat.new()
-		box.bg_color = HEART_FILL if full else HEART_EMPTY
-		box.set_corner_radius_all(HEALTH_CELL_RADIUS)
-		box.set_border_width_all(2)
-		box.border_color = HEART_EDGE
-		box.anti_aliasing = true
-		ci.draw_style_box(box, rect.grow(2.0))
-		if full:
-			ci.draw_rect(Rect2(rect.position + Vector2(2.0, 1.0), Vector2(rect.size.x - 4.0, rect.size.y * 0.3)), HEART_GLOSS)
-		else:
-			ci.draw_rect(rect, HEART_EMPTY_EDGE, false, 1.0)
-	# 방금 잃은 칸은 빈 칸 위에서 부풀며 사라진다.
+	# Kept, not loaded per draw: a texture nothing holds is freed when the draw
+	# returns, and the canvas draws white where it was (see ArtSlot.texture).
+	if _lives_icon == null and ResourceLoader.exists(LIVES_ICON_PATH):
+		_lives_icon = load(LIVES_ICON_PATH)
+	var icon: Texture2D = _lives_icon
+	for i in range(hearts):
+		_draw_life(ci, heart_hud_rect(i, view_size), icon, LIVES_LIFT)
+	# 방금 잃은 목숨은 제자리에서 하얗게 부풀며 사라진다.
 	if heart_lost_elapsed >= 0.0 and hearts < MAX_HEARTS:
 		var t: float = heart_lost_elapsed / HEART_LOSS_POP_DURATION
-		var rect2: Rect2 = heart_hud_rect(hearts, view_size)
+		var rect: Rect2 = heart_hud_rect(hearts, view_size)
 		var grow: float = lerpf(1.0, HEART_LOSS_POP_SCALE, t)
-		var col := HEART_FILL
-		col.a = 1.0 - t
-		ci.draw_rect(rect2.grow_individual(rect2.size.x * (grow - 1.0) * 0.25, rect2.size.y * (grow - 1.0) * 0.5,
-			rect2.size.x * (grow - 1.0) * 0.25, rect2.size.y * (grow - 1.0) * 0.5), col)
+		rect = Rect2(rect.get_center() - rect.size * grow * 0.5, rect.size * grow)
+		_draw_life(ci, rect, icon, Color(1.6, 1.6, 1.6, 1.0 - t))
+
+
+## One ship: the top-down render, over a soft dark shadow so it reads on any
+## part of the sky; without the kit, a plain arrowhead.
+func _draw_life(ci: CanvasItem, rect: Rect2, icon: Texture2D, tint: Color) -> void:
+	if icon != null:
+		ci.draw_texture_rect(icon, Rect2(rect.position + Vector2(1.5, 2.0), rect.size), false, Color(LIVES_SHADOW, LIVES_SHADOW.a * tint.a))
+		ci.draw_texture_rect(icon, rect, false, tint)
+		return
+	var c := rect.get_center()
+	var h: float = rect.size.y * 0.5
+	var pts := PackedVector2Array([c + Vector2(0, -h), c + Vector2(h * 0.8, h), c + Vector2(0, h * 0.55), c + Vector2(-h * 0.8, h)])
+	ci.draw_colored_polygon(pts, Color(LIVES_FALLBACK * tint, tint.a))
 
 
 # 실패한 순간. 곧바로 결과 화면이다 — 부활(광고를 보고 이어 뛰기)은
@@ -2787,11 +2797,10 @@ func _quiz_box_rect(view_size: Vector2) -> Rect2:
 	return _quiz_row_rect(view_size)
 
 
-## The three health cells, on the top line just right of the pause button.
+## The lives row at the bottom left: room for all MAX_HEARTS ships.
 func _health_rect(view_size: Vector2) -> Rect2:
-	var line := _score_line_rect(view_size)
-	var h: float = line.size.y * HEALTH_H_FRAC
-	return Rect2(Vector2(line.position.x + HEALTH_LEFT_GAP, line.get_center().y - h * 0.5), Vector2(HEALTH_W, h))
+	var w: float = MAX_HEARTS * LIVES_ICON + (MAX_HEARTS - 1) * LIVES_GAP
+	return Rect2(Vector2(LIVES_LEFT, view_size.y - LIVES_BOTTOM - LIVES_ICON), Vector2(w, LIVES_ICON))
 
 
 ## The run's stardust, bare at the top line's right end (2026-11-28, owner):
@@ -2858,6 +2867,7 @@ func draw_hud_into(ci: CanvasItem, view_size: Vector2) -> void:
 		_draw_hud_bar(view_size, ci)
 		_draw_quiz_box(view_size, ci)
 		space.draw_hud(ci, _quiz_box_rect(view_size), _stardust_rect(view_size))
+		ci.draw_set_transform(Vector2(-off.x, 0.0))
 		_draw_hearts(ci, view_size)
 		ci.draw_set_transform(Vector2(off.x, 0.0))
 		space.draw_weapon_hud(ci)

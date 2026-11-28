@@ -333,6 +333,9 @@ committed:
 - A fresh clone has to run it once with its own licensed copy:
   `blender -b --python tools/build_space_kit.py -- <repo>
   <POLYGON_Scifi_Space_SourceFiles_v2/SourceFiles>`.
+- `tools/build_ship_icon.gd` (Godot, not headless) renders the lives row's
+  top-down ship from the built kit into `assets/synty_space/ship_top.png`;
+  run it after `build_space_kit.py`, then `--import`.
 - Without the kit the game still plays on plain spheres and a wedge ship.
   A release build must be exported from a machine that has the kit.
 
@@ -733,6 +736,102 @@ committed.
 - A release must be exported from a machine that has all five kits, and the
   Binbun explosion pack (`build_vfx_kit.gd`) for the fever's bursts.
 
+**Stage backgrounds, debug only for now** (2026-11-28, owner). The owner plans
+to warp the run between places after a pattern and its fever, and to reuse
+those places as BATTLE's stages. The candidates can be flown in the game today:
+
+- Pick one with `debug_stage` on Main, or press **B** in a debug build to step
+  to the next one where you are. The stage's name shows on the plain banner.
+- The stages are SPACE, then the pack's other three skyboxes (SKY_02..04,
+  each tinted), the ship's two-storey HALL, the open TRENCH, and CITY,
+  a cyberpunk street at a dark purple night: the towers' walls dark so the
+  neon signs, billboards and their own lit strips carry the light, window-lit
+  towers behind as the skyline, a wet road. Its sky shows only in the gap
+  between the towers, mostly under the HUD, so what is in the gap carries it
+  (2026-11-28, owner, from four tried): a ringed giant planet in the middle,
+  searchlights swaying across it, and small soft twinkling stars
+  (`_city_sky`, `animate`). A brighter picture hardly showed, clouds read as
+  pink lumps, a flat planet sprite off to the left was mostly behind the
+  towers, and cruisers drifting across flew through the towers. Purple against teal
+  (owner): two of three window colours teal, a bluer fog; navy, and teal
+  with orange, were compared. A tall tower
+  breaks into the low front row now and then (`FRONT_TALL_CHANCE`), never two
+  running: low ones all along read as the same few repeated.
+  On 2026-11-28 it went from near-black towers in dense magenta fog (gloomy)
+  to a bright purple-pink night after the pack's promotional shot (too
+  bright) to a darker one with stronger neon (too dark), and settled
+  between, each the owner's call.
+- Turned down along the way:
+  - a one-storey corridor, whose ceiling hid the screen;
+  - two other city places (towers falling into haze over rivers of traffic
+    light, and a night market), cut the same day when the owner tidied the
+    city down to its street;
+  - hover cars on the road and in the sky, taken out with them for now.
+- In the city the run turns a corner after a pattern's fever, before the
+  next pattern (2026-11-28, owner: to show flying between the towers and
+  swinging round a corner). `StageScenery.begin_turn` ends the street at a
+  junction ahead (a cross street opening to a random side, a wall of towers
+  ahead, the other side closed), and when it reaches the ship the scenery
+  stops scrolling and swings 90 degrees about a point `TURN_RADIUS` to that
+  side, so the ship is carried round a quarter circle while the camera banks
+  (`bank`, `TURN_*`). The cross street's segments then become the loop and the
+  old street flies off behind. `SpaceRun._after_fever(true)` starts it and
+  holds the next pattern (`turn_wait`) until `turn_finished`. Not before the
+  boss, and not on other stages. At fever speed the arc took 0.6 s, too quick
+  to see, so it takes at least a second.
+- In the city, FEVER smashes holographic food signs instead of planets
+  (2026-11-28, owner): noodles, burgers, pizza and bottles with their glowing
+  outlines, in pink or teal, turning like a shop display (`FEVER_HOLOGRAMS`,
+  `HOLO_*`). They wear `assets/shaders/hologram.gdshader`: the picture half
+  greyed and tinted, scanlines rolling up, an edge glow, now and then a dim
+  flicker or a band jumping sideways, each on its own beat (an instance
+  `seed`). Smashed, one breaks into light, not rock or fire
+  (`SpaceRun._neon_burst`, `NEON_*`): a ring and bright slices flying off
+  sideways like a signal tearing; the Binbun explosion is skipped for it.
+  They are 1.35 a planet across (`STAGE_TARGET_SIZE`; 1.1 read small). A stage offers its targets through
+  `StageScenery.fever_targets()` as {mesh, scale, palette, spin}, and
+  `SpaceRun._make_stage_target` builds one in a planet's dictionary, so it is
+  hit, smashed and paid for the same way. Tried first the same day: hover cars
+  and taxis, which hung at odd angles and read as wreckage (and smashing a
+  taxi sat oddly), then the pack's security drones.
+- The same `@export` trap as the other switches: `check_tutorial` fails while
+  it is on.
+
+How it is built:
+
+- `scripts/StageScenery.gd` builds a stage as segments along z under one node.
+  `SpaceRun` scrolls them with the world (`scenery.scroll`), and the one that
+  has passed the camera goes round to the far end.
+- A stage sets the sky texture, its tint and the glow outside FEVER
+  (`sky_tint`, `env_glow`, which the fever mood eases from), plus the fog and
+  the ambient light. It also says whether the open-space streaks and the sky
+  show.
+- Nothing in it touches the run's rules.
+
+The kit:
+
+- `tools/build_stage_kit.gd` (headless) reads both zips directly and writes
+  `assets/stage_kit/` (gitignored):
+  `... --headless --path . --script res://tools/build_stage_kit.gd --
+  <POLYGON_Scifi_Space_SourceFiles_v2.zip> <POLYGON_SciFi_City_Godot_4_6_2_v1_0_2.zip>`,
+  then `--import`.
+- It takes the Space pack's interior FBX pieces, its planet ring, baked to plain
+  meshes, and three skybox faces. It takes the City pack's towers, road, signs, streetlights and
+  holographic food signs, re-saved with their materials cleared. One material per kind
+  is laid over them in the game.
+- It prints "can't open texture" errors for the FBX files' own texture links;
+  those are expected and harmless.
+- Without the kit every stage falls back to SPACE.
+
+Not done yet:
+
+- the warp itself and placing stages in a run;
+- road reflections (the mobile renderer has no SSR, so the light pools show as
+  dots);
+- some billboards show white;
+- a phone performance check. The city is heavy, with dozens of meshes and a
+  few lights in every 40 m.
+
 **The title screen is built from the same kit** (2026-11-27). It follows the
 pack's own promotional banner, turned for a portrait screen; the banner
 image itself is Synty's branding and is not used. The live space world
@@ -875,13 +974,20 @@ around these slots:
     `SCORE_PER_COMBO` × combo points and `STARDUST_PER_GATE` × streak
     stardust, and the two break together. Merging them would touch the
     leaderboards and the upgrade economy, so it has been left for now.
-- The top line also carries the health and the stardust, both bare
+- The top line also carries the stardust, bare (and the health, until it
+  went to the bottom left the same day)
   (2026-11-28, owner):
-  - **Health** is three cells in a row right of the pause button
-    (`_health_rect`, `heart_hud_rect`). They are cells rather than hearts, so
-    the hits left can be counted at a glance. Each cell carries its own dark
-    rim, since there is no frame behind it. A full cell is lit across its top;
-    an empty one keeps a faint red rim.
+  - **Health** is the lives row at the bottom left, in line with the weapon
+    readout (2026-11-28, owner: "like the old shooting games"): one ship seen
+    from above for each heart left, none for the lost (`_health_rect`,
+    `heart_hud_rect`, `_draw_hearts`, `LIVES_*`). A lost one swells white and
+    fades where it stood. The ship is Fighter_05 rendered top down by
+    `tools/build_ship_icon.gd` into the gitignored kit (`ship_top.png`;
+    without it, an arrowhead), drawn brighter than rendered and over a soft
+    shadow: at 30 px and as rendered, its grey hull sank into the sky. It
+    slides in from the left as the weapon readout does from the right. Before,
+    it was three red cells right of the pause button, and before that a
+    column left of the question box.
   - **The stardust** sits at the right end: the kit's icon, then the count in
     Zen Dots (`_stardust_rect`, `SpaceRun._draw_stardust_bare`). In the corner,
     apart from the score in the middle, it reads as currency rather than as a

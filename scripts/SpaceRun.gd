@@ -661,6 +661,17 @@ var streak_pos: PackedVector3Array = PackedVector3Array()
 var sky_material: ShaderMaterial
 var streak_material: StandardMaterial3D
 var world_env: Environment
+var sky_node: MeshInstance3D
+var sky_tint := SKY_TINT         # the sky's tint outside FEVER; a stage sets its own
+var env_glow := ENV_GLOW         # the glow outside FEVER; likewise
+# The stage backgrounds (StageScenery): open space unless the debug switch
+# (Main.debug_stage, or B in a debug build) picks another.
+const StageScenery := preload("res://scripts/StageScenery.gd")
+var scenery
+var debug_stage_pick := -1       # B cycles this; -1 follows Main.debug_stage
+var turn_wait := false           # FEVER is over and the city is turning a corner
+var _cam_basis := Basis()
+var _b_held := false
 var fever_mood := 0.0             # 0 as painted, 1 the fever's colours
 ## How far the sky has slid, in picture heights.
 var sky_scroll := 0.0
@@ -695,6 +706,7 @@ func setup(main_node: Node, size: Vector2) -> void:
 	root3d.add_child(camera)
 	camera.position = CAMERA_POS
 	camera.look_at(CAMERA_LOOK, Vector3.UP)
+	_cam_basis = camera.basis
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = BG_COLOR
@@ -722,6 +734,8 @@ func setup(main_node: Node, size: Vector2) -> void:
 	_load_portal()
 	_build_sky()
 	_build_streaks()
+	scenery = StageScenery.new(self)
+	scenery.apply(_wanted_stage())
 	fit(size)
 	reset_run()
 
@@ -1075,6 +1089,7 @@ func _build_sky() -> void:
 	if not ResourceLoader.exists(SKY_PATH):
 		return
 	var sky := MeshInstance3D.new()
+	sky_node = sky
 	var q := QuadMesh.new()
 	var dist := 420.0
 	var h: float = 2.0 * (dist + CAMERA_POS.z) * 1.4
@@ -1149,6 +1164,9 @@ static func spec_of(kind: int, level: int) -> Dictionary:
 
 func reset_run() -> void:
 	_clear_world()
+	turn_wait = false
+	if scenery != null and (scenery.stage != _wanted_stage() or not scenery.turn_finished()):
+		scenery.apply(_wanted_stage())
 	fever_mood = 0.0
 	for f in smash_fx:
 		_free(f.node)
@@ -1556,6 +1574,36 @@ func _make_planet(pos: Vector2, z: float, label: String, correct: bool) -> Dicti
 	_place(p)
 	return p
 
+
+
+## A FEVER target on a stage that flies something else than planets
+## (StageScenery.fever_targets; the city's holograms): the same dictionary as
+## a planet, so it moves, is hit, smashed and paid for the same way. The stage
+## gives its mesh, its size, its burst colours (`palette`, in a planet's
+## [sea, ground] order) and how fast it turns about its upright (`spin`). It
+## faces the ship, a little turned and tilted. Its material is shared with
+## others like it, so it takes no hit flash.
+const STAGE_TARGET_SIZE := 1.35 # of a planet's diameter, along its longest side (1.1 read small)
+
+func _make_stage_target(targets: Array, pos: Vector2, z: float) -> Dictionary:
+	var entry: Dictionary = targets[randi() % targets.size()]
+	var node := MeshInstance3D.new()
+	node.mesh = entry.mesh
+	node.rotation = Vector3(randf_range(-0.15, 0.15), randf_range(-0.4, 0.4), randf_range(-0.2, 0.2))
+	root3d.add_child(node)
+	var turn: float = float(entry.get("spin", 0.5))
+	if entry.get("seeded", false):
+		node.set_instance_shader_parameter("seed", randf() * 100.0)
+	var p := {
+		"node": node, "mat": null, "pos": pos, "z": z, "label": "",
+		"correct": true, "alive": true, "judged": false, "palette": entry.palette,
+		"base_scale": float(entry.scale) * PLANET_RADIUS * STAGE_TARGET_SIZE, "radius": PLANET_RADIUS,
+		"spin": Vector3(0.0, turn * (1.0 if randf() < 0.5 else -1.0), 0.0),
+		"flash": 0.0,
+		"burst": entry.get("burst", ""),
+	}
+	_place(p)
+	return p
 
 ## A quiz gate: the same dictionary as a planet, so the wave code moves, places
 ## and judges it the same way; "gate" marks what differs — it is flown
@@ -2034,10 +2082,14 @@ func gauge_fill() -> Vector2:
 			return Vector2(float(steps_right), float(steps_done - steps_right)) / float(PATTERN_LEN)
 
 
-## Where the run goes after a pattern, and after its fever.
-func _after_fever() -> void:
+## Where the run goes after a pattern, and after its fever. Out of a fever
+## into the next pattern, a stage may turn a corner first (the city does,
+## StageScenery.begin_turn); the pattern then waits for it (turn_wait).
+func _after_fever(from_fever := false) -> void:
 	if patterns_done >= PATTERNS_PER_CYCLE:
 		_enter(Phase.BOSS)
+	elif from_fever and scenery != null and scenery.begin_turn(-1.0 if randf() < 0.5 else 1.0):
+		turn_wait = true
 	else:
 		_enter(Phase.PATTERN)
 
@@ -2302,6 +2354,7 @@ func tick(delta: float, running: bool, steerable: bool) -> void:
 func _update_ship(delta: float) -> void:
 	if OS.is_debug_build():
 		_key_steer(delta)
+		_debug_stage_key()
 	var prev := ship_pos
 	ship_pos = ship_pos.lerp(ship_target, 1.0 - exp(-SHIP_FOLLOW_SHARPNESS * delta))
 	ship_vel = (ship_pos - prev) / maxf(delta, 0.0001)
@@ -2383,9 +2436,14 @@ func _update_run(delta: float) -> void:
 			if fever_spawn_timer <= 0.0 and phase_time < fever_time - 1.0:
 				fever_spawn_timer = FEVER_SPAWN_INTERVAL
 				_spawn_fever_planets()
-			if phase_time >= fever_time:
+			if turn_wait:
+				# The city turning a corner: the next pattern waits for it.
+				if scenery == null or scenery.turn_finished():
+					turn_wait = false
+					_enter(Phase.PATTERN)
+			elif phase_time >= fever_time:
 				main._space_fever_ended()
-				_after_fever()
+				_after_fever(true)
 		Phase.PATTERN:
 			if steps_done >= PATTERN_LEN:
 				_end_pattern()
@@ -2411,9 +2469,12 @@ func _drop_passed() -> void:
 
 
 func _spawn_fever_planets() -> void:
+	# A stage may fly something else into the fever: the city's holograms.
+	var others: Array = scenery.fever_targets() if scenery != null else []
 	for i in 1 + randi() % 2:
 		var pos := Vector2(randf_range(-FIELD_HALF.x, FIELD_HALF.x) * 0.9, randf_range(-FIELD_HALF.y, FIELD_HALF.y) * 0.9)
-		var p := _make_planet(pos, SPAWN_Z - randf() * 6.0, "", true)
+		var z: float = SPAWN_Z - randf() * 6.0
+		var p := _make_stage_target(others, pos, z) if not others.is_empty() else _make_planet(pos, z, "", true)
 		var k := randf_range(0.7, 1.0)
 		p.base_scale *= k
 		p.radius *= k
@@ -2452,6 +2513,8 @@ var _smash_fx_scenes := {}
 
 
 func _smash_fx(p: Dictionary) -> void:
+	if p.get("burst", "") == "neon":
+		return   # a hologram breaks into light, not fire
 	if smash_fx.size() >= SMASH_FX_MAX or root3d == null:
 		return
 	var big: bool = float(p.radius) >= PLANET_RADIUS * SMASH_FX_BIG_AT
@@ -2490,8 +2553,56 @@ func _smash(p: Dictionary, wrong: bool, size: float = 1.0) -> void:
 	p.alive = false
 	var node: MeshInstance3D = p.node
 	node.visible = false
-	_burst(node.position, p.palette, wrong, size)
+	if p.get("burst", "") == "neon":
+		_neon_burst(node.position, p.palette, float(p.radius))
+	else:
+		_burst(node.position, p.palette, wrong, size)
 
+
+
+## A hologram's break-up (a stage target with "burst": "neon"; 2026-11-28,
+## owner): no rock and no fire, since it was only ever light. A breath of its
+## colour, a ring, and its picture torn into thin bright slices that fly off
+## mostly sideways, like a signal breaking, with a few motes left glowing.
+const NEON_SLICES := 16
+const NEON_SLICE_SPEED := 10.0
+const NEON_SLICE_LIFE := 0.5
+const NEON_MOTES := 6
+
+func _neon_burst(center: Vector3, pal: Array, radius: float) -> void:
+	var c: Color = pal[1]
+	var bloom := MeshInstance3D.new()
+	bloom.mesh = QuadMesh.new()
+	bloom.material_override = _soft_material(_dot_texture(), c, PASS_BLOOM_GLOW, true)
+	bloom.position = center + Vector3(0.0, 0.0, 0.1)
+	root3d.add_child(bloom)
+	flashes.append({"node": bloom, "t": 0.0, "life": PASS_BLOOM_LIFE, "kind": "bloom", "size": radius * 1.4})
+	_shock(center, c, radius / GATE_RADIUS)
+	var slice := BoxMesh.new()
+	slice.size = Vector3(1.4, 0.11, 0.02)
+	for i in NEON_SLICES:
+		var col: Color = Color(1.6, 1.6, 1.6) if i % 4 == 0 else c
+		var mi := MeshInstance3D.new()
+		mi.mesh = slice
+		mi.material_override = _soft_material(null, col, PASS_SHARD_GLOW, false)
+		mi.position = center + Vector3(randf_range(-radius, radius), randf_range(-radius, radius), randf_range(-0.2, 0.2))
+		mi.scale.x = randf_range(0.4, 1.4)
+		root3d.add_child(mi)
+		var side: float = -1.0 if randf() < 0.5 else 1.0
+		var vel := Vector3(side * randf_range(0.4, 1.0) * NEON_SLICE_SPEED, randf_range(-1.5, 1.5), randf_range(0.0, 2.0))
+		flashes.append({"node": mi, "t": 0.0, "life": NEON_SLICE_LIFE * randf_range(0.7, 1.2), "kind": "shard", "vel": vel, "size": 1.0})
+	var mote_mesh := QuadMesh.new()
+	for i in NEON_MOTES:
+		var a: float = randf() * TAU
+		var out := Vector3(cos(a), sin(a), 0.0)
+		var mote := MeshInstance3D.new()
+		mote.mesh = mote_mesh
+		mote.material_override = _soft_material(_dot_texture(), c, 2.0, true)
+		mote.position = center + out * radius * randf_range(0.6, 1.3)
+		root3d.add_child(mote)
+		flashes.append({"node": mote, "t": 0.0, "life": PASS_MOTE_LIFE * randf_range(0.7, 1.2), "kind": "mote",
+			"vel": out * randf_range(0.8, 2.0), "size": randf_range(PASS_MOTE_SIZE.x, PASS_MOTE_SIZE.y),
+			"phase": randf() * TAU})
 
 func _burst(center: Vector3, pal: Array, wrong: bool, size: float, pieces: bool = true) -> void:
 	var rock_mat := _planet_material(pal[1], pal[0])
@@ -2639,6 +2750,9 @@ func _update_fx(delta: float, running: bool) -> void:
 			pass_lines = {}
 	_update_fever_mood(delta)
 	var flow: float = speed() if running else BASE_SPEED * 0.25
+	if scenery != null:
+		scenery.scroll(flow * delta)
+		scenery.animate(delta)
 	var stretch: float = (3.0 if phase == Phase.FEVER else 1.0) * (1.0 + PASS_STREAK_STRETCH * boost)
 	if streaks != null:
 		var mm := streaks.multimesh
@@ -2659,6 +2773,8 @@ func _update_fx(delta: float, running: bool) -> void:
 		shake = maxf(0.0, shake - delta)
 		var jolt: float = sin(shake * WRONG_SHAKE_FREQ) * WRONG_SHAKE * (shake / WRONG_SHAKE_TIME)
 		camera.position = CAMERA_POS + Vector3(jolt, 0.0, -CAMERA_PUNCH * punch)
+		# Rolled into a corner the city turns (StageScenery.bank).
+		camera.basis = _cam_basis * Basis(Vector3.BACK, scenery.bank() if scenery != null else 0.0)
 		for r in reveals:
 			r.t += delta
 		reveals = reveals.filter(func(r): return r.t < REVEAL_TIME)
@@ -2690,7 +2806,7 @@ func _animate(p: Dictionary, delta: float) -> void:
 			var lit: Color = p.flash_color
 			(p.glow as StandardMaterial3D).albedo_color = (p.base_glow as Color).lerp(Color(lit.r * 2.5, lit.g * 2.5, lit.b * 2.5, 1.0), p.flash)
 			_portal_color(p.get("portal"), (p.base_glow as Color).lerp(lit, p.flash))
-		else:
+		elif p.mat is ShaderMaterial:
 			p.mat.set_shader_parameter("hit_flash", p.flash)
 	elif p.get("gate", false) and p.alive:
 		var glow: Color = _aim_glow(p) if p.get("aim", false) else p.base_glow
@@ -3306,8 +3422,30 @@ func _update_fever_mood(delta: float) -> void:
 	fever_mood = move_toward(fever_mood, want, rate * delta)
 	var u: float = fever_mood * fever_mood * (3.0 - 2.0 * fever_mood)
 	if sky_material != null:
-		sky_material.set_shader_parameter("tint", SKY_TINT.lerp(FEVER_SKY_TINT, u))
+		sky_material.set_shader_parameter("tint", sky_tint.lerp(FEVER_SKY_TINT, u))
 	if streak_material != null:
 		streak_material.albedo_color = STREAK_COLOR.lerp(FEVER_STREAK_COLOR, u)
 	if world_env != null:
-		world_env.glow_intensity = lerpf(ENV_GLOW, FEVER_GLOW, u)
+		world_env.glow_intensity = lerpf(env_glow, FEVER_GLOW, u)
+
+
+## The stage to play: Main.debug_stage, or what B last picked, in a debug
+## build; open space otherwise.
+func _wanted_stage() -> int:
+	if not OS.is_debug_build():
+		return 0
+	if debug_stage_pick >= 0:
+		return debug_stage_pick
+	return int(main.get("debug_stage")) if main != null and main.get("debug_stage") != null else 0
+
+
+## Debug builds only: B steps to the next stage background, there and then,
+## and names it on the plain banner.
+func _debug_stage_key() -> void:
+	var down := Input.is_physical_key_pressed(KEY_B)
+	if down and not _b_held and scenery != null:
+		debug_stage_pick = (scenery.stage + 1) % StageScenery.NAMES.size()
+		var got: int = scenery.apply(debug_stage_pick)
+		if main != null:
+			main._spawn_space_banner(StageScenery.NAMES[got], Color(0.55, 0.92, 1.0))
+	_b_held = down
