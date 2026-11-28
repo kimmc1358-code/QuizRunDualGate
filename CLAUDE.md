@@ -74,7 +74,10 @@ hearts (`4a84936`).
 
 A ship seen from behind is steered up, down, left and right by **dragging
 anywhere**. The drag is relative, so the thumb never covers the ship. The
-ship fires on its own. Portrait, 480x854, as 1.x. For testing on PC, a
+ship fires on its own in FEVER and at the boss; during a pattern its guns hold,
+since nothing there can be hit and the bullets only crossed the gates being
+read, and a power-up fires one short volley so the new weapon is seen
+(`VOLLEY_TIME`, 2026-11-28, owner). Portrait, 480x854, as 1.x. For testing on PC, a
 debug build also steers with the arrow keys or WASD (`KEY_STEER_SPEED`); a
 release build ignores the keyboard.
 
@@ -195,15 +198,32 @@ the next few in sight, faster the longer the run of right ones.
    flew through the top slot's ring and it filled the screen. Fever planets and asteroids are still
    planets and rocks.
 2. **FEVER.** Earned by the right gates of the pattern before it
-   (2026-11-27, the owner's idea): `FEVER_PER_RIGHT` (0.6 s) a right gate,
-   `FEVER_PERFECT_BONUS` (1.8 s) more for all of them, so all twelve is 9 s,
-   and none under `FEVER_MIN_RIGHT` (6) (`fever_for`). It was all or
-   nothing at first, 8 s for every step right and none for a miss, which
-   the owner found too tight for what is meant to be the fun part. Every
-   step right still also brings the next weapon, then drones
+   (2026-11-27, the owner's idea), in proportion: `FEVER_FULL` (9 s) for all
+   twelve, half of it for half, none under `FEVER_MIN_RIGHT` (6)
+   (`fever_for`). The gauge under the question box shows it (2026-11-28,
+   owner): it fills with the right gates, and the fever drains it from
+   where the pattern left it (`gauge_fill`), so the length is read off the
+   gauge. It was all or nothing at first, 8 s for every step right and none
+   for a miss, which the owner found too tight for what is meant to be the
+   fun part; then 0.6 s a right gate with 1.8 s more for all twelve, a bonus
+   that broke the proportion the gauge shows and went. Every step right
+   still also brings the next weapon, then drones
    (`_power_up(true)`). At speed with no gates; every planet touched or
    shot is smashed for points and `STARDUST_FEVER_SMASH`, and nothing
-   costs a heart.
+   costs a heart. A smash bursts with one of BinbunVFX's explosions
+   (Stylized Explosion FX, CC0; `SpaceRun._smash_fx`, 2026-11-28, owner:
+   "more dazzling"): the orange-ringed air explosion, the white-cored burst
+   for the biggest planets, at most `SMASH_FX_MAX` at once since each is
+   eight particle systems. They drift with the world but stop short of the
+   camera (`SMASH_FX_NEAR_Z`) and one born near is drawn smaller: drifting
+   on, a burst at the ship's plane came into the lens and covered the bottom
+   of the screen. `tools/build_vfx_kit.gd` copies the pack in at the path
+   its scenes name, `assets/BinbunVFX_Vol2/` (gitignored, like the portal
+   pack; it is CC0 and could be committed, but every kit travels the same
+   way). Not yet measured on a phone. Its sound is one of three takes of a
+   heavy sci-fi explosion from ElevenLabs (`planet_explode_1..3.wav`), picked
+   at random at a slightly varied pitch on the next of four players, so
+   smashes overlap instead of cutting each other off (2026-11-28, owner).
 3. **BOSS.** After `PATTERNS_PER_CYCLE` (2) patterns an enemy ship comes.
    A strong weapon melts it, and a weak one can still win by dodging. Its
    shots cost a heart. Down, it pays points and `STARDUST_BOSS` × the
@@ -322,16 +342,24 @@ committed:
 
   | Slot | Sprite |
   |---|---|
-  | Score bar (gone from the play screen on 2026-11-28; the mode select's stardust readout still uses it) | `Bar_Frame_01` |
+  | Score bar (gone on 2026-11-28, from the play screen and then from the mode select's stardust readout) | `Bar_Frame_01` |
+  | Mode select's stardust readout | The explain line's frame (`explain_bar.png`, the slim `Frame_Box_Small_02` with its slot panel at both ends), as tall as the icon buttons (2026-11-28, owner). Either end wears `Button_Arrow_01`'s chevron on its black clip, glow and all, the clip laid over the frame's end (`deco_arrow_left.png`/`_right.png`, `_draw_readout_deco`, after a sample). For an hour before, `Bar_Frame_02` with the buttons' teal face; a silver capsule, the question box's frame and `Bar_Frame_03` were compared |
   | Question box | `Button_Frame_01`, orange end caps; the most important panel gets the loudest frame |
   | Health and stardust slots (until 2026-11-28; both now sit bare on the top line, and the frame stays the mode select's square buttons) | `Frame_Box_Small_07`, one frame for both, so the question box sat centred between twins |
-  | Pause | `Frame_Box_Small_10`, with the II bars drawn on at build time; the pack has no pause icon |
-  | Progress gauge | `Bar_Frame_08` |
+  | Pause | `Frame_Box_Small_07` with a blue face (the menu's shared FACE_TOP/BOTTOM; teal for an hour), lit cyan while held (`pause_on.png`), like the menu's icon buttons (2026-11-28, owner; it was `Frame_Box_Small_10` with a dark face), with the II bars drawn on at build time; the pack has no pause icon |
+  | Progress gauge | `Button_Frame_03`, the plain silver capsule (2026-11-28, owner), its fill drawn as a beam (`_draw_laser`: a glow, the body, a white-hot core, pulses running to a flared tip). It was `Bar_Frame_08`, an orange pill; then the same day `Bar_Frame_06`, a grey frame with a dark block and orange stripes, which did not go with the question box, and the question box's own frame small; `Bar_Frame_03` was compared too. Its two ends are sliced apart (`HUD_GAUGE_CAP_L`/`_R`, `_draw_horizontal_slice`'s `cap_right`) and the game fills its window (`gauge_window`, `GAUGE_WIN_*`, measured off the bake) |
   | Weapon readout's backing | `Menu_Item_Background_03_Blue` |
   | BEST mark (the mode select's cards; the play screen dropped it on 2026-11-28) | `Trophy_01`, tinted gold |
 
 - Each frame is laid over its own `_Background` sprite, tinted dark, so
   white text on it reads against the space behind.
+- Every frame from the pack's SciFiMenus folder has its grey metal put on one
+  silver at bake time (`_unify_metal`, 2026-11-28, owner): the hue taken to
+  `METAL_TINT` and the median brightness to `METAL_MEDIAN`, both blended out
+  toward `METAL_SATURATION` so the orange caps and cyan lights stay. The
+  frames come from different sprites, and their greys had differed, some
+  bluish (the slim `Small_02`, the bevel `Small_04`), some neutral (the steel
+  blocks), some darker.
 - Each piece is baked at 2.25x its on-screen size, about a phone's scale.
   The bars are drawn with their ends whole and the middle stretched
   (`_draw_horizontal_slice`), the square frames as nine-patches.
@@ -382,7 +410,11 @@ changed is the art and the palette (`PopupBase`):
     2026-11-28: it was `Button_Frame_06` with V-notched ends, and the two
     screens' main buttons looked like different games. Its press glow and
     launch ghost follow the new art (`PLAY_FACE_SRC`, `PLAY_FRAME_CAP`). The
-    menu's square icon buttons stay square.
+    menu's square icon buttons stay square: their old frame, the HUD slot's
+    (`Frame_Box_Small_07`), with a blue face (teal for an hour, then the menu's one blue, `build_ui_kit` FACE_*), lit cyan while held
+    (`icon_button.png`/`icon_button_on.png`, 2026-11-28, owner, after a
+    sample). The plain silver bevel square (`Frame_Box_Small_04`) was tried
+    in the old frame's place and the owner kept the old frame.
   - How it got here, all on 2026-11-28 and each the owner's call:
     - The main button was `Bar_Frame_02` filled orange with cyan arrow tips,
       and the secondaries `Frame_Box_Small_04`. The owner found they did not
@@ -506,15 +538,47 @@ changed is the art and the palette (`PopupBase`):
 - Kit art never goes through the popup bake (`_bake_store`): its output sits
   under `ui_assets/`, which git tracks.
 
-**The engines burn with the run** (2026-11-28, owner). Each nozzle's glow
-flickers on its own, grows into a short plume and warms toward white as the
-streak raises the pace, and leaps on the lunge after a pass
-(`SpaceRun._update_engines`, `ENGINE_*`). A flame shader on a cone was tried
-first and dropped: the camera sits behind the ship, so a cone trailing back
-points straight at it, and tilted down enough to show length it hung like an
-icicle. The first tuning grew the three glows until they ran together into
-a white blob over the hull, so the width barely grows and the plume
-stretches downward instead.
+**Stardust flies to its counter** (2026-11-28, owner). A planet smashed in
+FEVER throws out two pink-violet stars, the boss eight, which burst a little way
+from where it broke and fly into the counter at the top right
+(`SpaceRun._spawn_dust`, `_update_dust`, `DUST_*`). They are the Gems and
+Crystals star as real 3D meshes (`star_mesh.res`, taken out by
+`build_gem_kit.gd`), turning on their faces and rocking a little: spun
+right round their upright they showed a thin edge half the time. Their path
+is worked out on the screen and put back into the world each frame at a
+depth closing on the camera, sized to the flat icon's pixels, so they slip
+in behind the HUD counter as they land. Without the pack they are the flat
+icon on the HUD (`_draw_dust`). Flying into the ship instead was tried and
+turned down: planets break close in front of it, so the flight was short
+and the counter's change went unseen. The count goes up as each
+lands, and the counter's icon swells. The stardust is paid at once (Main), so
+the run's total is right whatever becomes of a mote; only the shown count
+waits (`dust_pending`). Gates pay without motes: they come every second or
+so and already have the pass burst.
+
+**The engines burn with the run** (2026-11-28, owner). Each nozzle has a
+round glow at its mouth and a jet of small flames shot out of it toward the
+camera, each swelling and fading as it comes (`SpaceRun._make_jet`,
+`_update_engines`, `ENGINE_*`, `JET_*`). The jet runs faster and brighter as
+the streak raises the pace, and leaps on the lunge after a pass.
+
+- The flames fly along the camera's line of sight, a touch below it
+  (`JET_RISE`). Coming straight at the lens, a flame stays on its nozzle on
+  screen and only grows, which reads as pouring out of the screen. Shot
+  straight back (+Z), they ran down the screen, since the camera is above.
+- Tried before it, the same day:
+  - A CC0 flame shader from godotshaders.com on a 3D cone. Trailing back, the
+    cone points into the lens and shows no length; tilted down far enough to
+    show some, it hung like an icicle.
+  - The glows alone stretched into a plume. Grown wide, the three ran
+    together into a white blob over the hull.
+  - A flame cone drawn on a camera-facing quad. It hung down the screen, and
+    the owner read it as pointing down rather than out at the viewer.
+    It came back short under the jet at the owner's ask (0.40; at 0.26 the
+    nozzle glow swallowed it) and went again the same hour: even short, it
+    still read as pointing down.
+- A still frame shows the jet only as a hotter, haloed glow; the swelling
+  toward the viewer is in the motion.
 
 **A right pass bursts in colour** (2026-11-27). The gate lights up gold (red
 when wrong), and a right one throws a shockwave ring, shards out of the ring
@@ -542,8 +606,10 @@ sputters red and goes out (`WRONG_FAULT_TIME`), and the gate that was
 right, every one of them on an avoid step, is ringed in green where it was
 judged for `REVEAL_TIME` (`_draw_reveals`), so the player sees at once what
 it should have been. The ring first followed the gate as it parted
-outward and left the screen in 0.15 s, before it could be read. A sound
-for it waits for the new audio.
+outward and left the screen in 0.15 s, before it could be read. Its sound
+is `gate_wrong.wav`, and a right pass's is `gate_pass.wav`: ElevenLabs
+sounds the owner chose (2026-11-28; `FX_SOUND_WRONG_PATH`,
+`FX_SOUND_PASS_PATH`).
 
 With it come two of the owner's three asks of that evening:
 
@@ -593,22 +659,63 @@ with colour instead.
   `SpaceRun._draw_swatch` and `_draw_arrow`, so every pattern takes them: the
   rule, SPOT's dots, MEMORY's rounds (a flown colour is a dimmed gem) and
   ARROW_SUM's pair.
-- `tools/build_icon_kit.gd` renders the two into `assets/polygon_icons/`
+- `tools/build_icon_kit.gd` renders them into `assets/polygon_icons/`
   (gitignored). The pack comes as a Godot project, so the tool runs inside it
   and not headless: `... --path <unzipped pack project> --script
   <repo>/tools/build_icon_kit.gd -- <repo>`, then `--import` here. The
   owner's copy is `POLYGON_Icons_Godot_4_6_2_v1_0_0.zip`.
-- Each icon is rendered grey and tinted in the game (`ICON_*_LIFT`), so one gem
-  serves every gate colour. The arrow is turned as a textured quad rather than
+- The gem and arrow are rendered grey and tinted in the game (`ICON_*_LIFT`),
+  so one gem serves every gate colour. The arrow is turned as a textured quad rather than
   through `draw_set_transform`, which would replace the offset Main lays over
   the HUD while it slides in.
 - MIX's no-entry sign stays drawn (`_draw_cross`). The pack's `Banned_01`
   was tried over the gem, and its thick ring hid the colour it crosses out.
 - The pack has no bars, so the gauge stays the UI kit's.
+- The stardust was this pack's for an hour or two on 2026-11-28 (its yellow
+  sparkle, then its star mapped onto blue, and as a mesh); it comes from the Gems and
+  Crystals pack now (below).
 - An hour earlier the same day, the pack's icons replaced the popups' white
   ones and were turned down (see the popups).
 - Without the kit the old ball and arrow are drawn. A release must be
   exported from a machine that has all four kits.
+
+**The stardust is a faceted gem star from Aztech Games' Gems and Crystals**
+(Unity Asset Store; 2026-11-28, owner), under the same rule: paid, never
+committed.
+
+- `tools/build_gem_kit.gd` reads `Meshes/Crystal_3.fbx` straight out of the
+  pack (`FBXDocument`). The pack sits in a Unity project; the owner's is under
+  `C:/Unity Project/My project (2)/Assets/Aztech Games/GemsAndCrystals`.
+- It writes `assets/aztech_gems/` (gitignored):
+  - `star_mesh.res`, the geometry with its node's place baked in;
+  - `stardust.png`, the star rendered front on and mapped onto pink-violet by
+    brightness (`TINT_DARK`..`TINT_LIGHT`), squared first (`FACET_CONTRAST`):
+    its faces are lit evenly from the front, and a straight mapping left it
+    nearly white.
+- Not headless: `... --path . --script res://tools/build_gem_kit.gd --
+  <GemsAndCrystals dir>`, then `--import`.
+- Every screen takes the icon from `ArtSlot.stardust_icon_path()`: the menu's
+  bar, the HUD counter, the game over's row. The motes flying to the counter
+  are the mesh in 3D (`SpaceRun._dust_star`), in the game's own pink
+  (`DUST_STAR_*`). The pack's material, Unity's white metallic Standard, does
+  not come along.
+- Without the pack the stardust is the UI kit's `Currency_01`, tinted the same
+  pink by `build_ui_kit`, flat, motes included.
+- **Pink-violet is the stardust's colour** (2026-11-28, owner): the gem, the
+  motes, and the counters' numbers (`ModeSelectScreen.STARDUST_COLOR`, which
+  the HUD shares). Blue, the first, and a white crystal with a rainbow sheen
+  were compared in the game. Blue is one of the four gate colours and sank
+  among the cyan bullets, engines and gate glow; the white read as a plain
+  white star when small and sank among the streaks. Pink is the one colour on
+  screen that means stardust.
+- How it got here, the same day: the UI kit's currency icon; POLYGON Icons'
+  yellow sparkle; its star in blue, as a mesh too; then this star, at the
+  owner's pick. A gold star was passed over because the game over's BEST
+  header wears one, and the question box's gem because it means "this
+  colour". `Crystal_5`, a six-point stellated gem, is the other star in the
+  pack.
+- A release must be exported from a machine that has all five kits, and the
+  Binbun explosion pack (`build_vfx_kit.gd`) for the fever's bursts.
 
 **The title screen is built from the same kit** (2026-11-27). It follows the
 pack's own promotional banner, turned for a portrait screen; the banner
@@ -666,7 +773,18 @@ The selected card shows it **on its face, not around it** (owner's call,
 is a see-through cyan gradient, and the menu draws scanlines and a band of
 light sweeping down it (`_draw_card_face`), so the menu redraws every frame
 while it is up. A locked card loses its dark veil while it is selected, or
-the lit face would go dark under it. The explain bar holds one line and
+All of the menu's faces share one blue at four brightnesses (`build_ui_kit`
+`FACE_*`, `BAR_FACE_*`, `CARD_FACE_*`, 2026-11-28, owner): the icon buttons
+and pause brightest, the explain line and stardust readout a step darker,
+the idle cards darker still, the selected card its own lit cyan-blue. The
+buttons had been teal and the bars navy, and the screen looked pieced
+together. the lit face would go dark under it. The explain bar is the slim silver
+`Frame_Box_Small_02` with a blue face, its right slot panel mirrored onto the
+left (`explain_bar.png`, `MIRROR_RIGHT`; 2026-11-28, owner, after the pack's
+Label_Button sample). Its ends are taken from just before the window's
+chamfered corners (0.40 of the frame), so only plain rails and face are
+stretched; cut at 0.30, the chamfers stretched and the border looked broken. It was `Button_Frame_05`, then for a moment the popups'
+blue bar, which was not the sample. It holds one line and
 shrinks its font to fit (`_fit_explain`); the "(COMING SOON)" it used to add
 after a locked mode's line ran BATTLE's sentence out of the bar.
 
@@ -759,12 +877,19 @@ around these slots:
   middle, away from the gates and the ship. The row kept its position and
   height, so the gate zone under it did not move.
   - **The question box** draws the pattern's rule: a colour swatch, or the
-    front step's arrow.
+    front step's arrow. In FEVER and at the boss it writes FEVER! or BOSS! in Zen
+    Dots (2026-11-28, owner).
   - **The question** keeps its old font size, which comes from the row's
     width rather than the narrower box's.
-- The progress gauge sits under the question box: the pattern's steps
-  (gold while every one so far was right, the fever it is heading for),
-  then the boss's health, then fever time. The combo sits on the right
+- The gauge sits under the question box (`gauge_fill`). In a pattern it
+  fills from the left with the right gates and the wrong ones eat in from
+  the right in red, so the gap is the steps still to fly; a mark stands at
+  `FEVER_MIN_RIGHT`, and the fill is dim blue short of it, cyan past it and
+  gold while every step so far was right (`GAUGE_*`). The fill is a beam
+  rather than a flat bar (`_draw_laser`, owner's ask). In FEVER it is the
+  fever left, on the same scale, draining from where the pattern stopped;
+  at the boss, its health. Until 2026-11-28 it showed the steps flown, and
+  a fever always started it full whatever its length. The combo sits on the right
   under the row, and the weapon readout bottom right.
 
 So nothing is drawn over the middle of the field where the gates fly. The
@@ -958,7 +1083,7 @@ on failure.
 | `check_ads_wiring.gd` | with a fake plugin feeding the results: the game over's x2 shows a rewarded ad and grants the run's stardust again only when watched to the end (and marks the run so it skips the interstitial count), once a run, grants nothing and keeps the button when closed early, grants nothing and reads AD NOT READY with no ad or a failed one, grants at once with ads removed, and on a PC debug build grants at once; a due interstitial holds the countdown until it closes and resets the counter only then, while one that is not ready or fails to show leaves the counter due and the countdown free; sound is muted for a full-screen ad and restored; no banner is ever requested (there has been none since 2026-11-27); and the consent gate: Google is asked before the SDK starts, the form shows only when consent is required and the SDK starts once it closes, a missing form or a failed lookup still starts ads, the SDK never starts twice, and settings' Ad Privacy Choices link is lit only where consent was asked and brings the form back | `Ads.gd`, `_on_double_stardust_pressed`/`_on_double_ad_finished`/`_grant_double_stardust`, `_ad_try_interstitial`/`_on_interstitial_finished`, `ad_hold_countdown`/`_update_countdown`, `_on_ads_fullscreen`, `_begin_consent`/`_on_consent_*`/`_start_sdk`, `privacy_options_available`/`show_privacy_options`, or `SettingsPopup.set_ad_privacy_available` |
 | `check_mode_select_layout.gd` | the 2.0 mode select (2026-11-27): the stretch aspect is `keep_width`, so a tablet held upright keeps the 480-wide viewport with bars beside it; and across seven ratios, each viewport derived from that setting, with and without a banner: no two blocks overlap (top bar, emblem, the three cards, explain bar, PLAY, the tool row with its labels, Remove Ads), nothing leaves the screen or runs under the banner, and a requested banner is reserved **whole** or refused — 16:9 refuses, 18:9 and up take it | `ModeSelectScreen` layout constants (`*_H`, `CARD_GAP`, `FLEX_GAPS`, `MIN_GAP`/`MAX_GAP`, `BANNER_MIN_GAP_PX`), `_layout`, a block added to the menu, or `display/window/stretch/aspect` |
 | `check_tutorial.gd` | the tutorial runs on the first entry to the play screen and holds the run **and the countdown clock** while it does; at 16:9 and 20:9 every step highlights a real widget rect and the caption never lands on one; the last tap starts the run; it never runs again — other modes included, relaunch included; and `debug_replay_tutorial` brings it back without writing "seen" to the save; and `debug_replay_tutorial` is not on in the shipped scene | `tutorial_seen`/`tutorial_active`/`debug_replay_tutorial`, `_begin_tutorial`/`_tutorial_steps`/`_on_tutorial_finished`, `TutorialOverlay`'s card placement, or `_quiz_box_rect` or `SpaceRun.ship_screen_rect`/`gauge_rect`/`weapon_label_rect` |
-| `check_space.gd` | a run starts with full hearts on a colour pattern; every pattern in `BANK` at every level puts out its gates and the right gates its rule asks for (COLOR's colour changing exactly every `switch` steps, MIX's avoid steps and only MIX's, SPOT's one mismatched dot, MEMORY's rounds in order with no colour twice in a row, the arrow's slot, ARROW_MIX's avoid steps, ARROW_SUM's arrows adding up to the corner worked out from where it stands, ARROW_MEMORY's rounds with a diagonal only on a grid step); every step stands in the layout its level asks for, and in both layouts each slot lies in its own quarter; the top MEMORY level's round stays up `MEMORY_SECONDS_EACH` a colour before its first gate at full speed, then full speed again; each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; no rocks fly between the steps, and an asteroid spawned by hand costs a heart on contact and scores when shot; at its fastest a step is still `STEP_FLOOR` (1.2 s) apart; FEVER lasts 0.6 s a right gate of the pattern before it, 9 s for all twelve, none under six; a perfect pattern brings the next weapon and the whole FEVER (stardust per smash, no heart lost, then the next pattern), one with too few right goes straight on; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart ends the run straight on the game over (there is no revive); a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`, the camera, or `_quiz_box_rect` |
+| `check_space.gd` | a run starts with full hearts on a colour pattern; every pattern in `BANK` at every level puts out its gates and the right gates its rule asks for (COLOR's colour changing exactly every `switch` steps, MIX's avoid steps and only MIX's, SPOT's one mismatched dot, MEMORY's rounds in order with no colour twice in a row, the arrow's slot, ARROW_MIX's avoid steps, ARROW_SUM's arrows adding up to the corner worked out from where it stands, ARROW_MEMORY's rounds with a diagonal only on a grid step); every step stands in the layout its level asks for, and in both layouts each slot lies in its own quarter; the top MEMORY level's round stays up `MEMORY_SECONDS_EACH` a colour before its first gate at full speed, then full speed again; each slot lies in its own quarter and no two gate rings touch, and every slot and field corner is on screen below the question box at 16:9 and 20:9; steps come exactly `STEP_GAP` apart with two or more in sight; the gate in the ship's quarter lights up, and a ship in the right quarter but off the hole is drawn into the right gate, which scores and pays stardust; an answer changed 60% of the way into the pull still counts, one changed after `CAPTURE_LOCK` does not; a streak pays more each gate, speeds the world up and every `POWER_EVERY` steps the weapon up; a wrong gate or a gate-less quarter breaks the streak and the combo and slows the world back down, costing no heart, weapon or stardust; no rocks fly between the steps, and an asteroid spawned by hand costs a heart on contact and scores when shot; a pattern holds the guns, a power-up fires a short volley, and FEVER opens them; at its fastest a step is still `STEP_FLOOR` (1.2 s) apart; FEVER is in proportion to the right gates of the pattern before it, 9 s for all twelve, none under six, and the gauge fills with the right gates, takes the wrong ones from its other end and drains from that level through the fever; a perfect pattern brings the next weapon and the whole FEVER (stardust per smash, no heart lost, then the next pattern), one with too few right goes straight on; after `PATTERNS_PER_CYCLE` patterns the boss comes, its shots cost a heart, and shooting it down scores, pays stardust and starts the next cycle with three gates a step; leaving a run banks its stardust into the saved total once; the last heart ends the run straight on the game over (there is no revive); a drag moves the ship by the finger's movement, ignores the emulated mouse twin, and stops at the field's edge | `SpaceRun.gd` (any constant, the phase machine, `spawn_wave`/`_make_step`, `_resolve_wave`, the streak and `_power_up`, asteroids, the boss, `handle_input`, `project`), the `_space_*` handlers and `_bank_stardust` in Main, `_reset_game`, the camera, or `_quiz_box_rect` |
 | `check_language_toggle.gd` | the settings ENG/KOR toggle reaches `Main` at all, the chosen language is saved, every screen is **rebuilt** rather than just re-localed, the choice can be reversed, and a relaunch comes up in the saved language with the screens already built in it | `set_language_korean`/`_rebuild_for_language`/`_load_language`, `SettingsPopup`'s language row, any `rebuild()`, or the boot order in `_boot_load` change |
 | `check_gameover_bgm.gd` | (skipped, passing, while there is no `gameover_bgm` — see *Asset pipeline*) the game over lays down `gameover_bgm` at `gameover_bgm_db` rather than silence, and every way out — PLAY AGAIN, HOME — comes back to the right track at full volume | `BGM_GAMEOVER_NAME`, `gameover_bgm_db`, `_play_gameover_bgm`, `_play_bgm`'s target volume, or where `_finish_run` touches the music |
 | `check_button_sounds.gd` | all four popup gold buttons ask for the same cue and the file behind that name actually resolves, the cream buttons likewise, and the main screen's START keeps its own separate sound | `GOLD_SOUND_NAME`/`CREAM_SOUND_NAME`, `SFX_START_FILE`, a button changing art, or an audio file being renamed or removed |

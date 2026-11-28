@@ -33,16 +33,18 @@ const FRAMES := [
 	"res://assets/ui_assets/popup/button_cream_v4.png",
 	"res://assets/ui_assets/popup/best_box.png",
 	"res://assets/ui_assets/popup/popup_best.png",
-	"res://assets/synty_ui/score_bar.png",
 	"res://assets/synty_ui/quiz_box.png",
-	"res://assets/synty_ui/side_slot.png",
+	"res://assets/synty_ui/explain_bar.png",
+	"res://assets/synty_ui/deco_arrow_left.png",
+	"res://assets/synty_ui/deco_arrow_right.png",
+	"res://assets/synty_ui/icon_button.png",
+	"res://assets/synty_ui/icon_button_on.png",
 	"res://assets/synty_ui/gauge.png",
 	"res://assets/synty_ui/weapon_back.png",
 	"res://assets/synty_ui/card_frame.png",
 	"res://assets/synty_ui/card_frame_on.png",
 	"res://assets/synty_ui/popup_bar_primary.png",
 	"res://assets/synty_ui/popup_bar.png",
-	"res://assets/synty_ui/explain_bar.png",
 ]
 ## Each cell's box is inset this share of the cell, leaving a transparent gap.
 const CELL_INSET := 0.06
@@ -59,18 +61,21 @@ const SIZES := {
 	"res://assets/ui_assets/main/title_main_v2.png": Vector2i(1774, 887),
 	"res://assets/ui_assets/main/icon_sheet.png": Vector2i(1536, 1024),
 	# play-screen HUD: the Synty UI kit, built by tools/build_ui_kit.gd (gitignored)
-	"res://assets/synty_ui/score_bar.png": Vector2i(500, 117),
 	"res://assets/synty_ui/quiz_box.png": Vector2i(548, 128),
 	"res://assets/synty_ui/pause.png": Vector2i(117, 117),
-	"res://assets/synty_ui/side_slot.png": Vector2i(127, 128),
-	"res://assets/synty_ui/gauge.png": Vector2i(216, 36),
+	"res://assets/synty_ui/pause_on.png": Vector2i(117, 117),
+	"res://assets/synty_ui/explain_bar.png": Vector2i(101, 104),
+	"res://assets/synty_ui/deco_arrow_left.png": Vector2i(114, 90),
+	"res://assets/synty_ui/deco_arrow_right.png": Vector2i(114, 90),
+	"res://assets/synty_ui/icon_button.png": Vector2i(127, 128),
+	"res://assets/synty_ui/icon_button_on.png": Vector2i(127, 128),
+	"res://assets/synty_ui/gauge.png": Vector2i(123, 59),
 	"res://assets/synty_ui/weapon_back.png": Vector2i(294, 68),
 	"res://assets/synty_ui/best_icon.png": Vector2i(50, 50),
 	"res://assets/synty_ui/card_frame.png": Vector2i(692, 338),
 	"res://assets/synty_ui/card_frame_on.png": Vector2i(692, 338),
 	"res://assets/synty_ui/popup_bar_primary.png": Vector2i(157, 104),
 	"res://assets/synty_ui/popup_bar.png": Vector2i(157, 104),
-	"res://assets/synty_ui/explain_bar.png": Vector2i(428, 104),
 	"res://assets/synty_ui/icon_person.png": Vector2i(58, 90),
 	"res://assets/synty_ui/icon_settings.png": Vector2i(81, 90),
 	"res://assets/synty_ui/icon_trophy.png": Vector2i(90, 90),
@@ -114,6 +119,19 @@ static var _warned := {}
 
 
 ## The art at `path`, or its placeholder.
+## The stardust icon: the faceted star from Aztech Games' Gems and Crystals
+## (tools/build_gem_kit.gd, 2026-11-28, owner), or the UI kit's currency icon
+## without that pack. One
+## place, since the menu, the HUD, its flying motes and the game over all
+## show it and must agree.
+const STARDUST_ICON := "res://assets/aztech_gems/stardust.png"
+const STARDUST_ICON_FALLBACK := "res://assets/synty_ui/icon_stardust.png"
+
+
+static func stardust_icon_path() -> String:
+	return STARDUST_ICON if ResourceLoader.exists(STARDUST_ICON) else STARDUST_ICON_FALLBACK
+
+
 static func texture(path: String) -> Texture2D:
 	# Held here, real files included: a texture loaded inside a _draw and
 	# referenced by nothing else is freed as soon as the draw returns, and the

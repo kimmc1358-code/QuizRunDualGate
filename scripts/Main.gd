@@ -146,6 +146,29 @@ const POP_PEAK_SCALE := 1.22
 
 # A weapon step won by the streak, and each planet smashed in fever.
 const FX_SOUND_CHIME_PATH := "res://assets/audio/gate_chime.wav"
+# A right gate flown through (2026-11-28, owner): an ElevenLabs sound the
+# owner chose (a short UI alert; a "shadow step blink" came first the same
+# day), trimmed to its 1.17 s and faded. It still
+# rises with the streak (PASS_PITCH_*). The chime above was the pass sound
+# too until then, and stands in if this file is missing.
+const FX_SOUND_PASS_PATH := "res://assets/audio/gate_pass.wav"
+# A wrong gate, or a quarter with no gate (2026-11-28, owner): an ElevenLabs
+# sound ("Stylized dark fantasy"), trimmed to its 0.74 s and lifted 6 dB, as
+# it came in well under the others. The wrong gate had no sound before.
+const FX_SOUND_WRONG_PATH := "res://assets/audio/gate_wrong.wav"
+# A planet smashed in FEVER (2026-11-28, owner): three takes of one heavy
+# sci-fi explosion from ElevenLabs, trimmed to their 1.2-1.3 s. Planets break
+# several a second, so each smash takes one at random at a slightly varied
+# pitch, on the next of SMASH_VOICES players, overlapping rather than cutting
+# the last one off. The chime played here before.
+const FX_SOUND_SMASH_PATHS := [
+	"res://assets/audio/planet_explode_1.wav",
+	"res://assets/audio/planet_explode_2.wav",
+	"res://assets/audio/planet_explode_3.wav",
+]
+const SMASH_VOICES := 4
+const SMASH_VOLUME_DB := -3.0
+const SMASH_PITCH_SPREAD := 0.08     # each smash pitched 1 +- this
 # Background music: the menu track, each mode's track and the game over one,
 # crossfaded by _play_bgm on the Music bus (_setup_audio_buses). There is no
 # music at the moment — every name below is a slot, and a file dropped in
@@ -353,6 +376,7 @@ const COUNTDOWN_LIGHT_SIZE := Vector2(1.5, 2.6)   # of the word's width and font
 # the caps are in baked pixels), the square frames as nine-patches.
 const HUD_QUIZ_BOX_PATH := "res://assets/synty_ui/quiz_box.png"
 const HUD_PAUSE_PATH := "res://assets/synty_ui/pause.png"
+const HUD_PAUSE_ON_PATH := "res://assets/synty_ui/pause_on.png"   # lit cyan while held, like the menu's icon buttons (2026-11-28)
 const HUD_QUIZ_BOX_CAP := 95.0
 ## Text on the HUD frames: their insides are dark.
 const HUD_TEXT_COLOR := Color(0.93, 0.96, 1.0)
@@ -642,6 +666,10 @@ var fx_sound_chime: AudioStreamPlayer
 ## power-up on the same gate does not cut it off, pitched up a step for each
 ## gate in the combo, up to PASS_PITCH_MAX.
 var fx_sound_pass: AudioStreamPlayer
+var fx_sound_wrong: AudioStreamPlayer
+var fx_sound_smash: Array[AudioStreamPlayer] = []
+var _smash_streams: Array[AudioStream] = []
+var _smash_next := 0
 const PASS_PITCH_STEP := 0.04
 const PASS_PITCH_MAX := 1.5
 const PASS_VOLUME_DB := -4.0
@@ -764,7 +792,21 @@ func _boot_load() -> void:
 	add_child(fx_sound_pass)
 	fx_sound_pass.bus = BUS_SFX
 	fx_sound_pass.volume_db = PASS_VOLUME_DB
-	fx_sound_pass.stream = fx_sound_chime.stream
+	fx_sound_pass.stream = load(FX_SOUND_PASS_PATH) if ResourceLoader.exists(FX_SOUND_PASS_PATH) else fx_sound_chime.stream
+	for path in FX_SOUND_SMASH_PATHS:
+		if ResourceLoader.exists(path):
+			_smash_streams.append(load(path))
+	for i in SMASH_VOICES:
+		var sp := AudioStreamPlayer.new()
+		add_child(sp)
+		sp.bus = BUS_SFX
+		sp.volume_db = SMASH_VOLUME_DB
+		fx_sound_smash.append(sp)
+	fx_sound_wrong = AudioStreamPlayer.new()
+	add_child(fx_sound_wrong)
+	fx_sound_wrong.bus = BUS_SFX
+	if ResourceLoader.exists(FX_SOUND_WRONG_PATH):
+		fx_sound_wrong.stream = load(FX_SOUND_WRONG_PATH)
 	for i in range(2):
 		var player := AudioStreamPlayer.new()
 		add_child(player)
@@ -863,6 +905,8 @@ func _boot_load() -> void:
 	# pre-layout value and the press animation would scale off-center.
 	pause_button.button_down.connect(_animate_button_press.bind(pause_button))
 	pause_button.button_up.connect(_animate_button_release.bind(pause_button))
+	pause_button.button_down.connect(func(): pause_button.icon = ArtSlot.texture(HUD_PAUSE_ON_PATH))
+	pause_button.button_up.connect(func(): pause_button.icon = ArtSlot.texture(HUD_PAUSE_PATH))
 	_load_title_art()
 	_reset_game()
 	# 로고를 이미 띄우고 있으면 그대로 두고, 로고가 끝날 때 스플래시로 간다.
@@ -1037,26 +1081,30 @@ func _draw_nine_patch(texture: Texture2D, rect: Rect2, margin: float, scale: flo
 #
 # 끝 조각은 세로 배율에 맞춰 가로도 같은 비율로 그리므로 장식의 생김새가
 # 그대로 유지된다.
-func _draw_horizontal_slice(texture: Texture2D, rect: Rect2, cap: float, ci: CanvasItem = null) -> void:
+## `cap_right`, when given, is the right end's own width (baked px), for art
+## whose two ends differ (the gauge, 2026-11-28).
+func _draw_horizontal_slice(texture: Texture2D, rect: Rect2, cap: float, ci: CanvasItem = null, cap_right: float = -1.0) -> void:
 	var target: CanvasItem = ci if ci != null else self
 	var tex_w: float = texture.get_width()
 	var tex_h: float = texture.get_height()
 	var scale: float = rect.size.y / tex_h
+	var cap_r: float = cap if cap_right < 0.0 else cap_right
 	var cap_dst: float = minf(cap * scale, rect.size.x * 0.5)
+	var cap_r_dst: float = minf(cap_r * scale, rect.size.x * 0.5)
 	# 왼쪽 끝
 	target.draw_texture_rect_region(texture,
 		Rect2(rect.position, Vector2(cap_dst, rect.size.y)),
 		Rect2(0.0, 0.0, cap, tex_h))
 	# 오른쪽 끝
 	target.draw_texture_rect_region(texture,
-		Rect2(Vector2(rect.end.x - cap_dst, rect.position.y), Vector2(cap_dst, rect.size.y)),
-		Rect2(tex_w - cap, 0.0, cap, tex_h))
+		Rect2(Vector2(rect.end.x - cap_r_dst, rect.position.y), Vector2(cap_r_dst, rect.size.y)),
+		Rect2(tex_w - cap_r, 0.0, cap_r, tex_h))
 	# 가운데 — 가로로만 늘어난다
-	var mid_w: float = rect.size.x - cap_dst * 2.0
+	var mid_w: float = rect.size.x - cap_dst - cap_r_dst
 	if mid_w > 0.0:
 		target.draw_texture_rect_region(texture,
 			Rect2(Vector2(rect.position.x + cap_dst, rect.position.y), Vector2(mid_w, rect.size.y)),
-			Rect2(cap, 0.0, tex_w - cap * 2.0, tex_h))
+			Rect2(cap, 0.0, tex_w - cap - cap_r, tex_h))
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1441,6 +1489,8 @@ func _space_wrong() -> void:
 	flash_color = HURT_FLASH_COLOR
 	flash_time = FLASH_DURATION
 	fx_shake_elapsed = 0.0
+	if fx_sound_wrong != null and fx_sound_wrong.stream != null:
+		fx_sound_wrong.play()
 
 
 ## 소행성이나 보스 탄에 맞았을 때.
@@ -1547,7 +1597,13 @@ func _space_fever_ended() -> void:
 func _space_fever_smash() -> void:
 	run_stardust += SpaceRun.STARDUST_FEVER_SMASH
 	score += maxi(1, int(round(SCORE_PER_COMBO * maxi(combo, 1) * FEVER_SMASH_SHARE)))
-	if fx_sound_chime != null and fx_sound_chime.stream != null:
+	if not _smash_streams.is_empty() and not fx_sound_smash.is_empty():
+		var sp: AudioStreamPlayer = fx_sound_smash[_smash_next % fx_sound_smash.size()]
+		_smash_next += 1
+		sp.stream = _smash_streams[randi() % _smash_streams.size()]
+		sp.pitch_scale = 1.0 + randf_range(-SMASH_PITCH_SPREAD, SMASH_PITCH_SPREAD)
+		sp.play()
+	elif fx_sound_chime != null and fx_sound_chime.stream != null:
 		fx_sound_chime.pitch_scale = 1.0
 		fx_sound_chime.play()
 
@@ -2815,10 +2871,18 @@ func _draw_quiz_box(view_size: Vector2, ci: CanvasItem = null) -> void:
 	var row_w: float = _quiz_row_rect(view_size).size.x
 	var max_font_size: int = int(round(row_w * QUIZ_TEXT_MAX_FONT_FRAC))
 	var min_font_size: int = int(round(row_w * QUIZ_TEXT_MIN_FONT_FRAC))
-	var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, combo_font)
+	# FEVER! and BOSS! are in the titles' Zen Dots (2026-11-28, owner), centred
+	# on its own measured capitals (DIGIT_BASELINE_FROM_CENTER_FRAC, the same
+	# probe). A line with Hangul stays in the base font, which has it.
+	var font: Font = combo_font
+	var baseline_frac: float = QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC
+	if not _has_hangul(text):
+		font = TitleArt.font(combo_font)
+		baseline_frac = DIGIT_BASELINE_FROM_CENTER_FRAC
+	var font_size := _fit_font_size(text, max_width, max_font_size, min_font_size, font)
 	# Centred within the writing area, clear of the frame's end caps.
 	var text_center := Vector2((area_left + area_right) * 0.5, top_left.y + draw_size.y * QUIZ_TEXT_CENTER_Y_FRAC)
-	_draw_centered_text(text, text_center, font_size, HUD_TEXT_COLOR, Color(0.0, 0.0, 0.0, 0.0), combo_font, ci, QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
+	_draw_centered_text(text, text_center, font_size, HUD_TEXT_COLOR, Color(0.0, 0.0, 0.0, 0.0), font, ci, baseline_frac)
 
 
 func _draw() -> void:

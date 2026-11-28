@@ -62,3 +62,9 @@ desktop.ini
 # Synty POLYGON Icons (paid): the gem and arrow rendered out by
 # tools/build_icon_kit.gd; never commit them.
 /assets/polygon_icons/
+# Aztech Games Gems and Crystals (Unity Asset Store, paid): the stardust star,
+# taken out by tools/build_gem_kit.gd; never commit it.
+/assets/aztech_gems/
+# BinbunVFX Stylized Explosion FX and Stylized Hit FX (CC0), copied in by
+# tools/build_vfx_kit.gd at the path their scenes name.
+/assets/BinbunVFX_Vol2/

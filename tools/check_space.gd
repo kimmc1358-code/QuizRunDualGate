@@ -29,7 +29,8 @@ extends SceneTree
 #      weapon and no stardust.
 #   5. No rocks fly between the steps (taken out on 2026-11-27); an
 #      asteroid spawned by hand still costs a heart when it reaches the
-#      ship and scores when shot to pieces. At the fastest the world goes in
+#      ship and scores when shot to pieces. A pattern holds the guns, and a
+#      power-up fires one short volley; FEVER opens them. At the fastest the world goes in
 #      a pattern, a late cycle at full streak, a step is still STEP_FLOOR
 #      seconds or more.
 #   6. FEVER lasts FEVER_PER_RIGHT a right gate of the pattern before it,
@@ -599,18 +600,55 @@ func _run() -> void:
 	_park(Vector2(-1.0, -1.0))
 	rock = sp._spawn_asteroid(Vector2(-1.0, -1.0), sp.SPAWN_Z * 0.5)
 	var score0: int = m.score
+	# A pattern holds the guns (2026-11-28); the asteroid is kept for a
+	# shooter mode, so they are opened by hand here.
+	sp.volley_left = 999.0
 	guard = 0
 	while not rock.judged and guard < 600:
 		_tick(1.0 / 60.0)
 		guard += 1
 	_check(not rock.alive and m.hearts == m.MAX_HEARTS and m.score > score0, "one shot to pieces scores and costs nothing")
 
+	# The guns hold during a pattern, where nothing can be hit, and a power-up
+	# fires one short volley so the new weapon is seen.
+	_fresh_run()
+	_hold_pattern()
+	_tick(1.0)
+	_check(sp.phase == sp.Phase.PATTERN and sp.bullets.is_empty(), "a pattern holds the guns (%d bullets)" % sp.bullets.size())
+	sp._power_up(false)
+	_tick(0.1)
+	_check(not sp.bullets.is_empty(), "a power-up in a pattern fires a volley")
+	_tick(sp.VOLLEY_TIME)
+	var after_volley: int = sp.bullets.size()
+	_tick(0.3)
+	_check(sp.bullets.size() <= after_volley, "and the volley stops after VOLLEY_TIME (%d -> %d bullets)" % [after_volley, sp.bullets.size()])
+
 	# ---- 6 ----
-	var per: float = sp.FEVER_PER_RIGHT
-	var whole: float = per * sp.PATTERN_LEN + sp.FEVER_PERFECT_BONUS
+	var whole: float = sp.FEVER_FULL
+	var per: float = whole / sp.PATTERN_LEN
 	_check(sp.fever_for(sp.FEVER_MIN_RIGHT - 1) == 0.0 and is_equal_approx(sp.fever_for(sp.FEVER_MIN_RIGHT), per * sp.FEVER_MIN_RIGHT)
 		and is_equal_approx(sp.fever_for(sp.PATTERN_LEN - 1), per * (sp.PATTERN_LEN - 1)) and is_equal_approx(sp.fever_for(sp.PATTERN_LEN), whole),
-		"fever grows with the right gates: none under %d, %.1f s a gate, %.1f s for all %d" % [sp.FEVER_MIN_RIGHT, per, whole, sp.PATTERN_LEN])
+		"fever is in proportion to the right gates: none under %d, %.2f s a gate, %.1f s for all %d" % [sp.FEVER_MIN_RIGHT, per, whole, sp.PATTERN_LEN])
+	# The gauge shows it: it fills with the right gates, the wrong ones eat in
+	# from the other end, and the fever drains it from where the pattern left
+	# it, so half right is half a gauge and half a fever.
+	_fresh_run()
+	_play_pattern(func(i): return i % 2 == 0)
+	_check(sp.phase == sp.Phase.FEVER and is_equal_approx(sp.fever_time, whole * 0.5)
+		and absf(sp.gauge_fill().x - 0.5) < 0.02,
+		"half the steps right: half a fever (%.1f s) and the gauge at half as it starts (%.2f)" % [sp.fever_time, sp.gauge_fill().x])
+	_tick(sp.fever_time * 0.5)
+	_check(absf(sp.gauge_fill().x - 0.25) < 0.03, "and it drains as the fever runs (%.2f half way through)" % sp.gauge_fill().x)
+	_fresh_run()
+	var steps_seen := []
+	_play_pattern(func(i):
+		if i == 4:
+			steps_seen.append(sp.gauge_fill())
+		return i != 2)
+	if not steps_seen.is_empty():
+		var at4: Vector2 = steps_seen[0]
+		_check(is_equal_approx(at4.x, 3.0 / sp.PATTERN_LEN) and is_equal_approx(at4.y, 1.0 / sp.PATTERN_LEN),
+			"in a pattern the gauge is the right steps so far, and the wrong ones from the other end (%.3f, %.3f)" % [at4.x, at4.y])
 	_fresh_run()
 	_play_pattern(func(_i): return true)
 	_check(sp.phase == sp.Phase.FEVER and sp.weapon == sp.Weapon.SPREAD and is_equal_approx(sp.fever_time, whole),
@@ -619,6 +657,12 @@ func _run() -> void:
 	var dust_f: int = m.run_stardust
 	m._space_fever_smash()
 	_check(m.run_stardust == dust_f + sp.STARDUST_FEVER_SMASH, "a planet smashed in fever pays stardust")
+	for b in sp.bullets:
+		b.node.queue_free()
+	sp.bullets.clear()
+	sp.volley_left = 0.0
+	_tick(0.3)
+	_check(not sp.bullets.is_empty(), "the guns open in FEVER")
 	_park(Vector2.ZERO)
 	_tick(sp.fever_time + 0.3)
 	_check(m.hearts == hearts_f, "FEVER costs no heart (hearts %d)" % m.hearts)

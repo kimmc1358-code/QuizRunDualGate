@@ -52,6 +52,7 @@ const EXPLAIN_FONT := 15.0
 const EXPLAIN_FONT_MIN := 11.0
 const PLAY_TEXT := "PLAY"
 const STARDUST_TEXT := "STARDUST"
+const STARDUST_TAG_SIZE := 18.0          # the QUIZ RUN card's STARDUST tag; was 14
 const BEST_TEXT := "BEST"
 const HANGAR_TEXT := "Hangar"
 const UPGRADE_TEXT := "Upgrade"
@@ -79,7 +80,11 @@ const SCANLINE := Color(0.55, 0.95, 1.0, 0.07)
 const SWEEP := Color(0.60, 0.97, 1.0, 0.16)
 const SWEEP_H := 0.22                    # share of the face's height
 const SWEEP_PERIOD := 2.6                # s, top to bottom
-const BUTTON_FRAME_PATH := KIT + "side_slot.png"
+# The square icon buttons (2026-11-28, owner, after a sample): their old
+# frame, the HUD slot's, with a blue face (build_ui_kit FACE_*; teal at first), lit cyan while held. The plain
+# silver bevel square was tried in its place and the owner kept this frame.
+const BUTTON_FRAME_PATH := KIT + "icon_button.png"
+const BUTTON_FRAME_ON_PATH := KIT + "icon_button_on.png"
 const BUTTON_FRAME_MARGIN := 34.0
 # The menu's own explain bar (2026-11-27): the score bar it used to borrow made
 # the menu read as the play screen. PLAY is the popups' main button, the orange
@@ -88,8 +93,12 @@ const BUTTON_FRAME_MARGIN := 34.0
 # looked like different games.
 const PLAY_FRAME_PATH := KIT + "popup_bar_primary.png"
 const PLAY_FRAME_CAP := 49.0             # baked px: the steel blocks (PopupBase.BUTTON_BAR_LEFT)
+# The explain line under the cards (2026-11-28, owner, after a sample, the
+# pack's Label_Button): the slim silver Frame_Box_Small_02 with a blue face,
+# its right slot panel mirrored onto the left (build_ui_kit MIRROR_RIGHT).
+# It was Button_Frame_05, then briefly the popups' blue bar, not the sample.
 const EXPLAIN_FRAME_PATH := KIT + "explain_bar.png"
-const EXPLAIN_FRAME_CAP := 40.0
+const EXPLAIN_FRAME_CAP := 40.0         # baked px: each end with its chamfered window corners (0.40 of the bake)
 const PLAY_TEXT_COLOR := Color(1.0, 0.98, 0.92)
 const PLAY_TEXT_RIM := Color(0.36, 0.12, 0.02)
 # PLAY answers a press (2026-11-27). Held, the button sinks a little and its
@@ -108,15 +117,27 @@ const PLAY_LAUNCH_TIME := 0.28           # s from release to the run starting
 const PLAY_GHOST_GROW := 0.30            # the ghost frame ends this much larger
 const PLAY_GHOST_COLOR := Color(1.0, 0.88, 0.55)   # paler than the glow: at the glow's orange the ghost read as a brown smudge on the dark sky
 const PLAY_EASE_RATE := 18.0             # 1/s, how fast the held glow follows the finger
-const BAR_FRAME_PATH := KIT + "score_bar.png"
-const BAR_FRAME_CAP := 60.0
+# The stardust readout (2026-11-28, owner): the explain line's frame, the
+# slim silver Frame_Box_Small_02 with its slot panel at both ends, as tall as
+# the icon buttons. It was the HUD's old score bar, then for an hour
+# Bar_Frame_02 with the buttons' teal face.
+const BAR_FRAME_PATH := KIT + "explain_bar.png"
+const BAR_FRAME_CAP := EXPLAIN_FRAME_CAP
+const STARDUST_INSET := 25.0             # px at 480 wide, clear of the slot panel at each end
+# The ornaments either end of the readout (2026-11-28, owner, after a
+# sample): the arrow buttons' chevrons on their clips, glow and all, each clip
+# laid over the frame's end so the chevron points out from it.
+const DECO_LEFT_PATH := KIT + "deco_arrow_left.png"
+const DECO_RIGHT_PATH := KIT + "deco_arrow_right.png"
+const DECO_H := 0.80                     # of the readout's height
+const DECO_CLIP_AT := 0.83               # the clip's middle, as a share of the left piece's width (measured off the bake)
+const DECO_OVERLAP := 6.0                # px at 480 wide, the clip's middle inside the frame's edge
 const PERSON_ICON := KIT + "icon_person.png"
 const SETTINGS_ICON := KIT + "icon_settings.png"
 const TROPHY_ICON := KIT + "icon_trophy.png"
 const UPGRADE_ICON := KIT + "icon_upgrade.png"
 const HANGAR_ICON := KIT + "icon_hangar.png"
 const LOCK_ICON := KIT + "icon_lock.png"
-const STARDUST_ICON := KIT + "icon_stardust.png"
 const BEST_ICON := KIT + "best_icon.png"
 
 # ---- layout, in px at 480 wide ----
@@ -138,7 +159,6 @@ const TOOL_LABEL_H := 18.0
 const TOOL_SPACING := 110.0              # centre to centre
 const REMOVE_ADS_H := 26.0
 const STARDUST_W := 170.0
-const STARDUST_H := 40.0
 ## The gaps that take the leftover height, and their bounds.
 const FLEX_GAPS := 5
 const MIN_GAP := 8.0
@@ -150,7 +170,8 @@ const NAME_COLOR := Color(0.88, 0.97, 1.0)
 const NAME_RIM := Color(0.20, 0.55, 0.95)
 const TEXT_COLOR := Color(0.90, 0.95, 1.0)
 const SUB_TEXT := Color(0.70, 0.80, 0.95)
-const STARDUST_COLOR := Color(0.55, 0.92, 1.0)
+const EXPLAIN_TEXT := Color(0.55, 0.88, 1.0)
+const STARDUST_COLOR := Color(1.0, 0.62, 0.92)   # pink-violet, the stardust's own (2026-11-28, owner; was cyan)
 const LOCK_VEIL := Color(0.02, 0.04, 0.10, 0.62)
 const LOCK_TEXT := Color(0.75, 0.82, 0.95)
 const REMOVE_ADS_COLOR := Color(1.0, 1.0, 1.0, 0.85)
@@ -330,8 +351,8 @@ func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	_font = AppFont.base()
 	_title_font = TitleArt.font(_font)
-	for p in [CARD_FRAME_PATH, CARD_FRAME_ON_PATH, BUTTON_FRAME_PATH, PLAY_FRAME_PATH, EXPLAIN_FRAME_PATH, BAR_FRAME_PATH, PERSON_ICON, SETTINGS_ICON,
-			TROPHY_ICON, UPGRADE_ICON, HANGAR_ICON, LOCK_ICON, STARDUST_ICON, BEST_ICON,
+	for p in [CARD_FRAME_PATH, CARD_FRAME_ON_PATH, BUTTON_FRAME_PATH, BUTTON_FRAME_ON_PATH, DECO_LEFT_PATH, DECO_RIGHT_PATH, PLAY_FRAME_PATH, EXPLAIN_FRAME_PATH, BAR_FRAME_PATH, PERSON_ICON, SETTINGS_ICON,
+			TROPHY_ICON, UPGRADE_ICON, HANGAR_ICON, LOCK_ICON, ArtSlot.stardust_icon_path(), BEST_ICON,
 			TitleArt.STAR_PATH, TitleArt.WREATH_PATH]:
 		ArtSlot.texture(p)
 	_sfx_select = _make_sfx(SFX_SELECT_FILE)
@@ -425,7 +446,9 @@ func _build() -> void:
 	_launch_t = -1.0
 	_explain_label = Label.new()
 	_explain_label.add_theme_font_override("font", _font)
-	_explain_label.add_theme_color_override("font_color", TEXT_COLOR)
+	# Sky blue like the sample's label and the popups' blue buttons
+	# (PopupBase.SECONDARY_LABEL_COLOR), 2026-11-28, owner.
+	_explain_label.add_theme_color_override("font_color", EXPLAIN_TEXT)
 	_explain_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_explain_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	_explain_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -464,7 +487,7 @@ func _layout() -> void:
 	var inner_w: float = w - m * 2.0
 	_r.login = Rect2(m, y, TOP_BAR_H * k, TOP_BAR_H * k)
 	_r.setting = Rect2(w - m - TOP_BAR_H * k, y, TOP_BAR_H * k, TOP_BAR_H * k)
-	_r.stardust = Rect2((w - STARDUST_W * k) * 0.5, y + (TOP_BAR_H - STARDUST_H) * 0.5 * k, STARDUST_W * k, STARDUST_H * k)
+	_r.stardust = Rect2((w - STARDUST_W * k) * 0.5, y, STARDUST_W * k, TOP_BAR_H * k)
 	y += TOP_BAR_H * k + gap
 	_r.emblem_mid = Vector2(w * 0.5, y + EMBLEM_H * 0.5 * k)
 	y += EMBLEM_H * k + gap
@@ -523,14 +546,24 @@ func _draw() -> void:
 	var R := _slid_rects()
 	draw_rect(Rect2(Vector2.ZERO, size), Color(DIM, DIM.a * _dim_share()))
 
-	_draw_square_button(R.login, PERSON_ICON, false)
-	_draw_square_button(R.setting, SETTINGS_ICON, false)
+	_draw_square_button(R.login, PERSON_ICON, false, _login)
+	_draw_square_button(R.setting, SETTINGS_ICON, false, _setting)
 	_draw_bar(R.stardust, BAR_FRAME_PATH, BAR_FRAME_CAP)
-	var sd_icon := ArtSlot.texture(STARDUST_ICON)
+	_draw_readout_deco(R.stardust, k)
+	var sd_icon := ArtSlot.texture(ArtSlot.stardust_icon_path())
 	var ih: float = R.stardust.size.y * 0.55
 	var iw: float = ih * sd_icon.get_width() / sd_icon.get_height()
-	draw_texture_rect(sd_icon, Rect2(R.stardust.position + Vector2(20.0 * k, (R.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
-	_text_right(_font, ScoreFormat.compact(_stardust), Vector2(R.stardust.end.x - 22.0 * k, R.stardust.get_center().y), int(18 * k), STARDUST_COLOR)
+	draw_texture_rect(sd_icon, Rect2(R.stardust.position + Vector2(STARDUST_INSET * k, (R.stardust.size.y - ih) * 0.5), Vector2(iw, ih)), false)
+	# In Zen Dots like the HUD's counter, and larger since the readout grew to
+	# the buttons' height (2026-11-28, owner). Zen Dots is wide: a five-digit
+	# count at full size ran into the star, so it shrinks to the room left.
+	var sd_text := ScoreFormat.compact(_stardust)
+	var sd_right: float = R.stardust.end.x - (STARDUST_INSET + 2.0) * k
+	var sd_room: float = sd_right - (R.stardust.position.x + STARDUST_INSET * k + iw + 6.0 * k)
+	var sd_fs := int(21 * k)
+	while sd_fs > int(12 * k) and _title_font.get_string_size(sd_text, HORIZONTAL_ALIGNMENT_LEFT, -1, sd_fs).x > sd_room:
+		sd_fs -= 1
+	_text_right(_title_font, sd_text, Vector2(sd_right, R.stardust.get_center().y), sd_fs, STARDUST_COLOR)
 
 	TitleArt.draw_emblem(self, R.emblem_mid, EMBLEM_H * k, EMBLEM_WREATH_H * k,
 		size.x, MARGIN * k, int(EMBLEM_WORD_MAX * k), _title_font, k * EMBLEM_WORD_MAX / 44.0)
@@ -549,11 +582,11 @@ func _draw() -> void:
 		int((36 if ready else 22) * k), PLAY_TEXT_COLOR if ready else LOCK_TEXT, PLAY_TEXT_RIM if ready else NAME_RIM)
 	draw_set_transform(Vector2.ZERO)
 
-	var tools := [[R.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true], [R.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true],
-		[R.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false]]
+	var tools := [[R.tool0, HANGAR_ICON, tr(HANGAR_TEXT), true, _hangar], [R.tool1, UPGRADE_ICON, tr(UPGRADE_TEXT), true, _upgrade],
+		[R.tool2, TROPHY_ICON, tr(LEADERBOARD_TEXT), false, _leaderboard]]
 	for t in tools:
 		var rect: Rect2 = t[0]
-		_draw_square_button(rect, t[1], t[3])
+		_draw_square_button(rect, t[1], t[3], t[4])
 		_text_center(_font, t[2], Vector2(rect.get_center().x, rect.end.y + TOOL_LABEL_H * 0.6 * k),
 			int(13 * k), SUB_TEXT, Color(0, 0, 0, 0))
 
@@ -574,13 +607,20 @@ func _draw_card(i: int, r: Rect2, k: float) -> void:
 		# The main mode: its name large on the left, where stardust comes
 		# from on the right, its record along the bottom.
 		_text_left(_title_font, name, Vector2(r.position.x + 30.0 * k, r.position.y + 52.0 * k), int(30 * k), NAME_COLOR, NAME_RIM)
-		var sd := ArtSlot.texture(STARDUST_ICON)
-		var sh: float = 20.0 * k
+		var sd := ArtSlot.texture(ArtSlot.stardust_icon_path())
+		# Larger, and in Zen Dots like the popups' short capital labels
+		# (2026-11-28, owner: 14 px was too small); the Korean line keeps the
+		# base font, which has Hangul.
+		var tag: String = tr(STARDUST_TEXT)
+		var tag_font: Font = _font if _has_hangul(tag) else _title_font
+		var tag_fs := int(STARDUST_TAG_SIZE * k)
+		var sh: float = STARDUST_TAG_SIZE * 1.45 * k
 		var sw: float = sh * sd.get_width() / sd.get_height()
-		var tag_w: float = _font.get_string_size(tr(STARDUST_TEXT), HORIZONTAL_ALIGNMENT_LEFT, -1, int(14 * k)).x
+		var tag_w: float = tag_font.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, tag_fs).x
 		var tag_x: float = r.end.x - 30.0 * k - tag_w
-		draw_texture_rect(sd, Rect2(tag_x - sw - 6.0 * k, r.position.y + 40.0 * k, sw, sh), false)
-		_text_left(_font, tr(STARDUST_TEXT), Vector2(tag_x, r.position.y + 50.0 * k), int(14 * k), STARDUST_COLOR, Color(0, 0, 0, 0))
+		var tag_mid: float = r.position.y + 50.0 * k
+		draw_texture_rect(sd, Rect2(tag_x - sw - 6.0 * k, tag_mid - sh * 0.5, sw, sh), false)
+		_text_left(tag_font, tag, Vector2(tag_x, tag_mid), tag_fs, STARDUST_COLOR, Color(0, 0, 0, 0))
 		var best := ArtSlot.texture(BEST_ICON)
 		var by: float = r.end.y - 44.0 * k
 		draw_texture_rect(best, Rect2(r.position.x + 30.0 * k, by - 12.0 * k, 24.0 * k, 24.0 * k), false)
@@ -628,8 +668,9 @@ func _draw_card_face(r: Rect2, tex: Texture2D, k: float) -> void:
 		draw_rect(Rect2(face.position.x, top, face.size.x, bottom - top), Color(SWEEP, SWEEP.a * a))
 
 
-func _draw_square_button(r: Rect2, icon_path: String, locked: bool) -> void:
-	_nine(ArtSlot.texture(BUTTON_FRAME_PATH), r, BUTTON_FRAME_MARGIN)
+func _draw_square_button(r: Rect2, icon_path: String, locked: bool, button: BaseButton = null) -> void:
+	var held: bool = not locked and button != null and button.get_draw_mode() == BaseButton.DRAW_PRESSED
+	_nine(ArtSlot.texture(BUTTON_FRAME_ON_PATH if held else BUTTON_FRAME_PATH), r, BUTTON_FRAME_MARGIN)
 	var icon := ArtSlot.texture(icon_path)
 	var ih: float = r.size.y * 0.46
 	var iw: float = ih * icon.get_width() / icon.get_height()
@@ -643,6 +684,24 @@ func _draw_square_button(r: Rect2, icon_path: String, locked: bool) -> void:
 		var lh: float = r.size.y * 0.30
 		var lw: float = lh * lock.get_width() / lock.get_height()
 		draw_texture_rect(lock, Rect2(r.end - Vector2(lw + r.size.x * 0.16, lh + r.size.y * 0.16), Vector2(lw, lh)), false)
+
+
+static func _has_hangul(text: String) -> bool:
+	for i in text.length():
+		var c := text.unicode_at(i)
+		if c >= 0xAC00 and c <= 0xD7A3:
+			return true
+	return false
+
+
+func _draw_readout_deco(r: Rect2, k: float) -> void:
+	var lt := ArtSlot.texture(DECO_LEFT_PATH)
+	var rt := ArtSlot.texture(DECO_RIGHT_PATH)
+	var dh: float = r.size.y * DECO_H
+	var dw: float = dh * lt.get_width() / maxf(1.0, lt.get_height())
+	var y: float = r.get_center().y - dh * 0.5
+	draw_texture_rect(lt, Rect2(r.position.x + DECO_OVERLAP * k - dw * DECO_CLIP_AT, y, dw, dh), false)
+	draw_texture_rect(rt, Rect2(r.end.x - DECO_OVERLAP * k - dw * (1.0 - DECO_CLIP_AT), y, dw, dh), false)
 
 
 ## A frame stretched to `r` with its corners kept, `margin` in the texture's

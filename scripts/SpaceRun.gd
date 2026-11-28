@@ -13,7 +13,7 @@ extends Node
 ##            pays more; a wrong one only breaks the streak — no heart, no
 ##            weapon. Asteroids fly between the steps and cost a heart.
 ##   FEVER    after a pattern with FEVER_MIN_RIGHT or more right: at speed for
-##            FEVER_PER_RIGHT a right gate (all right: 9 s), every planet
+##            its share of FEVER_FULL (all right: 9 s), every planet
 ##            touched or shot smashed for points and stardust, nothing
 ##            costing a heart.
 ##   BOSS     after PATTERNS_PER_CYCLE patterns an enemy ship arrives. A strong
@@ -321,13 +321,33 @@ const POWER_EVERY := 3
 # track, and the backing under the weapon readout. The stardust sits bare at the
 # top right with the kit's icon (_draw_stardust_bare).
 const HUD_GAUGE_PATH := "res://assets/synty_ui/gauge.png"
-const HUD_GAUGE_CAP := 18.0            # baked px: the pill's round end
-const HUD_GAUGE_INSET := Vector2(9.0, 5.0)   # track -> fill, on screen
+# The gauge's frame is the plain silver capsule, Button_Frame_03 (2026-11-28,
+# owner); the game fills its window with a beam (_draw_laser). Before it, the
+# same day: Bar_Frame_08, an orange pill; Bar_Frame_06, a grey frame with a
+# dark block and orange stripes, which did not go with the question box; and
+# the question box's own frame small. The ends are sliced as shares of the
+# baked width (each frame tried had its own), and the window was measured
+# off the bake (123x59, transparent): x 15..108, y 11..51.
+const HUD_GAUGE_H := 22.0              # on screen
+const HUD_GAUGE_CAP_L := 0.3           # the rounded end
+const HUD_GAUGE_CAP_R := 0.3
+const GAUGE_WIN_L := 15.0 / 123.0      # the window's edges, as shares of the bake
+const GAUGE_WIN_R := 15.0 / 123.0      # from the right end
+const GAUGE_WIN_T := 11.0 / 59.0
+const GAUGE_WIN_B := 51.0 / 59.0
+const GAUGE_WIN_PAD := 2.0             # px between the window's bevel and the fill
+const GAUGE_TRACK := Color(0.03, 0.05, 0.12, 0.85)
 const HUD_WEAPON_BACK_PATH := "res://assets/synty_ui/weapon_back.png"
-const HUD_STARDUST_ICON_PATH := "res://assets/synty_ui/icon_stardust.png"
 # The gauge goes gold while every step of the pattern so far was right, the
 # fever it is heading for.
 const GAUGE_PERFECT_COLOR := Color(1.0, 0.8, 0.25)
+# The rest of the gauge (2026-11-28): the fill turns from a dim blue to cyan
+# once it has earned a fever, the wrong steps eat into it from the right in
+# red, and a mark stands at FEVER_MIN_RIGHT.
+const GAUGE_SHORT := Color(0.32, 0.5, 0.72)
+const GAUGE_FEVER_READY := Color(0.35, 0.85, 1.0)
+const GAUGE_LOST := Color(0.6, 0.12, 0.18, 0.85)
+const GAUGE_MARK := Color(1.0, 1.0, 1.0, 0.7)
 # The stardust count wears the mode select's readout colour.
 const STARDUST_COLOR: Color = preload("res://scripts/ModeSelectScreen.gd").STARDUST_COLOR
 # Asteroids. They flew in the gaps between a pattern's steps until
@@ -359,12 +379,17 @@ const BOSS_POINTS := 300
 
 # ---- fever ----
 # Earned by the right gates of the pattern just flown (2026-11-27, the
-# owner's idea): FEVER_PER_RIGHT a right gate, FEVER_PERFECT_BONUS more for
-# all of them, none under FEVER_MIN_RIGHT. It used to be all or nothing,
-# eight seconds for a whole pattern right and none for one miss, which was
-# too tight for what is meant to be the fun part. Twelve right is 9 s.
-const FEVER_PER_RIGHT := 0.6
-const FEVER_PERFECT_BONUS := 1.8
+# owner's idea), in proportion: FEVER_FULL for all twelve, half of it for
+# half, none under FEVER_MIN_RIGHT. The gauge under the question box fills
+# with the right gates and the fever drains it from where it stopped
+# (gauge_fill), so the length is read off the gauge (2026-11-28, owner): half
+# right, half a gauge, half a fever.
+# - It was all or nothing at first, eight seconds for a whole pattern right
+#   and none for one miss: too tight for what is meant to be the fun part.
+# - Then 0.6 s a right gate and 1.8 s more for all of them. The bonus broke
+#   the proportion the gauge shows (eleven right was 6.6 s, twelve 9 s), and
+#   went; a whole pattern right still brings the next weapon (_end_pattern).
+const FEVER_FULL := 9.0             # s, for every step of a pattern right
 const FEVER_MIN_RIGHT := 6
 const FEVER_SPEED := 2.2
 const FEVER_SPAWN_INTERVAL := 0.28
@@ -565,6 +590,15 @@ var weapon: int = Weapon.BLASTER
 var level := 1
 var drones := 0
 var fire_timer := 0.0
+# ---- the guns hold during a pattern (2026-11-28, owner) ----
+# The ship fired all the time. Since the rocks went (2026-11-27) nothing in a
+# pattern can be hit, so its bullets were only noise across the gates the
+# player is reading, worse with every weapon step (SPOT and SHELL most of
+# all). Now the guns open in FEVER and at the boss, which makes the turn from
+# reading to shooting a reward, and a power-up in a pattern fires one short
+# volley so the new weapon is seen.
+const VOLLEY_TIME := 0.5           # s of fire after a power-up
+var volley_left := 0.0
 var bullets: Array = []
 var drone_nodes: Array = []
 
@@ -767,6 +801,7 @@ func _build_ship() -> void:
 		ship_model = wedge
 	ship_pivot.add_child(ship_model)
 	engine_glows.clear()
+	engine_jets.clear()
 	for dx in [-0.25, 0.0, 0.25]:
 		var glow := MeshInstance3D.new()
 		var q := QuadMesh.new()
@@ -779,17 +814,31 @@ func _build_ship() -> void:
 		glow.position = Vector3(dx, 0.0, ENGINE_Z)
 		ship_pivot.add_child(glow)
 		engine_glows.append(glow)
+		var jet := _make_jet()
+		jet.position = Vector3(dx, 0.0, ENGINE_Z)
+		ship_pivot.add_child(jet)
+		engine_jets.append(jet)
 	_update_engines(0.0)
 
 
 # ---- the engines (2026-11-28, owner) ----
-# The nozzles' glows burn with the run: each flickers on its own like a
-# flame, and they grow, brighten and stretch into a short plume as the
-# streak speeds the world up (pace) and leap on the lunge after a pass
-# (boost). A flame shader on a cone was tried first: the camera sits behind
-# the ship, so a cone trailing back points straight at it and shows almost
-# no length, and tilted down far enough to show some it hung like an icicle.
-# The glow, a billboard, reads the same from any angle.
+# Each nozzle burns with the run: a round glow at its mouth, and a jet of
+# small flames shot out of it backward, toward the camera, each growing and
+# fading as it comes. Coming at the lens, they swell with perspective as well
+# as by their own curve, so the jet reads as pouring out of the screen. The
+# jet runs faster, brighter and longer-lived as the streak speeds the world up
+# (pace), and leaps on the lunge after a pass (boost).
+#
+# How it got here, all the same day:
+# - A CC0 flame shader on a 3D cone (godotshaders.com) first: the camera sits
+#   behind the ship, so a cone trailing back points straight into the lens and
+#   shows no length; tilted down far enough to show some, it hung like an
+#   icicle.
+# - Then the glows alone stretched into a plume: grown wide, the three ran
+#   together into a white blob over the hull.
+# - Then a flame cone drawn on a camera-facing quad: it hung down the screen,
+#   and the owner read it as pointing downward, not out at the viewer. Put
+#   back short under the jet, it still did, and went again.
 const ENGINE_COLOR := Color(0.35, 0.85, 1.0)
 const ENGINE_HOT := Color(0.85, 0.97, 1.0)   # what the core whitens toward at speed
 const ENGINE_ENERGY := 2.0
@@ -797,12 +846,69 @@ const ENGINE_GLOW_SIZE := 0.28
 const ENGINE_Z := 0.62
 const ENGINE_PACE_GROW := 0.08     # a touch wider at full streak speed: the three overlap and add up to white
 const ENGINE_BOOST_GROW := 0.18    # and again on the lunge
-const ENGINE_PACE_STRETCH := 0.55  # taller (a plume), at full streak speed
-const ENGINE_BOOST_STRETCH := 0.8
 const ENGINE_FLICKER := 0.10       # size wobble, as a share
 const ENGINE_FLICKER_HZ := [17.0, 29.0]
+# The jet: small flames out of each nozzle toward the camera (+Z).
+const JET_AMOUNT := 14
+const JET_LIFETIME := 0.16          # s
+const JET_SIZE := 0.085             # a flame quad at birth, before its curve
+const JET_GROW := 2.6               # how much a flame has grown by its end
+const JET_SPEED := 6.0              # units/s at the start pace
+const JET_PACE_SPEED := 0.6         # this much faster at full streak speed
+const JET_BOOST_SPEED := 1.0        # and on the lunge
+const JET_ENERGY := 0.7
+const JET_RISE := 0.26             # up per unit back: 0.32 is the camera's line of sight
 var engine_glows: Array[MeshInstance3D] = []
+var engine_jets: Array[CPUParticles3D] = []
 var _engine_t := 0.0
+
+
+func _make_jet() -> CPUParticles3D:
+	var p := CPUParticles3D.new()
+	p.amount = JET_AMOUNT
+	p.lifetime = JET_LIFETIME
+	# Carried with the ship, so the jet stays on its nozzle as the ship
+	# steers, banks and shrinks into a gate.
+	p.local_coords = true
+	# Along the line of sight to the camera (CAMERA_POS from the nozzle), a
+	# touch below it: a flame coming straight at the lens stays on its nozzle
+	# on screen and only swells, which is what reads as "out of the screen".
+	# Straight back (+Z) the camera, being above, saw the jet run down the
+	# screen instead.
+	p.direction = Vector3(0.0, JET_RISE, 1.0).normalized()
+	p.spread = 5.0
+	p.gravity = Vector3.ZERO
+	p.initial_velocity_min = JET_SPEED * 0.9
+	p.initial_velocity_max = JET_SPEED * 1.1
+	p.scale_amount_min = 0.85
+	p.scale_amount_max = 1.0
+	var grow := Curve.new()
+	grow.add_point(Vector2(0.0, 1.0 / JET_GROW))
+	grow.add_point(Vector2(1.0, 1.0))
+	grow.max_value = 1.0
+	p.scale_amount_curve = grow
+	# White-hot out of the nozzle, cooling to the engine's blue as it fades.
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(0.9, 0.98, 1.0, 0.7))
+	ramp.set_color(1, Color(0.15, 0.5, 1.0, 0.0))
+	ramp.add_point(0.3, Color(ENGINE_COLOR, 0.45))
+	p.color_ramp = ramp
+	var q := QuadMesh.new()
+	q.size = Vector2(JET_SIZE, JET_SIZE) * JET_GROW
+	p.mesh = q
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	m.vertex_color_use_as_albedo = true
+	m.albedo_texture = _radial_texture()
+	m.albedo_color = Color(JET_ENERGY, JET_ENERGY, JET_ENERGY, 1.0)
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	p.material_override = m
+	p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	p.emitting = true
+	return p
 
 
 func _update_engines(delta: float) -> void:
@@ -813,15 +919,17 @@ func _update_engines(delta: float) -> void:
 		var ph: float = float(i) * 2.1
 		var flick: float = 0.6 * sin(_engine_t * TAU * ENGINE_FLICKER_HZ[0] + ph) + 0.4 * sin(_engine_t * TAU * ENGINE_FLICKER_HZ[1] + ph * 1.7)
 		var w: float = (1.0 + ENGINE_PACE_GROW * speed + ENGINE_BOOST_GROW * boost) * (1.0 + ENGINE_FLICKER * flick)
-		var stretch: float = 1.0 + ENGINE_PACE_STRETCH * speed + ENGINE_BOOST_STRETCH * boost
-		g.scale = Vector3(w, w * stretch, 1.0)
-		# Grown downward only, so the plume hangs off the nozzle rather than
-		# swallowing the hull above it.
-		g.position.y = -ENGINE_GLOW_SIZE * w * (stretch - 1.0) * 0.5
+		g.scale = Vector3(w, w, 1.0)
 		var heat: float = clampf(0.12 * speed + 0.3 * boost, 0.0, 1.0)
 		var e: float = ENGINE_ENERGY * (1.0 + 0.1 * speed + 0.25 * boost) * (1.0 + 0.12 * flick)
 		var c := ENGINE_COLOR.lerp(ENGINE_HOT, heat)
 		(g.material_override as StandardMaterial3D).albedo_color = Color(c.r * e, c.g * e, c.b * e, 1.0)
+	var v: float = JET_SPEED * (1.0 + JET_PACE_SPEED * speed + JET_BOOST_SPEED * boost)
+	var je: float = JET_ENERGY * (1.0 + 0.2 * speed + 0.5 * boost)
+	for jet in engine_jets:
+		jet.initial_velocity_min = v * 0.9
+		jet.initial_velocity_max = v * 1.1
+		(jet.material_override as StandardMaterial3D).albedo_color = Color(je, je, je, 1.0)
 
 
 func _radial_texture() -> GradientTexture2D:
@@ -1022,9 +1130,19 @@ static func spec_of(kind: int, level: int) -> Dictionary:
 
 func reset_run() -> void:
 	_clear_world()
+	for f in smash_fx:
+		_free(f.node)
+	smash_fx.clear()
+	for m in dust_motes:
+		if m.node != null:
+			_free(m.node)
+	dust_motes.clear()
+	dust_pending = 0
+	dust_pop = 0.0
 	_remove_boss()
 	fire_timer = 0.0
 	cycle = 0
+	volley_left = 0.0
 	patterns_done = 0
 	weapon = Weapon.BLASTER
 	level = 1
@@ -1877,7 +1995,22 @@ func _end_pattern() -> void:
 static func fever_for(right: int) -> float:
 	if right < FEVER_MIN_RIGHT:
 		return 0.0
-	return FEVER_PER_RIGHT * right + (FEVER_PERFECT_BONUS if right >= PATTERN_LEN else 0.0)
+	return FEVER_FULL * float(right) / float(PATTERN_LEN)
+
+
+## The gauge under the question box, as shares of its length: x the fill, y
+## the part lost (drawn from the right end; a pattern's wrong steps). In a
+## pattern the fill is the right gates so far and the lost part the wrong ones,
+## so the gap between is the steps still to fly; in FEVER the fill is the
+## fever left, on the same scale, so it drains from where the pattern left it.
+func gauge_fill() -> Vector2:
+	match phase:
+		Phase.FEVER:
+			return Vector2(clampf((fever_time - phase_time) / FEVER_FULL, 0.0, 1.0), 0.0)
+		Phase.BOSS:
+			return Vector2(clampf(boss_hp / boss_max_hp, 0.0, 1.0), 0.0)
+		_:
+			return Vector2(float(steps_right), float(steps_done - steps_right)) / float(PATTERN_LEN)
 
 
 ## Where the run goes after a pattern, and after its fever.
@@ -1912,6 +2045,10 @@ func _power_up(big: bool) -> void:
 	else:
 		level = mini(MAX_LEVEL, level + 1)
 		label = "POWER +1"
+	# Shown off at once: a pattern holds the guns, so without the volley a
+	# weapon that grew would go unseen until the fever.
+	volley_left = VOLLEY_TIME
+	fire_timer = 0.0
 	if main != null:
 		main._space_powered_up(label)
 
@@ -2030,6 +2167,7 @@ func _boss_hit(dmg: float) -> void:
 	patterns_done = 0
 	main._space_boss_down(BOSS_POINTS * cycle)
 	main._space_stardust(STARDUST_BOSS * cycle)
+	_spawn_dust(center, STARDUST_BOSS * cycle, DUST_PER_BOSS)
 	_enter(Phase.PATTERN)
 
 
@@ -2104,6 +2242,8 @@ func _update_bullets(delta: float) -> void:
 				p.judged = true
 				_smash(p, false)
 				main._space_fever_smash()
+				_spawn_dust(p.node.position, STARDUST_FEVER_SMASH, DUST_PER_SMASH)
+				_smash_fx(p)
 				if not b.pierce:
 					b.dead = true
 		if not b.dead and boss != null and phase == Phase.BOSS and phase_time >= BOSS_ENTER_TIME * 0.6:
@@ -2151,7 +2291,11 @@ func _update_run(delta: float) -> void:
 	_update_pace(delta)
 	_update_memory_slow(delta)
 	var v := speed() * delta
-	_fire(delta)
+	# The guns fire in FEVER and at the boss, where there is something to hit;
+	# during a pattern only a power-up's volley (see VOLLEY_TIME).
+	volley_left = maxf(0.0, volley_left - delta)
+	if phase != Phase.PATTERN or volley_left > 0.0:
+		_fire(delta)
 	_update_bullets(delta)
 	if not main.space_run_live():
 		return
@@ -2177,6 +2321,8 @@ func _update_run(delta: float) -> void:
 			if p.alive and _touching(p):
 				_smash(p, false)
 				main._space_fever_smash()
+				_spawn_dust(p.node.position, STARDUST_FEVER_SMASH, DUST_PER_SMASH)
+				_smash_fx(p)
 	# Asteroids: a hit costs a heart.
 	for r in rocks:
 		r.z += v
@@ -2255,6 +2401,70 @@ func _spawn_fever_planets() -> void:
 
 # ================================================================ effects
 
+# ---- the fever's explosions (2026-11-28, owner: "more dazzling") ----
+# A planet smashed in FEVER also bursts with one of BinbunVFX's explosions
+# (Stylized Explosion FX, CC0; tools/build_vfx_kit.gd copies it in at the
+# path its scenes name, assets/BinbunVFX_Vol2/, gitignored): the orange-ringed
+# air explosion for most, the big white-cored burst for the largest planets.
+# Over the smash's own shards and the stardust flying off. Planets break
+# several a second in a fever, and each explosion is eight particle systems,
+# so no more than SMASH_FX_MAX burn at once; past that a smash keeps only its
+# own burst. Each drifts with the world, like the shards. Without the pack
+# there are none. Not yet measured on a phone.
+const SMASH_FX_SMALL := "res://assets/BinbunVFX_Vol2/ExplosionFX/effects/air/vfx_air_explosion_01.tscn"
+const SMASH_FX_BIG := "res://assets/BinbunVFX_Vol2/ExplosionFX/effects/burst/vfx_burst_explosion_01.tscn"
+const SMASH_FX_SCALE := 0.42           # x the planet's radius
+const SMASH_FX_BIG_SCALE := 0.5
+const SMASH_FX_BIG_AT := 0.9           # planets this share of PLANET_RADIUS and up get the big one
+const SMASH_FX_MAX := 4
+const SMASH_FX_LIFE := 1.6             # s before one is freed
+# Kept short of the camera: drifting with the world, one burst at the ship's
+# plane came on into the lens and covered the bottom of the screen. It stops
+# at SMASH_FX_NEAR_Z, and one born near is drawn smaller (SMASH_FX_NEAR_SHRINK
+# at the plane), so a planet rammed close bursts about as big on screen as
+# one shot far off.
+const SMASH_FX_NEAR_Z := -1.0
+const SMASH_FX_NEAR_SHRINK := 0.55
+const SMASH_FX_NEAR_DEPTH := 15.0       # world units: past this from the plane, full size
+var smash_fx: Array = []               # {node, t}
+var _smash_fx_scenes := {}
+
+
+func _smash_fx(p: Dictionary) -> void:
+	if smash_fx.size() >= SMASH_FX_MAX or root3d == null:
+		return
+	var big: bool = float(p.radius) >= PLANET_RADIUS * SMASH_FX_BIG_AT
+	var path: String = SMASH_FX_BIG if big else SMASH_FX_SMALL
+	if not _smash_fx_scenes.has(path):
+		_smash_fx_scenes[path] = load(path) if ResourceLoader.exists(path) else null
+	var scene: PackedScene = _smash_fx_scenes[path]
+	if scene == null:
+		return
+	var fx: Node3D = scene.instantiate()
+	root3d.add_child(fx)
+	fx.position = (p.node as Node3D).position
+	fx.position.z = minf(fx.position.z, SMASH_FX_NEAR_Z)
+	# 1 at the ship's plane, 0 from SMASH_FX_NEAR_DEPTH out.
+	var near: float = clampf(1.0 + fx.position.z / SMASH_FX_NEAR_DEPTH, 0.0, 1.0)
+	var base: float = (SMASH_FX_BIG_SCALE if big else SMASH_FX_SCALE) * float(p.radius) / PLANET_RADIUS
+	fx.scale = Vector3.ONE * base * lerpf(1.0, SMASH_FX_NEAR_SHRINK, near)
+	if fx.has_method("play"):
+		fx.play()
+	smash_fx.append({"node": fx, "t": 0.0})
+
+
+func _update_smash_fx(delta: float, running: bool) -> void:
+	var v: float = speed() * delta if running else 0.0
+	for i in range(smash_fx.size() - 1, -1, -1):
+		var f: Dictionary = smash_fx[i]
+		f.t += delta
+		if f.t >= SMASH_FX_LIFE or not is_instance_valid(f.node):
+			_free(f.node)
+			smash_fx.remove_at(i)
+			continue
+		var n: Node3D = f.node
+		n.position.z = minf(n.position.z + v, SMASH_FX_NEAR_Z)
+
 func _smash(p: Dictionary, wrong: bool, size: float = 1.0) -> void:
 	p.alive = false
 	var node: MeshInstance3D = p.node
@@ -2310,6 +2520,8 @@ func _spark(at: Vector3) -> void:
 
 
 func _update_fx(delta: float, running: bool) -> void:
+	_update_dust(delta)
+	_update_smash_fx(delta, running)
 	for w in waves:
 		for p in w.planets:
 			# A passed gate is no longer alive but is still there: it flies on
@@ -2605,30 +2817,39 @@ func draw_hud(ci: CanvasItem, box: Rect2, side: Rect2) -> void:
 					if w.get("avoid", false):
 						_draw_cross(ci, c, box.size.y * 0.3)
 	var rect := gauge_rect(box)
-	main._draw_horizontal_slice(ArtSlot.texture(HUD_GAUGE_PATH), rect, HUD_GAUGE_CAP, ci)
-	var inner := rect.grow_individual(-HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y, -HUD_GAUGE_INSET.x, -HUD_GAUGE_INSET.y)
+	var tex := ArtSlot.texture(HUD_GAUGE_PATH)
+	main._draw_horizontal_slice(tex, rect, tex.get_width() * HUD_GAUGE_CAP_L, ci, tex.get_width() * HUD_GAUGE_CAP_R)
+	var inner := gauge_window(rect)
+	ci.draw_rect(inner, GAUGE_TRACK)
+	inner = inner.grow(-GAUGE_WIN_PAD)
 	var gh: float = inner.size.y
-	var frac := 0.0
-	var col := Color(0.35, 0.85, 1.0)
+	var g := gauge_fill()
+	var col := GAUGE_FEVER_READY if steps_right >= FEVER_MIN_RIGHT else GAUGE_SHORT
 	match phase:
 		Phase.FEVER:
-			frac = 1.0 - clampf(phase_time / maxf(fever_time, 0.01), 0.0, 1.0)
 			col = Color(1.0, 0.45, 0.2).lerp(Color(1.0, 0.85, 0.3), 0.5 + 0.5 * sin(phase_time * 12.0))
 		Phase.BOSS:
-			frac = clampf(boss_hp / boss_max_hp, 0.0, 1.0)
 			col = Color(0.95, 0.2, 0.3)
 		_:
-			frac = float(steps_done) / float(PATTERN_LEN)
-			if pattern_perfect():
+			if pattern_perfect() and steps_done > 0:
 				col = GAUGE_PERFECT_COLOR
-	if frac > 0.0:
-		var fill := StyleBoxFlat.new()
-		fill.bg_color = col
-		fill.set_corner_radius_all(int(gh * 0.5))
-		fill.anti_aliasing = true
-		ci.draw_style_box(fill, Rect2(inner.position, Vector2(inner.size.x * frac, gh)))
+	if g.y > 0.0:
+		var lost := StyleBoxFlat.new()
+		lost.bg_color = GAUGE_LOST
+		lost.set_corner_radius_all(int(gh * 0.5))
+		lost.anti_aliasing = true
+		ci.draw_style_box(lost, Rect2(Vector2(inner.end.x - inner.size.x * g.y, inner.position.y), Vector2(inner.size.x * g.y, gh)))
+	if g.x > 0.0:
+		_draw_laser(ci, Rect2(inner.position, Vector2(inner.size.x * g.x, gh)), col)
+	if phase == Phase.PATTERN:
+		# Where the fever starts: FEVER_MIN_RIGHT right, and none short of it.
+		var tx: float = inner.position.x + inner.size.x * float(FEVER_MIN_RIGHT) / float(PATTERN_LEN)
+		ci.draw_line(Vector2(tx, inner.position.y - 2.0), Vector2(tx, inner.end.y + 2.0), GAUGE_MARK, 2.0)
 	# The stardust won this run, at the top right.
-	_draw_stardust_bare(ci, side, int(main.run_stardust))
+	# The count waits for the motes still on their way, so it ticks up as each
+	# one lands.
+	_draw_stardust_bare(ci, side, int(main.run_stardust) - dust_pending)
+	_draw_dust(ci, side)
 
 
 ## The weapon readout, bottom right. Apart from draw_hud so Main can slide it
@@ -2639,10 +2860,12 @@ func draw_weapon_hud(ci: CanvasItem) -> void:
 	var txt := "%s  Lv%d%s" % [wname, level, ("  +%d DRONE" % drones) if drones > 0 else ""]
 	# Bottom right (2026-11-26; the health gauge took the top-left side).
 	var tw: float = font.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
-	var pos := Vector2(view_size.x - 14.0 - tw, view_size.y - 18.0)
 	var back_w: float = tw + 46.0
-	ci.draw_texture_rect(ArtSlot.texture(HUD_WEAPON_BACK_PATH),
-		Rect2(Vector2(view_size.x - 6.0 - back_w, view_size.y - 44.0), Vector2(back_w, 34.0)), false)
+	var back := Rect2(Vector2(view_size.x - 6.0 - back_w, view_size.y - 44.0), Vector2(back_w, 34.0))
+	ci.draw_texture_rect(ArtSlot.texture(HUD_WEAPON_BACK_PATH), back, false)
+	# Centred on the backing both ways (2026-11-28, owner): it sat right of
+	# middle and low. The baseline is set off the capitals' measured middle.
+	var pos := Vector2(back.get_center().x - tw * 0.5, back.get_center().y + 18.0 * main.QUIZ_TEXT_BASELINE_FROM_CENTER_FRAC)
 	for o in [Vector2(-2, 0), Vector2(2, 0), Vector2(0, -2), Vector2(0, 2)]:
 		ci.draw_string(font, pos + o, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(0.05, 0.04, 0.12))
 	ci.draw_string(font, pos, txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 18, Color(1.0, 0.86, 0.3))
@@ -2659,14 +2882,160 @@ func _draw_stardust_bare(ci: CanvasItem, rect: Rect2, amount: int) -> void:
 	var pos := Vector2(rect.end.x - 4.0 - tw, base)
 	ci.draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, maxi(3, fs / 5), Color(0.05, 0.04, 0.12))
 	ci.draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, STARDUST_COLOR)
-	var icon := ArtSlot.texture(HUD_STARDUST_ICON_PATH)
-	var ih: float = rect.size.y * 0.62
+	var icon := ArtSlot.texture(ArtSlot.stardust_icon_path())
+	# Swells for a moment as a mote lands.
+	var ih: float = rect.size.y * 0.62 * (1.0 + DUST_POP_GROW * dust_pop)
 	var iw: float = ih * icon.get_width() / maxf(1.0, icon.get_height())
-	ci.draw_texture_rect(icon, Rect2(Vector2(pos.x - 6.0 - iw, rect.get_center().y - ih * 0.5), Vector2(iw, ih)), false)
+	_dust_target = Vector2(pos.x - 6.0 - rect.size.y * 0.62 * 0.5, rect.get_center().y)
+	ci.draw_texture_rect(icon, Rect2(_dust_target - Vector2(iw, ih) * 0.5, Vector2(iw, ih)), false)
 
 
-## Kind.COLOR's rule: a round swatch of the colour to fly through, ringed so
-## it holds on any background.
+# ---- stardust flying to its counter (2026-11-28, owner) ----
+# A planet smashed in FEVER, and the boss shot down, throw out a few stars,
+# which burst a little way from where it broke and then fly into the counter
+# at the top right; the count goes up as each lands, and the counter's icon
+# swells. The stardust itself is paid at once (Main), so the run's total is
+# right whatever happens to a mote; only the shown count waits
+# (dust_pending). Gates pay without motes: they come every second or so and
+# are already lit up by the pass burst.
+#
+# The motes are real 3D stars, spinning as they go (DUST_STAR_MESH, the
+# Gems and Crystals star the counter's icon is rendered from, by
+# tools/build_gem_kit.gd; owner, the same day). Their path is worked out on the screen and each frame put back into
+# the world at a depth that closes in on the camera, sized to the pixels the
+# flat icon had. They fly in the world's viewport, under the HUD, so the last
+# of each flight slips in behind the counter's icon. Without the pack they are
+# the flat icon, drawn on the HUD.
+const DUST_PER_SMASH := 2          # motes from a fever planet
+const DUST_PER_BOSS := 8           # from the boss; its stardust shared among them
+const DUST_FLY_TIME := 0.6         # s from the break to the counter
+const DUST_BURST_SHARE := 0.28     # of that, spent bursting outward
+const DUST_BURST_PX := 48.0
+const DUST_STAGGER := 0.06         # s between one mote of a break and the next
+const DUST_SIZE := 34.0            # px at the break
+const DUST_END_SIZE := 15.0        # px as it lands
+const DUST_POP_GROW := 0.4
+const DUST_POP_DECAY := 7.0        # 1/s
+const DUST_HALO := Color(1.0, 0.5, 0.85, 0.24)   # the flat icon's soft glow
+const DUST_STAR_MESH := "res://assets/aztech_gems/star_mesh.res"
+const DUST_NEAR_DEPTH := 3.0       # world units before the camera as a star lands
+const DUST_SPIN := 6.0             # rad/s, turning on its face like a thrown star
+# A rock about its upright, never a full turn there: spun all the way round it
+# showed its edge, a thin sliver, half the time.
+const DUST_ROCK := 0.65            # rad either way
+const DUST_ROCK_HZ := 1.6
+const DUST_STAR_COLOR := Color(1.0, 0.5, 0.85)   # pink-violet (2026-11-28, owner; blue before)
+const DUST_STAR_GLOW := Color(1.0, 0.3, 0.72)
+var dust_motes: Array = []
+var dust_pending := 0
+var dust_pop := 0.0
+var _dust_target := Vector2.ZERO   # the counter's icon, as last drawn
+var _dust_mesh: Mesh
+var _dust_mesh_size := 1.0         # the mesh's largest side, world units
+var _dust_material: StandardMaterial3D
+
+
+func _spawn_dust(world: Vector3, amount: int, count: int) -> void:
+	var s := project(world)
+	if s.z < 0.0 or amount <= 0:
+		return
+	count = clampi(count, 1, amount)
+	var depth: float = -(camera.global_transform.affine_inverse() * world).z
+	for i in count:
+		# The amount shared out, the remainder on the first.
+		var share: int = amount / count + (amount % count if i == 0 else 0)
+		var burst := Vector2.from_angle(randf() * TAU) * DUST_BURST_PX * randf_range(0.6, 1.0)
+		var m := {"from": Vector2(s.x, s.y), "burst": burst, "t": -i * DUST_STAGGER,
+			"amount": share, "depth": depth, "node": _dust_star()}
+		dust_motes.append(m)
+		dust_pending += share
+
+
+## A spinning star for one mote, or null without the pack.
+func _dust_star() -> Node3D:
+	if _dust_mesh == null:
+		if not ResourceLoader.exists(DUST_STAR_MESH) or root3d == null:
+			return null
+		_dust_mesh = load(DUST_STAR_MESH)
+		var box := _dust_mesh.get_aabb()
+		_dust_mesh_size = maxf(box.size.x, box.size.y)
+		_dust_material = StandardMaterial3D.new()
+		_dust_material.albedo_color = DUST_STAR_COLOR
+		_dust_material.metallic = 0.3
+		_dust_material.roughness = 0.35
+		_dust_material.emission_enabled = true
+		_dust_material.emission = DUST_STAR_GLOW
+		_dust_material.emission_energy_multiplier = 1.0
+	var holder := Node3D.new()
+	var mi := MeshInstance3D.new()
+	mi.mesh = _dust_mesh
+	mi.material_override = _dust_material
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# Turned about its own middle, wherever the pack modelled it.
+	mi.position = -_dust_mesh.get_aabb().get_center()
+	holder.add_child(mi)
+	holder.visible = false
+	holder.set_meta("spin", randf() * TAU)
+	root3d.add_child(holder)
+	return holder
+
+
+## Where a mote is on the screen, and how big, `u` (0..1) through its flight.
+func _dust_place(m: Dictionary, u: float, target: Vector2) -> Vector3:
+	var out: Vector2 = m.from + m.burst * (1.0 - pow(1.0 - minf(u / DUST_BURST_SHARE, 1.0), 2.0))
+	var pos := out
+	if u > DUST_BURST_SHARE:
+		var k: float = (u - DUST_BURST_SHARE) / (1.0 - DUST_BURST_SHARE)
+		pos = out.lerp(target, k * k)
+	return Vector3(pos.x, pos.y, lerpf(DUST_SIZE, DUST_END_SIZE, u))
+
+
+func _update_dust(delta: float) -> void:
+	dust_pop = maxf(0.0, dust_pop - DUST_POP_DECAY * delta)
+	var target := _dust_target if _dust_target != Vector2.ZERO else Vector2(view_size.x - 40.0, 30.0)
+	for i in range(dust_motes.size() - 1, -1, -1):
+		var m: Dictionary = dust_motes[i]
+		m.t += delta
+		if m.t >= DUST_FLY_TIME:
+			dust_pending = maxi(0, dust_pending - int(m.amount))
+			dust_pop = 1.0
+			if m.node != null:
+				_free(m.node)
+			dust_motes.remove_at(i)
+			continue
+		var node = m.node
+		if node == null or not is_instance_valid(node) or camera == null:
+			continue
+		node.visible = m.t >= 0.0
+		if not node.visible:
+			continue
+		var u: float = m.t / DUST_FLY_TIME
+		var p := _dust_place(m, u, target)
+		var k: Vector2 = Vector2(viewport.size) / view_size
+		var at: Vector3 = camera.project_position(Vector2(p.x, p.y) * k, lerpf(m.depth, DUST_NEAR_DEPTH, u * u))
+		node.global_position = at
+		var ppu: float = project(at).z
+		if ppu > 0.0:
+			node.scale = Vector3.ONE * (p.z / ppu / _dust_mesh_size)
+		var spin: float = node.get_meta("spin", 0.0)
+		node.rotation = Vector3(0.0, sin(spin * 0.7 + m.t * TAU * DUST_ROCK_HZ) * DUST_ROCK, spin + m.t * DUST_SPIN)
+
+
+## The flat icons, for motes with no 3D star (the pack missing).
+func _draw_dust(ci: CanvasItem, side: Rect2) -> void:
+	if dust_motes.is_empty():
+		return
+	var icon := ArtSlot.texture(ArtSlot.stardust_icon_path())
+	var target := _dust_target if _dust_target != Vector2.ZERO else side.get_center()
+	for m in dust_motes:
+		if m.t < 0.0 or m.node != null:
+			continue
+		var p := _dust_place(m, m.t / DUST_FLY_TIME, target)
+		var pos := Vector2(p.x, p.y)
+		ci.draw_circle(pos, p.z * 0.62, DUST_HALO)
+		ci.draw_texture_rect(icon, Rect2(pos - Vector2(p.z, p.z) * 0.5, Vector2(p.z, p.z)), false)
+
+
 # The question box's gem and arrow, from Synty's POLYGON Icons pack
 # (2026-11-28, owner), rendered grey by tools/build_icon_kit.gd and tinted
 # here. The flat ball and the thin drawn arrow read as placeholders beside the
@@ -2691,6 +3060,8 @@ func _icon(path: String) -> Texture2D:
 	return _icon_tex[path]
 
 
+## Kind.COLOR's rule: a round swatch of the colour to fly through, ringed so
+## it holds on any background.
 func _draw_swatch(ci: CanvasItem, c: Vector2, r: float, color: Color) -> void:
 	var gem := _icon(ICON_GEM_PATH)
 	if gem != null:
@@ -2838,7 +3209,63 @@ func ship_screen_rect() -> Rect2:
 ## The progress gauge under the question box (draw_hud draws it here).
 func gauge_rect(box: Rect2) -> Rect2:
 	var gw: float = box.size.x * 0.9
-	return Rect2(Vector2(box.get_center().x - gw * 0.5, box.end.y + 6.0), Vector2(gw, 16.0))
+	return Rect2(Vector2(box.get_center().x - gw * 0.5, box.end.y + 2.0), Vector2(gw, HUD_GAUGE_H))
+
+
+## The gauge's fill as a beam (2026-11-28, owner: "like a laser", not a
+## flat colour): a soft glow round it, the body in its colour, a white-hot
+## core along its middle, bright pulses running along it toward the tip, and
+## a flare at the tip.
+const LASER_GLOW_ALPHA := 0.16
+const LASER_CORE := 0.32           # the core's height, as a share of the beam's
+const LASER_FLOW := 0.9            # pulses a second along the full gauge
+const LASER_PULSES := 3
+func _draw_laser(ci: CanvasItem, r: Rect2, col: Color) -> void:
+	var h: float = r.size.y
+	var box := StyleBoxFlat.new()
+	box.anti_aliasing = true
+	# The glow, two soft layers spilling past the beam.
+	for i in 2:
+		var spill: float = h * (0.25 + 0.25 * i)
+		box.bg_color = Color(col, LASER_GLOW_ALPHA * (1.0 - 0.5 * i))
+		box.set_corner_radius_all(int((h + spill * 2.0) * 0.5))
+		ci.draw_style_box(box, r.grow(spill))
+	box.bg_color = Color(col, 0.92)
+	box.set_corner_radius_all(int(h * 0.5))
+	ci.draw_style_box(box, r)
+	if r.size.x > h:
+		var ch: float = h * LASER_CORE
+		var core := Rect2(r.position.x + h * 0.35, r.get_center().y - ch * 0.5, r.size.x - h * 0.7, ch)
+		box.bg_color = col.lerp(Color.WHITE, 0.8)
+		box.set_corner_radius_all(int(ch * 0.5))
+		ci.draw_style_box(box, core)
+		# Pulses running toward the tip, faded in and out at the ends.
+		var t: float = Time.get_ticks_msec() / 1000.0
+		for k in LASER_PULSES:
+			var u: float = fposmod(t * LASER_FLOW + float(k) / LASER_PULSES, 1.0)
+			var x: float = r.position.x + u * r.size.x
+			if x > r.end.x - h * 0.4:
+				continue
+			var fade: float = clampf(minf(x - r.position.x, r.end.x - x) / (h * 2.0), 0.0, 1.0)
+			box.bg_color = Color(1.0, 1.0, 1.0, 0.55 * fade)
+			box.set_corner_radius_all(int(h * 0.5))
+			ci.draw_style_box(box, Rect2(x - h * 0.9, r.position.y + h * 0.15, h * 1.8, h * 0.7))
+	# The tip.
+	var tip := Vector2(r.end.x - h * 0.45, r.get_center().y)
+	ci.draw_circle(tip, h * 0.95, Color(col, 0.28))
+	ci.draw_circle(tip, h * 0.45, Color(col.lerp(Color.WHITE, 0.85), 0.95))
+
+
+## The gauge frame's window on screen, where its fill goes.
+func gauge_window(rect: Rect2) -> Rect2:
+	var tex := ArtSlot.texture(HUD_GAUGE_PATH)
+	var scale: float = rect.size.y / maxf(1.0, tex.get_height())
+	var tw: float = tex.get_width() * scale
+	var x0: float = rect.position.x + GAUGE_WIN_L * tw
+	var x1: float = rect.end.x - GAUGE_WIN_R * tw
+	var y0: float = rect.position.y + GAUGE_WIN_T * rect.size.y
+	var y1: float = rect.position.y + GAUGE_WIN_B * rect.size.y
+	return Rect2(x0, y0, x1 - x0, y1 - y0)
 
 
 ## The weapon readout, bottom right (draw_hud writes it here).

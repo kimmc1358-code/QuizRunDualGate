@@ -87,7 +87,6 @@ const GAP_LINE_TOP := 6.0              # 점수 줄과의 간격
 # 이번 판에 번 스타더스트와, 광고를 보고 그것을 한 번 더 받는 x2 (2026-11-27,
 # 2.0 의 첫 보상형 광고 자리). 상자는 최대 콤보 상자 바로 아래, 버튼은 상자
 # 오른쪽 안에 든다. 광고 제거를 산 사람에게는 광고 표시 없이 x2 만 뜬다.
-const DUST_ICON := "res://assets/synty_ui/icon_stardust.png"
 const DUST_LABEL := "STARDUST"
 const DOUBLE_TEXT := "x2"
 const NO_AD_TEXT := "AD NOT READY"
@@ -236,7 +235,7 @@ func _build_content() -> void:
 	_combo_box.draw.connect(_draw_combo_box)
 	add_child(_combo_box)
 
-	_dust_icon = ArtSlot.texture(DUST_ICON)
+	_dust_icon = ArtSlot.texture(ArtSlot.stardust_icon_path())
 	_dust_box = Control.new()
 	_dust_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_dust_box.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
